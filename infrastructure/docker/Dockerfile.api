@@ -1,0 +1,12 @@
+FROM node:24-alpine AS base
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.18.3 --activate
+
+COPY package.json pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY packages packages
+RUN pnpm install --filter @fliptrybe/api... --frozen-lockfile=false
+
+COPY apps/api apps/api
+EXPOSE 4000
+CMD ["pnpm", "--filter", "@fliptrybe/api", "dev"]

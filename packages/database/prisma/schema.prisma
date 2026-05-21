@@ -1,0 +1,373 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MANAGER
+  MARKETER
+  FINANCE
+  SUPPORT
+  VIEWER
+}
+
+enum CampaignObjective {
+  AWARENESS
+  ENGAGEMENT
+  TRAFFIC
+  LEADS
+  SALES
+  APP_INSTALLS
+  FOLLOWERS
+  LIVE_VIEWERS
+}
+
+enum CampaignStatus {
+  DRAFT
+  PENDING_REVIEW
+  QUEUED
+  ACTIVE
+  PAUSED
+  COMPLETED
+  REJECTED
+  FAILED
+}
+
+enum DestinationKind {
+  TIKTOK_PROFILE
+  TIKTOK_LIVE
+  TIKTOK_BOX_GAME
+  TIKTOK_SHOP
+  INSTAGRAM_PROFILE
+  INSTAGRAM_REEL
+  INSTAGRAM_LIVE
+  FACEBOOK_PAGE
+  FACEBOOK_LIVE
+  WHATSAPP_CHANNEL
+  WHATSAPP_GROUP
+  TELEGRAM_CHANNEL
+  TELEGRAM_GROUP
+  YOUTUBE_CHANNEL
+  WEBSITE
+  APP
+  ECOMMERCE_STORE
+  FLIPTRYBE_STORE
+}
+
+enum LedgerEntryKind {
+  CREDIT
+  DEBIT
+  HOLD
+  RELEASE
+  REVERSAL
+}
+
+enum PaymentStatus {
+  PENDING
+  REQUIRES_ACTION
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum SmmOrderStatus {
+  DRAFT
+  QUEUED
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+model User {
+  id              String        @id @default(uuid())
+  email           String        @unique
+  name            String
+  status          UserStatus    @default(ACTIVE)
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+  memberships     TeamMember[]
+  sessions        Session[]
+  auditLogs       AuditLog[]    @relation("AuditActor")
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model Organization {
+  id          String       @id @default(uuid())
+  name        String
+  slug        String       @unique
+  ownerUserId String
+  region      String       @default("global")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+  workspaces  Workspace[]
+  members     TeamMember[]
+
+  @@index([ownerUserId])
+  @@index([deletedAt])
+}
+
+model Workspace {
+  id               String            @id @default(uuid())
+  organizationId   String
+  name             String
+  defaultCurrency  String            @default("NGN")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  organization     Organization      @relation(fields: [organizationId], references: [id])
+  campaigns        Campaign[]
+  wallets          Wallet[]
+  paymentIntents   PaymentIntent[]
+  smmOrders        SmmOrder[]
+  notifications    Notification[]
+  supportTickets   SupportTicket[]
+  referralAccounts ReferralAccount[]
+  auditLogs        AuditLog[]
+
+  @@index([organizationId])
+  @@index([deletedAt])
+}
+
+model TeamMember {
+  id             String           @id @default(uuid())
+  userId         String
+  organizationId String
+  role           OrganizationRole
+  permissions    String[]         @default([])
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+  user           User             @relation(fields: [userId], references: [id])
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, role])
+}
+
+model Session {
+  id             String    @id @default(uuid())
+  userId         String
+  tokenHash      String    @unique
+  deviceName     String?
+  ipAddress      String?
+  userAgent      String?
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Campaign {
+  id                 String             @id @default(uuid())
+  workspaceId        String
+  creatorUserId      String
+  name               String
+  objective          CampaignObjective
+  status             CampaignStatus     @default(DRAFT)
+  budgetMinor        Int
+  currency           String             @default("NGN")
+  provider           String             @default("MOCK")
+  providerReference  String?
+  startsAt           DateTime
+  endsAt             DateTime?
+  timezone           String             @default("UTC")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  deletedAt          DateTime?
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id])
+  destination        Destination?
+  livePromotion      LivePromotion?
+  analytics          AnalyticsMetric[]
+
+  @@index([workspaceId, status])
+  @@index([provider, providerReference])
+  @@index([startsAt])
+  @@index([deletedAt])
+}
+
+model Destination {
+  id          String          @id @default(uuid())
+  campaignId  String          @unique
+  kind        DestinationKind
+  url         String
+  handle      String?
+  metadata    Json            @default("{}")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  campaign    Campaign        @relation(fields: [campaignId], references: [id])
+
+  @@index([kind])
+}
+
+model LivePromotion {
+  id                    String          @id @default(uuid())
+  campaignId            String          @unique
+  destinationKind        DestinationKind
+  realtimeBoostEnabled   Boolean         @default(false)
+  expectedStartAt        DateTime
+  actualStartedAt        DateTime?
+  actualEndedAt          DateTime?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  campaign               Campaign        @relation(fields: [campaignId], references: [id])
+
+  @@index([destinationKind, expectedStartAt])
+}
+
+model Wallet {
+  id        String        @id @default(uuid())
+  workspaceId String
+  currency  String        @default("NGN")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  workspace Workspace     @relation(fields: [workspaceId], references: [id])
+  entries   LedgerEntry[]
+
+  @@unique([workspaceId, currency])
+}
+
+model LedgerEntry {
+  id          String          @id @default(uuid())
+  walletId    String
+  kind        LedgerEntryKind
+  amountMinor Int
+  currency    String          @default("NGN")
+  reference   String
+  description String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  wallet      Wallet          @relation(fields: [walletId], references: [id])
+
+  @@index([walletId, createdAt])
+  @@index([reference])
+}
+
+model PaymentIntent {
+  id                String        @id @default(uuid())
+  workspaceId       String
+  gateway           String
+  amountMinor       Int
+  currency          String        @default("NGN")
+  status            PaymentStatus @default(PENDING)
+  providerReference String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  workspace         Workspace     @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([gateway, providerReference])
+}
+
+model SmmOrder {
+  id                String         @id @default(uuid())
+  workspaceId       String
+  serviceKind       String
+  destinationKind   DestinationKind
+  destinationUrl    String
+  quantity          Int
+  status            SmmOrderStatus @default(DRAFT)
+  supplierReference String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  deletedAt         DateTime?
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([supplierReference])
+}
+
+model AnalyticsMetric {
+  id          String    @id @default(uuid())
+  workspaceId String
+  campaignId  String?
+  name        String
+  value       Float
+  dimensions  Json      @default("{}")
+  recordedAt  DateTime  @default(now())
+  campaign    Campaign? @relation(fields: [campaignId], references: [id])
+
+  @@index([workspaceId, name, recordedAt])
+  @@index([campaignId, recordedAt])
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  workspaceId String
+  channel     String
+  title       String
+  body        String
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, readAt])
+}
+
+model SupportTicket {
+  id               String    @id @default(uuid())
+  workspaceId      String
+  requesterUserId  String
+  subject          String
+  status           String    @default("OPEN")
+  priority         String    @default("NORMAL")
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workspace        Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, status, priority])
+}
+
+model ReferralAccount {
+  id                String    @id @default(uuid())
+  workspaceId       String
+  code              String    @unique
+  commissionRateBps Int       @default(500)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  workspace         Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  workspaceId String?
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String
+  metadata    Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace? @relation(fields: [workspaceId], references: [id])
+  actor       User?     @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+}

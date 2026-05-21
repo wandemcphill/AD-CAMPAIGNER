@@ -1,0 +1,147 @@
+previews:
+  generation: manual
+
+services:
+  - type: web
+    runtime: node
+    name: fliptrybe-api
+    region: oregon
+    plan: starter
+    rootDir: .
+    autoDeployTrigger: commit
+    healthCheckPath: /v1/health
+    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm prisma:generate && pnpm --filter @fliptrybe/api build
+    preDeployCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/database prisma migrate deploy
+    startCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/api start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      - key: APP_URL
+        value: https://fliptrybe-web.onrender.com
+      - key: ADMIN_URL
+        value: https://fliptrybe-admin.onrender.com
+      - key: API_URL
+        value: https://fliptrybe-api.onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fliptrybe-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: fliptrybe-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: STORAGE_PROVIDER
+        value: mock
+      - key: ADS_PROVIDER
+        value: mock
+      - key: PAYMENT_PROVIDER
+        value: mock
+      - key: SMM_PROVIDER
+        value: mock
+      - key: AI_PROVIDER
+        value: mock
+      - key: NOTIFICATION_PROVIDER
+        value: mock
+      - key: KORAPAY_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+
+  - type: web
+    runtime: node
+    name: fliptrybe-web
+    region: oregon
+    plan: starter
+    rootDir: .
+    autoDeployTrigger: commit
+    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @fliptrybe/web build
+    startCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/web start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://fliptrybe-api.onrender.com
+
+  - type: web
+    runtime: node
+    name: fliptrybe-admin
+    region: oregon
+    plan: starter
+    rootDir: .
+    autoDeployTrigger: commit
+    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @fliptrybe/admin build
+    startCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/admin start
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        value: https://fliptrybe-api.onrender.com
+
+  - type: worker
+    runtime: node
+    name: fliptrybe-worker
+    region: oregon
+    plan: starter
+    rootDir: .
+    autoDeployTrigger: commit
+    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm prisma:generate && pnpm --filter @fliptrybe/worker build
+    startCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/worker start
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: NODE_VERSION
+        value: 22.12.0
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fliptrybe-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: fliptrybe-redis
+          property: connectionString
+      - key: WORKER_CONCURRENCY
+        value: 5
+      - key: ADS_PROVIDER
+        value: mock
+      - key: PAYMENT_PROVIDER
+        value: mock
+      - key: SMM_PROVIDER
+        value: mock
+      - key: AI_PROVIDER
+        value: mock
+      - key: NOTIFICATION_PROVIDER
+        value: mock
+
+  - type: keyvalue
+    name: fliptrybe-redis
+    region: oregon
+    plan: starter
+    maxmemoryPolicy: noeviction
+    ipAllowList: []
+
+databases:
+  - name: fliptrybe-postgres
+    region: oregon
+    plan: basic-256mb
+    databaseName: fliptrybe_ads
+    user: fliptrybe
+    postgresMajorVersion: "17"

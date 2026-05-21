@@ -1,0 +1,13 @@
+FROM node:24-alpine AS base
+ARG APP_NAME=web
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.18.3 --activate
+
+COPY package.json pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/${APP_NAME}/package.json apps/${APP_NAME}/package.json
+COPY packages packages
+RUN pnpm install --filter @fliptrybe/${APP_NAME}... --frozen-lockfile=false
+
+COPY apps/${APP_NAME} apps/${APP_NAME}
+EXPOSE 3000
+CMD ["sh", "-c", "pnpm --filter @fliptrybe/${APP_NAME} dev -- --hostname 0.0.0.0"]

@@ -1,0 +1,33 @@
+{
+  "name": "@fliptrybe/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3000",
+    "build": "next build",
+    "start": "node ../../scripts/start-next.mjs 3000",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@fliptrybe/design-system": "workspace:*",
+    "@fliptrybe/types": "workspace:*",
+    "@fliptrybe/ui": "workspace:*",
+    "@tailwindcss/postcss": "^4.3.0",
+    "framer-motion": "^12.40.0",
+    "lucide-react": "^1.16.0",
+    "next": "^15.5.18",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tailwindcss": "^4.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14"
+  }
+}

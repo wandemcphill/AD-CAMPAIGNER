@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@fliptrybe/analytics": ["packages/analytics/src/index.ts"],
+      "@fliptrybe/auth": ["packages/auth/src/index.ts"],
+      "@fliptrybe/config": ["packages/config/src/index.ts"],
+      "@fliptrybe/database": ["packages/database/src/index.ts"],
+      "@fliptrybe/design-system": ["packages/design-system/src/index.ts"],
+      "@fliptrybe/events": ["packages/events/src/index.ts"],
+      "@fliptrybe/feature-flags": ["packages/feature-flags/src/index.ts"],
+      "@fliptrybe/notifications": ["packages/notifications/src/index.ts"],
+      "@fliptrybe/payments": ["packages/payments/src/index.ts"],
+      "@fliptrybe/providers": ["packages/providers/src/index.ts"],
+      "@fliptrybe/types": ["packages/types/src/index.ts"],
+      "@fliptrybe/ui": ["packages/ui/src/index.tsx"]
+    }
+  },
+  "exclude": ["node_modules", ".next", "dist", "coverage"]
+}

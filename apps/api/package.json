@@ -1,0 +1,44 @@
+{
+  "name": "@fliptrybe/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fliptrybe/analytics": "workspace:*",
+    "@fliptrybe/auth": "workspace:*",
+    "@fliptrybe/config": "workspace:*",
+    "@fliptrybe/database": "workspace:*",
+    "@fliptrybe/events": "workspace:*",
+    "@fliptrybe/notifications": "workspace:*",
+    "@fliptrybe/payments": "workspace:*",
+    "@fliptrybe/providers": "workspace:*",
+    "@fliptrybe/types": "workspace:*",
+    "@nestjs/common": "^11.1.22",
+    "@nestjs/config": "^4.0.2",
+    "@nestjs/core": "^11.1.22",
+    "@nestjs/platform-express": "^11.1.22",
+    "@nestjs/platform-socket.io": "^11.1.22",
+    "@nestjs/swagger": "^11.2.3",
+    "@nestjs/websockets": "^11.1.22",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "socket.io": "^4.8.1",
+    "tsx": "^4.21.0",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.14"
+  }
+}
