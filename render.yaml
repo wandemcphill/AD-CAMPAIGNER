@@ -1,9 +1,9 @@
 services:
   - type: web
     runtime: node
-    name: fliptrybe-ads-campaigner-api
+    name: ft-campaigner-api-fra
     region: frankfurt
-    plan: starter
+    plan: free
     rootDir: .
     autoDeployTrigger: commit
     healthCheckPath: /v1/health
@@ -20,7 +20,7 @@ services:
       - key: ADMIN_URL
         value: https://fliptrybe-ads-campaigner-admin.onrender.com
       - key: API_URL
-        value: https://fliptrybe-ads-campaigner-api.onrender.com
+        value: https://ft-campaigner-api-fra.onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: fliptrybe-ads-campaigner-postgres
@@ -61,7 +61,7 @@ services:
     runtime: node
     name: fliptrybe-ads-campaigner-web
     region: frankfurt
-    plan: starter
+    plan: free
     rootDir: .
     autoDeployTrigger: commit
     buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @fliptrybe/web build
@@ -72,13 +72,13 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        value: https://fliptrybe-ads-campaigner-api.onrender.com
+        value: https://ft-campaigner-api-fra.onrender.com
 
   - type: web
     runtime: node
     name: fliptrybe-ads-campaigner-admin
     region: frankfurt
-    plan: starter
+    plan: free
     rootDir: .
     autoDeployTrigger: commit
     buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @fliptrybe/admin build
@@ -89,56 +89,19 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_API_URL
-        value: https://fliptrybe-ads-campaigner-api.onrender.com
-
-  - type: worker
-    runtime: node
-    name: fliptrybe-ads-campaigner-worker
-    region: frankfurt
-    plan: starter
-    rootDir: .
-    autoDeployTrigger: commit
-    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm prisma:generate && pnpm --filter @fliptrybe/worker build
-    startCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/worker start
-    maxShutdownDelaySeconds: 120
-    envVars:
-      - key: NODE_VERSION
-        value: 22.12.0
-      - key: NODE_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: fliptrybe-ads-campaigner-postgres
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: fliptrybe-ads-campaigner-redis
-          property: connectionString
-      - key: WORKER_CONCURRENCY
-        value: 5
-      - key: ADS_PROVIDER
-        value: mock
-      - key: PAYMENT_PROVIDER
-        value: mock
-      - key: SMM_PROVIDER
-        value: mock
-      - key: AI_PROVIDER
-        value: mock
-      - key: NOTIFICATION_PROVIDER
-        value: mock
+        value: https://ft-campaigner-api-fra.onrender.com
 
   - type: keyvalue
     name: fliptrybe-ads-campaigner-redis
     region: frankfurt
-    plan: starter
+    plan: free
     maxmemoryPolicy: noeviction
     ipAllowList: []
 
 databases:
   - name: fliptrybe-ads-campaigner-postgres
     region: frankfurt
-    plan: basic-256mb
+    plan: free
     databaseName: fliptrybe_ads
     user: fliptrybe
     postgresMajorVersion: "18"

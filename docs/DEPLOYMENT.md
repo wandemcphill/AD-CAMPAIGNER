@@ -6,16 +6,17 @@ FlipTrybe Ads Campaigner is prepared for Render Blueprints from the repository r
 
 The `render.yaml` blueprint provisions:
 
-- `fliptrybe-ads-campaigner-api`: NestJS API web service with `/v1/health` checks.
+- `ft-campaigner-api-fra`: NestJS API web service with `/v1/health` checks.
 - `fliptrybe-ads-campaigner-web`: customer dashboard.
 - `fliptrybe-ads-campaigner-admin`: operations dashboard.
-- `fliptrybe-ads-campaigner-worker`: BullMQ worker.
 - `fliptrybe-ads-campaigner-postgres`: managed PostgreSQL database.
 - `fliptrybe-ads-campaigner-redis`: Render Key Value instance for Redis-compatible queues.
 
 All managed services are pinned to Render's `frankfurt` region.
 
 The API service runs Prisma migrations in `preDeployCommand` before starting.
+
+The BullMQ worker is implemented in `apps/worker`, but it is not provisioned in the default budget Blueprint. Add it back as a paid background worker when live campaign queues need always-on processing.
 
 ## GitHub to Render flow
 
