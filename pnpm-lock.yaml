@@ -120,6 +120,9 @@ importers:
       '@fliptrybe/providers':
         specifier: workspace:*
         version: link:../../packages/providers
+      '@fliptrybe/service-smm':
+        specifier: workspace:*
+        version: link:../../services/smm
       '@fliptrybe/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -233,6 +236,9 @@ importers:
       '@fliptrybe/providers':
         specifier: workspace:*
         version: link:../../packages/providers
+      '@fliptrybe/service-smm':
+        specifier: workspace:*
+        version: link:../../services/smm
       '@fliptrybe/types':
         specifier: workspace:*
         version: link:../../packages/types
@@ -503,6 +509,13 @@ importers:
         version: 4.1.7(@types/node@24.12.4)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   services/smm:
+    dependencies:
+      '@fliptrybe/providers':
+        specifier: workspace:*
+        version: link:../../packages/providers
+      '@fliptrybe/types':
+        specifier: workspace:*
+        version: link:../../packages/types
     devDependencies:
       typescript:
         specifier: ^5.9.3

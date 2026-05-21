@@ -21,7 +21,23 @@ export const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
   CLOUDINARY_FOLDER: z.string().optional(),
-  CLOUDINARY_SECURE_DISTRIBUTION: z.string().optional()
+  CLOUDINARY_SECURE_DISTRIBUTION: z.string().optional(),
+  SMDPANEL_API_URL: z.url().optional(),
+  SMDPANEL_API_KEY: z.string().optional(),
+  SMDPANEL_CURRENCY: z.string().optional(),
+  SMDPANEL_SERVICE_MAP: z.string().optional(),
+  SMMRAJA_API_URL: z.url().optional(),
+  SMMRAJA_API_KEY: z.string().optional(),
+  SMMRAJA_CURRENCY: z.string().optional(),
+  SMMRAJA_SERVICE_MAP: z.string().optional(),
+  JAP_API_URL: z.url().optional(),
+  JAP_API_KEY: z.string().optional(),
+  JAP_CURRENCY: z.string().optional(),
+  JAP_SERVICE_MAP: z.string().optional(),
+  PEAKERR_API_URL: z.url().optional(),
+  PEAKERR_API_KEY: z.string().optional(),
+  PEAKERR_CURRENCY: z.string().optional(),
+  PEAKERR_SERVICE_MAP: z.string().optional()
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

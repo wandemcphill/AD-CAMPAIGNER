@@ -1,28 +1,41 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { createMetric } from "@fliptrybe/analytics";
 import { createEvent, type PlatformEvent } from "@fliptrybe/events";
 import { createNotification } from "@fliptrybe/notifications";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
 import {
+  createCloudinaryStorageProvider,
   createMockAdsProvider,
   createMockAiProvider,
   createMockPaymentGateway,
   createMockSmmSupplier,
   createMockStorageProvider,
-  createCloudinaryStorageProvider
+  createPerfectPanelSmmSupplier,
+  createRoutedSmmSupplier,
+  parseSmmServiceMap
 } from "@fliptrybe/providers";
-import type {
-  AnalyticsMetric,
-  AuditLog,
-  Campaign,
-  DestinationKind,
-  LedgerEntry,
-  NotificationMessage,
-  PaymentIntent,
-  PromotionDestination,
-  SmmOrder,
-  SupportTicket,
-  Wallet
+import {
+  assessSmmOrderFraud,
+  calculateSmmPrice,
+  createSmmFulfillmentQueueJob,
+  createSmmServiceHealthMonitor,
+  defaultSmmPricingRules,
+  summarizeSmmSupplierHealth
+} from "@fliptrybe/service-smm";
+import {
+  currencies,
+  type AnalyticsMetric,
+  type AuditLog,
+  type Campaign,
+  type CurrencyCode,
+  type DestinationKind,
+  type LedgerEntry,
+  type NotificationMessage,
+  type PaymentIntent,
+  type PromotionDestination,
+  type SmmOrder,
+  type SupportTicket,
+  type Wallet
 } from "@fliptrybe/types";
 
 import type {
@@ -51,12 +64,70 @@ function createStorageProvider() {
   return createMockStorageProvider();
 }
 
+function getCurrency(value: string | undefined, fallback: CurrencyCode): CurrencyCode {
+  return currencies.includes(value as CurrencyCode) ? (value as CurrencyCode) : fallback;
+}
+
+function createSmmSupplierBundle() {
+  if (process.env.SMM_PROVIDER !== "live") {
+    const supplier = createMockSmmSupplier();
+
+    return { supplier, suppliers: [supplier] };
+  }
+
+  const supplierConfigs = [
+    {
+      name: "smdpanel",
+      apiUrl: process.env.SMDPANEL_API_URL ?? "https://smdpanel.com/api/v2",
+      apiKey: process.env.SMDPANEL_API_KEY,
+      currency: getCurrency(process.env.SMDPANEL_CURRENCY, "USD"),
+      serviceMap: parseSmmServiceMap(process.env.SMDPANEL_SERVICE_MAP)
+    },
+    {
+      name: "smmraja",
+      apiUrl: process.env.SMMRAJA_API_URL ?? "https://www.smmraja.com/api/v3",
+      apiKey: process.env.SMMRAJA_API_KEY,
+      currency: getCurrency(process.env.SMMRAJA_CURRENCY, "USD"),
+      serviceMap: parseSmmServiceMap(process.env.SMMRAJA_SERVICE_MAP)
+    },
+    {
+      name: "justanotherpanel",
+      apiUrl: process.env.JAP_API_URL ?? "https://justanotherpanel.com/api/v2",
+      apiKey: process.env.JAP_API_KEY,
+      currency: getCurrency(process.env.JAP_CURRENCY, "USD"),
+      serviceMap: parseSmmServiceMap(process.env.JAP_SERVICE_MAP)
+    },
+    {
+      name: "peakerr",
+      apiUrl: process.env.PEAKERR_API_URL ?? "https://peakerr.com/api/v2",
+      apiKey: process.env.PEAKERR_API_KEY,
+      currency: getCurrency(process.env.PEAKERR_CURRENCY, "USD"),
+      serviceMap: parseSmmServiceMap(process.env.PEAKERR_SERVICE_MAP)
+    }
+  ];
+
+  const suppliers = supplierConfigs
+    .filter((config) => Boolean(config.apiKey))
+    .map((config) => createPerfectPanelSmmSupplier(config));
+
+  return {
+    supplier: createRoutedSmmSupplier(suppliers),
+    suppliers
+  };
+}
+
 @Injectable()
 export class PlatformService {
   private readonly adsProvider = createMockAdsProvider();
   private readonly aiProvider = createMockAiProvider();
   private readonly paymentGateway = createMockPaymentGateway();
-  private readonly smmSupplier = createMockSmmSupplier();
+  private readonly smmSupplierBundle = createSmmSupplierBundle();
+  private readonly smmSupplier = this.smmSupplierBundle.supplier;
+  private readonly smmHealthMonitor = createSmmServiceHealthMonitor(
+    this.smmSupplierBundle.suppliers.length > 0
+      ? this.smmSupplierBundle.suppliers
+      : [this.smmSupplier]
+  );
   private readonly storageProvider = createStorageProvider();
   private readonly events: PlatformEvent[] = [];
   private readonly campaigns: Campaign[] = [];
@@ -84,6 +155,10 @@ export class PlatformService {
         payments: this.paymentGateway.name,
         smm: this.smmSupplier.name,
         storage: this.storageProvider.name
+      },
+      operations: {
+        smmSuppliers: this.smmSupplierBundle.suppliers.map((supplier) => supplier.name),
+        smmPricingRules: defaultSmmPricingRules.length
       }
     };
   }
@@ -249,20 +324,15 @@ export class PlatformService {
   }
 
   async createSmmOrder(input: CreateSmmOrderDto) {
-    const timestamp = now();
-    const order: SmmOrder = {
-      id: id("smm"),
-      workspaceId,
-      serviceKind: input.serviceKind ?? "FOLLOWERS",
-      destination: {
-        kind: input.destinationKind ?? "INSTAGRAM_PROFILE",
-        url: input.destinationUrl ?? "https://instagram.com/fliptrybe"
-      },
-      quantity: input.quantity ?? 1000,
-      status: "QUEUED",
-      createdAt: timestamp,
-      updatedAt: timestamp
-    };
+    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(input);
+
+    if (fraudAssessment.action === "BLOCK") {
+      throw new BadRequestException({
+        message: "SMM order blocked by fraud controls.",
+        fraudAssessment
+      });
+    }
+
     const result = await this.smmSupplier.createOrder(order);
     const readyOrder = {
       ...order,
@@ -279,16 +349,53 @@ export class PlatformService {
       })
     );
 
-    return readyOrder;
+    return {
+      ...readyOrder,
+      pricing: pricedQuote,
+      fraudAssessment,
+      queueJob
+    };
+  }
+
+  async quoteSmmOrder(input: CreateSmmOrderDto) {
+    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(input);
+
+    return {
+      order,
+      pricing: pricedQuote,
+      fraudAssessment,
+      queueJob
+    };
   }
 
   listSmmServices() {
-    return [
-      { kind: "FOLLOWERS", label: "Followers", startsAtMinor: 2500, delivery: "2-24 hours" },
-      { kind: "VIEWS", label: "Views", startsAtMinor: 1500, delivery: "10-120 minutes" },
-      { kind: "LIVE_VIEWERS", label: "Live viewers", startsAtMinor: 5000, delivery: "Realtime" },
-      { kind: "COMMENTS", label: "Comments", startsAtMinor: 7000, delivery: "Manual review" }
-    ];
+    const labels = {
+      FOLLOWERS: { label: "Followers", delivery: "2-24 hours" },
+      LIKES: { label: "Likes", delivery: "10-120 minutes" },
+      VIEWS: { label: "Views", delivery: "10-120 minutes" },
+      COMMENTS: { label: "Comments", delivery: "Manual review" },
+      SHARES: { label: "Shares", delivery: "1-6 hours" },
+      LIVE_VIEWERS: { label: "Live viewers", delivery: "Realtime" },
+      CHANNEL_MEMBERS: { label: "Channel members", delivery: "2-48 hours" }
+    } as const;
+
+    return defaultSmmPricingRules.map((rule) => ({
+      kind: rule.serviceKind,
+      label: labels[rule.serviceKind].label,
+      startsAtMinor: rule.minimumMarginMinor + rule.platformFeeMinor,
+      markupBps: rule.markupBps,
+      rushMarkupBps: rule.rushMarkupBps,
+      delivery: labels[rule.serviceKind].delivery
+    }));
+  }
+
+  async getSmmSupplierHealth() {
+    const suppliers = await this.smmHealthMonitor.checkAll();
+
+    return {
+      status: summarizeSmmSupplierHealth(suppliers),
+      suppliers
+    };
   }
 
   async createPaymentIntent(input: CreatePaymentIntentDto) {
@@ -425,6 +532,7 @@ export class PlatformService {
       pendingModeration: 18,
       paymentVolumeMinor: 482500000,
       fraudSignals: 7,
+      smmSupplierCount: this.smmSupplierBundle.suppliers.length,
       queueHealth: {
         campaign: "healthy",
         smm: "healthy",
@@ -458,6 +566,51 @@ export class PlatformService {
 
   private pushEvent(event: PlatformEvent) {
     this.events.unshift(event);
+  }
+
+  private async prepareSmmOrder(input: CreateSmmOrderDto) {
+    const timestamp = now();
+    const order: SmmOrder = {
+      id: id("smm"),
+      workspaceId,
+      serviceKind: input.serviceKind ?? "FOLLOWERS",
+      destination: {
+        kind: input.destinationKind ?? "INSTAGRAM_PROFILE",
+        url: input.destinationUrl ?? "https://instagram.com/fliptrybe"
+      },
+      quantity: input.quantity ?? 1000,
+      status: "QUEUED",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    const quote = await this.smmSupplier.quoteService({
+      serviceKind: order.serviceKind,
+      quantity: order.quantity,
+      destination: order.destination
+    });
+    const pricedQuote = calculateSmmPrice({
+      quote,
+      serviceKind: order.serviceKind
+    });
+    const fraudAssessment = assessSmmOrderFraud({
+      order,
+      quote,
+      recentOrders: this.smmOrders
+    });
+    const queueJob = createSmmFulfillmentQueueJob({
+      order,
+      pricedQuote,
+      fraudAssessment,
+      enqueuedAt: timestamp
+    });
+
+    return {
+      order,
+      quote,
+      pricedQuote,
+      fraudAssessment,
+      queueJob
+    };
   }
 
   private seedCampaign(campaignId = "cmp_demo"): Campaign {

@@ -49,7 +49,39 @@ services:
       - key: PAYMENT_PROVIDER
         value: mock
       - key: SMM_PROVIDER
-        value: mock
+        value: live
+      - key: SMDPANEL_API_URL
+        value: https://smdpanel.com/api/v2
+      - key: SMDPANEL_API_KEY
+        sync: false
+      - key: SMDPANEL_CURRENCY
+        value: USD
+      - key: SMDPANEL_SERVICE_MAP
+        sync: false
+      - key: SMMRAJA_API_URL
+        value: https://www.smmraja.com/api/v3
+      - key: SMMRAJA_API_KEY
+        sync: false
+      - key: SMMRAJA_CURRENCY
+        value: USD
+      - key: SMMRAJA_SERVICE_MAP
+        sync: false
+      - key: JAP_API_URL
+        value: https://justanotherpanel.com/api/v2
+      - key: JAP_API_KEY
+        sync: false
+      - key: JAP_CURRENCY
+        value: USD
+      - key: JAP_SERVICE_MAP
+        sync: false
+      - key: PEAKERR_API_URL
+        value: https://peakerr.com/api/v2
+      - key: PEAKERR_API_KEY
+        sync: false
+      - key: PEAKERR_CURRENCY
+        value: USD
+      - key: PEAKERR_SERVICE_MAP
+        sync: false
       - key: AI_PROVIDER
         value: mock
       - key: NOTIFICATION_PROVIDER
@@ -130,7 +162,39 @@ services:
       - key: PAYMENT_PROVIDER
         value: mock
       - key: SMM_PROVIDER
-        value: mock
+        value: live
+      - key: SMDPANEL_API_URL
+        value: https://smdpanel.com/api/v2
+      - key: SMDPANEL_API_KEY
+        sync: false
+      - key: SMDPANEL_CURRENCY
+        value: USD
+      - key: SMDPANEL_SERVICE_MAP
+        sync: false
+      - key: SMMRAJA_API_URL
+        value: https://www.smmraja.com/api/v3
+      - key: SMMRAJA_API_KEY
+        sync: false
+      - key: SMMRAJA_CURRENCY
+        value: USD
+      - key: SMMRAJA_SERVICE_MAP
+        sync: false
+      - key: JAP_API_URL
+        value: https://justanotherpanel.com/api/v2
+      - key: JAP_API_KEY
+        sync: false
+      - key: JAP_CURRENCY
+        value: USD
+      - key: JAP_SERVICE_MAP
+        sync: false
+      - key: PEAKERR_API_URL
+        value: https://peakerr.com/api/v2
+      - key: PEAKERR_API_KEY
+        sync: false
+      - key: PEAKERR_CURRENCY
+        value: USD
+      - key: PEAKERR_SERVICE_MAP
+        sync: false
       - key: AI_PROVIDER
         value: mock
       - key: NOTIFICATION_PROVIDER

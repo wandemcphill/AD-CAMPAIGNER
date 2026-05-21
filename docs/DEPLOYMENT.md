@@ -21,6 +21,8 @@ This Blueprint uses the lowest production-safe shape: static CDN hosting for web
 
 Media storage is configured for Cloudinary through `STORAGE_PROVIDER=cloudinary`. Add `CLOUDINARY_CLOUD_NAME` and an unsigned `CLOUDINARY_UPLOAD_PRESET` on the API service before enabling upload flows.
 
+SMM fulfillment is configured as a routed multi-supplier layer across SMDPanel, SMM Raja, JustAnotherPanel, and Peakerr. Add each supplier API key to the API and worker services, then optionally set each `*_SERVICE_MAP` to a JSON object such as `{"FOLLOWERS":"12345","VIEWS":"45678"}` to pin known-good services instead of relying on automatic cheapest-service matching. The shared SMM operations package now owns pricing, margin calculation, retry policy, fraud assessment, queue payload metadata, and supplier health checks.
+
 ## GitHub to Render flow
 
 1. Push this repository to GitHub.

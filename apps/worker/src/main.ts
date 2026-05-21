@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import IORedis from "ioredis";
 
 import { processQueueJob } from "./processors";
-import { type QueueName, type QueuePayloads, queueNames } from "./queues";
+import { type QueueName, type QueuePayloads, queueNames, queueRuntimePolicies } from "./queues";
 
 const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
   maxRetriesPerRequest: null
@@ -15,7 +15,9 @@ const workers = queueNames.map(
       (job) => Promise.resolve(processQueueJob(queueName, job)),
       {
         connection,
-        concurrency: Number(process.env.WORKER_CONCURRENCY ?? 5)
+        concurrency: Number(
+          process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency
+        )
       }
     )
 );

@@ -4,7 +4,9 @@ import {
   createCloudinaryStorageProvider,
   createMockAdsProvider,
   createMockPaymentGateway,
-  createMockSmmSupplier
+  createMockSmmSupplier,
+  createPerfectPanelSmmSupplier,
+  createRoutedSmmSupplier
 } from "./index";
 
 describe("provider contracts", () => {
@@ -54,5 +56,105 @@ describe("provider contracts", () => {
     expect(upload.publicUrl).toBe(
       "https://res.cloudinary.com/fliptrybe/image/upload/ads/campaign-assets/hero"
     );
+  });
+
+  it("routes SMM orders to the cheapest Perfect Panel supplier", async () => {
+    const createFetcher = (rate: string) =>
+      ((_url, init) => {
+        const requestBody = init?.body;
+        const body =
+          requestBody instanceof URLSearchParams
+            ? requestBody.toString()
+            : typeof requestBody === "string"
+              ? requestBody
+              : "";
+
+        if (body.includes("action=services")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify([
+                {
+                  service: 10,
+                  name: "Instagram Followers",
+                  category: "Instagram",
+                  type: "Default",
+                  rate,
+                  min: "10",
+                  max: "100000"
+                }
+              ])
+            )
+          );
+        }
+
+        return Promise.resolve(new Response(JSON.stringify({ order: 12345 })));
+      }) satisfies typeof fetch;
+
+    const router = createRoutedSmmSupplier([
+      createPerfectPanelSmmSupplier({
+        name: "expensive",
+        apiUrl: "https://expensive.test/api/v2",
+        apiKey: "key",
+        fetcher: createFetcher("2.00")
+      }),
+      createPerfectPanelSmmSupplier({
+        name: "cheap",
+        apiUrl: "https://cheap.test/api/v2",
+        apiKey: "key",
+        fetcher: createFetcher("0.50")
+      })
+    ]);
+
+    const quote = await router.quoteService({
+      serviceKind: "FOLLOWERS",
+      quantity: 1000,
+      destination: { kind: "INSTAGRAM_PROFILE", url: "https://instagram.com/fliptrybe" }
+    });
+    const order = await router.createOrder({
+      id: "smm_test",
+      workspaceId: "workspace",
+      serviceKind: "FOLLOWERS",
+      destination: { kind: "INSTAGRAM_PROFILE", url: "https://instagram.com/fliptrybe" },
+      quantity: 1000,
+      status: "QUEUED",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    });
+
+    expect(quote.amount.amountMinor).toBe(50);
+    expect(quote.supplierName).toBe("cheap");
+    expect(order.supplierReference).toBe("cheap:12345");
+  });
+
+  it("matches channel member services by subscriber synonyms", async () => {
+    const supplier = createPerfectPanelSmmSupplier({
+      name: "synonym-panel",
+      apiUrl: "https://synonym.test/api/v2",
+      apiKey: "key",
+      fetcher: (() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify([
+              {
+                service: 55,
+                name: "YouTube Subscribers",
+                category: "YouTube",
+                type: "Default",
+                rate: "1.00",
+                min: "10",
+                max: "10000"
+              }
+            ])
+          )
+        )) satisfies typeof fetch
+    });
+
+    const quote = await supplier.quoteService({
+      serviceKind: "CHANNEL_MEMBERS",
+      quantity: 1000,
+      destination: { kind: "YOUTUBE_CHANNEL", url: "https://youtube.com/@fliptrybe" }
+    });
+
+    expect(quote.amount.amountMinor).toBe(100);
   });
 });

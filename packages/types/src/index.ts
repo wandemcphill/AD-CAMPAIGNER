@@ -1,4 +1,4 @@
-export const currencies = ["NGN", "USD", "GBP", "EUR", "GHS", "KES", "ZAR"] as const;
+export const currencies = ["NGN", "USD", "GBP", "EUR", "GHS", "KES", "ZAR", "INR"] as const;
 export type CurrencyCode = (typeof currencies)[number];
 
 export const campaignObjectives = [
@@ -67,7 +67,15 @@ export const smmServiceKinds = [
 ] as const;
 export type SmmServiceKind = (typeof smmServiceKinds)[number];
 
-export const roles = ["OWNER", "ADMIN", "MANAGER", "MARKETER", "FINANCE", "SUPPORT", "VIEWER"] as const;
+export const roles = [
+  "OWNER",
+  "ADMIN",
+  "MANAGER",
+  "MARKETER",
+  "FINANCE",
+  "SUPPORT",
+  "VIEWER"
+] as const;
 export type Role = (typeof roles)[number];
 
 export const permissions = [

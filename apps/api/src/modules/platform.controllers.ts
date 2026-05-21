@@ -118,6 +118,16 @@ export class SmmController {
     return this.platform.listSmmServices();
   }
 
+  @Get("health")
+  health() {
+    return this.platform.getSmmSupplierHealth();
+  }
+
+  @Post("quote")
+  quote(@Body() body: CreateSmmOrderDto) {
+    return this.platform.quoteSmmOrder(body);
+  }
+
   @Post("orders")
   createOrder(@Body() body: CreateSmmOrderDto) {
     return this.platform.createSmmOrder(body);
@@ -219,6 +229,11 @@ export class AdminController {
   @Get("overview")
   overview() {
     return this.platform.getAdminOverview();
+  }
+
+  @Get("smm/health")
+  smmHealth() {
+    return this.platform.getSmmSupplierHealth();
   }
 
   @Post("ai/suggestions")

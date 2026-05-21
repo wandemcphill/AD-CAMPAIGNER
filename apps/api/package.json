@@ -20,6 +20,7 @@
     "@fliptrybe/notifications": "workspace:*",
     "@fliptrybe/payments": "workspace:*",
     "@fliptrybe/providers": "workspace:*",
+    "@fliptrybe/service-smm": "workspace:*",
     "@fliptrybe/types": "workspace:*",
     "@nestjs/common": "^11.1.22",
     "@nestjs/config": "^4.0.2",

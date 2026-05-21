@@ -1,5 +1,7 @@
 import type { Job } from "bullmq";
+import { calculateSmmRetryDelayMs } from "@fliptrybe/service-smm";
 
+import { queueRiskPolicies } from "./queues";
 import type { QueueName, QueuePayloads } from "./queues";
 
 export interface ProcessorResult {
@@ -27,6 +29,31 @@ export function processQueueJob(
     }
     case "smm-fulfillment": {
       const data = job.data as QueuePayloads["smm-fulfillment"];
+      const fulfillment = data.fulfillment;
+
+      if (fulfillment) {
+        const riskPolicy = queueRiskPolicies[fulfillment.fraudRiskLevel];
+
+        if (
+          !riskPolicy.allowAutomatedFulfillment ||
+          fulfillment.quantity > riskPolicy.maxQuantity
+        ) {
+          return {
+            queue,
+            status: "skipped",
+            detail: `SMM order ${data.orderId} held for ${fulfillment.fraudRiskLevel} risk review`,
+            processedAt
+          };
+        }
+
+        return {
+          queue,
+          status: "processed",
+          detail: `SMM order ${data.orderId} queued for ${fulfillment.supplierName ?? data.supplier}; retry ${calculateSmmRetryDelayMs(fulfillment.retryPolicy, 1, 0.5)}ms`,
+          processedAt
+        };
+      }
+
       return {
         queue,
         status: "processed",

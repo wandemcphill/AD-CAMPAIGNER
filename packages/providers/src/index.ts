@@ -50,8 +50,14 @@ export interface SmmSupplierAdapter {
     serviceKind: SmmServiceKind;
     quantity: number;
     destination: PromotionDestination;
-  }): Promise<{ amount: Money; estimatedDeliveryMinutes: number }>;
+  }): Promise<SmmSupplierQuote>;
   createOrder(order: SmmOrder): Promise<{ supplierReference: string; status: SmmOrder["status"] }>;
+}
+
+export interface SmmSupplierQuote {
+  amount: Money;
+  estimatedDeliveryMinutes: number;
+  supplierName?: string;
 }
 
 export interface AiGenerationAdapter {
@@ -88,6 +94,25 @@ export interface CloudinaryStorageConfig {
   secureDistribution?: string | undefined;
 }
 
+export interface PerfectPanelSmmSupplierConfig {
+  name: string;
+  apiUrl: string;
+  apiKey?: string | undefined;
+  currency?: CurrencyCode | undefined;
+  serviceMap?: Partial<Record<SmmServiceKind, string>> | undefined;
+  fetcher?: typeof fetch | undefined;
+}
+
+interface PerfectPanelService {
+  service: string | number;
+  name: string;
+  type?: string;
+  category?: string;
+  rate: string | number;
+  min: string | number;
+  max: string | number;
+}
+
 function makeId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 }
@@ -109,6 +134,139 @@ function getCloudinaryResourceType(contentType: string) {
   }
 
   return "auto";
+}
+
+function parseNumber(value: string | number) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : 0;
+}
+
+function moneyFromRate(
+  ratePerThousand: string | number,
+  quantity: number,
+  currency: CurrencyCode
+): Money {
+  return {
+    amountMinor: Math.ceil((parseNumber(ratePerThousand) * quantity * 100) / 1000),
+    currency
+  };
+}
+
+function getServiceKeywordGroups(serviceKind: SmmServiceKind) {
+  switch (serviceKind) {
+    case "FOLLOWERS":
+      return [["follower", "followers"]];
+    case "LIKES":
+      return [["like", "likes"]];
+    case "VIEWS":
+      return [["view", "views"]];
+    case "COMMENTS":
+      return [["comment", "comments"]];
+    case "SHARES":
+      return [["share", "shares"]];
+    case "LIVE_VIEWERS":
+      return [["live"], ["viewer", "viewers"]];
+    case "CHANNEL_MEMBERS":
+      return [["member", "members", "subscriber", "subscribers"]];
+  }
+}
+
+function getDestinationKeywords(destination: PromotionDestination) {
+  const kind = destination.kind.toLowerCase();
+
+  if (kind.includes("tiktok")) {
+    return ["tiktok"];
+  }
+  if (kind.includes("instagram")) {
+    return ["instagram", "ig"];
+  }
+  if (kind.includes("facebook")) {
+    return ["facebook", "fb"];
+  }
+  if (kind.includes("youtube")) {
+    return ["youtube", "yt"];
+  }
+  if (kind.includes("telegram")) {
+    return ["telegram"];
+  }
+  if (kind.includes("whatsapp")) {
+    return ["whatsapp"];
+  }
+
+  return [];
+}
+
+function serviceText(service: PerfectPanelService) {
+  return `${service.name} ${service.category ?? ""} ${service.type ?? ""}`.toLowerCase();
+}
+
+function matchesService(
+  service: PerfectPanelService,
+  input: { serviceKind: SmmServiceKind; quantity: number; destination: PromotionDestination }
+) {
+  const text = serviceText(service);
+  const minimum = parseNumber(service.min);
+  const maximum = parseNumber(service.max);
+  const serviceKeywordGroups = getServiceKeywordGroups(input.serviceKind);
+  const destinationKeywords = getDestinationKeywords(input.destination);
+  const quantityFits = input.quantity >= minimum && (maximum === 0 || input.quantity <= maximum);
+  const serviceMatches = serviceKeywordGroups.every((group) =>
+    group.some((keyword) => text.includes(keyword))
+  );
+  const destinationMatches =
+    destinationKeywords.length === 0 ||
+    destinationKeywords.some((keyword) => text.includes(keyword));
+
+  return quantityFits && serviceMatches && destinationMatches;
+}
+
+function parseSmmServiceMapValue(value?: string) {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(value) as Partial<Record<SmmServiceKind, string>>;
+  } catch {
+    return Object.fromEntries(
+      value
+        .split(",")
+        .map((entry) => entry.trim().split(":"))
+        .filter((entry): entry is [SmmServiceKind, string] => entry.length === 2)
+        .map(([kind, serviceId]) => [kind, serviceId.trim()])
+    ) as Partial<Record<SmmServiceKind, string>>;
+  }
+}
+
+async function postPerfectPanelApi(
+  config: PerfectPanelSmmSupplierConfig,
+  params: Record<string, string>
+) {
+  if (!config.apiKey) {
+    throw new Error(`${config.name} requires an API key.`);
+  }
+
+  const response = await (config.fetcher ?? fetch)(config.apiUrl, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      key: config.apiKey,
+      ...params
+    })
+  });
+  const data: unknown = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`${config.name} API returned HTTP ${response.status}.`);
+  }
+  if (typeof data === "object" && data !== null && "error" in data) {
+    throw new Error(`${config.name} API error: ${String(data.error)}`);
+  }
+
+  return data;
 }
 
 export function createMockAdsProvider(): AdsProviderAdapter {
@@ -172,6 +330,157 @@ export function createMockSmmSupplier(): SmmSupplierAdapter {
     },
     createOrder() {
       return Promise.resolve({ supplierReference: makeId("mock_smm"), status: "QUEUED" });
+    }
+  };
+}
+
+export function parseSmmServiceMap(value?: string): Partial<Record<SmmServiceKind, string>> {
+  return parseSmmServiceMapValue(value);
+}
+
+export function createPerfectPanelSmmSupplier(
+  config: PerfectPanelSmmSupplierConfig
+): SmmSupplierAdapter {
+  const currency = config.currency ?? "USD";
+
+  async function selectService(input: {
+    serviceKind: SmmServiceKind;
+    quantity: number;
+    destination: PromotionDestination;
+  }) {
+    const configuredServiceId = config.serviceMap?.[input.serviceKind];
+    const services = (await postPerfectPanelApi(config, {
+      action: "services"
+    })) as PerfectPanelService[];
+
+    if (!Array.isArray(services)) {
+      throw new Error(`${config.name} did not return a service list.`);
+    }
+
+    if (configuredServiceId) {
+      const configuredService = services.find(
+        (service) => String(service.service) === String(configuredServiceId)
+      );
+
+      if (!configuredService) {
+        throw new Error(
+          `${config.name} service map references missing service ${configuredServiceId}.`
+        );
+      }
+
+      return configuredService;
+    }
+
+    const matchedServices = services.filter((service) => matchesService(service, input));
+    const cheapestService = matchedServices.sort(
+      (left, right) => parseNumber(left.rate) - parseNumber(right.rate)
+    )[0];
+
+    if (!cheapestService) {
+      throw new Error(
+        `${config.name} has no matching ${input.serviceKind} service for ${input.destination.kind}.`
+      );
+    }
+
+    return cheapestService;
+  }
+
+  return {
+    name: config.name,
+    async quoteService(input) {
+      const service = await selectService(input);
+
+      return {
+        amount: moneyFromRate(service.rate, input.quantity, currency),
+        estimatedDeliveryMinutes: input.serviceKind === "LIVE_VIEWERS" ? 10 : 120,
+        supplierName: config.name
+      };
+    },
+    async createOrder(order) {
+      const service = await selectService({
+        serviceKind: order.serviceKind,
+        quantity: order.quantity,
+        destination: order.destination
+      });
+      const response = (await postPerfectPanelApi(config, {
+        action: "add",
+        service: String(service.service),
+        link: order.destination.url,
+        quantity: String(order.quantity)
+      })) as { order?: string | number };
+
+      if (!response.order) {
+        throw new Error(`${config.name} did not return an order id.`);
+      }
+
+      return {
+        supplierReference: `${config.name}:${response.order}`,
+        status: "QUEUED"
+      };
+    }
+  };
+}
+
+export function createRoutedSmmSupplier(suppliers: SmmSupplierAdapter[]): SmmSupplierAdapter {
+  async function quoteAll(input: Parameters<SmmSupplierAdapter["quoteService"]>[0]) {
+    const results = await Promise.allSettled(
+      suppliers.map(async (supplier) => ({
+        supplier,
+        quote: await supplier.quoteService(input)
+      }))
+    );
+
+    return results
+      .filter(
+        (
+          result
+        ): result is PromiseFulfilledResult<{
+          supplier: SmmSupplierAdapter;
+          quote: SmmSupplierQuote;
+        }> => {
+          return result.status === "fulfilled";
+        }
+      )
+      .map((result) => result.value)
+      .sort((left, right) => {
+        if (left.quote.amount.currency !== right.quote.amount.currency) {
+          return left.supplier.name.localeCompare(right.supplier.name);
+        }
+
+        return left.quote.amount.amountMinor - right.quote.amount.amountMinor;
+      });
+  }
+
+  return {
+    name: `smm-router:${suppliers.map((supplier) => supplier.name).join(",") || "none"}`,
+    async quoteService(input) {
+      const [bestQuote] = await quoteAll(input);
+
+      if (!bestQuote) {
+        throw new Error("No SMM supplier could quote this service.");
+      }
+
+      return {
+        ...bestQuote.quote,
+        supplierName: bestQuote.supplier.name
+      };
+    },
+    async createOrder(order) {
+      const quotes = await quoteAll({
+        serviceKind: order.serviceKind,
+        quantity: order.quantity,
+        destination: order.destination
+      });
+
+      for (const { supplier } of quotes) {
+        try {
+          return await supplier.createOrder(order);
+        } catch {
+          // Try the next quoted supplier. The caller only needs the final routing result.
+        }
+      }
+
+      throw new Error("No SMM supplier could create this order.");
     }
   };
 }
