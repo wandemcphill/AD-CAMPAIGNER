@@ -7,9 +7,9 @@ services:
     rootDir: .
     autoDeployTrigger: commit
     healthCheckPath: /v1/health
-    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm prisma:generate && pnpm --filter @fliptrybe/api build
-    preDeployCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/database prisma migrate deploy
-    startCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/api start
+    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 prisma:generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/api build
+    preDeployCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma migrate deploy
+    startCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/api start
     envVars:
       - key: NODE_VERSION
         value: 22.12.0
@@ -62,7 +62,7 @@ services:
     name: fliptrybe-ads-campaigner-web
     rootDir: .
     autoDeployTrigger: commit
-    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @fliptrybe/web build
+    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/web build
     staticPublishPath: apps/web/out
     routes:
       - type: rewrite
@@ -79,7 +79,7 @@ services:
     name: fliptrybe-ads-campaigner-admin
     rootDir: .
     autoDeployTrigger: commit
-    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm --filter @fliptrybe/admin build
+    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/admin build
     staticPublishPath: apps/admin/out
     routes:
       - type: rewrite
@@ -98,8 +98,8 @@ services:
     plan: starter
     rootDir: .
     autoDeployTrigger: commit
-    buildCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm install --frozen-lockfile --prod=false && pnpm prisma:generate && pnpm --filter @fliptrybe/worker build
-    startCommand: corepack enable && corepack prepare pnpm@10.18.3 --activate && pnpm --filter @fliptrybe/worker start
+    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 prisma:generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/worker build
+    startCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/worker start
     maxShutdownDelaySeconds: 120
     envVars:
       - key: NODE_VERSION
