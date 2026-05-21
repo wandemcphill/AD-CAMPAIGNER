@@ -29,7 +29,9 @@ export interface CampaignQuote {
 export interface AdsProviderAdapter {
   readonly name: string;
   quoteCampaign(request: CampaignQuoteRequest): Promise<CampaignQuote>;
-  createCampaign(campaign: Campaign): Promise<{ providerReference: string; status: Campaign["status"] }>;
+  createCampaign(
+    campaign: Campaign
+  ): Promise<{ providerReference: string; status: Campaign["status"] }>;
   startCampaign(providerReference: string): Promise<{ status: Campaign["status"] }>;
   pauseCampaign(providerReference: string): Promise<{ status: Campaign["status"] }>;
 }
@@ -37,7 +39,9 @@ export interface AdsProviderAdapter {
 export interface PaymentGatewayAdapter {
   readonly name: string;
   createPaymentIntent(input: { amount: Money; workspaceId: string }): Promise<PaymentIntent>;
-  verifyPayment(reference: string): Promise<{ status: PaymentIntent["status"]; providerReference: string }>;
+  verifyPayment(
+    reference: string
+  ): Promise<{ status: PaymentIntent["status"]; providerReference: string }>;
 }
 
 export interface SmmSupplierAdapter {
@@ -61,16 +65,50 @@ export interface AiGenerationAdapter {
 
 export interface NotificationProviderAdapter {
   readonly name: string;
-  send(input: { channel: "EMAIL" | "IN_APP" | "WEBSOCKET" | "WHATSAPP"; to: string; title: string; body: string }): Promise<{ id: string; accepted: boolean }>;
+  send(input: {
+    channel: "EMAIL" | "IN_APP" | "WEBSOCKET" | "WHATSAPP";
+    to: string;
+    title: string;
+    body: string;
+  }): Promise<{ id: string; accepted: boolean }>;
 }
 
 export interface StorageProviderAdapter {
   readonly name: string;
-  createUploadUrl(input: { key: string; contentType: string }): Promise<{ uploadUrl: string; publicUrl: string }>;
+  createUploadUrl(input: {
+    key: string;
+    contentType: string;
+  }): Promise<{ uploadUrl: string; publicUrl: string }>;
+}
+
+export interface CloudinaryStorageConfig {
+  cloudName?: string | undefined;
+  uploadPreset?: string | undefined;
+  folder?: string | undefined;
+  secureDistribution?: string | undefined;
 }
 
 function makeId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function normalizeCloudinaryPublicId(key: string, folder?: string) {
+  const normalizedKey = key.replace(/^\/+/, "").replace(/\.[a-z0-9]+$/i, "");
+  const normalizedFolder = folder?.replace(/^\/+|\/+$/g, "");
+
+  return normalizedFolder ? `${normalizedFolder}/${normalizedKey}` : normalizedKey;
+}
+
+function getCloudinaryResourceType(contentType: string) {
+  if (contentType.startsWith("video/")) {
+    return "video";
+  }
+
+  if (contentType.startsWith("image/")) {
+    return "image";
+  }
+
+  return "auto";
 }
 
 export function createMockAdsProvider(): AdsProviderAdapter {
@@ -167,6 +205,39 @@ export function createMockStorageProvider(): StorageProviderAdapter {
       return Promise.resolve({
         uploadUrl: `https://storage.mock/upload/${input.key}`,
         publicUrl: `https://cdn.mock/${input.key}`
+      });
+    }
+  };
+}
+
+export function createCloudinaryStorageProvider(
+  config: CloudinaryStorageConfig
+): StorageProviderAdapter {
+  return {
+    name: "cloudinary-storage",
+    createUploadUrl(input) {
+      if (!config.cloudName || !config.uploadPreset) {
+        return Promise.reject(
+          new Error(
+            "Cloudinary storage requires CLOUDINARY_CLOUD_NAME and CLOUDINARY_UPLOAD_PRESET."
+          )
+        );
+      }
+
+      const resourceType = getCloudinaryResourceType(input.contentType);
+      const publicId = normalizeCloudinaryPublicId(input.key, config.folder);
+      const uploadUrl = new URL(
+        `https://api.cloudinary.com/v1_1/${config.cloudName}/${resourceType}/upload`
+      );
+      uploadUrl.searchParams.set("upload_preset", config.uploadPreset);
+      uploadUrl.searchParams.set("public_id", publicId);
+
+      const deliveryHost = config.secureDistribution ?? `res.cloudinary.com/${config.cloudName}`;
+      const publicUrl = `https://${deliveryHost}/${resourceType}/upload/${publicId}`;
+
+      return Promise.resolve({
+        uploadUrl: uploadUrl.toString(),
+        publicUrl
       });
     }
   };

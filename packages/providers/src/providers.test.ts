@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createMockAdsProvider, createMockPaymentGateway, createMockSmmSupplier } from "./index";
+import {
+  createCloudinaryStorageProvider,
+  createMockAdsProvider,
+  createMockPaymentGateway,
+  createMockSmmSupplier
+} from "./index";
 
 describe("provider contracts", () => {
   it("quotes campaigns through the ads adapter", async () => {
@@ -31,5 +36,23 @@ describe("provider contracts", () => {
     });
 
     expect(quote.amount.amountMinor).toBe(25000);
+  });
+
+  it("creates Cloudinary unsigned upload URLs", async () => {
+    const storage = createCloudinaryStorageProvider({
+      cloudName: "fliptrybe",
+      uploadPreset: "campaign_assets",
+      folder: "ads"
+    });
+
+    const upload = await storage.createUploadUrl({
+      key: "campaign-assets/hero.png",
+      contentType: "image/png"
+    });
+
+    expect(upload.uploadUrl).toContain("api.cloudinary.com/v1_1/fliptrybe/image/upload");
+    expect(upload.publicUrl).toBe(
+      "https://res.cloudinary.com/fliptrybe/image/upload/ads/campaign-assets/hero"
+    );
   });
 });

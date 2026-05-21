@@ -19,6 +19,8 @@ The API service runs Prisma migrations in `preDeployCommand` before starting.
 
 This Blueprint uses the lowest production-safe shape: static CDN hosting for web/admin, paid always-on compute for API and worker, paid persistent Render Key Value, and paid persistent Render Postgres.
 
+Media storage is configured for Cloudinary through `STORAGE_PROVIDER=cloudinary`. Add `CLOUDINARY_CLOUD_NAME` and an unsigned `CLOUDINARY_UPLOAD_PRESET` on the API service before enabling upload flows.
+
 ## GitHub to Render flow
 
 1. Push this repository to GitHub.

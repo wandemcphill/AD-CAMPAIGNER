@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  createCloudinaryStorageProvider,
   createMockAdsProvider,
   createMockAiProvider,
   createMockNotificationProvider,
@@ -57,5 +58,11 @@ describe("provider adapter contracts", () => {
     await expect(
       storage.createUploadUrl({ key: "asset.png", contentType: "image/png" })
     ).resolves.toHaveProperty("publicUrl");
+    await expect(
+      createCloudinaryStorageProvider({
+        cloudName: "fliptrybe",
+        uploadPreset: "campaign_assets"
+      }).createUploadUrl({ key: "asset.png", contentType: "image/png" })
+    ).resolves.toHaveProperty("uploadUrl");
   });
 });

@@ -8,7 +8,8 @@ import {
   createMockAiProvider,
   createMockPaymentGateway,
   createMockSmmSupplier,
-  createMockStorageProvider
+  createMockStorageProvider,
+  createCloudinaryStorageProvider
 } from "@fliptrybe/providers";
 import type {
   AnalyticsMetric,
@@ -37,13 +38,26 @@ const userId = "user_demo";
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
+function createStorageProvider() {
+  if (process.env.STORAGE_PROVIDER === "cloudinary") {
+    return createCloudinaryStorageProvider({
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET,
+      folder: process.env.CLOUDINARY_FOLDER,
+      secureDistribution: process.env.CLOUDINARY_SECURE_DISTRIBUTION
+    });
+  }
+
+  return createMockStorageProvider();
+}
+
 @Injectable()
 export class PlatformService {
   private readonly adsProvider = createMockAdsProvider();
   private readonly aiProvider = createMockAiProvider();
   private readonly paymentGateway = createMockPaymentGateway();
   private readonly smmSupplier = createMockSmmSupplier();
-  private readonly storageProvider = createMockStorageProvider();
+  private readonly storageProvider = createStorageProvider();
   private readonly events: PlatformEvent[] = [];
   private readonly campaigns: Campaign[] = [];
   private readonly paymentIntents: PaymentIntent[] = [];
@@ -105,8 +119,18 @@ export class PlatformService {
   listTeamMembers() {
     return [
       { id: "member_owner", name: "Demo Operator", role: "OWNER", permissions: ["admin:access"] },
-      { id: "member_finance", name: "Finance Ops", role: "FINANCE", permissions: ["payment:manage"] },
-      { id: "member_support", name: "Support Lead", role: "SUPPORT", permissions: ["support:manage"] }
+      {
+        id: "member_finance",
+        name: "Finance Ops",
+        role: "FINANCE",
+        permissions: ["payment:manage"]
+      },
+      {
+        id: "member_support",
+        name: "Support Lead",
+        role: "SUPPORT",
+        permissions: ["support:manage"]
+      }
     ];
   }
 
@@ -153,7 +177,13 @@ export class PlatformService {
     };
 
     this.campaigns.unshift(readyCampaign);
-    this.pushEvent(createEvent({ name: "CampaignCreated", tenantId: workspaceId, payload: { campaign: readyCampaign } }));
+    this.pushEvent(
+      createEvent({
+        name: "CampaignCreated",
+        tenantId: workspaceId,
+        payload: { campaign: readyCampaign }
+      })
+    );
 
     return readyCampaign;
   }
@@ -163,11 +193,20 @@ export class PlatformService {
   }
 
   async startCampaign(campaignId: string) {
-    const campaign = this.campaigns.find((item) => item.id === campaignId) ?? this.seedCampaign(campaignId);
-    const result = await this.adsProvider.startCampaign(campaign.providerReference ?? id("mock_ads"));
+    const campaign =
+      this.campaigns.find((item) => item.id === campaignId) ?? this.seedCampaign(campaignId);
+    const result = await this.adsProvider.startCampaign(
+      campaign.providerReference ?? id("mock_ads")
+    );
     const updated: Campaign = { ...campaign, status: result.status, updatedAt: now() };
 
-    this.pushEvent(createEvent({ name: "CampaignStarted", tenantId: workspaceId, payload: { campaignId: updated.id } }));
+    this.pushEvent(
+      createEvent({
+        name: "CampaignStarted",
+        tenantId: workspaceId,
+        payload: { campaignId: updated.id }
+      })
+    );
 
     return updated;
   }
@@ -225,10 +264,20 @@ export class PlatformService {
       updatedAt: timestamp
     };
     const result = await this.smmSupplier.createOrder(order);
-    const readyOrder = { ...order, supplierReference: result.supplierReference, status: result.status };
+    const readyOrder = {
+      ...order,
+      supplierReference: result.supplierReference,
+      status: result.status
+    };
 
     this.smmOrders.unshift(readyOrder);
-    this.pushEvent(createEvent({ name: "SMMOrderCreated", tenantId: workspaceId, payload: { order: readyOrder } }));
+    this.pushEvent(
+      createEvent({
+        name: "SMMOrderCreated",
+        tenantId: workspaceId,
+        payload: { order: readyOrder }
+      })
+    );
 
     return readyOrder;
   }
@@ -288,10 +337,20 @@ export class PlatformService {
 
   getAnalyticsOverview() {
     const metrics: AnalyticsMetric[] = [
-      createMetric({ workspaceId, name: "impressions", value: 428500, dimensions: { channel: "all" } }),
+      createMetric({
+        workspaceId,
+        name: "impressions",
+        value: 428500,
+        dimensions: { channel: "all" }
+      }),
       createMetric({ workspaceId, name: "clicks", value: 18420, dimensions: { channel: "all" } }),
       createMetric({ workspaceId, name: "roi_bps", value: 1860, dimensions: { channel: "all" } }),
-      createMetric({ workspaceId, name: "live_viewers", value: 1240, dimensions: { channel: "tiktok" } })
+      createMetric({
+        workspaceId,
+        name: "live_viewers",
+        value: 1240,
+        dimensions: { channel: "tiktok" }
+      })
     ];
 
     return {
@@ -353,7 +412,9 @@ export class PlatformService {
         { type: "campaign", id: "cmp_demo", title: "TikTok LIVE launch boost" },
         { type: "destination", id: "dest_demo", title: "Instagram Reels promotion" },
         { type: "support", id: "ticket_demo", title: "Payment verification" }
-      ].filter((item) => item.title.toLowerCase().includes(query.toLowerCase()) || query.length === 0)
+      ].filter(
+        (item) => item.title.toLowerCase().includes(query.toLowerCase()) || query.length === 0
+      )
     };
   }
 

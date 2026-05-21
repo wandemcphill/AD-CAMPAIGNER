@@ -35,7 +35,15 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: STORAGE_PROVIDER
-        value: mock
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_UPLOAD_PRESET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: fliptrybe-ads-campaigner
+      - key: CLOUDINARY_SECURE_DISTRIBUTION
+        sync: false
       - key: ADS_PROVIDER
         value: mock
       - key: PAYMENT_PROVIDER
