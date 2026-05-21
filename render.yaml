@@ -1,6 +1,3 @@
-previews:
-  generation: manual
-
 services:
   - type: web
     runtime: node
@@ -144,4 +141,4 @@ databases:
     plan: basic-256mb
     databaseName: fliptrybe_ads
     user: fliptrybe
-    postgresMajorVersion: "17"
+    postgresMajorVersion: "18"
