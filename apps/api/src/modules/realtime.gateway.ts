@@ -11,6 +11,7 @@ import type { Server, Socket } from "socket.io";
 
 import { PlatformService } from "./platform.service";
 import { OtpMarketplaceService } from "./otp/otp.service";
+import { DigitalAccessHubService } from "./digital-access/digital-access.service";
 
 @Injectable()
 @WebSocketGateway({
@@ -23,7 +24,8 @@ export class RealtimeGateway implements OnGatewayConnection {
 
   constructor(
     @Inject(PlatformService) private readonly platform: PlatformService,
-    @Inject(OtpMarketplaceService) private readonly otp: OtpMarketplaceService
+    @Inject(OtpMarketplaceService) private readonly otp: OtpMarketplaceService,
+    @Inject(DigitalAccessHubService) private readonly digitalAccess: DigitalAccessHubService
   ) {}
 
   handleConnection(client: Socket) {
@@ -36,6 +38,12 @@ export class RealtimeGateway implements OnGatewayConnection {
     client.emit("otp-provider-health", []);
     client.emit("otp-admin-monitoring", {
       activeOrders: otpSnapshot.orders.length,
+      emittedAt: new Date().toISOString()
+    });
+    const digitalAccessSnapshot = this.digitalAccess.getRealtimeSnapshot();
+    client.emit("digital-access-requests", digitalAccessSnapshot.requests);
+    client.emit("digital-access-admin-monitoring", {
+      ...digitalAccessSnapshot.admin,
       emittedAt: new Date().toISOString()
     });
   }

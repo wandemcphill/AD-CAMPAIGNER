@@ -22,6 +22,8 @@ export const envSchema = z.object({
   ENABLE_PREMIUM_OTP: z.string().optional(),
   ENABLE_BUDGET_OTP: z.string().optional(),
   ENABLE_OTP_ADMIN: z.string().optional(),
+  ENABLE_DIGITAL_ACCESS: z.string().optional(),
+  ENABLE_DIGITAL_ACCESS_ADMIN: z.string().optional(),
   OTP_PROVIDER_MODE: providerSchema,
   OTP_BETA_WORKSPACE_IDS: z.string().optional(),
   OTP_USD_TO_NGN_RATE: z.string().optional(),

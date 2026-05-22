@@ -7,7 +7,9 @@ export const featureFlags = {
   otpModule: false,
   premiumOtp: false,
   budgetOtp: false,
-  otpAdmin: false
+  otpAdmin: false,
+  digitalAccess: false,
+  digitalAccessAdmin: false
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

@@ -96,6 +96,10 @@ services:
         value: "false"
       - key: ENABLE_OTP_ADMIN
         value: "false"
+      - key: ENABLE_DIGITAL_ACCESS
+        value: "false"
+      - key: ENABLE_DIGITAL_ACCESS_ADMIN
+        value: "false"
       - key: OTP_PROVIDER_MODE
         value: mock
       - key: OTP_BETA_WORKSPACE_IDS
@@ -165,6 +169,8 @@ services:
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
         value: https://ft-campaigner-api-fra.onrender.com
+      - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS
+        value: "false"
 
   - type: web
     runtime: static
@@ -182,6 +188,8 @@ services:
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
         value: https://ft-campaigner-api-fra.onrender.com
+      - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS_ADMIN
+        value: "false"
 
   - type: worker
     runtime: node
@@ -260,6 +268,10 @@ services:
       - key: ENABLE_BUDGET_OTP
         value: "false"
       - key: ENABLE_OTP_ADMIN
+        value: "false"
+      - key: ENABLE_DIGITAL_ACCESS
+        value: "false"
+      - key: ENABLE_DIGITAL_ACCESS_ADMIN
         value: "false"
       - key: OTP_PROVIDER_MODE
         value: mock

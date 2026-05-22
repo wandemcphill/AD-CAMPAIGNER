@@ -25,9 +25,10 @@ import {
 import { PlatformService } from "./platform.service";
 import { RealtimeGateway } from "./realtime.gateway";
 import { OtpModule } from "./otp/otp.module";
+import { DigitalAccessModule } from "./digital-access/digital-access.module";
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), OtpModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), OtpModule, DigitalAccessModule],
   controllers: [
     HealthController,
     AuthController,

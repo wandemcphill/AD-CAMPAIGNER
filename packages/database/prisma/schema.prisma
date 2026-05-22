@@ -123,19 +123,34 @@ enum OtpWalletChargeStatus {
   FAILED
 }
 
+enum DigitalAccessRequestStatus {
+  PENDING    @map("pending")
+  PROCESSING @map("processing")
+  FULFILLED  @map("fulfilled")
+  CANCELLED  @map("cancelled")
+  FAILED     @map("failed")
+}
+
+enum DigitalAccessWalletChargeStatus {
+  CHARGED
+  REFUNDED
+  FAILED
+}
+
 model User {
-  id              String       @id @default(uuid())
-  email           String       @unique
-  name            String
-  status          UserStatus   @default(ACTIVE)
-  passwordHash    String?
-  emailVerifiedAt DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  deletedAt       DateTime?
-  memberships     TeamMember[]
-  sessions        Session[]
-  auditLogs       AuditLog[]   @relation("AuditActor")
+  id                    String                 @id @default(uuid())
+  email                 String                 @unique
+  name                  String
+  status                UserStatus             @default(ACTIVE)
+  passwordHash          String?
+  emailVerifiedAt       DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  deletedAt             DateTime?
+  memberships           TeamMember[]
+  sessions              Session[]
+  auditLogs             AuditLog[]             @relation("AuditActor")
+  digitalAccessRequests DigitalAccessRequest[]
 
   @@index([status])
   @@index([deletedAt])
@@ -158,24 +173,26 @@ model Organization {
 }
 
 model Workspace {
-  id               String            @id @default(uuid())
-  organizationId   String
-  name             String
-  defaultCurrency  String            @default("NGN")
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  deletedAt        DateTime?
-  organization     Organization      @relation(fields: [organizationId], references: [id])
-  campaigns        Campaign[]
-  wallets          Wallet[]
-  paymentIntents   PaymentIntent[]
-  smmOrders        SmmOrder[]
-  otpOrders        OtpOrder[]
-  otpWalletCharges OtpWalletCharge[]
-  notifications    Notification[]
-  supportTickets   SupportTicket[]
-  referralAccounts ReferralAccount[]
-  auditLogs        AuditLog[]
+  id                         String                      @id @default(uuid())
+  organizationId             String
+  name                       String
+  defaultCurrency            String                      @default("NGN")
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  deletedAt                  DateTime?
+  organization               Organization                @relation(fields: [organizationId], references: [id])
+  campaigns                  Campaign[]
+  wallets                    Wallet[]
+  paymentIntents             PaymentIntent[]
+  smmOrders                  SmmOrder[]
+  otpOrders                  OtpOrder[]
+  otpWalletCharges           OtpWalletCharge[]
+  digitalAccessRequests      DigitalAccessRequest[]
+  digitalAccessWalletCharges DigitalAccessWalletCharge[]
+  notifications              Notification[]
+  supportTickets             SupportTicket[]
+  referralAccounts           ReferralAccount[]
+  auditLogs                  AuditLog[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -272,14 +289,15 @@ model LivePromotion {
 }
 
 model Wallet {
-  id          String            @id @default(uuid())
-  workspaceId String
-  currency    String            @default("NGN")
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  workspace   Workspace         @relation(fields: [workspaceId], references: [id])
-  entries     LedgerEntry[]
-  otpCharges  OtpWalletCharge[]
+  id                   String                      @id @default(uuid())
+  workspaceId          String
+  currency             String                      @default("NGN")
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  workspace            Workspace                   @relation(fields: [workspaceId], references: [id])
+  entries              LedgerEntry[]
+  otpCharges           OtpWalletCharge[]
+  digitalAccessCharges DigitalAccessWalletCharge[]
 
   @@unique([workspaceId, currency])
 }
@@ -501,6 +519,124 @@ model OtpPricingRule {
   updatedAt          DateTime        @updatedAt
 
   @@index([tier, active])
+}
+
+model DigitalAccessCategory {
+  id          String                 @id @default(uuid())
+  name        String
+  slug        String                 @unique
+  description String?
+  sortOrder   Int                    @default(100) @map("sort_order")
+  isActive    Boolean                @default(true) @map("is_active")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  deletedAt   DateTime?              @map("deleted_at")
+  services    DigitalAccessService[]
+
+  @@index([isActive, sortOrder])
+  @@index([deletedAt])
+  @@map("digital_access_categories")
+}
+
+model DigitalAccessService {
+  id                 String                 @id @default(uuid())
+  name               String
+  category           String
+  slug               String                 @unique
+  description        String
+  startingPriceMinor Int                    @default(0) @map("starting_price")
+  currency           String                 @default("NGN")
+  deliveryEta        String                 @map("delivery_eta")
+  isActive           Boolean                @default(false) @map("is_active")
+  isFeatured         Boolean                @default(false) @map("is_featured")
+  thumbnail          String?
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  deletedAt          DateTime?              @map("deleted_at")
+  categoryRecord     DigitalAccessCategory  @relation(fields: [category], references: [slug])
+  plans              DigitalAccessPlan[]
+  requests           DigitalAccessRequest[]
+
+  @@index([category, isActive])
+  @@index([isFeatured, isActive])
+  @@index([deletedAt])
+  @@map("digital_access_services")
+}
+
+model DigitalAccessPlan {
+  id          String                 @id @default(uuid())
+  serviceId   String                 @map("service_id")
+  planName    String                 @map("plan_name")
+  duration    String
+  priceMinor  Int                    @default(0) @map("price")
+  currency    String                 @default("NGN")
+  description String
+  isActive    Boolean                @default(false) @map("is_active")
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  deletedAt   DateTime?              @map("deleted_at")
+  service     DigitalAccessService   @relation(fields: [serviceId], references: [id])
+  requests    DigitalAccessRequest[]
+
+  @@index([serviceId, isActive])
+  @@index([deletedAt])
+  @@map("digital_access_plans")
+}
+
+model DigitalAccessRequest {
+  id             String                      @id @default(uuid())
+  workspaceId    String                      @map("workspace_id")
+  userId         String?                     @map("user_id")
+  serviceId      String                      @map("service_id")
+  planId         String                      @map("plan_id")
+  contactType    String                      @map("contact_type")
+  contactValue   String                      @map("contact_value")
+  notes          String?
+  status         DigitalAccessRequestStatus  @default(PENDING)
+  assignedTo     String?                     @map("assigned_to")
+  amountMinor    Int                         @map("amount_minor")
+  currency       String                      @default("NGN")
+  idempotencyKey String                      @unique @map("idempotency_key")
+  metadata       Json                        @default("{}")
+  createdAt      DateTime                    @default(now()) @map("created_at")
+  updatedAt      DateTime                    @updatedAt @map("updated_at")
+  deletedAt      DateTime?                   @map("deleted_at")
+  workspace      Workspace                   @relation(fields: [workspaceId], references: [id])
+  user           User?                       @relation(fields: [userId], references: [id])
+  service        DigitalAccessService        @relation(fields: [serviceId], references: [id])
+  plan           DigitalAccessPlan           @relation(fields: [planId], references: [id])
+  walletCharges  DigitalAccessWalletCharge[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([userId, createdAt])
+  @@index([serviceId, status])
+  @@index([planId])
+  @@index([deletedAt])
+  @@map("digital_access_requests")
+}
+
+model DigitalAccessWalletCharge {
+  id                  String                          @id @default(uuid())
+  workspaceId         String                          @map("workspace_id")
+  walletId            String                          @map("wallet_id")
+  requestId           String                          @map("request_id")
+  idempotencyKey      String                          @unique @map("idempotency_key")
+  amountMinor         Int                             @map("amount_minor")
+  currency            String                          @default("NGN")
+  status              DigitalAccessWalletChargeStatus @default(CHARGED)
+  debitLedgerEntryId  String?                         @map("debit_ledger_entry_id")
+  refundLedgerEntryId String?                         @map("refund_ledger_entry_id")
+  metadata            Json                            @default("{}")
+  createdAt           DateTime                        @default(now()) @map("created_at")
+  updatedAt           DateTime                        @updatedAt @map("updated_at")
+  workspace           Workspace                       @relation(fields: [workspaceId], references: [id])
+  wallet              Wallet                          @relation(fields: [walletId], references: [id])
+  request             DigitalAccessRequest            @relation(fields: [requestId], references: [id])
+
+  @@unique([workspaceId, requestId])
+  @@index([workspaceId, status, createdAt])
+  @@index([walletId, createdAt])
+  @@map("digital_access_wallet_charges")
 }
 
 model AnalyticsMetric {

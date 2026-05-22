@@ -90,6 +90,21 @@ export type OtpProviderStatus = (typeof otpProviderStatuses)[number];
 export const otpWalletChargeStatuses = ["CHARGED", "REFUNDED", "FAILED"] as const;
 export type OtpWalletChargeStatus = (typeof otpWalletChargeStatuses)[number];
 
+export const digitalAccessRequestStatuses = [
+  "pending",
+  "processing",
+  "fulfilled",
+  "cancelled",
+  "failed"
+] as const;
+export type DigitalAccessRequestStatus = (typeof digitalAccessRequestStatuses)[number];
+
+export const digitalAccessContactTypes = ["whatsapp", "email"] as const;
+export type DigitalAccessContactType = (typeof digitalAccessContactTypes)[number];
+
+export const digitalAccessWalletChargeStatuses = ["CHARGED", "REFUNDED", "FAILED"] as const;
+export type DigitalAccessWalletChargeStatus = (typeof digitalAccessWalletChargeStatuses)[number];
+
 export const roles = [
   "OWNER",
   "ADMIN",
@@ -292,6 +307,76 @@ export interface OtpRoutingResult {
   score: number;
   quote: OtpPricingResult;
   attempts: OtpRoutingAttempt[];
+}
+
+export interface DigitalAccessCategory extends Timestamped {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface DigitalAccessPlan extends Timestamped {
+  id: string;
+  serviceId: string;
+  planName: string;
+  duration: string;
+  price: Money;
+  description: string;
+  isActive: boolean;
+}
+
+export interface DigitalAccessService extends Timestamped {
+  id: string;
+  name: string;
+  category: string;
+  slug: string;
+  description: string;
+  startingPrice: Money;
+  deliveryEta: string;
+  isActive: boolean;
+  isFeatured: boolean;
+  thumbnail?: string;
+  plans?: DigitalAccessPlan[];
+}
+
+export interface DigitalAccessRequest extends Timestamped {
+  id: string;
+  workspaceId: string;
+  userId?: string | null;
+  serviceId: string;
+  planId: string;
+  serviceName: string;
+  planName: string;
+  contactType: DigitalAccessContactType;
+  contactValue: string;
+  notes?: string;
+  status: DigitalAccessRequestStatus;
+  assignedTo?: string | null;
+  amount: Money;
+  idempotencyKey: string;
+  walletChargeId?: string;
+}
+
+export interface DigitalAccessWalletCharge extends Timestamped {
+  id: string;
+  workspaceId: string;
+  walletId: string;
+  requestId: string;
+  idempotencyKey: string;
+  amount: Money;
+  status: DigitalAccessWalletChargeStatus;
+  debitLedgerEntryId?: string;
+  refundLedgerEntryId?: string;
+}
+
+export interface DigitalAccessRefundResult {
+  requestId: string;
+  status: "REFUNDED" | "SKIPPED";
+  amount: Money;
+  ledgerEntryId?: string;
 }
 
 export interface Wallet extends Timestamped {

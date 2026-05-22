@@ -1,6 +1,5 @@
 import { ArrowRight, Copy, Search, ShieldCheck, Smartphone } from "lucide-react";
 import Link from "next/link";
-import type { Route } from "next";
 
 import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
 
@@ -102,7 +101,7 @@ export default function OtpPage() {
             {orders.slice(0, 4).map((order) => (
               <Link
                 className="grid gap-3 p-4 transition hover:bg-zinc-50 sm:grid-cols-[1fr_auto_auto] sm:items-center"
-                href={`/otp/orders/${order.id}` as Route}
+                href={`/otp/orders/${order.id}`}
                 key={order.id}
               >
                 <div>

@@ -1,6 +1,8 @@
 import type {
   AnalyticsMetric,
   Campaign,
+  DigitalAccessRefundResult,
+  DigitalAccessRequest,
   OtpOrder,
   OtpRefundResult,
   PaymentIntent,
@@ -21,7 +23,10 @@ export const eventNames = [
   "OtpMessageReceived",
   "OtpOrderCompleted",
   "OtpOrderRefunded",
-  "OtpOrderExpired"
+  "OtpOrderExpired",
+  "DigitalAccessRequestCreated",
+  "DigitalAccessRequestUpdated",
+  "DigitalAccessRequestRefunded"
 ] as const;
 
 export type PlatformEventName = (typeof eventNames)[number];
@@ -65,6 +70,18 @@ export type OtpOrderRefundedEvent = PlatformEventBase<
   { orderId: string; refund: OtpRefundResult }
 >;
 export type OtpOrderExpiredEvent = PlatformEventBase<"OtpOrderExpired", { orderId: string }>;
+export type DigitalAccessRequestCreatedEvent = PlatformEventBase<
+  "DigitalAccessRequestCreated",
+  { request: DigitalAccessRequest }
+>;
+export type DigitalAccessRequestUpdatedEvent = PlatformEventBase<
+  "DigitalAccessRequestUpdated",
+  { requestId: string; status: DigitalAccessRequest["status"] }
+>;
+export type DigitalAccessRequestRefundedEvent = PlatformEventBase<
+  "DigitalAccessRequestRefunded",
+  { requestId: string; refund: DigitalAccessRefundResult }
+>;
 
 export type PlatformEvent =
   | CampaignCreatedEvent
@@ -79,7 +96,10 @@ export type PlatformEvent =
   | OtpMessageReceivedEvent
   | OtpOrderCompletedEvent
   | OtpOrderRefundedEvent
-  | OtpOrderExpiredEvent;
+  | OtpOrderExpiredEvent
+  | DigitalAccessRequestCreatedEvent
+  | DigitalAccessRequestUpdatedEvent
+  | DigitalAccessRequestRefundedEvent;
 
 export const platformEvents = eventNames.map((name) => ({ name }));
 
