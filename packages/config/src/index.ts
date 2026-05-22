@@ -22,6 +22,7 @@ export const envSchema = z.object({
   CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
   CLOUDINARY_FOLDER: z.string().optional(),
   CLOUDINARY_SECURE_DISTRIBUTION: z.string().optional(),
+  SMDPANEL_ENDPOINT: z.string().optional(),
   SMDPANEL_API_URL: z.url().optional(),
   SMDPANEL_API_KEY: z.string().optional(),
   SMDPANEL_CURRENCY: z.string().optional(),

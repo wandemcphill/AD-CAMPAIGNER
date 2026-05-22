@@ -46,18 +46,64 @@ export interface PaymentGatewayAdapter {
 
 export interface SmmSupplierAdapter {
   readonly name: string;
+  listServices(): Promise<SmmSupplierService[]>;
   quoteService(input: {
     serviceKind: SmmServiceKind;
     quantity: number;
     destination: PromotionDestination;
   }): Promise<SmmSupplierQuote>;
   createOrder(order: SmmOrder): Promise<{ supplierReference: string; status: SmmOrder["status"] }>;
+  getBalance(): Promise<SmmSupplierBalance>;
+  getOrderStatus(supplierReference: string): Promise<SmmSupplierOrderSnapshot>;
+  getOrderStatuses(supplierReferences: string[]): Promise<SmmSupplierOrderSnapshot[]>;
+  requestRefill(supplierReference: string): Promise<SmmSupplierRefillResult>;
+  requestCancel(supplierReferences: string[]): Promise<SmmSupplierCancelResult[]>;
 }
 
 export interface SmmSupplierQuote {
   amount: Money;
   estimatedDeliveryMinutes: number;
   supplierName?: string;
+}
+
+export interface SmmSupplierService {
+  supplierName: string;
+  serviceId: string;
+  name: string;
+  category?: string;
+  type?: string;
+  rate: Money;
+  min: number;
+  max: number;
+  refill: boolean;
+  cancel: boolean;
+  dripfeed: boolean;
+}
+
+export interface SmmSupplierBalance {
+  supplierName: string;
+  amount: Money;
+}
+
+export interface SmmSupplierOrderSnapshot {
+  supplierReference: string;
+  status: SmmOrder["status"];
+  rawStatus?: string;
+  charge?: Money;
+  startCount?: number;
+  remains?: number;
+}
+
+export interface SmmSupplierRefillResult {
+  supplierReference: string;
+  refillReference?: string;
+  accepted: boolean;
+}
+
+export interface SmmSupplierCancelResult {
+  supplierReference: string;
+  accepted: boolean;
+  error?: string;
 }
 
 export interface AiGenerationAdapter {
@@ -100,6 +146,8 @@ export interface PerfectPanelSmmSupplierConfig {
   apiKey?: string | undefined;
   currency?: CurrencyCode | undefined;
   serviceMap?: Partial<Record<SmmServiceKind, string>> | undefined;
+  bulkStatusParam?: "order" | "orders" | undefined;
+  cancelMode?: "single-order" | "bulk-orders" | undefined;
   fetcher?: typeof fetch | undefined;
 }
 
@@ -111,6 +159,39 @@ interface PerfectPanelService {
   rate: string | number;
   min: string | number;
   max: string | number;
+  refill?: boolean | undefined;
+  cancel?: boolean | undefined;
+  dripfeed?: boolean | undefined;
+}
+
+interface PerfectPanelQuoteResponse {
+  charge?: string | number;
+  rate?: string | number;
+  currency?: string;
+}
+
+interface PerfectPanelBalanceResponse {
+  balance?: string | number;
+  currency?: string;
+}
+
+interface PerfectPanelStatusResponse {
+  charge?: string | number;
+  start_count?: string | number;
+  status?: string;
+  remains?: string | number;
+  currency?: string;
+  error?: string;
+}
+
+interface PerfectPanelSuccessResponse {
+  success?: string;
+  error?: string;
+}
+
+interface PerfectPanelBulkCancelResponse {
+  order: string | number;
+  cancel?: string | number | { error: string };
 }
 
 function makeId(prefix: string) {
@@ -142,6 +223,12 @@ function parseNumber(value: string | number) {
   return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
+function getCurrency(value: string | undefined, fallback: CurrencyCode): CurrencyCode {
+  const allowedCurrencies = ["NGN", "USD", "GBP", "EUR", "GHS", "KES", "ZAR"];
+
+  return allowedCurrencies.includes(value ?? "") ? (value as CurrencyCode) : fallback;
+}
+
 function moneyFromRate(
   ratePerThousand: string | number,
   quantity: number,
@@ -151,6 +238,54 @@ function moneyFromRate(
     amountMinor: Math.ceil((parseNumber(ratePerThousand) * quantity * 100) / 1000),
     currency
   };
+}
+
+function moneyFromCharge(charge: string | number | undefined, currency: CurrencyCode): Money {
+  return {
+    amountMinor: Math.ceil(parseNumber(charge ?? 0) * 100),
+    currency
+  };
+}
+
+function normalizeSupplierReference(supplierName: string, supplierReference: string) {
+  return supplierReference.startsWith(`${supplierName}:`)
+    ? supplierReference.slice(supplierName.length + 1)
+    : supplierReference;
+}
+
+function mapPerfectPanelStatus(status?: string): SmmOrder["status"] {
+  const normalizedStatus = status?.toLowerCase().trim();
+
+  switch (normalizedStatus) {
+    case "completed":
+      return "COMPLETED";
+    case "partial":
+      return "PARTIAL";
+    case "canceled":
+    case "cancelled":
+    case "refunded":
+      return "CANCELLED";
+    case "processing":
+    case "in progress":
+      return "PROCESSING";
+    case "pending":
+      return "QUEUED";
+    default:
+      return "FAILED";
+  }
+}
+
+function isSuccessResponse(value: unknown): value is PerfectPanelSuccessResponse {
+  return typeof value === "object" && value !== null && ("success" in value || "error" in value);
+}
+
+function isStatusResponse(value: unknown): value is PerfectPanelStatusResponse {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    ("status" in value || "charge" in value || "remains" in value || "error" in value)
+  );
 }
 
 function getServiceKeywordGroups(serviceKind: SmmServiceKind) {
@@ -259,14 +394,72 @@ async function postPerfectPanelApi(
   });
   const data: unknown = await response.json();
 
-  if (!response.ok) {
-    throw new Error(`${config.name} API returned HTTP ${response.status}.`);
-  }
   if (typeof data === "object" && data !== null && "error" in data) {
     throw new Error(`${config.name} API error: ${String(data.error)}`);
   }
+  if (!response.ok) {
+    throw new Error(`${config.name} API returned HTTP ${response.status}.`);
+  }
 
   return data;
+}
+
+function normalizePerfectPanelService(
+  supplierName: string,
+  service: PerfectPanelService,
+  currency: CurrencyCode
+): SmmSupplierService {
+  return {
+    supplierName,
+    serviceId: String(service.service),
+    name: service.name,
+    rate: {
+      amountMinor: Math.ceil(parseNumber(service.rate) * 100),
+      currency
+    },
+    min: parseNumber(service.min),
+    max: parseNumber(service.max),
+    refill: service.refill ?? false,
+    cancel: service.cancel ?? false,
+    dripfeed: service.dripfeed ?? false,
+    ...(service.category === undefined ? {} : { category: service.category }),
+    ...(service.type === undefined ? {} : { type: service.type })
+  };
+}
+
+function normalizePerfectPanelStatus(
+  supplierName: string,
+  supplierReference: string,
+  response: PerfectPanelStatusResponse,
+  fallbackCurrency: CurrencyCode
+): SmmSupplierOrderSnapshot {
+  if (response.error) {
+    return {
+      supplierReference,
+      status: "FAILED",
+      rawStatus: response.error
+    };
+  }
+
+  const currency = getCurrency(response.currency, fallbackCurrency);
+  const snapshot: SmmSupplierOrderSnapshot = {
+    supplierReference: supplierReference.includes(":")
+      ? supplierReference
+      : `${supplierName}:${supplierReference}`,
+    status: mapPerfectPanelStatus(response.status),
+    ...(response.status === undefined ? {} : { rawStatus: response.status })
+  };
+
+  return {
+    ...snapshot,
+    ...(response.charge === undefined
+      ? {}
+      : { charge: moneyFromCharge(response.charge, currency) }),
+    ...(response.start_count === undefined
+      ? {}
+      : { startCount: parseNumber(response.start_count) }),
+    ...(response.remains === undefined ? {} : { remains: parseNumber(response.remains) })
+  };
 }
 
 export function createMockAdsProvider(): AdsProviderAdapter {
@@ -322,6 +515,23 @@ export function createMockPaymentGateway(): PaymentGatewayAdapter {
 export function createMockSmmSupplier(): SmmSupplierAdapter {
   return {
     name: "mock-smm",
+    listServices() {
+      return Promise.resolve([
+        {
+          supplierName: "mock-smm",
+          serviceId: "mock_followers",
+          name: "Mock Instagram Followers",
+          category: "Instagram",
+          type: "Default",
+          rate: { amountMinor: 2500000, currency: "NGN" },
+          min: 10,
+          max: 100000,
+          refill: true,
+          cancel: true,
+          dripfeed: false
+        }
+      ]);
+    },
     quoteService(input) {
       return Promise.resolve({
         amount: { amountMinor: input.quantity * 25, currency: "NGN" },
@@ -330,6 +540,49 @@ export function createMockSmmSupplier(): SmmSupplierAdapter {
     },
     createOrder() {
       return Promise.resolve({ supplierReference: makeId("mock_smm"), status: "QUEUED" });
+    },
+    getBalance() {
+      return Promise.resolve({
+        supplierName: "mock-smm",
+        amount: { amountMinor: 100000000, currency: "NGN" }
+      });
+    },
+    getOrderStatus(supplierReference) {
+      return Promise.resolve({
+        supplierReference,
+        status: "PROCESSING",
+        rawStatus: "In progress",
+        charge: { amountMinor: 25000, currency: "NGN" },
+        startCount: 100,
+        remains: 50
+      });
+    },
+    getOrderStatuses(supplierReferences) {
+      return Promise.resolve(
+        supplierReferences.map((supplierReference) => ({
+          supplierReference,
+          status: "PROCESSING" as const,
+          rawStatus: "In progress",
+          charge: { amountMinor: 25000, currency: "NGN" as const },
+          startCount: 100,
+          remains: 50
+        }))
+      );
+    },
+    requestRefill(supplierReference) {
+      return Promise.resolve({
+        supplierReference,
+        refillReference: makeId("mock_refill"),
+        accepted: true
+      });
+    },
+    requestCancel(supplierReferences) {
+      return Promise.resolve(
+        supplierReferences.map((supplierReference) => ({
+          supplierReference,
+          accepted: true
+        }))
+      );
     }
   };
 }
@@ -343,12 +596,7 @@ export function createPerfectPanelSmmSupplier(
 ): SmmSupplierAdapter {
   const currency = config.currency ?? "USD";
 
-  async function selectService(input: {
-    serviceKind: SmmServiceKind;
-    quantity: number;
-    destination: PromotionDestination;
-  }) {
-    const configuredServiceId = config.serviceMap?.[input.serviceKind];
+  async function fetchServices() {
     const services = (await postPerfectPanelApi(config, {
       action: "services"
     })) as PerfectPanelService[];
@@ -356,6 +604,17 @@ export function createPerfectPanelSmmSupplier(
     if (!Array.isArray(services)) {
       throw new Error(`${config.name} did not return a service list.`);
     }
+
+    return services;
+  }
+
+  async function selectService(input: {
+    serviceKind: SmmServiceKind;
+    quantity: number;
+    destination: PromotionDestination;
+  }) {
+    const configuredServiceId = config.serviceMap?.[input.serviceKind];
+    const services = await fetchServices();
 
     if (configuredServiceId) {
       const configuredService = services.find(
@@ -385,13 +644,39 @@ export function createPerfectPanelSmmSupplier(
     return cheapestService;
   }
 
+  async function quoteSelectedService(service: PerfectPanelService, quantity: number) {
+    try {
+      const response = (await postPerfectPanelApi(config, {
+        action: "quote",
+        service: String(service.service),
+        quantity: String(quantity)
+      })) as PerfectPanelQuoteResponse;
+      const quoteCurrency = getCurrency(response.currency, currency);
+
+      if (response.charge !== undefined) {
+        return moneyFromCharge(response.charge, quoteCurrency);
+      }
+    } catch {
+      // Some Perfect Panel-compatible providers do not expose quote; rate-based math remains valid.
+    }
+
+    return moneyFromRate(service.rate, quantity, currency);
+  }
+
   return {
     name: config.name,
+    async listServices() {
+      const services = await fetchServices();
+
+      return services.map((service) =>
+        normalizePerfectPanelService(config.name, service, currency)
+      );
+    },
     async quoteService(input) {
       const service = await selectService(input);
 
       return {
-        amount: moneyFromRate(service.rate, input.quantity, currency),
+        amount: await quoteSelectedService(service, input.quantity),
         estimatedDeliveryMinutes: input.serviceKind === "LIVE_VIEWERS" ? 10 : 120,
         supplierName: config.name
       };
@@ -417,6 +702,135 @@ export function createPerfectPanelSmmSupplier(
         supplierReference: `${config.name}:${response.order}`,
         status: "QUEUED"
       };
+    },
+    async getBalance() {
+      const response = (await postPerfectPanelApi(config, {
+        action: "balance"
+      })) as PerfectPanelBalanceResponse;
+
+      if (response.balance === undefined) {
+        throw new Error(`${config.name} did not return a balance.`);
+      }
+
+      return {
+        supplierName: config.name,
+        amount: moneyFromCharge(response.balance, getCurrency(response.currency, currency))
+      };
+    },
+    async getOrderStatus(supplierReference) {
+      const orderId = normalizeSupplierReference(config.name, supplierReference);
+      const response = (await postPerfectPanelApi(config, {
+        action: "status",
+        order: orderId
+      })) as PerfectPanelStatusResponse;
+
+      return normalizePerfectPanelStatus(config.name, supplierReference, response, currency);
+    },
+    async getOrderStatuses(supplierReferences) {
+      const orderIds = supplierReferences
+        .map((supplierReference) => normalizeSupplierReference(config.name, supplierReference))
+        .join(",");
+      const statusParam = config.bulkStatusParam ?? "orders";
+      const response = await postPerfectPanelApi(config, {
+        action: "status",
+        [statusParam]: orderIds
+      });
+
+      if (supplierReferences.length === 1 && isStatusResponse(response)) {
+        const [supplierReference] = supplierReferences;
+
+        if (!supplierReference) {
+          return [];
+        }
+
+        return [normalizePerfectPanelStatus(config.name, supplierReference, response, currency)];
+      }
+
+      const keyedResponse = response as Record<string, PerfectPanelStatusResponse>;
+
+      return supplierReferences.map((supplierReference) => {
+        const orderId = normalizeSupplierReference(config.name, supplierReference);
+        const statusResponse = keyedResponse[orderId] ?? {
+          error: "Missing supplier status response."
+        };
+
+        return normalizePerfectPanelStatus(
+          config.name,
+          supplierReference,
+          statusResponse,
+          currency
+        );
+      });
+    },
+    async requestRefill(supplierReference) {
+      const orderId = normalizeSupplierReference(config.name, supplierReference);
+      const response = (await postPerfectPanelApi(config, {
+        action: "refill",
+        order: orderId
+      })) as { refill?: string | number; success?: string };
+      const accepted = response.refill !== undefined || Boolean(response.success);
+
+      return {
+        supplierReference,
+        ...(response.refill === undefined ? {} : { refillReference: String(response.refill) }),
+        accepted
+      };
+    },
+    async requestCancel(supplierReferences) {
+      if (config.cancelMode === "single-order") {
+        return Promise.all(
+          supplierReferences.map(async (supplierReference) => {
+            const orderId = normalizeSupplierReference(config.name, supplierReference);
+            const response = await postPerfectPanelApi(config, {
+              action: "cancel",
+              order: orderId
+            });
+            const successResponse = isSuccessResponse(response) ? response : {};
+
+            return {
+              supplierReference,
+              accepted: Boolean(successResponse.success),
+              ...(successResponse.error === undefined ? {} : { error: successResponse.error })
+            };
+          })
+        );
+      }
+
+      const orderIds = supplierReferences
+        .map((supplierReference) => normalizeSupplierReference(config.name, supplierReference))
+        .join(",");
+      const response = (await postPerfectPanelApi(config, {
+        action: "cancel",
+        orders: orderIds
+      })) as PerfectPanelBulkCancelResponse[] | PerfectPanelSuccessResponse;
+
+      if (isSuccessResponse(response)) {
+        return supplierReferences.map((supplierReference) => ({
+          supplierReference,
+          accepted: Boolean(response.success),
+          ...(response.error === undefined ? {} : { error: response.error })
+        }));
+      }
+
+      if (!Array.isArray(response)) {
+        throw new Error(`${config.name} did not return cancellation results.`);
+      }
+
+      return supplierReferences.map((supplierReference) => {
+        const orderId = normalizeSupplierReference(config.name, supplierReference);
+        const result = response.find((item) => String(item.order) === String(orderId));
+        const cancelResult = result?.cancel;
+        const error =
+          typeof cancelResult === "object" && cancelResult !== null
+            ? cancelResult.error
+            : undefined;
+
+        return {
+          supplierReference,
+          accepted: cancelResult !== undefined && error === undefined,
+          ...(error === undefined ? {} : { error })
+        };
+      });
     }
   };
 }
@@ -451,8 +865,28 @@ export function createRoutedSmmSupplier(suppliers: SmmSupplierAdapter[]): SmmSup
       });
   }
 
+  function findSupplierForReference(supplierReference: string) {
+    const [supplierName] = supplierReference.split(":");
+    const supplier =
+      suppliers.find((item) => item.name === supplierName) ??
+      (suppliers.length === 1 ? suppliers[0] : undefined);
+
+    if (!supplier) {
+      throw new Error(`No SMM supplier can manage reference ${supplierReference}.`);
+    }
+
+    return supplier;
+  }
+
   return {
     name: `smm-router:${suppliers.map((supplier) => supplier.name).join(",") || "none"}`,
+    async listServices() {
+      const results = await Promise.allSettled(
+        suppliers.map((supplier) => supplier.listServices())
+      );
+
+      return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+    },
     async quoteService(input) {
       const [bestQuote] = await quoteAll(input);
 
@@ -481,6 +915,53 @@ export function createRoutedSmmSupplier(suppliers: SmmSupplierAdapter[]): SmmSup
       }
 
       throw new Error("No SMM supplier could create this order.");
+    },
+    async getBalance() {
+      const results = await Promise.allSettled(suppliers.map((supplier) => supplier.getBalance()));
+      const balances = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : []
+      );
+      const [firstBalance] = balances;
+
+      if (!firstBalance) {
+        throw new Error("No SMM supplier could return a balance.");
+      }
+
+      const hasMixedCurrencies = balances.some(
+        (balance) => balance.amount.currency !== firstBalance.amount.currency
+      );
+
+      if (hasMixedCurrencies) {
+        return firstBalance;
+      }
+
+      return {
+        supplierName: "smm-router",
+        amount: {
+          amountMinor: balances.reduce((total, balance) => total + balance.amount.amountMinor, 0),
+          currency: firstBalance.amount.currency
+        }
+      };
+    },
+    getOrderStatus(supplierReference) {
+      return findSupplierForReference(supplierReference).getOrderStatus(supplierReference);
+    },
+    getOrderStatuses(supplierReferences) {
+      return Promise.all(
+        supplierReferences.map((supplierReference) =>
+          findSupplierForReference(supplierReference).getOrderStatus(supplierReference)
+        )
+      );
+    },
+    requestRefill(supplierReference) {
+      return findSupplierForReference(supplierReference).requestRefill(supplierReference);
+    },
+    requestCancel(supplierReferences) {
+      return Promise.all(
+        supplierReferences.flatMap((supplierReference) =>
+          findSupplierForReference(supplierReference).requestCancel([supplierReference])
+        )
+      ).then((results) => results.flat());
     }
   };
 }

@@ -33,6 +33,14 @@ export interface CreateSmmOrderDto {
   destinationUrl?: string;
 }
 
+export interface SmmSupplierReferenceDto {
+  supplierReference?: string;
+}
+
+export interface SmmSupplierReferencesDto {
+  supplierReferences?: string[];
+}
+
 export interface CreateSupportTicketDto {
   subject?: string;
   priority?: "LOW" | "NORMAL" | "HIGH" | "URGENT";

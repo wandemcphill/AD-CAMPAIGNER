@@ -14,6 +14,7 @@ import {
   createRoutedSmmSupplier,
   parseSmmServiceMap
 } from "@fliptrybe/providers";
+import type { PerfectPanelSmmSupplierConfig } from "@fliptrybe/providers";
 import {
   assessSmmOrderFraud,
   calculateSmmPrice,
@@ -43,7 +44,9 @@ import type {
   CreatePaymentIntentDto,
   CreateSmmOrderDto,
   CreateSupportTicketDto,
-  QuoteCampaignDto
+  QuoteCampaignDto,
+  SmmSupplierReferenceDto,
+  SmmSupplierReferencesDto
 } from "./platform.dtos";
 
 const workspaceId = "workspace_demo";
@@ -68,6 +71,20 @@ function getCurrency(value: string | undefined, fallback: CurrencyCode): Currenc
   return currencies.includes(value as CurrencyCode) ? (value as CurrencyCode) : fallback;
 }
 
+function getSecret(value: string | undefined) {
+  const trimmed = value?.trim();
+
+  if (!trimmed || trimmed === "..." || trimmed.startsWith("replace-")) {
+    return undefined;
+  }
+
+  return trimmed;
+}
+
+function getPanelEndpoint(value: string | undefined) {
+  return value?.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/iu, "").trim();
+}
+
 function createSmmSupplierBundle() {
   if (process.env.SMM_PROVIDER !== "live") {
     const supplier = createMockSmmSupplier();
@@ -78,33 +95,38 @@ function createSmmSupplierBundle() {
   const supplierConfigs = [
     {
       name: "smdpanel",
-      apiUrl: process.env.SMDPANEL_API_URL ?? "https://smdpanel.com/api/v2",
-      apiKey: process.env.SMDPANEL_API_KEY,
+      apiUrl:
+        getPanelEndpoint(process.env.SMDPANEL_ENDPOINT) ??
+        process.env.SMDPANEL_API_URL ??
+        "https://smdpanel.com/api/v2",
+      apiKey: getSecret(process.env.SMDPANEL_API_KEY),
       currency: getCurrency(process.env.SMDPANEL_CURRENCY, "USD"),
       serviceMap: parseSmmServiceMap(process.env.SMDPANEL_SERVICE_MAP)
     },
     {
       name: "smmraja",
       apiUrl: process.env.SMMRAJA_API_URL ?? "https://www.smmraja.com/api/v3",
-      apiKey: process.env.SMMRAJA_API_KEY,
+      apiKey: getSecret(process.env.SMMRAJA_API_KEY),
       currency: getCurrency(process.env.SMMRAJA_CURRENCY, "USD"),
-      serviceMap: parseSmmServiceMap(process.env.SMMRAJA_SERVICE_MAP)
+      serviceMap: parseSmmServiceMap(process.env.SMMRAJA_SERVICE_MAP),
+      bulkStatusParam: "order",
+      cancelMode: "single-order"
     },
     {
       name: "justanotherpanel",
       apiUrl: process.env.JAP_API_URL ?? "https://justanotherpanel.com/api/v2",
-      apiKey: process.env.JAP_API_KEY,
+      apiKey: getSecret(process.env.JAP_API_KEY),
       currency: getCurrency(process.env.JAP_CURRENCY, "USD"),
       serviceMap: parseSmmServiceMap(process.env.JAP_SERVICE_MAP)
     },
     {
       name: "peakerr",
       apiUrl: process.env.PEAKERR_API_URL ?? "https://peakerr.com/api/v2",
-      apiKey: process.env.PEAKERR_API_KEY,
+      apiKey: getSecret(process.env.PEAKERR_API_KEY),
       currency: getCurrency(process.env.PEAKERR_CURRENCY, "USD"),
       serviceMap: parseSmmServiceMap(process.env.PEAKERR_SERVICE_MAP)
     }
-  ];
+  ] satisfies PerfectPanelSmmSupplierConfig[];
 
   const suppliers = supplierConfigs
     .filter((config) => Boolean(config.apiKey))
@@ -389,6 +411,14 @@ export class PlatformService {
     }));
   }
 
+  listSmmSupplierServices() {
+    return this.smmSupplier.listServices();
+  }
+
+  getSmmSupplierBalance() {
+    return this.smmSupplier.getBalance();
+  }
+
   async getSmmSupplierHealth() {
     const suppliers = await this.smmHealthMonitor.checkAll();
 
@@ -396,6 +426,38 @@ export class PlatformService {
       status: summarizeSmmSupplierHealth(suppliers),
       suppliers
     };
+  }
+
+  getSmmOrderStatuses(input: SmmSupplierReferencesDto) {
+    const supplierReferences =
+      input.supplierReferences?.filter(Boolean) ??
+      this.smmOrders
+        .map((order) => order.supplierReference)
+        .filter((reference): reference is string => Boolean(reference));
+
+    if (supplierReferences.length === 0) {
+      throw new BadRequestException("At least one SMM supplier reference is required.");
+    }
+
+    return this.smmSupplier.getOrderStatuses(supplierReferences);
+  }
+
+  requestSmmRefill(input: SmmSupplierReferenceDto) {
+    if (!input.supplierReference) {
+      throw new BadRequestException("SMM supplier reference is required.");
+    }
+
+    return this.smmSupplier.requestRefill(input.supplierReference);
+  }
+
+  requestSmmCancel(input: SmmSupplierReferencesDto) {
+    const supplierReferences = input.supplierReferences?.filter(Boolean) ?? [];
+
+    if (supplierReferences.length === 0) {
+      throw new BadRequestException("At least one SMM supplier reference is required.");
+    }
+
+    return this.smmSupplier.requestCancel(supplierReferences);
   }
 
   async createPaymentIntent(input: CreatePaymentIntentDto) {

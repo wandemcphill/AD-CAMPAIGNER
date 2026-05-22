@@ -1,4 +1,4 @@
-export const currencies = ["NGN", "USD", "GBP", "EUR", "GHS", "KES", "ZAR", "INR"] as const;
+export const currencies = ["NGN", "USD", "GBP", "EUR", "GHS", "KES", "ZAR"] as const;
 export type CurrencyCode = (typeof currencies)[number];
 
 export const campaignObjectives = [

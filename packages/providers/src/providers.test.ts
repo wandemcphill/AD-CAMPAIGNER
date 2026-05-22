@@ -157,4 +157,136 @@ describe("provider contracts", () => {
 
     expect(quote.amount.amountMinor).toBe(100);
   });
+
+  it("supports Perfect Panel balance, status, refill, and cancel actions", async () => {
+    const supplier = createPerfectPanelSmmSupplier({
+      name: "ops-panel",
+      apiUrl: "https://ops.test/api/v2",
+      apiKey: "key",
+      fetcher: ((_url, init) => {
+        const requestBody = init?.body;
+        const body =
+          requestBody instanceof URLSearchParams
+            ? requestBody.toString()
+            : typeof requestBody === "string"
+              ? requestBody
+              : "";
+
+        if (body.includes("action=balance")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ balance: "100.84", currency: "USD" }))
+          );
+        }
+        if (body.includes("action=status") && body.includes("orders=")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                "12345": {
+                  charge: "0.28",
+                  start_count: "3572",
+                  status: "Partial",
+                  remains: "157",
+                  currency: "USD"
+                }
+              })
+            )
+          );
+        }
+        if (body.includes("action=status")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                charge: "0.28",
+                start_count: "3572",
+                status: "In progress",
+                remains: "157",
+                currency: "USD"
+              })
+            )
+          );
+        }
+        if (body.includes("action=refill")) {
+          return Promise.resolve(new Response(JSON.stringify({ refill: 222 })));
+        }
+        if (body.includes("action=cancel")) {
+          return Promise.resolve(new Response(JSON.stringify([{ order: 12345, cancel: 1 }])));
+        }
+
+        return Promise.resolve(new Response(JSON.stringify([])));
+      }) satisfies typeof fetch
+    });
+
+    const balance = await supplier.getBalance();
+    const status = await supplier.getOrderStatus("ops-panel:12345");
+    const statuses = await supplier.getOrderStatuses(["ops-panel:12345"]);
+    const refill = await supplier.requestRefill("ops-panel:12345");
+    const cancel = await supplier.requestCancel(["ops-panel:12345"]);
+
+    expect(balance.amount.amountMinor).toBe(10084);
+    expect(status.status).toBe("PROCESSING");
+    expect(statuses[0]?.status).toBe("PARTIAL");
+    expect(refill.refillReference).toBe("222");
+    expect(cancel[0]?.accepted).toBe(true);
+  });
+
+  it("supports SMM Raja single-order status and cancel conventions", async () => {
+    const seenBodies: string[] = [];
+    const supplier = createPerfectPanelSmmSupplier({
+      name: "smmraja",
+      apiUrl: "https://smmraja.test/api/v3",
+      apiKey: "key",
+      bulkStatusParam: "order",
+      cancelMode: "single-order",
+      fetcher: ((_url, init) => {
+        const requestBody = init?.body;
+        const body =
+          requestBody instanceof URLSearchParams
+            ? requestBody.toString()
+            : typeof requestBody === "string"
+              ? requestBody
+              : "";
+        seenBodies.push(body);
+
+        if (body.includes("action=status")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                charge: "0.27819",
+                start_count: "3572",
+                status: "Partial",
+                remains: "157",
+                currency: "USD"
+              })
+            )
+          );
+        }
+        if (body.includes("action=refill")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ success: "Your order will be refill asap. Thank you for patience." })
+            )
+          );
+        }
+        if (body.includes("action=cancel")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ success: "Your order will be cancel asap. Thank you for patience." })
+            )
+          );
+        }
+
+        return Promise.resolve(new Response(JSON.stringify([])));
+      }) satisfies typeof fetch
+    });
+
+    const statuses = await supplier.getOrderStatuses(["smmraja:1000000"]);
+    const refill = await supplier.requestRefill("smmraja:1000000");
+    const cancel = await supplier.requestCancel(["smmraja:1000000"]);
+
+    expect(statuses[0]?.status).toBe("PARTIAL");
+    expect(refill.accepted).toBe(true);
+    expect(cancel[0]?.accepted).toBe(true);
+    expect(seenBodies.some((body) => body.includes("order=1000000"))).toBe(true);
+    expect(seenBodies.every((body) => !body.includes("orders="))).toBe(true);
+  });
 });

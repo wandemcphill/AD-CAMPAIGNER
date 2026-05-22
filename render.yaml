@@ -52,6 +52,8 @@ services:
         value: live
       - key: SMDPANEL_API_URL
         value: https://smdpanel.com/api/v2
+      - key: SMDPANEL_ENDPOINT
+        value: https://smdpanel.com/api/v2
       - key: SMDPANEL_API_KEY
         sync: false
       - key: SMDPANEL_CURRENCY
@@ -164,6 +166,8 @@ services:
       - key: SMM_PROVIDER
         value: live
       - key: SMDPANEL_API_URL
+        value: https://smdpanel.com/api/v2
+      - key: SMDPANEL_ENDPOINT
         value: https://smdpanel.com/api/v2
       - key: SMDPANEL_API_KEY
         sync: false

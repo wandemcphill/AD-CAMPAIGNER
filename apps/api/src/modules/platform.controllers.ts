@@ -5,7 +5,9 @@ import type {
   CreatePaymentIntentDto,
   CreateSmmOrderDto,
   CreateSupportTicketDto,
-  QuoteCampaignDto
+  QuoteCampaignDto,
+  SmmSupplierReferenceDto,
+  SmmSupplierReferencesDto
 } from "./platform.dtos";
 import { PlatformService } from "./platform.service";
 
@@ -118,6 +120,16 @@ export class SmmController {
     return this.platform.listSmmServices();
   }
 
+  @Get("supplier-services")
+  supplierServices() {
+    return this.platform.listSmmSupplierServices();
+  }
+
+  @Get("balance")
+  balance() {
+    return this.platform.getSmmSupplierBalance();
+  }
+
   @Get("health")
   health() {
     return this.platform.getSmmSupplierHealth();
@@ -131,6 +143,21 @@ export class SmmController {
   @Post("orders")
   createOrder(@Body() body: CreateSmmOrderDto) {
     return this.platform.createSmmOrder(body);
+  }
+
+  @Post("orders/status")
+  statuses(@Body() body: SmmSupplierReferencesDto) {
+    return this.platform.getSmmOrderStatuses(body);
+  }
+
+  @Post("orders/refill")
+  refill(@Body() body: SmmSupplierReferenceDto) {
+    return this.platform.requestSmmRefill(body);
+  }
+
+  @Post("orders/cancel")
+  cancel(@Body() body: SmmSupplierReferencesDto) {
+    return this.platform.requestSmmCancel(body);
   }
 }
 
