@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createCloudinaryStorageProvider,
+  createKorapayPaymentGateway,
   createMockAdsProvider,
   createMockPaymentGateway,
   createMockSmmSupplier,
@@ -28,6 +29,59 @@ describe("provider contracts", () => {
     });
 
     expect(intent.gateway).toBe("MOCK");
+  });
+
+  it("creates and verifies Korapay checkout intents", async () => {
+    const korapay = createKorapayPaymentGateway({
+      secretKey: "sk_test",
+      publicKey: "pk_test",
+      encryptionKey: "enc_test",
+      defaultRedirectUrl: "https://app.fliptrybe.test/wallet",
+      defaultWebhookUrl: "https://api.fliptrybe.test/api/webhooks/korapay",
+      fetcher: ((url, init) => {
+        const endpoint =
+          typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+
+        if (endpoint.endsWith("/charges/initialize")) {
+          expect(init?.method).toBe("POST");
+
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: true,
+                data: {
+                  reference: "ft_pay_123",
+                  checkout_url: "https://checkout.korapay.com/pay/ft_pay_123"
+                }
+              })
+            )
+          );
+        }
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              status: true,
+              data: {
+                reference: "ft_pay_123",
+                status: "success"
+              }
+            })
+          )
+        );
+      }) satisfies typeof fetch
+    });
+    const intent = await korapay.createPaymentIntent({
+      amount: { amountMinor: 500000, currency: "NGN" },
+      workspaceId: "workspace",
+      customerEmail: "customer@fliptrybe.test",
+      customerName: "FlipTrybe Customer"
+    });
+    const verified = await korapay.verifyPayment("ft_pay_123");
+
+    expect(intent.gateway).toBe("KORAPAY");
+    expect(intent.checkoutUrl).toContain("checkout.korapay.com");
+    expect(verified.status).toBe("COMPLETED");
   });
 
   it("quotes SMM fulfillment through supplier adapters", async () => {

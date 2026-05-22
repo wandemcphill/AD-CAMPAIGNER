@@ -19,7 +19,8 @@ import {
   SmmController,
   SupportController,
   TeamsController,
-  WalletController
+  WalletController,
+  WebhooksController
 } from "./platform.controllers";
 import { PlatformService } from "./platform.service";
 import { RealtimeGateway } from "./realtime.gateway";
@@ -36,6 +37,7 @@ import { RealtimeGateway } from "./realtime.gateway";
     LiveController,
     SmmController,
     PaymentsController,
+    WebhooksController,
     WalletController,
     AnalyticsController,
     NotificationsController,

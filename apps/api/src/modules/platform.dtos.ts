@@ -24,6 +24,10 @@ export interface QuoteCampaignDto {
 export interface CreatePaymentIntentDto {
   amountMinor?: number;
   currency?: CurrencyCode;
+  customerEmail?: string;
+  customerName?: string;
+  redirectUrl?: string;
+  webhookUrl?: string;
 }
 
 export interface CreateSmmOrderDto {

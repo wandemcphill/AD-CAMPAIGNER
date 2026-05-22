@@ -16,7 +16,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_URL
-        value: https://fliptrybe-ads-campaigner-web.onrender.com
+        value: https://fliptrybe-ads-campaigner-web-g25g.onrender.com
       - key: ADMIN_URL
         value: https://fliptrybe-ads-campaigner-admin.onrender.com
       - key: API_URL
@@ -47,7 +47,7 @@ services:
       - key: ADS_PROVIDER
         value: mock
       - key: PAYMENT_PROVIDER
-        value: mock
+        value: live
       - key: SMM_PROVIDER
         value: live
       - key: SMDPANEL_API_URL
@@ -88,7 +88,25 @@ services:
         value: mock
       - key: NOTIFICATION_PROVIDER
         value: mock
+      - key: KORAPAY_BASE_URL
+        value: https://api.korapay.com
+      - key: KORAPAY_PUBLIC_KEY
+        sync: false
       - key: KORAPAY_SECRET_KEY
+        sync: false
+      - key: KORAPAY_ENCRYPTION_KEY
+        sync: false
+      - key: KORAPAY_WEBHOOK_URL
+        value: https://ft-campaigner-api-fra-g25g.onrender.com/api/webhooks/korapay
+      - key: KORAPAY_WEBHOOK_SECRET
+        sync: false
+      - key: KORAPAY_REDIRECT_URL
+        value: https://fliptrybe-ads-campaigner-web-g25g.onrender.com
+      - key: TREASURY_BANK_NAME
+        sync: false
+      - key: TREASURY_ACCOUNT_NAME
+        sync: false
+      - key: TREASURY_ACCOUNT_NUMBER
         sync: false
       - key: PAYSTACK_SECRET_KEY
         sync: false
@@ -162,7 +180,7 @@ services:
       - key: ADS_PROVIDER
         value: mock
       - key: PAYMENT_PROVIDER
-        value: mock
+        value: live
       - key: SMM_PROVIDER
         value: live
       - key: SMDPANEL_API_URL
@@ -203,6 +221,26 @@ services:
         value: mock
       - key: NOTIFICATION_PROVIDER
         value: mock
+      - key: KORAPAY_BASE_URL
+        value: https://api.korapay.com
+      - key: KORAPAY_PUBLIC_KEY
+        sync: false
+      - key: KORAPAY_SECRET_KEY
+        sync: false
+      - key: KORAPAY_ENCRYPTION_KEY
+        sync: false
+      - key: KORAPAY_WEBHOOK_URL
+        value: https://ft-campaigner-api-fra-g25g.onrender.com/api/webhooks/korapay
+      - key: KORAPAY_WEBHOOK_SECRET
+        sync: false
+      - key: KORAPAY_REDIRECT_URL
+        value: https://fliptrybe-ads-campaigner-web-g25g.onrender.com
+      - key: TREASURY_BANK_NAME
+        sync: false
+      - key: TREASURY_ACCOUNT_NAME
+        sync: false
+      - key: TREASURY_ACCOUNT_NUMBER
+        sync: false
 
   - type: keyvalue
     name: fliptrybe-ads-campaigner-redis

@@ -196,6 +196,8 @@ export interface PaymentIntent extends Timestamped {
   amount: Money;
   status: "PENDING" | "REQUIRES_ACTION" | "COMPLETED" | "FAILED" | "CANCELLED";
   providerReference?: string;
+  checkoutUrl?: string;
+  metadata?: Record<string, string | number | boolean | null>;
 }
 
 export interface AnalyticsMetric {

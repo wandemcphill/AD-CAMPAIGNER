@@ -38,7 +38,14 @@ export interface AdsProviderAdapter {
 
 export interface PaymentGatewayAdapter {
   readonly name: string;
-  createPaymentIntent(input: { amount: Money; workspaceId: string }): Promise<PaymentIntent>;
+  createPaymentIntent(input: {
+    amount: Money;
+    workspaceId: string;
+    customerEmail?: string;
+    customerName?: string;
+    redirectUrl?: string;
+    webhookUrl?: string;
+  }): Promise<PaymentIntent>;
   verifyPayment(
     reference: string
   ): Promise<{ status: PaymentIntent["status"]; providerReference: string }>;
@@ -138,6 +145,39 @@ export interface CloudinaryStorageConfig {
   uploadPreset?: string | undefined;
   folder?: string | undefined;
   secureDistribution?: string | undefined;
+}
+
+export interface KorapayPaymentGatewayConfig {
+  secretKey?: string | undefined;
+  publicKey?: string | undefined;
+  encryptionKey?: string | undefined;
+  baseUrl?: string | undefined;
+  defaultRedirectUrl?: string | undefined;
+  defaultWebhookUrl?: string | undefined;
+  fetcher?: typeof fetch | undefined;
+}
+
+interface KorapayInitializeResponse {
+  status?: boolean;
+  message?: string;
+  data?: {
+    reference?: string;
+    payment_reference?: string;
+    checkout_url?: string;
+    status?: string;
+  };
+}
+
+interface KorapayVerifyResponse {
+  status?: boolean;
+  message?: string;
+  data?: {
+    reference?: string;
+    payment_reference?: string;
+    status?: string;
+    amount?: string | number;
+    currency?: string;
+  };
 }
 
 export interface PerfectPanelSmmSupplierConfig {
@@ -245,6 +285,74 @@ function moneyFromCharge(charge: string | number | undefined, currency: Currency
     amountMinor: Math.ceil(parseNumber(charge ?? 0) * 100),
     currency
   };
+}
+
+function moneyToMajorString(amount: Money) {
+  return (amount.amountMinor / 100).toFixed(2);
+}
+
+function mapKorapayPaymentStatus(status?: string): PaymentIntent["status"] {
+  const normalizedStatus = status?.toLowerCase().trim();
+
+  switch (normalizedStatus) {
+    case "success":
+    case "successful":
+    case "completed":
+      return "COMPLETED";
+    case "processing":
+    case "pending":
+      return "PENDING";
+    case "requires_action":
+    case "requires action":
+      return "REQUIRES_ACTION";
+    case "cancelled":
+    case "canceled":
+      return "CANCELLED";
+    default:
+      return "FAILED";
+  }
+}
+
+function getKorapayBaseUrl(config: KorapayPaymentGatewayConfig) {
+  return (config.baseUrl ?? "https://api.korapay.com").replace(/\/+$/, "");
+}
+
+function getKorapayReference(prefix = "korapay") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function callKorapayApi(
+  config: KorapayPaymentGatewayConfig,
+  path: string,
+  options?: {
+    method?: "GET" | "POST";
+    body?: Record<string, unknown>;
+  }
+) {
+  if (!config.secretKey) {
+    throw new Error("Korapay requires KORAPAY_SECRET_KEY.");
+  }
+
+  const response = await (config.fetcher ?? fetch)(`${getKorapayBaseUrl(config)}${path}`, {
+    method: options?.method ?? "GET",
+    headers: {
+      authorization: `Bearer ${config.secretKey}`,
+      "content-type": "application/json"
+    },
+    ...(options?.body === undefined ? {} : { body: JSON.stringify(options.body) })
+  });
+  const data: unknown = await response.json();
+
+  if (typeof data === "object" && data !== null && "status" in data && data.status === false) {
+    const message =
+      "message" in data && typeof data.message === "string" ? data.message : "Korapay API error.";
+    throw new Error(message);
+  }
+  if (!response.ok) {
+    throw new Error(`Korapay API returned HTTP ${response.status}.`);
+  }
+
+  return data;
 }
 
 function normalizeSupplierReference(supplierName: string, supplierReference: string) {
@@ -508,6 +616,68 @@ export function createMockPaymentGateway(): PaymentGatewayAdapter {
     },
     verifyPayment(reference) {
       return Promise.resolve({ status: "COMPLETED", providerReference: reference });
+    }
+  };
+}
+
+export function createKorapayPaymentGateway(
+  config: KorapayPaymentGatewayConfig
+): PaymentGatewayAdapter {
+  return {
+    name: "korapay",
+    async createPaymentIntent(input) {
+      const now = new Date().toISOString();
+      const reference = getKorapayReference("ft_pay");
+      const response = (await callKorapayApi(config, "/merchant/api/v1/charges/initialize", {
+        method: "POST",
+        body: {
+          amount: moneyToMajorString(input.amount),
+          currency: input.amount.currency,
+          reference,
+          customer: {
+            name: input.customerName ?? "FlipTrybe Customer",
+            email: input.customerEmail ?? "payments@fliptrybe.test"
+          },
+          redirect_url: input.redirectUrl ?? config.defaultRedirectUrl,
+          notification_url: input.webhookUrl ?? config.defaultWebhookUrl,
+          metadata: {
+            workspaceId: input.workspaceId
+          }
+        }
+      })) as KorapayInitializeResponse;
+
+      const providerReference =
+        response.data?.reference ?? response.data?.payment_reference ?? reference;
+      const intent: PaymentIntent = {
+        id: makeId("pay"),
+        workspaceId: input.workspaceId,
+        gateway: "KORAPAY",
+        amount: input.amount,
+        status: response.data?.status ? mapKorapayPaymentStatus(response.data.status) : "PENDING",
+        providerReference,
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+          providerReference,
+          publicKeyConfigured: Boolean(config.publicKey),
+          encryptionKeyConfigured: Boolean(config.encryptionKey)
+        }
+      };
+
+      return response.data?.checkout_url
+        ? { ...intent, checkoutUrl: response.data.checkout_url }
+        : intent;
+    },
+    async verifyPayment(reference) {
+      const response = (await callKorapayApi(
+        config,
+        `/merchant/api/v1/charges/${encodeURIComponent(reference)}`
+      )) as KorapayVerifyResponse;
+
+      return {
+        status: mapKorapayPaymentStatus(response.data?.status),
+        providerReference: response.data?.reference ?? response.data?.payment_reference ?? reference
+      };
     }
   };
 }

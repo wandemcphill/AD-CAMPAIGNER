@@ -1,10 +1,12 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { createMetric } from "@fliptrybe/analytics";
 import { createEvent, type PlatformEvent } from "@fliptrybe/events";
 import { createNotification } from "@fliptrybe/notifications";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
 import {
   createCloudinaryStorageProvider,
+  createKorapayPaymentGateway,
   createMockAdsProvider,
   createMockAiProvider,
   createMockPaymentGateway,
@@ -67,6 +69,23 @@ function createStorageProvider() {
   return createMockStorageProvider();
 }
 
+function createPaymentGateway() {
+  if (process.env.PAYMENT_PROVIDER === "live" && getSecret(process.env.KORAPAY_SECRET_KEY)) {
+    return createKorapayPaymentGateway({
+      publicKey: getSecret(process.env.KORAPAY_PUBLIC_KEY),
+      secretKey: getSecret(process.env.KORAPAY_SECRET_KEY),
+      encryptionKey: getSecret(process.env.KORAPAY_ENCRYPTION_KEY),
+      baseUrl: process.env.KORAPAY_BASE_URL,
+      defaultRedirectUrl: process.env.KORAPAY_REDIRECT_URL ?? process.env.APP_URL,
+      defaultWebhookUrl:
+        process.env.KORAPAY_WEBHOOK_URL ??
+        `${process.env.API_URL ?? "http://localhost:4000"}/api/webhooks/korapay`
+    });
+  }
+
+  return createMockPaymentGateway();
+}
+
 function getCurrency(value: string | undefined, fallback: CurrencyCode): CurrencyCode {
   return currencies.includes(value as CurrencyCode) ? (value as CurrencyCode) : fallback;
 }
@@ -83,6 +102,38 @@ function getSecret(value: string | undefined) {
 
 function getPanelEndpoint(value: string | undefined) {
   return value?.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/iu, "").trim();
+}
+
+function getKorapayWebhookSigningSecret() {
+  const configuredSecret = getSecret(process.env.KORAPAY_WEBHOOK_SECRET);
+
+  if (configuredSecret && !configuredSecret.startsWith("http")) {
+    return configuredSecret;
+  }
+
+  return getSecret(process.env.KORAPAY_SECRET_KEY);
+}
+
+function verifyKorapaySignature(input: { body: unknown; signature?: string | undefined }) {
+  const signingSecret = getKorapayWebhookSigningSecret();
+
+  if (!signingSecret) {
+    return process.env.NODE_ENV !== "production";
+  }
+  if (!input.signature) {
+    return false;
+  }
+
+  const eventBody =
+    typeof input.body === "object" && input.body !== null
+      ? (input.body as Record<string, unknown>)
+      : {};
+  const signedPayload = JSON.stringify(eventBody.data ?? {});
+  const expectedSignature = createHmac("sha256", signingSecret).update(signedPayload).digest("hex");
+  const expected = Buffer.from(expectedSignature);
+  const actual = Buffer.from(input.signature);
+
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 function createSmmSupplierBundle() {
@@ -142,7 +193,7 @@ function createSmmSupplierBundle() {
 export class PlatformService {
   private readonly adsProvider = createMockAdsProvider();
   private readonly aiProvider = createMockAiProvider();
-  private readonly paymentGateway = createMockPaymentGateway();
+  private readonly paymentGateway = createPaymentGateway();
   private readonly smmSupplierBundle = createSmmSupplierBundle();
   private readonly smmSupplier = this.smmSupplierBundle.supplier;
   private readonly smmHealthMonitor = createSmmServiceHealthMonitor(
@@ -463,19 +514,87 @@ export class PlatformService {
   async createPaymentIntent(input: CreatePaymentIntentDto) {
     const intent = await this.paymentGateway.createPaymentIntent({
       amount: { amountMinor: input.amountMinor ?? 500000, currency: input.currency ?? "NGN" },
-      workspaceId
+      workspaceId,
+      ...(input.customerEmail === undefined ? {} : { customerEmail: input.customerEmail }),
+      ...(input.customerName === undefined ? {} : { customerName: input.customerName }),
+      ...(input.redirectUrl === undefined ? {} : { redirectUrl: input.redirectUrl }),
+      ...(input.webhookUrl === undefined ? {} : { webhookUrl: input.webhookUrl })
     });
 
     this.paymentIntents.unshift(intent);
-    this.pushEvent(
-      createEvent({
-        name: "PaymentCompleted",
-        tenantId: workspaceId,
-        payload: { payment: { ...intent, status: "COMPLETED" }, wallet: this.getWallet() }
-      })
-    );
+
+    if (intent.status === "COMPLETED") {
+      this.pushEvent(
+        createEvent({
+          name: "PaymentCompleted",
+          tenantId: workspaceId,
+          payload: { payment: intent, wallet: this.getWallet() }
+        })
+      );
+    }
 
     return intent;
+  }
+
+  async verifyPayment(reference: string) {
+    const result = await this.paymentGateway.verifyPayment(reference);
+    const intent = this.paymentIntents.find(
+      (paymentIntent) => paymentIntent.providerReference === reference
+    );
+    const updatedIntent: PaymentIntent = {
+      ...(intent ?? {
+        id: id("pay"),
+        workspaceId,
+        gateway: this.paymentGateway.name === "korapay" ? "KORAPAY" : "MOCK",
+        amount: { amountMinor: 0, currency: "NGN" },
+        createdAt: now()
+      }),
+      status: result.status,
+      providerReference: result.providerReference,
+      updatedAt: now()
+    };
+
+    if (result.status === "COMPLETED") {
+      this.pushEvent(
+        createEvent({
+          name: "PaymentCompleted",
+          tenantId: workspaceId,
+          payload: { payment: updatedIntent, wallet: this.getWallet() }
+        })
+      );
+    }
+
+    return updatedIntent;
+  }
+
+  handleKorapayWebhook(body: unknown, signature?: string) {
+    if (!verifyKorapaySignature({ body, signature })) {
+      throw new BadRequestException("Invalid Korapay webhook signature.");
+    }
+
+    const eventBody =
+      typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+    const data =
+      typeof eventBody.data === "object" && eventBody.data !== null
+        ? (eventBody.data as Record<string, unknown>)
+        : {};
+    const reference =
+      typeof data.reference === "string"
+        ? data.reference
+        : typeof data.payment_reference === "string"
+          ? data.payment_reference
+          : undefined;
+    const status = typeof data.status === "string" ? data.status : undefined;
+
+    if (!reference) {
+      throw new BadRequestException("Korapay webhook is missing a payment reference.");
+    }
+
+    return {
+      accepted: true,
+      reference,
+      status
+    };
   }
 
   getWallet(): Wallet {

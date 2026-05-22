@@ -23,6 +23,8 @@ Media storage is configured for Cloudinary through `STORAGE_PROVIDER=cloudinary`
 
 SMM fulfillment is configured as a routed multi-supplier layer across SMDPanel, SMM Raja, JustAnotherPanel, and Peakerr. Add each supplier API key to the API and worker services, keep supplier currencies in USD, and keep customer wallet/pricing in NGN unless a workspace explicitly changes currency later. Optionally set each `*_SERVICE_MAP` to a JSON object such as `{"FOLLOWERS":"12345","VIEWS":"45678"}` to pin known-good services instead of relying on automatic cheapest-service matching. The shared SMM operations package now owns pricing, margin calculation, retry policy, fraud assessment, queue payload metadata, and supplier health checks.
 
+Korapay is the live Phase 1 payment gateway when `PAYMENT_PROVIDER=live` and `KORAPAY_SECRET_KEY` is present. Set `KORAPAY_WEBHOOK_URL` to `https://ft-campaigner-api-fra-g25g.onrender.com/api/webhooks/korapay` for the current Render API domain, set `KORAPAY_REDIRECT_URL` to `https://fliptrybe-ads-campaigner-web-g25g.onrender.com`, and keep treasury bank details in Render env only. `KORAPAY_WEBHOOK_SECRET` is reserved for an actual signing secret; do not put the webhook URL in that variable.
+
 ## GitHub to Render flow
 
 1. Push this repository to GitHub.

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
 
 import type {
   CreateCampaignDto,
@@ -168,6 +168,21 @@ export class PaymentsController {
   @Post("intents")
   createIntent(@Body() body: CreatePaymentIntentDto) {
     return this.platform.createPaymentIntent(body);
+  }
+
+  @Post("verify/:reference")
+  verify(@Param("reference") reference: string) {
+    return this.platform.verifyPayment(reference);
+  }
+}
+
+@Controller("api/webhooks")
+export class WebhooksController {
+  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+
+  @Post("korapay")
+  korapay(@Body() body: unknown, @Headers("x-korapay-signature") signature?: string) {
+    return this.platform.handleKorapayWebhook(body, signature);
   }
 }
 
