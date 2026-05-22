@@ -10,6 +10,7 @@ export default [
       "dist/**",
       "coverage/**",
       "generated/**",
+      "**/generated/**",
       "**/next-env.d.ts",
       "**/*.mjs"
     ]

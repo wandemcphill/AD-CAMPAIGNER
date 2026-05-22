@@ -40,12 +40,7 @@ export class RealtimeGateway implements OnGatewayConnection {
       activeOrders: otpSnapshot.orders.length,
       emittedAt: new Date().toISOString()
     });
-    const digitalAccessSnapshot = this.digitalAccess.getRealtimeSnapshot();
-    client.emit("digital-access-requests", digitalAccessSnapshot.requests);
-    client.emit("digital-access-admin-monitoring", {
-      ...digitalAccessSnapshot.admin,
-      emittedAt: new Date().toISOString()
-    });
+    void this.emitDigitalAccessSnapshot(client);
   }
 
   @SubscribeMessage("events:latest")
@@ -57,6 +52,16 @@ export class RealtimeGateway implements OnGatewayConnection {
   broadcastTest(@MessageBody() body: { channel?: string; message?: string }) {
     this.server.emit(body.channel ?? "notifications", {
       message: body.message ?? "Realtime test event",
+      emittedAt: new Date().toISOString()
+    });
+  }
+
+  private async emitDigitalAccessSnapshot(client: Socket) {
+    const digitalAccessSnapshot = await this.digitalAccess.getRealtimeSnapshot();
+
+    client.emit("digital-access-requests", digitalAccessSnapshot.requests);
+    client.emit("digital-access-admin-monitoring", {
+      ...digitalAccessSnapshot.admin,
       emittedAt: new Date().toISOString()
     });
   }
