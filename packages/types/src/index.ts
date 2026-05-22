@@ -67,6 +67,29 @@ export const smmServiceKinds = [
 ] as const;
 export type SmmServiceKind = (typeof smmServiceKinds)[number];
 
+export const otpOrderStatuses = [
+  "QUOTED",
+  "CHARGED",
+  "ALLOCATING",
+  "WAITING",
+  "RECEIVED",
+  "COMPLETED",
+  "EXPIRED",
+  "REFUNDED",
+  "FAILED",
+  "CANCELLED"
+] as const;
+export type OtpOrderStatus = (typeof otpOrderStatuses)[number];
+
+export const otpProviderTiers = ["PREMIUM", "BUDGET"] as const;
+export type OtpProviderTier = (typeof otpProviderTiers)[number];
+
+export const otpProviderStatuses = ["HEALTHY", "DEGRADED", "DOWN", "DISABLED"] as const;
+export type OtpProviderStatus = (typeof otpProviderStatuses)[number];
+
+export const otpWalletChargeStatuses = ["CHARGED", "REFUNDED", "FAILED"] as const;
+export type OtpWalletChargeStatus = (typeof otpWalletChargeStatuses)[number];
+
 export const roles = [
   "OWNER",
   "ADMIN",
@@ -173,6 +196,104 @@ export interface SmmOrder extends Timestamped {
   supplierReference?: string;
 }
 
+export interface OtpService extends Timestamped {
+  id: string;
+  code: string;
+  name: string;
+  countryCode: string;
+  providerTier: OtpProviderTier;
+  category: string;
+  visible: boolean;
+  requiresAdminApproval: boolean;
+}
+
+export interface OtpProviderHealth extends Timestamped {
+  providerName: string;
+  tier: OtpProviderTier;
+  status: OtpProviderStatus;
+  latencyMs: number;
+  successRateBps: number;
+  balance?: Money;
+  reason?: string;
+}
+
+export interface OtpPricingResult {
+  supplierCost: Money;
+  customerPrice: Money;
+  grossMargin: Money;
+  marginBps: number;
+  markupBps: number;
+  exchangeRate: number;
+  profitable: boolean;
+}
+
+export interface OtpRoutingAttempt extends Timestamped {
+  id: string;
+  otpOrderId: string;
+  providerName: string;
+  providerTier: OtpProviderTier;
+  score: number;
+  status: "SELECTED" | "FAILED" | "SKIPPED";
+  reason?: string;
+}
+
+export interface OtpMessage extends Timestamped {
+  id: string;
+  otpOrderId: string;
+  status: "RECEIVED" | "REDACTED";
+  redactedMessage: string;
+  receivedAt?: string;
+}
+
+export interface OtpWalletCharge extends Timestamped {
+  id: string;
+  workspaceId: string;
+  walletId: string;
+  otpOrderId: string;
+  idempotencyKey: string;
+  amount: Money;
+  status: OtpWalletChargeStatus;
+  debitLedgerEntryId?: string;
+  refundLedgerEntryId?: string;
+  providerName?: string;
+  providerReference?: string;
+}
+
+export interface OtpOrder extends Timestamped {
+  id: string;
+  workspaceId: string;
+  serviceCode: string;
+  serviceName: string;
+  countryCode: string;
+  providerTier: OtpProviderTier;
+  providerName?: string;
+  providerReference?: string;
+  status: OtpOrderStatus;
+  phoneNumberMasked?: string;
+  expiresAt?: string;
+  amount: Money;
+  supplierCost: Money;
+  idempotencyKey: string;
+  attestationAccepted: boolean;
+  riskScore: number;
+  message?: OtpMessage;
+}
+
+export interface OtpRefundResult {
+  otpOrderId: string;
+  status: "REFUNDED" | "SKIPPED";
+  amount: Money;
+  ledgerEntryId?: string;
+}
+
+export interface OtpRoutingResult {
+  providerName: string;
+  providerTier: OtpProviderTier;
+  score: number;
+  quote: OtpPricingResult;
+  attempts: OtpRoutingAttempt[];
+}
+
 export interface Wallet extends Timestamped {
   id: string;
   workspaceId: string;
@@ -187,6 +308,10 @@ export interface LedgerEntry extends Timestamped {
   amount: Money;
   reference: string;
   description: string;
+  idempotencyKey?: string;
+  sourceType?: string;
+  sourceId?: string;
+  metadata?: Record<string, string | number | boolean | null>;
 }
 
 export interface PaymentIntent extends Timestamped {

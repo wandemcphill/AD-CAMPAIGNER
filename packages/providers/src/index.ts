@@ -4,6 +4,10 @@ import type {
   CurrencyCode,
   DestinationKind,
   Money,
+  OtpOrderStatus,
+  OtpProviderHealth,
+  OtpProviderTier,
+  OtpService,
   PaymentIntent,
   PromotionDestination,
   SmmOrder,
@@ -140,6 +144,63 @@ export interface StorageProviderAdapter {
   }): Promise<{ uploadUrl: string; publicUrl: string }>;
 }
 
+export interface OtpProviderQuoteRequest {
+  serviceCode: string;
+  countryCode: string;
+  tier: OtpProviderTier;
+}
+
+export interface OtpProviderQuote {
+  providerName: string;
+  tier: OtpProviderTier;
+  serviceCode: string;
+  countryCode: string;
+  supplierCost: Money;
+  available: boolean;
+  estimatedLatencyMs: number;
+  successRateBps: number;
+  inventory: number;
+}
+
+export interface OtpProviderOrderRequest extends OtpProviderQuoteRequest {
+  orderId: string;
+  callbackUrl?: string;
+}
+
+export interface OtpProviderOrderResult {
+  providerName: string;
+  providerReference: string;
+  status: OtpOrderStatus;
+  phoneNumberMasked?: string;
+  expiresAt?: string;
+}
+
+export interface OtpProviderOrderSnapshot {
+  providerName: string;
+  providerReference: string;
+  status: OtpOrderStatus;
+  phoneNumberMasked?: string;
+  redactedMessage?: string;
+  receivedAt?: string;
+}
+
+export interface OtpProviderBalance {
+  providerName: string;
+  amount: Money;
+}
+
+export interface OtpProviderAdapter {
+  readonly name: string;
+  readonly tier: OtpProviderTier;
+  listServices(): Promise<OtpService[]>;
+  quoteService(input: OtpProviderQuoteRequest): Promise<OtpProviderQuote>;
+  createOrder(input: OtpProviderOrderRequest): Promise<OtpProviderOrderResult>;
+  getOrderStatus(providerReference: string): Promise<OtpProviderOrderSnapshot>;
+  cancelOrder(providerReference: string): Promise<{ providerReference: string; accepted: boolean }>;
+  getBalance(): Promise<OtpProviderBalance>;
+  checkHealth(): Promise<OtpProviderHealth>;
+}
+
 export interface CloudinaryStorageConfig {
   cloudName?: string | undefined;
   uploadPreset?: string | undefined;
@@ -188,6 +249,13 @@ export interface PerfectPanelSmmSupplierConfig {
   serviceMap?: Partial<Record<SmmServiceKind, string>> | undefined;
   bulkStatusParam?: "order" | "orders" | undefined;
   cancelMode?: "single-order" | "bulk-orders" | undefined;
+  fetcher?: typeof fetch | undefined;
+}
+
+export interface OtpHttpProviderConfig {
+  apiUrl?: string | undefined;
+  apiKey?: string | undefined;
+  enabled?: boolean | undefined;
   fetcher?: typeof fetch | undefined;
 }
 
@@ -1134,6 +1202,529 @@ export function createRoutedSmmSupplier(suppliers: SmmSupplierAdapter[]): SmmSup
       ).then((results) => results.flat());
     }
   };
+}
+
+function maskPhoneNumber(value: string | number | undefined) {
+  const phone = String(value ?? "+15550000000");
+
+  if (phone.length <= 4) {
+    return "****";
+  }
+
+  return `${phone.slice(0, 3)}****${phone.slice(-3)}`;
+}
+
+function mapOtpStatus(status?: string): OtpOrderStatus {
+  const normalizedStatus = status?.toLowerCase().trim();
+
+  switch (normalizedStatus) {
+    case "received":
+    case "sms_received":
+    case "success":
+    case "finished":
+      return "RECEIVED";
+    case "completed":
+      return "COMPLETED";
+    case "expired":
+    case "timeout":
+      return "EXPIRED";
+    case "cancelled":
+    case "canceled":
+      return "CANCELLED";
+    case "failed":
+      return "FAILED";
+    case "waiting":
+    case "pending":
+    case "active":
+    default:
+      return "WAITING";
+  }
+}
+
+function createMockOtpServices(tier: OtpProviderTier): OtpService[] {
+  const timestamp = new Date().toISOString();
+
+  return [
+    {
+      id: `otp_mock_${tier.toLowerCase()}_whatsapp`,
+      code: "whatsapp",
+      name: "WhatsApp",
+      countryCode: "NG",
+      providerTier: tier,
+      category: "messaging",
+      visible: true,
+      requiresAdminApproval: false,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    },
+    {
+      id: `otp_mock_${tier.toLowerCase()}_telegram`,
+      code: "telegram",
+      name: "Telegram",
+      countryCode: "NG",
+      providerTier: tier,
+      category: "messaging",
+      visible: true,
+      requiresAdminApproval: false,
+      createdAt: timestamp,
+      updatedAt: timestamp
+    }
+  ];
+}
+
+function disabledOtpHealth(name: string, tier: OtpProviderTier): OtpProviderHealth {
+  const timestamp = new Date().toISOString();
+
+  return {
+    providerName: name,
+    tier,
+    status: "DISABLED",
+    latencyMs: 0,
+    successRateBps: 0,
+    reason: "Provider is not configured.",
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+}
+
+function ensureOtpProviderConfigured(config: OtpHttpProviderConfig, name: string) {
+  if (!config.enabled || !config.apiUrl || !config.apiKey) {
+    throw new Error(`${name} OTP provider is disabled or missing credentials.`);
+  }
+}
+
+async function readJsonResponse(response: Response, providerName: string) {
+  const data: unknown = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`${providerName} OTP API returned HTTP ${response.status}.`);
+  }
+
+  if (typeof data === "object" && data !== null && "error" in data && data.error !== undefined) {
+    const errorMessage = typeof data.error === "string" ? data.error : JSON.stringify(data.error);
+    throw new Error(`${providerName} OTP API error: ${errorMessage}`);
+  }
+
+  return data;
+}
+
+export function createMockOtpProvider(
+  name = "mock-otp",
+  tier: OtpProviderTier = "BUDGET"
+): OtpProviderAdapter {
+  return {
+    name,
+    tier,
+    listServices() {
+      return Promise.resolve(createMockOtpServices(tier));
+    },
+    quoteService(input) {
+      return Promise.resolve({
+        providerName: name,
+        tier,
+        serviceCode: input.serviceCode,
+        countryCode: input.countryCode,
+        supplierCost: {
+          amountMinor: tier === "PREMIUM" ? 250 : 45,
+          currency: "USD"
+        },
+        available: true,
+        estimatedLatencyMs: tier === "PREMIUM" ? 1_500 : 3_000,
+        successRateBps: tier === "PREMIUM" ? 9_800 : 9_100,
+        inventory: tier === "PREMIUM" ? 120 : 900
+      });
+    },
+    createOrder() {
+      return Promise.resolve({
+        providerName: name,
+        providerReference: makeId("otp_mock"),
+        status: "WAITING",
+        phoneNumberMasked: "+234****431",
+        expiresAt: new Date(Date.now() + 15 * 60 * 1_000).toISOString()
+      });
+    },
+    getOrderStatus(providerReference) {
+      return Promise.resolve({
+        providerName: name,
+        providerReference,
+        status: "WAITING",
+        phoneNumberMasked: "+234****431"
+      });
+    },
+    cancelOrder(providerReference) {
+      return Promise.resolve({ providerReference, accepted: true });
+    },
+    getBalance() {
+      return Promise.resolve({
+        providerName: name,
+        amount: { amountMinor: 100000, currency: "USD" }
+      });
+    },
+    checkHealth() {
+      const timestamp = new Date().toISOString();
+
+      return Promise.resolve({
+        providerName: name,
+        tier,
+        status: "HEALTHY",
+        latencyMs: tier === "PREMIUM" ? 1_500 : 3_000,
+        successRateBps: tier === "PREMIUM" ? 9_800 : 9_100,
+        balance: { amountMinor: 100000, currency: "USD" },
+        createdAt: timestamp,
+        updatedAt: timestamp
+      });
+    }
+  };
+}
+
+export function createTextVerifiedOtpProvider(config: OtpHttpProviderConfig): OtpProviderAdapter {
+  const name = "textverified";
+  const tier: OtpProviderTier = "PREMIUM";
+
+  return {
+    name,
+    tier,
+    async listServices() {
+      if (!config.enabled || !config.apiUrl || !config.apiKey) {
+        return [];
+      }
+
+      const response = await (config.fetcher ?? fetch)(
+        `${config.apiUrl.replace(/\/+$/, "")}/services`,
+        {
+          headers: { authorization: `Bearer ${config.apiKey}` }
+        }
+      );
+      const data = (await readJsonResponse(response, name)) as Array<{
+        id?: string;
+        name?: string;
+        country?: string;
+      }>;
+      const timestamp = new Date().toISOString();
+
+      return data.map((service) => ({
+        id: `textverified_${service.id ?? service.name ?? "service"}`,
+        code: service.id ?? service.name?.toLowerCase() ?? "unknown",
+        name: service.name ?? service.id ?? "TextVerified service",
+        countryCode: service.country ?? "US",
+        providerTier: tier,
+        category: "identity",
+        visible: false,
+        requiresAdminApproval: true,
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }));
+    },
+    async quoteService(input) {
+      ensureOtpProviderConfigured(config, name);
+      const response = await (config.fetcher ?? fetch)(
+        `${config.apiUrl!.replace(/\/+$/, "")}/services/${encodeURIComponent(input.serviceCode)}`,
+        { headers: { authorization: `Bearer ${config.apiKey}` } }
+      );
+      const data = (await readJsonResponse(response, name)) as {
+        price?: string | number;
+        inventory?: number;
+      };
+
+      return {
+        providerName: name,
+        tier,
+        serviceCode: input.serviceCode,
+        countryCode: input.countryCode,
+        supplierCost: moneyFromCharge(data.price, "USD"),
+        available: (data.inventory ?? 1) > 0,
+        estimatedLatencyMs: 1_500,
+        successRateBps: 9_700,
+        inventory: data.inventory ?? 1
+      };
+    },
+    async createOrder(input) {
+      ensureOtpProviderConfigured(config, name);
+      const response = await (config.fetcher ?? fetch)(
+        `${config.apiUrl!.replace(/\/+$/, "")}/verifications`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${config.apiKey}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            service: input.serviceCode,
+            country: input.countryCode,
+            externalId: input.orderId
+          })
+        }
+      );
+      const data = (await readJsonResponse(response, name)) as {
+        id?: string | number;
+        phone_number?: string | number;
+        expires_at?: string;
+      };
+
+      return {
+        providerName: name,
+        providerReference: String(data.id ?? makeId("tv")),
+        status: "WAITING",
+        phoneNumberMasked: maskPhoneNumber(data.phone_number),
+        ...(data.expires_at === undefined ? {} : { expiresAt: data.expires_at })
+      };
+    },
+    async getOrderStatus(providerReference) {
+      ensureOtpProviderConfigured(config, name);
+      const response = await (config.fetcher ?? fetch)(
+        `${config.apiUrl!.replace(/\/+$/, "")}/verifications/${encodeURIComponent(providerReference)}`,
+        { headers: { authorization: `Bearer ${config.apiKey}` } }
+      );
+      const data = (await readJsonResponse(response, name)) as {
+        status?: string;
+        phone_number?: string | number;
+        sms?: string;
+        received_at?: string;
+      };
+
+      return {
+        providerName: name,
+        providerReference,
+        status: mapOtpStatus(data.status),
+        phoneNumberMasked: maskPhoneNumber(data.phone_number),
+        ...(data.sms === undefined ? {} : { redactedMessage: data.sms }),
+        ...(data.received_at === undefined ? {} : { receivedAt: data.received_at })
+      };
+    },
+    async cancelOrder(providerReference) {
+      ensureOtpProviderConfigured(config, name);
+      await (config.fetcher ?? fetch)(
+        `${config.apiUrl!.replace(/\/+$/, "")}/verifications/${encodeURIComponent(providerReference)}/cancel`,
+        { method: "POST", headers: { authorization: `Bearer ${config.apiKey}` } }
+      );
+
+      return { providerReference, accepted: true };
+    },
+    getBalance() {
+      return Promise.resolve({ providerName: name, amount: { amountMinor: 0, currency: "USD" } });
+    },
+    async checkHealth() {
+      if (!config.enabled || !config.apiUrl || !config.apiKey) {
+        return disabledOtpHealth(name, tier);
+      }
+
+      const checkedAt = Date.now();
+
+      try {
+        await this.listServices();
+
+        return {
+          providerName: name,
+          tier,
+          status: "HEALTHY",
+          latencyMs: Date.now() - checkedAt,
+          successRateBps: 9_700,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      } catch (error) {
+        return {
+          providerName: name,
+          tier,
+          status: "DEGRADED",
+          latencyMs: Date.now() - checkedAt,
+          successRateBps: 7_500,
+          reason: error instanceof Error ? error.message : "TextVerified health check failed.",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      }
+    }
+  };
+}
+
+function createQueryOtpProvider(input: {
+  name: string;
+  tier: OtpProviderTier;
+  config: OtpHttpProviderConfig;
+  balanceAction: string;
+  orderAction: string;
+  statusAction: string;
+  cancelAction: string;
+  keyParam: string;
+}): OtpProviderAdapter {
+  function buildUrl(params: Record<string, string>) {
+    const baseUrl = input.config.apiUrl ?? "https://disabled.invalid";
+    const url = new URL(baseUrl);
+
+    url.searchParams.set(input.keyParam, input.config.apiKey ?? "");
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
+
+    return url.toString();
+  }
+
+  async function call(params: Record<string, string>) {
+    ensureOtpProviderConfigured(input.config, input.name);
+    const response = await (input.config.fetcher ?? fetch)(buildUrl(params));
+
+    return readJsonResponse(response, input.name);
+  }
+
+  return {
+    name: input.name,
+    tier: input.tier,
+    listServices() {
+      return Promise.resolve(createMockOtpServices(input.tier));
+    },
+    quoteService(request) {
+      return Promise.resolve({
+        providerName: input.name,
+        tier: input.tier,
+        serviceCode: request.serviceCode,
+        countryCode: request.countryCode,
+        supplierCost: {
+          amountMinor: input.tier === "PREMIUM" ? 200 : 35,
+          currency: "USD"
+        },
+        available: Boolean(input.config.enabled && input.config.apiUrl && input.config.apiKey),
+        estimatedLatencyMs: input.tier === "PREMIUM" ? 2_500 : 4_000,
+        successRateBps: input.tier === "PREMIUM" ? 9_300 : 8_900,
+        inventory: 100
+      });
+    },
+    async createOrder(request) {
+      const data = (await call({
+        action: input.orderAction,
+        service: request.serviceCode,
+        country: request.countryCode
+      })) as {
+        id?: string | number;
+        activation?: string | number;
+        phone?: string | number;
+        number?: string | number;
+      };
+      const providerReference = String(data.id ?? data.activation ?? makeId(input.name));
+
+      return {
+        providerName: input.name,
+        providerReference,
+        status: "WAITING",
+        phoneNumberMasked: maskPhoneNumber(data.phone ?? data.number),
+        expiresAt: new Date(Date.now() + 15 * 60 * 1_000).toISOString()
+      };
+    },
+    async getOrderStatus(providerReference) {
+      const data = (await call({
+        action: input.statusAction,
+        id: providerReference
+      })) as {
+        status?: string;
+        sms?: string;
+        code?: string;
+        phone?: string | number;
+        number?: string | number;
+      };
+      const redactedMessage = data.sms ?? data.code;
+
+      return {
+        providerName: input.name,
+        providerReference,
+        status: mapOtpStatus(data.status ?? (redactedMessage ? "received" : "waiting")),
+        phoneNumberMasked: maskPhoneNumber(data.phone ?? data.number),
+        ...(redactedMessage === undefined ? {} : { redactedMessage })
+      };
+    },
+    async cancelOrder(providerReference) {
+      await call({
+        action: input.cancelAction,
+        id: providerReference
+      });
+
+      return { providerReference, accepted: true };
+    },
+    async getBalance() {
+      const data = (await call({ action: input.balanceAction })) as {
+        balance?: string | number;
+        Balance?: string | number;
+      };
+
+      return {
+        providerName: input.name,
+        amount: moneyFromCharge(data.balance ?? data.Balance, "USD")
+      };
+    },
+    async checkHealth() {
+      if (!input.config.enabled || !input.config.apiUrl || !input.config.apiKey) {
+        return disabledOtpHealth(input.name, input.tier);
+      }
+
+      const checkedAt = Date.now();
+
+      try {
+        const balance = await this.getBalance();
+
+        return {
+          providerName: input.name,
+          tier: input.tier,
+          status: "HEALTHY",
+          latencyMs: Date.now() - checkedAt,
+          successRateBps: input.tier === "PREMIUM" ? 9_300 : 8_900,
+          balance: balance.amount,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      } catch (error) {
+        return {
+          providerName: input.name,
+          tier: input.tier,
+          status: "DEGRADED",
+          latencyMs: Date.now() - checkedAt,
+          successRateBps: input.tier === "PREMIUM" ? 7_500 : 7_000,
+          reason: error instanceof Error ? error.message : `${input.name} health check failed.`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      }
+    }
+  };
+}
+
+export function createFiveSimOtpProvider(config: OtpHttpProviderConfig): OtpProviderAdapter {
+  return createQueryOtpProvider({
+    name: "5sim",
+    tier: "BUDGET",
+    config,
+    balanceAction: "profile",
+    orderAction: "buy",
+    statusAction: "check",
+    cancelAction: "cancel",
+    keyParam: "token"
+  });
+}
+
+export function createSmsManOtpProvider(config: OtpHttpProviderConfig): OtpProviderAdapter {
+  return createQueryOtpProvider({
+    name: "sms-man",
+    tier: "BUDGET",
+    config,
+    balanceAction: "get-balance",
+    orderAction: "get-number",
+    statusAction: "get-sms",
+    cancelAction: "set-status",
+    keyParam: "token"
+  });
+}
+
+export function createSmsActivateCompatibleOtpProvider(
+  config: OtpHttpProviderConfig
+): OtpProviderAdapter {
+  return createQueryOtpProvider({
+    name: "sms-activate-compatible",
+    tier: "BUDGET",
+    config,
+    balanceAction: "getBalance",
+    orderAction: "getNumber",
+    statusAction: "getStatus",
+    cancelAction: "setStatus",
+    keyParam: "api_key"
+  });
 }
 
 export function createMockAiProvider(): AiGenerationAdapter {

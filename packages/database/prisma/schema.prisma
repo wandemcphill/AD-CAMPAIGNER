@@ -92,19 +92,50 @@ enum SmmOrderStatus {
   CANCELLED
 }
 
+enum OtpProviderTier {
+  PREMIUM
+  BUDGET
+}
+
+enum OtpProviderStatus {
+  HEALTHY
+  DEGRADED
+  DOWN
+  DISABLED
+}
+
+enum OtpOrderStatus {
+  QUOTED
+  CHARGED
+  ALLOCATING
+  WAITING
+  RECEIVED
+  COMPLETED
+  EXPIRED
+  REFUNDED
+  FAILED
+  CANCELLED
+}
+
+enum OtpWalletChargeStatus {
+  CHARGED
+  REFUNDED
+  FAILED
+}
+
 model User {
-  id              String        @id @default(uuid())
-  email           String        @unique
+  id              String       @id @default(uuid())
+  email           String       @unique
   name            String
-  status          UserStatus    @default(ACTIVE)
+  status          UserStatus   @default(ACTIVE)
   passwordHash    String?
   emailVerifiedAt DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
   deletedAt       DateTime?
   memberships     TeamMember[]
   sessions        Session[]
-  auditLogs       AuditLog[]    @relation("AuditActor")
+  auditLogs       AuditLog[]   @relation("AuditActor")
 
   @@index([status])
   @@index([deletedAt])
@@ -139,6 +170,8 @@ model Workspace {
   wallets          Wallet[]
   paymentIntents   PaymentIntent[]
   smmOrders        SmmOrder[]
+  otpOrders        OtpOrder[]
+  otpWalletCharges OtpWalletCharge[]
   notifications    Notification[]
   supportTickets   SupportTicket[]
   referralAccounts ReferralAccount[]
@@ -165,43 +198,43 @@ model TeamMember {
 }
 
 model Session {
-  id             String    @id @default(uuid())
-  userId         String
-  tokenHash      String    @unique
-  deviceName     String?
-  ipAddress      String?
-  userAgent      String?
-  expiresAt      DateTime
-  revokedAt      DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  user           User      @relation(fields: [userId], references: [id])
+  id         String    @id @default(uuid())
+  userId     String
+  tokenHash  String    @unique
+  deviceName String?
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([expiresAt])
 }
 
 model Campaign {
-  id                 String             @id @default(uuid())
-  workspaceId        String
-  creatorUserId      String
-  name               String
-  objective          CampaignObjective
-  status             CampaignStatus     @default(DRAFT)
-  budgetMinor        Int
-  currency           String             @default("NGN")
-  provider           String             @default("MOCK")
-  providerReference  String?
-  startsAt           DateTime
-  endsAt             DateTime?
-  timezone           String             @default("UTC")
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  deletedAt          DateTime?
-  workspace          Workspace          @relation(fields: [workspaceId], references: [id])
-  destination        Destination?
-  livePromotion      LivePromotion?
-  analytics          AnalyticsMetric[]
+  id                String            @id @default(uuid())
+  workspaceId       String
+  creatorUserId     String
+  name              String
+  objective         CampaignObjective
+  status            CampaignStatus    @default(DRAFT)
+  budgetMinor       Int
+  currency          String            @default("NGN")
+  provider          String            @default("MOCK")
+  providerReference String?
+  startsAt          DateTime
+  endsAt            DateTime?
+  timezone          String            @default("UTC")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id])
+  destination       Destination?
+  livePromotion     LivePromotion?
+  analytics         AnalyticsMetric[]
 
   @@index([workspaceId, status])
   @@index([provider, providerReference])
@@ -210,60 +243,66 @@ model Campaign {
 }
 
 model Destination {
-  id          String          @id @default(uuid())
-  campaignId  String          @unique
-  kind        DestinationKind
-  url         String
-  handle      String?
-  metadata    Json            @default("{}")
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  campaign    Campaign        @relation(fields: [campaignId], references: [id])
+  id         String          @id @default(uuid())
+  campaignId String          @unique
+  kind       DestinationKind
+  url        String
+  handle     String?
+  metadata   Json            @default("{}")
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  campaign   Campaign        @relation(fields: [campaignId], references: [id])
 
   @@index([kind])
 }
 
 model LivePromotion {
-  id                    String          @id @default(uuid())
-  campaignId            String          @unique
-  destinationKind        DestinationKind
-  realtimeBoostEnabled   Boolean         @default(false)
-  expectedStartAt        DateTime
-  actualStartedAt        DateTime?
-  actualEndedAt          DateTime?
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
-  campaign               Campaign        @relation(fields: [campaignId], references: [id])
+  id                   String          @id @default(uuid())
+  campaignId           String          @unique
+  destinationKind      DestinationKind
+  realtimeBoostEnabled Boolean         @default(false)
+  expectedStartAt      DateTime
+  actualStartedAt      DateTime?
+  actualEndedAt        DateTime?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  campaign             Campaign        @relation(fields: [campaignId], references: [id])
 
   @@index([destinationKind, expectedStartAt])
 }
 
 model Wallet {
-  id        String        @id @default(uuid())
+  id          String            @id @default(uuid())
   workspaceId String
-  currency  String        @default("NGN")
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  workspace Workspace     @relation(fields: [workspaceId], references: [id])
-  entries   LedgerEntry[]
+  currency    String            @default("NGN")
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id])
+  entries     LedgerEntry[]
+  otpCharges  OtpWalletCharge[]
 
   @@unique([workspaceId, currency])
 }
 
 model LedgerEntry {
-  id          String          @id @default(uuid())
-  walletId    String
-  kind        LedgerEntryKind
-  amountMinor Int
-  currency    String          @default("NGN")
-  reference   String
-  description String
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  wallet      Wallet          @relation(fields: [walletId], references: [id])
+  id             String          @id @default(uuid())
+  walletId       String
+  kind           LedgerEntryKind
+  amountMinor    Int
+  currency       String          @default("NGN")
+  reference      String
+  description    String
+  idempotencyKey String?         @unique
+  sourceType     String?
+  sourceId       String?
+  metadata       Json            @default("{}")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  wallet         Wallet          @relation(fields: [walletId], references: [id])
 
   @@index([walletId, createdAt])
   @@index([reference])
+  @@index([sourceType, sourceId])
 }
 
 model PaymentIntent {
@@ -283,21 +322,185 @@ model PaymentIntent {
 }
 
 model SmmOrder {
-  id                String         @id @default(uuid())
+  id                String          @id @default(uuid())
   workspaceId       String
   serviceKind       String
   destinationKind   DestinationKind
   destinationUrl    String
   quantity          Int
-  status            SmmOrderStatus @default(DRAFT)
+  status            SmmOrderStatus  @default(DRAFT)
   supplierReference String?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
   deletedAt         DateTime?
-  workspace         Workspace      @relation(fields: [workspaceId], references: [id])
+  workspace         Workspace       @relation(fields: [workspaceId], references: [id])
 
   @@index([workspaceId, status])
   @@index([supplierReference])
+}
+
+model OtpService {
+  id                    String          @id @default(uuid())
+  code                  String
+  name                  String
+  countryCode           String
+  providerTier          OtpProviderTier
+  category              String          @default("general")
+  visible               Boolean         @default(false)
+  requiresAdminApproval Boolean         @default(true)
+  metadata              Json            @default("{}")
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  deletedAt             DateTime?
+
+  @@unique([code, countryCode, providerTier])
+  @@index([countryCode, visible])
+  @@index([providerTier, visible])
+  @@index([deletedAt])
+}
+
+model OtpProviderConfig {
+  id               String            @id @default(uuid())
+  providerName     String            @unique
+  tier             OtpProviderTier
+  status           OtpProviderStatus @default(DISABLED)
+  priority         Int               @default(100)
+  markupBps        Int               @default(5500)
+  enabledCountries String[]          @default([])
+  enabledServices  String[]          @default([])
+  metadata         Json              @default("{}")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+
+  @@index([tier, status])
+  @@index([deletedAt])
+}
+
+model OtpOrder {
+  id                  String              @id @default(uuid())
+  workspaceId         String
+  serviceCode         String
+  serviceName         String
+  countryCode         String
+  providerTier        OtpProviderTier
+  providerName        String?
+  providerReference   String?
+  status              OtpOrderStatus      @default(QUOTED)
+  phoneNumberMasked   String?
+  expiresAt           DateTime?
+  amountMinor         Int
+  currency            String              @default("NGN")
+  supplierCostMinor   Int
+  supplierCurrency    String              @default("USD")
+  idempotencyKey      String              @unique
+  attestationAccepted Boolean             @default(false)
+  riskScore           Int                 @default(0)
+  requestIpAddress    String?
+  requestUserAgent    String?
+  requestDeviceId     String?
+  metadata            Json                @default("{}")
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  deletedAt           DateTime?
+  workspace           Workspace           @relation(fields: [workspaceId], references: [id])
+  messages            OtpMessage[]
+  walletCharges       OtpWalletCharge[]
+  routingAttempts     OtpRoutingAttempt[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([providerName, providerReference])
+  @@index([serviceCode, countryCode])
+  @@index([deletedAt])
+}
+
+model OtpMessage {
+  id                   String    @id @default(uuid())
+  otpOrderId           String
+  status               String    @default("RECEIVED")
+  redactedMessage      String
+  messageTextEncrypted String?
+  receivedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  otpOrder             OtpOrder  @relation(fields: [otpOrderId], references: [id])
+
+  @@index([otpOrderId, receivedAt])
+}
+
+model OtpProviderHealth {
+  id             String            @id @default(uuid())
+  providerName   String
+  tier           OtpProviderTier
+  status         OtpProviderStatus
+  latencyMs      Int
+  successRateBps Int
+  balanceMinor   Int?
+  currency       String?
+  reason         String?
+  checkedAt      DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([providerName, checkedAt])
+  @@index([tier, status, checkedAt])
+}
+
+model OtpWalletCharge {
+  id                  String                @id @default(uuid())
+  workspaceId         String
+  walletId            String
+  otpOrderId          String
+  idempotencyKey      String                @unique
+  amountMinor         Int
+  currency            String                @default("NGN")
+  status              OtpWalletChargeStatus @default(CHARGED)
+  debitLedgerEntryId  String?
+  refundLedgerEntryId String?
+  providerName        String?
+  providerReference   String?
+  metadata            Json                  @default("{}")
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  workspace           Workspace             @relation(fields: [workspaceId], references: [id])
+  wallet              Wallet                @relation(fields: [walletId], references: [id])
+  otpOrder            OtpOrder              @relation(fields: [otpOrderId], references: [id])
+
+  @@unique([workspaceId, otpOrderId])
+  @@index([workspaceId, status, createdAt])
+  @@index([walletId, createdAt])
+  @@index([providerName, providerReference])
+}
+
+model OtpRoutingAttempt {
+  id           String          @id @default(uuid())
+  otpOrderId   String
+  providerName String
+  providerTier OtpProviderTier
+  score        Int
+  status       String
+  reason       String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  otpOrder     OtpOrder        @relation(fields: [otpOrderId], references: [id])
+
+  @@index([otpOrderId, createdAt])
+  @@index([providerName, status, createdAt])
+}
+
+model OtpPricingRule {
+  id                 String          @id @default(uuid())
+  tier               OtpProviderTier
+  markupBps          Int
+  minimumMarginMinor Int
+  platformFeeMinor   Int
+  customerCurrency   String          @default("NGN")
+  usdToNgnRate       Int             @default(1600)
+  active             Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([tier, active])
 }
 
 model AnalyticsMetric {
@@ -329,15 +532,15 @@ model Notification {
 }
 
 model SupportTicket {
-  id               String    @id @default(uuid())
-  workspaceId      String
-  requesterUserId  String
-  subject          String
-  status           String    @default("OPEN")
-  priority         String    @default("NORMAL")
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  workspace        Workspace @relation(fields: [workspaceId], references: [id])
+  id              String    @id @default(uuid())
+  workspaceId     String
+  requesterUserId String
+  subject         String
+  status          String    @default("OPEN")
+  priority        String    @default("NORMAL")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id])
 
   @@index([workspaceId, status, priority])
 }
@@ -355,17 +558,17 @@ model ReferralAccount {
 }
 
 model AuditLog {
-  id          String    @id @default(uuid())
+  id          String     @id @default(uuid())
   workspaceId String?
   actorUserId String?
   action      String
   entityType  String
   entityId    String
-  metadata    Json      @default("{}")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  metadata    Json       @default("{}")
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
   workspace   Workspace? @relation(fields: [workspaceId], references: [id])
-  actor       User?     @relation("AuditActor", fields: [actorUserId], references: [id])
+  actor       User?      @relation("AuditActor", fields: [actorUserId], references: [id])
 
   @@index([workspaceId, createdAt])
   @@index([actorUserId, createdAt])

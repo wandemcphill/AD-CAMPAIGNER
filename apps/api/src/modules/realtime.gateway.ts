@@ -10,6 +10,7 @@ import {
 import type { Server, Socket } from "socket.io";
 
 import { PlatformService } from "./platform.service";
+import { OtpMarketplaceService } from "./otp/otp.service";
 
 @Injectable()
 @WebSocketGateway({
@@ -20,13 +21,23 @@ export class RealtimeGateway implements OnGatewayConnection {
   @WebSocketServer()
   private server!: Server;
 
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(
+    @Inject(PlatformService) private readonly platform: PlatformService,
+    @Inject(OtpMarketplaceService) private readonly otp: OtpMarketplaceService
+  ) {}
 
   handleConnection(client: Socket) {
     client.emit("notifications", this.platform.listNotifications());
     client.emit("campaigns", this.platform.listCampaigns());
     client.emit("livestreams", this.platform.listLivePromotions());
     client.emit("admin-monitoring", this.platform.getAdminOverview());
+    const otpSnapshot = this.otp.getRealtimeSnapshot();
+    client.emit("otp-orders", otpSnapshot.orders);
+    client.emit("otp-provider-health", []);
+    client.emit("otp-admin-monitoring", {
+      activeOrders: otpSnapshot.orders.length,
+      emittedAt: new Date().toISOString()
+    });
   }
 
   @SubscribeMessage("events:latest")

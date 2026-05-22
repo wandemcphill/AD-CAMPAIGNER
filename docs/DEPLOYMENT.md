@@ -25,6 +25,8 @@ SMM fulfillment is configured as a routed multi-supplier layer across SMDPanel, 
 
 Korapay is the live Phase 1 payment gateway when `PAYMENT_PROVIDER=live` and `KORAPAY_SECRET_KEY` is present. Set `KORAPAY_WEBHOOK_URL` to `https://ft-campaigner-api-fra-g25g.onrender.com/api/webhooks/korapay` for the current Render API domain, set `KORAPAY_REDIRECT_URL` to `https://fliptrybe-ads-campaigner-web-g25g.onrender.com`, and keep treasury bank details in Render env only. `KORAPAY_WEBHOOK_SECRET` is reserved for an actual signing secret; do not put the webhook URL in that variable.
 
+OTP marketplace rollout is gated by `ENABLE_OTP_MODULE`, `ENABLE_PREMIUM_OTP`, `ENABLE_BUDGET_OTP`, and `ENABLE_OTP_ADMIN`. Keep all four `false` on Render until the additive OTP migration has deployed, provider keys are added, and `OTP_BETA_WORKSPACE_IDS` contains only approved compliant-beta workspaces. TextVerified, 5SIM, and SMS-Man keys stay as `sync: false`; the SMS-Activate-compatible slot remains disabled unless a trusted replacement endpoint is supplied.
+
 ## GitHub to Render flow
 
 1. Push this repository to GitHub.

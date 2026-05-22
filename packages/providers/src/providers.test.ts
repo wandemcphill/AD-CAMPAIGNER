@@ -4,6 +4,7 @@ import {
   createCloudinaryStorageProvider,
   createKorapayPaymentGateway,
   createMockAdsProvider,
+  createMockOtpProvider,
   createMockPaymentGateway,
   createMockSmmSupplier,
   createPerfectPanelSmmSupplier,
@@ -92,6 +93,32 @@ describe("provider contracts", () => {
     });
 
     expect(quote.amount.amountMinor).toBe(25000);
+  });
+
+  it("supports OTP provider quote, allocation, status, cancel, balance, and health contracts", async () => {
+    const provider = createMockOtpProvider("mock-budget-otp", "BUDGET");
+    const quote = await provider.quoteService({
+      serviceCode: "whatsapp",
+      countryCode: "NG",
+      tier: "BUDGET"
+    });
+    const order = await provider.createOrder({
+      orderId: "otp_test",
+      serviceCode: "whatsapp",
+      countryCode: "NG",
+      tier: "BUDGET"
+    });
+    const status = await provider.getOrderStatus(order.providerReference);
+    const cancel = await provider.cancelOrder(order.providerReference);
+    const balance = await provider.getBalance();
+    const health = await provider.checkHealth();
+
+    expect(quote.available).toBe(true);
+    expect(order.status).toBe("WAITING");
+    expect(status.phoneNumberMasked).not.toContain("00000000");
+    expect(cancel.accepted).toBe(true);
+    expect(balance.amount.currency).toBe("USD");
+    expect(health.status).toBe("HEALTHY");
   });
 
   it("creates Cloudinary unsigned upload URLs", async () => {

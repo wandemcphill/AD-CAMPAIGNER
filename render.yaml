@@ -88,6 +88,38 @@ services:
         value: mock
       - key: NOTIFICATION_PROVIDER
         value: mock
+      - key: ENABLE_OTP_MODULE
+        value: "false"
+      - key: ENABLE_PREMIUM_OTP
+        value: "false"
+      - key: ENABLE_BUDGET_OTP
+        value: "false"
+      - key: ENABLE_OTP_ADMIN
+        value: "false"
+      - key: OTP_PROVIDER_MODE
+        value: mock
+      - key: OTP_BETA_WORKSPACE_IDS
+        sync: false
+      - key: OTP_USD_TO_NGN_RATE
+        value: "1600"
+      - key: TEXTVERIFIED_API_URL
+        value: https://www.textverified.com/api/pub/v2
+      - key: TEXTVERIFIED_API_KEY
+        sync: false
+      - key: FIVESIM_API_URL
+        value: https://5sim.net/v1
+      - key: FIVESIM_API_KEY
+        sync: false
+      - key: SMSMAN_API_URL
+        value: https://api.sms-man.com/control
+      - key: SMSMAN_API_KEY
+        sync: false
+      - key: SMSACTIVATE_API_URL
+        sync: false
+      - key: SMSACTIVATE_API_KEY
+        sync: false
+      - key: SMSACTIVATE_COMPATIBLE_ENABLED
+        value: "false"
       - key: KORAPAY_BASE_URL
         value: https://api.korapay.com
       - key: KORAPAY_PUBLIC_KEY
@@ -221,6 +253,38 @@ services:
         value: mock
       - key: NOTIFICATION_PROVIDER
         value: mock
+      - key: ENABLE_OTP_MODULE
+        value: "false"
+      - key: ENABLE_PREMIUM_OTP
+        value: "false"
+      - key: ENABLE_BUDGET_OTP
+        value: "false"
+      - key: ENABLE_OTP_ADMIN
+        value: "false"
+      - key: OTP_PROVIDER_MODE
+        value: mock
+      - key: OTP_BETA_WORKSPACE_IDS
+        sync: false
+      - key: OTP_USD_TO_NGN_RATE
+        value: "1600"
+      - key: TEXTVERIFIED_API_URL
+        value: https://www.textverified.com/api/pub/v2
+      - key: TEXTVERIFIED_API_KEY
+        sync: false
+      - key: FIVESIM_API_URL
+        value: https://5sim.net/v1
+      - key: FIVESIM_API_KEY
+        sync: false
+      - key: SMSMAN_API_URL
+        value: https://api.sms-man.com/control
+      - key: SMSMAN_API_KEY
+        sync: false
+      - key: SMSACTIVATE_API_URL
+        sync: false
+      - key: SMSACTIVATE_API_KEY
+        sync: false
+      - key: SMSACTIVATE_COMPATIBLE_ENABLED
+        value: "false"
       - key: KORAPAY_BASE_URL
         value: https://api.korapay.com
       - key: KORAPAY_PUBLIC_KEY
