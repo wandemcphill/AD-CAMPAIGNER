@@ -50,6 +50,7 @@ import type {
   SmmSupplierReferenceDto,
   SmmSupplierReferencesDto
 } from "./platform.dtos";
+import { AiBrainClient } from "./ai-brain.client";
 
 const workspaceId = "workspace_demo";
 const userId = "user_demo";
@@ -193,6 +194,7 @@ function createSmmSupplierBundle() {
 export class PlatformService {
   private readonly adsProvider = createMockAdsProvider();
   private readonly aiProvider = createMockAiProvider();
+  private readonly aiBrain = AiBrainClient.fromEnv();
   private readonly paymentGateway = createPaymentGateway();
   private readonly smmSupplierBundle = createSmmSupplierBundle();
   private readonly smmSupplier = this.smmSupplierBundle.supplier;
@@ -652,6 +654,48 @@ export class PlatformService {
     };
   }
 
+  async getAiAdsInsights() {
+    const campaigns = this.listCampaigns();
+    const insights = await this.aiBrain.getAdsInsights({
+      account_id: workspaceId,
+      campaign_ids: campaigns.map((campaign) => campaign.id),
+      metrics: ["roi", "conversions", "budget_efficiency"],
+      filters: { product: "ads_campaigner" },
+      metadata: {
+        workspace_id: workspaceId,
+        campaign_count: campaigns.length
+      }
+    });
+
+    if (insights) {
+      return insights;
+    }
+
+    return {
+      summary: {
+        mode: "local_fallback",
+        account_id: workspaceId,
+        campaign_count: campaigns.length,
+        ai_brain_enabled: this.aiBrain.enabled
+      },
+      items: campaigns.map((campaign) => ({
+        id: campaign.id,
+        label: campaign.name,
+        metrics: {
+          budget_minor: campaign.budget.amountMinor,
+          status: campaign.status
+        },
+        dimensions: {
+          objective: campaign.objective,
+          provider: campaign.provider,
+          destination_kind: campaign.destination.kind
+        },
+        reasons: ["local_campaign_snapshot"]
+      })),
+      trace_id: null
+    };
+  }
+
   listNotifications() {
     return this.notifications;
   }
@@ -747,6 +791,7 @@ export class PlatformService {
 
   private pushEvent(event: PlatformEvent) {
     this.events.unshift(event);
+    void this.aiBrain.trackPlatformEvent(event);
   }
 
   private async prepareSmmOrder(input: CreateSmmOrderDto) {

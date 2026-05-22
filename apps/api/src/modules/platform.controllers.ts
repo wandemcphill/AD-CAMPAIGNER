@@ -204,6 +204,11 @@ export class AnalyticsController {
   overview() {
     return this.platform.getAnalyticsOverview();
   }
+
+  @Get("ai-insights")
+  aiInsights() {
+    return this.platform.getAiAdsInsights();
+  }
 }
 
 @Controller("notifications")
