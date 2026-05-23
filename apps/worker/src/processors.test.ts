@@ -5,11 +5,23 @@ import { createQueueJobOptions, queueNames } from "./queues";
 import type { QueueName } from "./queues";
 
 const enabledOtpFlags = {
+  digitalAccessWorkerEnabled: false,
+  digitalAccessAutomationEnabled: false,
   otpWorkerEnabled: true,
   otpAllocationEnabled: true,
   otpPollingEnabled: true,
   otpRefundsEnabled: true,
   otpProviderHealthEnabled: true
+};
+
+const enabledDigitalAccessFlags = {
+  digitalAccessWorkerEnabled: true,
+  digitalAccessAutomationEnabled: true,
+  otpWorkerEnabled: false,
+  otpAllocationEnabled: false,
+  otpPollingEnabled: false,
+  otpRefundsEnabled: false,
+  otpProviderHealthEnabled: false
 };
 
 describe("queue processors", () => {
@@ -85,6 +97,81 @@ describe("queue processors", () => {
 
     expect(options.attempts).toBe(8);
     expect(options.backoff.delay).toBe(3000);
+  });
+
+  it("uses durable retry settings for Digital Access automation jobs", () => {
+    const options = createQueueJobOptions("digital-access-automation");
+
+    expect(options.attempts).toBe(6);
+    expect(options.removeOnFail.count).toBe(50000);
+  });
+
+  it("skips Digital Access automation jobs when worker flags are disabled", () => {
+    const result = processQueueJob(
+      "digital-access-automation",
+      {
+        data: {
+          id: "da_job_123",
+          kind: "request_created",
+          workspaceId: "workspace_123",
+          requestId: "da_req_123",
+          idempotencyKey: "digital_access:request_created:da_req_123",
+          queuedAt: "2026-05-23T12:00:00.000Z"
+        }
+      } as never,
+      { flags: { digitalAccessWorkerEnabled: false } }
+    );
+
+    expect(result.status).toBe("skipped");
+    expect(result.details).toMatchObject({
+      reason: "digital_access_worker_disabled",
+      sideEffects: false
+    });
+  });
+
+  it("processes Digital Access automation without exposing idempotency keys", () => {
+    const result = processQueueJob(
+      "digital-access-automation",
+      {
+        data: {
+          id: "da_job_123",
+          kind: "status_changed",
+          workspaceId: "workspace_123",
+          requestId: "da_req_123",
+          userId: "user_secret_123",
+          actorUserId: "admin_secret_123",
+          serviceId: "dasvc_chatgpt",
+          planId: "dasvc_chatgpt_starter",
+          previousStatus: "pending",
+          nextStatus: "processing",
+          amountMinor: 650000,
+          currency: "NGN",
+          idempotencyKey: "digital_access:status_changed:da_req_123:processing",
+          queuedAt: "2026-05-23T12:00:00.000Z"
+        }
+      } as never,
+      { flags: enabledDigitalAccessFlags }
+    );
+
+    expect(result).toMatchObject({
+      queue: "digital-access-automation",
+      status: "processed",
+      details: {
+        kind: "status_changed",
+        workspaceId: "workspace_123",
+        requestId: "da_req_123",
+        serviceId: "dasvc_chatgpt",
+        planId: "dasvc_chatgpt_starter",
+        previousStatus: "pending",
+        nextStatus: "processing",
+        amountMinor: 650000,
+        currency: "NGN",
+        sideEffects: false
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("digital_access:status_changed");
+    expect(JSON.stringify(result)).not.toContain("user_secret_123");
+    expect(JSON.stringify(result)).not.toContain("admin_secret_123");
   });
 
   it.each<QueueName>(["otp-allocation", "otp-polling", "otp-refunds", "otp-provider-health"])(

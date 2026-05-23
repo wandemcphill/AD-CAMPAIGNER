@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEvent, eventNames } from "./index";
+import { createDigitalAccessAutomationJob, createEvent, eventNames } from "./index";
 
 describe("platform events", () => {
   it("keeps the public event contract available", () => {
@@ -17,5 +17,18 @@ describe("platform events", () => {
 
     expect(event.id).toMatch(/^evt_|-/);
     expect(event.occurredAt).toBeTruthy();
+  });
+
+  it("creates deterministic Digital Access automation job keys", () => {
+    const job = createDigitalAccessAutomationJob({
+      kind: "status_changed",
+      workspaceId: "workspace_123",
+      requestId: "da_req_123",
+      previousStatus: "pending",
+      nextStatus: "processing"
+    });
+
+    expect(job.idempotencyKey).toBe("digital_access:status_changed:da_req_123:processing");
+    expect(job.queuedAt).toBeTruthy();
   });
 });

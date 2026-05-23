@@ -13,6 +13,8 @@ export interface ProcessorResult {
 }
 
 export interface ProcessorFlags {
+  digitalAccessWorkerEnabled: boolean;
+  digitalAccessAutomationEnabled: boolean;
   otpWorkerEnabled: boolean;
   otpAllocationEnabled: boolean;
   otpPollingEnabled: boolean;
@@ -32,6 +34,10 @@ const otpQueueFlagNames = {
   "otp-provider-health": "otpProviderHealthEnabled"
 } as const satisfies Partial<Record<QueueName, keyof ProcessorFlags>>;
 
+const digitalAccessQueueFlagNames = {
+  "digital-access-automation": "digitalAccessAutomationEnabled"
+} as const satisfies Partial<Record<QueueName, keyof ProcessorFlags>>;
+
 function readBooleanFlag(value: string | undefined): boolean {
   return value === "1" || value === "true" || value === "TRUE" || value === "yes" || value === "on";
 }
@@ -40,6 +46,8 @@ function resolveProcessorFlags(options?: ProcessorOptions): ProcessorFlags {
   const env = options?.env ?? process.env;
 
   return {
+    digitalAccessWorkerEnabled: readBooleanFlag(env.DIGITAL_ACCESS_WORKER_ENABLED),
+    digitalAccessAutomationEnabled: readBooleanFlag(env.DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED),
     otpWorkerEnabled: readBooleanFlag(env.OTP_WORKER_ENABLED),
     otpAllocationEnabled: readBooleanFlag(env.OTP_ALLOCATION_WORKER_ENABLED),
     otpPollingEnabled: readBooleanFlag(env.OTP_POLLING_WORKER_ENABLED),
@@ -53,6 +61,16 @@ function isOtpQueueEnabled(queue: keyof typeof otpQueueFlagNames, flags: Process
   return flags.otpWorkerEnabled && flags[otpQueueFlagNames[queue]];
 }
 
+function isDigitalAccessQueueEnabled(
+  queue: keyof typeof digitalAccessQueueFlagNames,
+  flags: ProcessorFlags
+): boolean {
+  return (
+    flags.digitalAccessWorkerEnabled &&
+    flags[digitalAccessQueueFlagNames[queue]]
+  );
+}
+
 function createOtpSkippedResult(
   queue: keyof typeof otpQueueFlagNames,
   processedAt: string
@@ -63,6 +81,22 @@ function createOtpSkippedResult(
     detail: `${queue} skipped because OTP worker flags are disabled`,
     details: {
       reason: "otp_worker_disabled",
+      sideEffects: false
+    },
+    processedAt
+  };
+}
+
+function createDigitalAccessSkippedResult(
+  queue: keyof typeof digitalAccessQueueFlagNames,
+  processedAt: string
+): ProcessorResult {
+  return {
+    queue,
+    status: "skipped",
+    detail: `${queue} skipped because Digital Access worker flags are disabled`,
+    details: {
+      reason: "digital_access_worker_disabled",
       sideEffects: false
     },
     processedAt
@@ -163,6 +197,31 @@ export function processQueueJob(
         queue,
         status: "processed",
         detail: `Audit event ${data.eventId} persisted`,
+        processedAt
+      };
+    }
+    case "digital-access-automation": {
+      if (!isDigitalAccessQueueEnabled(queue, flags)) {
+        return createDigitalAccessSkippedResult(queue, processedAt);
+      }
+
+      const data = job.data as QueuePayloads["digital-access-automation"];
+      return {
+        queue,
+        status: "processed",
+        detail: `Digital Access automation ${data.kind} accepted for ${data.requestId}`,
+        details: {
+          kind: data.kind,
+          workspaceId: data.workspaceId,
+          requestId: data.requestId,
+          ...(data.serviceId === undefined ? {} : { serviceId: data.serviceId }),
+          ...(data.planId === undefined ? {} : { planId: data.planId }),
+          ...(data.previousStatus === undefined ? {} : { previousStatus: data.previousStatus }),
+          ...(data.nextStatus === undefined ? {} : { nextStatus: data.nextStatus }),
+          ...(data.amountMinor === undefined ? {} : { amountMinor: data.amountMinor }),
+          ...(data.currency === undefined ? {} : { currency: data.currency }),
+          sideEffects: false
+        },
         processedAt
       };
     }

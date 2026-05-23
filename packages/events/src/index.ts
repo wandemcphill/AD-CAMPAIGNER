@@ -114,3 +114,59 @@ export function createEvent<TEvent extends PlatformEvent>(
     occurredAt: new Date().toISOString()
   } as TEvent;
 }
+
+export const digitalAccessAutomationJobKinds = [
+  "request_created",
+  "status_changed",
+  "refund_completed",
+  "reconciliation_check"
+] as const;
+
+export type DigitalAccessAutomationJobKind = (typeof digitalAccessAutomationJobKinds)[number];
+
+export interface DigitalAccessAutomationJob {
+  id: string;
+  kind: DigitalAccessAutomationJobKind;
+  workspaceId: string;
+  requestId: string;
+  userId?: string;
+  actorUserId?: string;
+  serviceId?: string;
+  planId?: string;
+  previousStatus?: DigitalAccessRequest["status"];
+  nextStatus?: DigitalAccessRequest["status"];
+  amountMinor?: number;
+  currency?: string;
+  sourceEventId?: string;
+  idempotencyKey: string;
+  queuedAt: string;
+}
+
+export function createDigitalAccessAutomationJob(
+  input: Omit<DigitalAccessAutomationJob, "id" | "idempotencyKey" | "queuedAt"> &
+    Partial<Pick<DigitalAccessAutomationJob, "id" | "idempotencyKey" | "queuedAt">>
+): DigitalAccessAutomationJob {
+  const suffix = input.nextStatus ? `:${input.nextStatus}` : "";
+
+  return {
+    id:
+      input.id ??
+      globalThis.crypto?.randomUUID?.() ??
+      `da_job_${Math.random().toString(36).slice(2, 12)}`,
+    kind: input.kind,
+    workspaceId: input.workspaceId,
+    requestId: input.requestId,
+    ...(input.userId === undefined ? {} : { userId: input.userId }),
+    ...(input.actorUserId === undefined ? {} : { actorUserId: input.actorUserId }),
+    ...(input.serviceId === undefined ? {} : { serviceId: input.serviceId }),
+    ...(input.planId === undefined ? {} : { planId: input.planId }),
+    ...(input.previousStatus === undefined ? {} : { previousStatus: input.previousStatus }),
+    ...(input.nextStatus === undefined ? {} : { nextStatus: input.nextStatus }),
+    ...(input.amountMinor === undefined ? {} : { amountMinor: input.amountMinor }),
+    ...(input.currency === undefined ? {} : { currency: input.currency }),
+    ...(input.sourceEventId === undefined ? {} : { sourceEventId: input.sourceEventId }),
+    idempotencyKey:
+      input.idempotencyKey ?? `digital_access:${input.kind}:${input.requestId}${suffix}`,
+    queuedAt: input.queuedAt ?? new Date().toISOString()
+  };
+}

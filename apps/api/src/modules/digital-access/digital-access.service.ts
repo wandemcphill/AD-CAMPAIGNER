@@ -1,7 +1,12 @@
 import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 
 import { Prisma, type DatabaseClient } from "@fliptrybe/database";
-import { createEvent, type PlatformEvent } from "@fliptrybe/events";
+import {
+  createDigitalAccessAutomationJob,
+  createEvent,
+  type DigitalAccessAutomationJob,
+  type PlatformEvent
+} from "@fliptrybe/events";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
 import {
   assertDigitalAccessStatusTransition,
@@ -26,6 +31,7 @@ import type {
 } from "@fliptrybe/types";
 
 import { PrismaService } from "../prisma.service";
+import { QueueProducerService } from "../queue-producer.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   CreateDigitalAccessRequestDto,
@@ -203,7 +209,10 @@ function toDateString(value: Date) {
 export class DigitalAccessHubService {
   private readonly events: PlatformEvent[] = [];
 
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly queueProducer?: QueueProducerService
+  ) {}
 
   async listCategories() {
     this.ensureDigitalAccessEnabled();
@@ -272,7 +281,7 @@ export class DigitalAccessHubService {
     const idempotencyKey =
       input.idempotencyKey?.trim() || context.idempotencyKey?.trim() || id("da_idempotency");
 
-    return this.db.$transaction(
+    const result = await this.db.$transaction(
       async (tx) => {
         const scope = await this.resolveTenantScope(tx, requestedScope);
         const existing = await tx.digitalAccessRequest.findUnique({
@@ -419,6 +428,25 @@ export class DigitalAccessHubService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
+
+    if (!result.idempotent) {
+      await this.enqueueAutomationJob(
+        createDigitalAccessAutomationJob({
+          kind: "request_created",
+          workspaceId: result.request.workspaceId,
+          requestId: result.request.id,
+          ...(result.request.userId ? { userId: result.request.userId } : {}),
+          serviceId: result.request.serviceId,
+          planId: result.request.planId,
+          nextStatus: result.request.status,
+          amountMinor: result.request.amount.amountMinor,
+          currency: result.request.amount.currency,
+          idempotencyKey: `digital_access:request_created:${result.request.id}`
+        })
+      );
+    }
+
+    return result;
   }
 
   async listRequests(context: AuthenticatedRequestContext) {
@@ -804,7 +832,7 @@ export class DigitalAccessHubService {
     this.ensureAdminEnabled();
     const requestedScope = this.requireTenantContext(context);
 
-    return this.db.$transaction(
+    const outcome = await this.db.$transaction(
       async (tx) => {
         const scope = await this.resolveAdminScope(tx, requestedScope);
         const request = await this.getStoredRequest(requestId, tx, scope.workspaceId);
@@ -855,13 +883,65 @@ export class DigitalAccessHubService {
           status
         });
 
+        const domainRequest = this.toRequest(updated, updated.walletCharges[0]?.id);
+
         return {
-          request: this.toRequest(updated, updated.walletCharges[0]?.id),
-          ...(refund === undefined ? {} : { refund })
+          response: {
+            request: domainRequest,
+            ...(refund === undefined ? {} : { refund })
+          },
+          automation: {
+            previousStatus: currentStatus,
+            nextStatus: status,
+            request: domainRequest,
+            ...(refund === undefined ? {} : { refund })
+          }
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
     );
+
+    if (outcome.automation.previousStatus !== outcome.automation.nextStatus) {
+      await this.enqueueAutomationJob(
+        createDigitalAccessAutomationJob({
+          kind: "status_changed",
+          workspaceId: outcome.automation.request.workspaceId,
+          requestId: outcome.automation.request.id,
+          ...(outcome.automation.request.userId
+            ? { userId: outcome.automation.request.userId }
+            : {}),
+          actorUserId: requestedScope.userId,
+          serviceId: outcome.automation.request.serviceId,
+          planId: outcome.automation.request.planId,
+          previousStatus: outcome.automation.previousStatus,
+          nextStatus: outcome.automation.nextStatus,
+          amountMinor: outcome.automation.request.amount.amountMinor,
+          currency: outcome.automation.request.amount.currency
+        })
+      );
+    }
+
+    if (outcome.automation.refund) {
+      await this.enqueueAutomationJob(
+        createDigitalAccessAutomationJob({
+          kind: "refund_completed",
+          workspaceId: outcome.automation.request.workspaceId,
+          requestId: outcome.automation.request.id,
+          ...(outcome.automation.request.userId
+            ? { userId: outcome.automation.request.userId }
+            : {}),
+          actorUserId: requestedScope.userId,
+          serviceId: outcome.automation.request.serviceId,
+          planId: outcome.automation.request.planId,
+          nextStatus: outcome.automation.request.status,
+          amountMinor: outcome.automation.refund.amount.amountMinor,
+          currency: outcome.automation.refund.amount.currency,
+          idempotencyKey: `digital_access:refund_completed:${outcome.automation.refund.ledgerEntryId ?? outcome.automation.request.id}`
+        })
+      );
+    }
+
+    return outcome.response;
   }
 
   async assignRequest(
@@ -1598,6 +1678,10 @@ export class DigitalAccessHubService {
         payload
       } as unknown as Omit<Extract<PlatformEvent, { name: TEvent }>, "id" | "occurredAt">)
     );
+  }
+
+  private async enqueueAutomationJob(job: DigitalAccessAutomationJob) {
+    await this.queueProducer?.enqueueDigitalAccessAutomation(job);
   }
 
   private isDigitalAccessEnabled() {

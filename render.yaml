@@ -36,6 +36,8 @@ services:
         generateValue: true
       - key: STORAGE_PROVIDER
         value: cloudinary
+      - key: QUEUE_PRODUCER_ENABLED
+        value: "true"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_UPLOAD_PRESET
@@ -111,6 +113,10 @@ services:
       - key: TRUST_PROXY_AUTH_HEADERS
         value: "false"
       - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
+        value: "false"
+      - key: DIGITAL_ACCESS_WORKER_ENABLED
+        value: "false"
+      - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
         value: "false"
       - key: OTP_PROVIDER_MODE
         value: mock
@@ -288,6 +294,10 @@ services:
       - key: TRUST_PROXY_AUTH_HEADERS
         value: "false"
       - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
+        value: "false"
+      - key: DIGITAL_ACCESS_WORKER_ENABLED
+        value: "false"
+      - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
         value: "false"
       - key: OTP_PROVIDER_MODE
         value: mock

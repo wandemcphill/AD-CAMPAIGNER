@@ -1,4 +1,5 @@
 import { defaultSmmRetryPolicy } from "@fliptrybe/service-smm";
+import type { DigitalAccessAutomationJob } from "@fliptrybe/events";
 import type {
   SmmFraudRiskLevel,
   SmmFulfillmentQueueJob,
@@ -13,6 +14,7 @@ export const queueNames = [
   "media-processing",
   "payments",
   "audit-events",
+  "digital-access-automation",
   "otp-allocation",
   "otp-polling",
   "otp-refunds",
@@ -139,6 +141,7 @@ export type QueuePayloads = {
   "media-processing": MediaProcessingJob;
   payments: PaymentJob;
   "audit-events": AuditEventJob;
+  "digital-access-automation": DigitalAccessAutomationJob;
   "otp-allocation": OtpAllocationJob;
   "otp-polling": OtpPollingJob;
   "otp-refunds": OtpRefundJob;
@@ -186,6 +189,12 @@ export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
     concurrency: 30,
     retryPolicy: { attempts: 8, baseDelayMs: 5_000, maxDelayMs: 300_000, jitterRatio: 0.1 },
     removeOnComplete: { ageSeconds: 604_800, count: 50_000 },
+    removeOnFail: { ageSeconds: 2_592_000, count: 50_000 }
+  },
+  "digital-access-automation": {
+    concurrency: 12,
+    retryPolicy: { attempts: 6, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.1 },
+    removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
     removeOnFail: { ageSeconds: 2_592_000, count: 50_000 }
   },
   "otp-allocation": {
