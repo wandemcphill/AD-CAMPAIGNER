@@ -9,7 +9,9 @@ import type {
   SmmSupplierReferenceDto,
   SmmSupplierReferencesDto
 } from "./platform.dtos";
+import { AuthSessionService } from "./auth-session.service";
 import { PlatformService } from "./platform.service";
+import type { HeaderBag } from "./request-context";
 
 @Controller("health")
 export class HealthController {
@@ -23,16 +25,16 @@ export class HealthController {
 
 @Controller("auth")
 export class AuthController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(@Inject(AuthSessionService) private readonly auth: AuthSessionService) {}
 
   @Get("session")
-  getSession() {
-    return this.platform.getSession();
+  getSession(@Headers() headers: HeaderBag) {
+    return this.auth.getSession(headers);
   }
 
   @Post("login")
-  login() {
-    return this.platform.getSession();
+  login(@Headers() headers: HeaderBag) {
+    return this.auth.issueSession(headers);
   }
 }
 

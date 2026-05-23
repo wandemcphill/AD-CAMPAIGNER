@@ -12,6 +12,7 @@ export const envSchema = z.object({
   REDIS_URL: z.string().min(1).default("redis://localhost:6379"),
   JWT_SECRET: z.string().min(24),
   SESSION_SECRET: z.string().min(24),
+  AUTH_SESSION_TTL_SECONDS: z.string().optional(),
   STORAGE_PROVIDER: storageProviderSchema,
   QUEUE_PRODUCER_ENABLED: z.string().optional(),
   ADS_PROVIDER: providerSchema,

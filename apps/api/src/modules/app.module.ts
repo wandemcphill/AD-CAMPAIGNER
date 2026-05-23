@@ -23,6 +23,8 @@ import {
   WebhooksController
 } from "./platform.controllers";
 import { PlatformService } from "./platform.service";
+import { PrismaService } from "./prisma.service";
+import { AuthSessionService } from "./auth-session.service";
 import { RealtimeGateway } from "./realtime.gateway";
 import { OtpModule } from "./otp/otp.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
@@ -50,6 +52,6 @@ import { DigitalAccessModule } from "./digital-access/digital-access.module";
     AdminController,
     AuditController
   ],
-  providers: [PlatformService, RealtimeGateway]
+  providers: [PrismaService, AuthSessionService, PlatformService, RealtimeGateway]
 })
 export class AppModule {}

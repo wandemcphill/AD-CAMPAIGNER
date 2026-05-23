@@ -8,6 +8,7 @@ export interface AuthenticatedRequestContext {
   userId: string;
   workspaceId: string;
   organizationId?: string;
+  sessionId?: string;
   userEmail?: string;
   userName?: string;
 }
@@ -64,6 +65,7 @@ function requireScopedIdentity(context: Partial<AuthenticatedRequestContext>) {
     userId: context.userId,
     workspaceId: context.workspaceId,
     ...(context.organizationId === undefined ? {} : { organizationId: context.organizationId }),
+    ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
     ...(context.userEmail === undefined ? {} : { userEmail: context.userEmail }),
     ...(context.userName === undefined ? {} : { userName: context.userName })
   };
@@ -83,6 +85,10 @@ function bearerToken(headers: HeaderBag) {
   }
 
   return token;
+}
+
+export function bearerTokenFromHeaders(headers: HeaderBag) {
+  return bearerToken(headers);
 }
 
 function decodeJsonSegment(segment: string): JwtClaims {
@@ -143,6 +149,7 @@ function contextFromClaims(claims: JwtClaims): Partial<AuthenticatedRequestConte
   const userId = claim(claims, ["sub", "userId", "user_id"]);
   const workspaceId = claim(claims, ["workspaceId", "workspace_id", "workspace"]);
   const organizationId = claim(claims, ["organizationId", "organization_id", "orgId", "org_id"]);
+  const sessionId = claim(claims, ["sid", "sessionId", "session_id"]);
   const userEmail = claim(claims, ["email", "userEmail", "user_email"]);
   const userName = claim(claims, ["name", "userName", "user_name"]);
 
@@ -150,6 +157,7 @@ function contextFromClaims(claims: JwtClaims): Partial<AuthenticatedRequestConte
     ...(userId === undefined ? {} : { userId }),
     ...(workspaceId === undefined ? {} : { workspaceId }),
     ...(organizationId === undefined ? {} : { organizationId }),
+    ...(sessionId === undefined ? {} : { sessionId }),
     ...(userEmail === undefined ? {} : { userEmail }),
     ...(userName === undefined ? {} : { userName })
   };
