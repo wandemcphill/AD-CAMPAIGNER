@@ -23,6 +23,8 @@ export interface RequestMetadataContext {
 export interface WorkspaceContextRequest {
   headers: HeaderBag;
   workspaceContext?: AuthenticatedRequestContext;
+  workspaceContextError?: unknown;
+  workspaceContextValidated?: boolean;
   requestMetadata?: RequestMetadataContext;
 }
 
@@ -89,6 +91,16 @@ function bearerToken(headers: HeaderBag) {
 
 export function bearerTokenFromHeaders(headers: HeaderBag) {
   return bearerToken(headers);
+}
+
+export function hasAuthenticationContextHeaders(headers: HeaderBag) {
+  return Boolean(
+    header(headers, "authorization") ||
+      header(headers, "x-user-id") ||
+      header(headers, "x-fliptrybe-user-id") ||
+      header(headers, "x-workspace-id") ||
+      header(headers, "x-fliptrybe-workspace-id")
+  );
 }
 
 function decodeJsonSegment(segment: string): JwtClaims {
@@ -232,6 +244,17 @@ export function attachWorkspaceContext(request: WorkspaceContextRequest) {
 }
 
 export function workspaceContextFromRequest(request: WorkspaceContextRequest) {
+  if (request.workspaceContextValidated) {
+    if (request.workspaceContext) {
+      return request.workspaceContext;
+    }
+    if (request.workspaceContextError instanceof Error) {
+      throw request.workspaceContextError;
+    }
+
+    throw new UnauthorizedException("Workspace context is missing.");
+  }
+
   if (!request.workspaceContext) {
     attachWorkspaceContext(request);
   }

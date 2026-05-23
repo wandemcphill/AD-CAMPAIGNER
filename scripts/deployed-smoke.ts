@@ -599,7 +599,7 @@ async function main() {
   results.push(await checkStaticApp("Admin app availability", config.adminUrl, config));
   results.push(await checkJsonArrayRoute(config, "Destination catalog", "/v1/destinations/catalog"));
   results.push(await checkJsonArrayRoute(config, "SMM services catalog", "/v1/smm/services"));
-  results.push(await checkJsonObjectRoute(config, "Wallet read model", "/v1/wallet"));
+  results.push(await checkProtectedRouteRejects(config, "Wallet rejects unauthenticated", "/v1/wallet"));
   results.push(await checkProtectedRouteRejects(config, "Session rejects unauthenticated", "/v1/auth/session"));
   results.push(
     await checkProtectedRouteRejects(

@@ -1,7 +1,11 @@
 import { Injectable, type NestMiddleware } from "@nestjs/common";
 
 import { AuthSessionService } from "./auth-session.service";
-import { metadataContextFromHeaders, type WorkspaceContextRequest } from "./request-context";
+import {
+  hasAuthenticationContextHeaders,
+  metadataContextFromHeaders,
+  type WorkspaceContextRequest
+} from "./request-context";
 
 @Injectable()
 export class WorkspaceContextMiddleware implements NestMiddleware {
@@ -12,12 +16,21 @@ export class WorkspaceContextMiddleware implements NestMiddleware {
     _response: unknown,
     next: (error?: unknown) => void
   ) {
+    request.workspaceContextValidated = true;
+    request.requestMetadata = metadataContextFromHeaders(request.headers);
+
+    if (!hasAuthenticationContextHeaders(request.headers)) {
+      next();
+
+      return;
+    }
+
     try {
       request.workspaceContext = await this.authSession.getWorkspaceContext(request.headers);
-      request.requestMetadata = metadataContextFromHeaders(request.headers);
-      next();
     } catch (error) {
-      next(error);
+      request.workspaceContextError = error;
     }
+
+    next();
   }
 }
