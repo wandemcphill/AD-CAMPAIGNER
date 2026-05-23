@@ -1,31 +1,80 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { CheckCircle2, Mail, MessageCircle, Wallet, X } from "lucide-react";
 
 import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
 
+import { getStoredToken } from "../lib/api-client";
+import { createDigitalAccessRequest } from "./api";
+import { accessEnabled } from "./data";
 import type { AccessPlan } from "./data";
 
 export function RequestAccessButton({
   serviceName,
+  serviceId,
+  serviceSlug,
   plans
 }: {
   serviceName: string;
+  serviceId?: string;
+  serviceSlug?: string;
   plans: AccessPlan[];
 }) {
   const [open, setOpen] = useState(false);
   const [planId, setPlanId] = useState(plans[0]?.id ?? "");
   const [contactType, setContactType] = useState<"whatsapp" | "email">("whatsapp");
+  const [contactValue, setContactValue] = useState("");
+  const [notes, setNotes] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string>();
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.id === planId) ?? plans[0],
     [planId, plans]
   );
 
+  async function submitRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(undefined);
+
+    if (!selectedPlan) {
+      setError("Select a plan before submitting.");
+      return;
+    }
+    if (accessEnabled && !getStoredToken()) {
+      setError("Sign in before submitting a live request.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      if (accessEnabled) {
+        await createDigitalAccessRequest({
+          ...(serviceId ? { serviceId } : {}),
+          ...(serviceSlug ? { serviceSlug } : {}),
+          planId: selectedPlan.id,
+          contactType,
+          contactValue,
+          ...(notes.trim() ? { notes: notes.trim() } : {})
+        });
+      }
+      setSubmitted(true);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Request submission failed.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    void submitRequest(event);
+  }
+
   return (
     <>
-      <Button className="w-full sm:w-auto" onClick={() => setOpen(true)}>
+      <Button className="w-full sm:w-auto" disabled={plans.length === 0} onClick={() => setOpen(true)}>
         Request Access
       </Button>
       {open ? (
@@ -61,7 +110,7 @@ export function RequestAccessButton({
                 </p>
               </div>
             ) : (
-              <div className="mt-6 grid gap-4">
+              <form className="mt-6 grid gap-4" onSubmit={handleSubmit}>
                 <div className="grid gap-2">
                   <div className="text-sm font-medium text-zinc-700">Select plan</div>
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -105,7 +154,11 @@ export function RequestAccessButton({
                   {contactType === "whatsapp" ? "WhatsApp number" : "Email address"}
                   <input
                     className="h-11 rounded-md border border-zinc-200 bg-white px-3 text-zinc-950"
+                    onChange={(event) => setContactValue(event.target.value)}
                     placeholder={contactType === "whatsapp" ? "+234..." : "you@example.com"}
+                    required
+                    type={contactType === "email" ? "email" : "tel"}
+                    value={contactValue}
                   />
                 </label>
 
@@ -113,7 +166,9 @@ export function RequestAccessButton({
                   Notes
                   <textarea
                     className="min-h-24 rounded-md border border-zinc-200 bg-white px-3 py-2 text-zinc-950"
+                    onChange={(event) => setNotes(event.target.value)}
                     placeholder="Add timing, plan, or support context for the fulfillment team."
+                    value={notes}
                   />
                 </label>
 
@@ -125,8 +180,16 @@ export function RequestAccessButton({
                   <div className="font-semibold text-zinc-950">{selectedPlan?.price}</div>
                 </div>
 
-                <Button onClick={() => setSubmitted(true)}>Submit Request</Button>
-              </div>
+                {error ? (
+                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                    {error}
+                  </div>
+                ) : null}
+
+                <Button disabled={submitting} type="submit">
+                  {submitting ? "Submitting" : "Submit Request"}
+                </Button>
+              </form>
             )}
           </Panel>
         </div>

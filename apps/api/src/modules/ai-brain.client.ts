@@ -196,6 +196,7 @@ export function toCanonicalEvent(event: PlatformEvent): CanonicalAiBrainEvent | 
       platform_event_id: event.id,
       platform_event_name: event.name,
       tenant_id: event.tenantId,
+      ...readProjectionMetadata(entity, payload),
       payload
     },
     schema_version: 1,
@@ -243,6 +244,28 @@ function readEntityId(
     text(payload.requestId) ??
     text(payload.walletId)
   );
+}
+
+function readProjectionMetadata(
+  entity: Record<string, unknown> | undefined,
+  payload: Record<string, unknown>
+) {
+  const campaignId = readEntityId(entity, payload);
+  const merchantId =
+    text(entity?.creatorUserId) ??
+    text(entity?.merchantId) ??
+    text(payload.merchantId) ??
+    text(payload.userId) ??
+    text(payload.actorId);
+  return {
+    ...(merchantId ? { merchant_id: merchantId } : {}),
+    ...(campaignId ? { campaign_id: campaignId } : {}),
+    ...(text(payload.provider) ? { provider: text(payload.provider) } : {}),
+    ...(text(entity?.channel) ? { channel: text(entity?.channel) } : {}),
+    ...(text(entity?.objective) ? { objective: text(entity?.objective) } : {}),
+    ...(text(payload.audienceId) ? { audience_id: text(payload.audienceId) } : {}),
+    ...(text(payload.audienceSegment) ? { audience_segment: text(payload.audienceSegment) } : {})
+  };
 }
 
 function text(value: unknown) {

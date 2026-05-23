@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Badge, Panel, cn } from "@fliptrybe/ui";
 
+import { SessionPanel } from "../ui/session-panel";
 import { accessEnabled, navItems, statusTone, type AccessRequest } from "./data";
 
 export function DigitalAccessShell({ children, active }: { children: ReactNode; active: string }) {
@@ -59,6 +60,7 @@ export function DigitalAccessShell({ children, active }: { children: ReactNode; 
               </div>
             </div>
           </Panel>
+          <SessionPanel />
         </aside>
 
         <section className="px-4 py-4 sm:px-6 lg:px-8">{children}</section>

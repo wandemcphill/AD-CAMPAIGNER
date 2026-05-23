@@ -30,9 +30,17 @@ export class RealtimeGateway implements OnGatewayConnection {
   ) {}
 
   handleConnection(client: Socket) {
-    client.emit("notifications", this.platform.listNotifications());
-    client.emit("campaigns", this.platform.listCampaigns());
-    client.emit("livestreams", this.platform.listLivePromotions());
+    const workspaceContext = optionalAuthenticatedContextFromHeaders(client.handshake.headers);
+
+    client.emit(
+      "notifications",
+      workspaceContext ? this.platform.listNotifications(workspaceContext) : []
+    );
+    client.emit("campaigns", workspaceContext ? this.platform.listCampaigns(workspaceContext) : []);
+    client.emit(
+      "livestreams",
+      workspaceContext ? this.platform.listLivePromotions(workspaceContext) : []
+    );
     client.emit("admin-monitoring", this.platform.getAdminOverview());
     const otpSnapshot = this.otp.getRealtimeSnapshot();
     client.emit("otp-orders", otpSnapshot.orders);
@@ -41,7 +49,6 @@ export class RealtimeGateway implements OnGatewayConnection {
       activeOrders: otpSnapshot.orders.length,
       emittedAt: new Date().toISOString()
     });
-    const workspaceContext = optionalAuthenticatedContextFromHeaders(client.handshake.headers);
     void this.emitDigitalAccessSnapshot(client, workspaceContext?.workspaceId);
   }
 

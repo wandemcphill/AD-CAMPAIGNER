@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException
+} from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { createMetric } from "@fliptrybe/analytics";
 import { createEvent, type PlatformEvent } from "@fliptrybe/events";
@@ -51,11 +56,24 @@ import type {
   SmmSupplierReferencesDto
 } from "./platform.dtos";
 import { AiBrainClient } from "./ai-brain.client";
+import type { AuthenticatedRequestContext } from "./request-context";
 
-const workspaceId = "workspace_demo";
-const userId = "user_demo";
+const demoWorkspaceId = "workspace_demo";
+const demoUserId = "user_demo";
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+
+function requireWorkspaceContext(context?: AuthenticatedRequestContext) {
+  if (!context?.workspaceId || !context.userId) {
+    throw new UnauthorizedException("Authenticated workspace context is required.");
+  }
+
+  return context;
+}
+
+function walletIdFor(workspaceId: string) {
+  return `wallet_${workspaceId}`;
+}
 
 function createStorageProvider() {
   if (process.env.STORAGE_PROVIDER === "cloudinary") {
@@ -210,14 +228,7 @@ export class PlatformService {
   private readonly ledgerEntries: LedgerEntry[] = [];
   private readonly smmOrders: SmmOrder[] = [];
   private readonly supportTickets: SupportTicket[] = [];
-  private readonly notifications: NotificationMessage[] = [
-    createNotification({
-      workspaceId,
-      channel: "IN_APP",
-      title: "Phase 1 foundation ready",
-      body: "Mock providers, queues, analytics, and admin surfaces are wired for validation."
-    })
-  ];
+  private readonly notifications: NotificationMessage[] = [];
 
   getHealth() {
     return {
@@ -241,12 +252,12 @@ export class PlatformService {
   getSession() {
     return {
       user: {
-        id: userId,
+        id: demoUserId,
         name: "Demo Operator",
         email: "operator@fliptrybe.test"
       },
       workspace: {
-        id: workspaceId,
+        id: demoWorkspaceId,
         name: "FlipTrybe Growth HQ",
         defaultCurrency: "NGN"
       },
@@ -261,7 +272,7 @@ export class PlatformService {
         name: "FlipTrybe",
         slug: "fliptrybe",
         region: "global",
-        workspaces: [{ id: workspaceId, name: "FlipTrybe Growth HQ" }]
+        workspaces: [{ id: demoWorkspaceId, name: "FlipTrybe Growth HQ" }]
       }
     ];
   }
@@ -293,7 +304,8 @@ export class PlatformService {
     });
   }
 
-  async createCampaign(input: CreateCampaignDto) {
+  async createCampaign(context: AuthenticatedRequestContext | undefined, input: CreateCampaignDto) {
+    const scope = requireWorkspaceContext(context);
     const destination: PromotionDestination = {
       kind: input.destinationKind ?? "INSTAGRAM_REEL",
       url: input.destinationUrl ?? "https://instagram.com/fliptrybe"
@@ -301,8 +313,8 @@ export class PlatformService {
     const timestamp = now();
     const campaign: Campaign = {
       id: id("cmp"),
-      workspaceId,
-      creatorUserId: userId,
+      workspaceId: scope.workspaceId,
+      creatorUserId: scope.userId,
       name: input.name ?? "Creator growth sprint",
       objective: input.objective ?? "ENGAGEMENT",
       status: "PENDING_REVIEW",
@@ -330,7 +342,7 @@ export class PlatformService {
     this.pushEvent(
       createEvent({
         name: "CampaignCreated",
-        tenantId: workspaceId,
+        tenantId: scope.workspaceId,
         payload: { campaign: readyCampaign }
       })
     );
@@ -338,22 +350,42 @@ export class PlatformService {
     return readyCampaign;
   }
 
-  listCampaigns() {
-    return this.campaigns.length > 0 ? this.campaigns : [this.seedCampaign()];
+  listCampaigns(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const campaigns = this.campaigns.filter(
+      (campaign) => campaign.workspaceId === scope.workspaceId
+    );
+
+    return campaigns.length > 0 ? campaigns : [this.seedCampaign(scope)];
   }
 
-  async startCampaign(campaignId: string) {
+  async startCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireWorkspaceContext(context);
     const campaign =
-      this.campaigns.find((item) => item.id === campaignId) ?? this.seedCampaign(campaignId);
+      this.campaigns.find(
+        (item) => item.id === campaignId && item.workspaceId === scope.workspaceId
+      ) ?? (campaignId === "cmp_demo" ? this.seedCampaign(scope, campaignId) : undefined);
+
+    if (!campaign) {
+      throw new NotFoundException("Campaign not found in the active workspace.");
+    }
+
     const result = await this.adsProvider.startCampaign(
       campaign.providerReference ?? id("mock_ads")
     );
     const updated: Campaign = { ...campaign, status: result.status, updatedAt: now() };
+    const existingIndex = this.campaigns.findIndex(
+      (item) => item.id === updated.id && item.workspaceId === scope.workspaceId
+    );
+
+    if (existingIndex >= 0) {
+      this.campaigns[existingIndex] = updated;
+    }
 
     this.pushEvent(
       createEvent({
         name: "CampaignStarted",
-        tenantId: workspaceId,
+        tenantId: scope.workspaceId,
         payload: { campaignId: updated.id }
       })
     );
@@ -384,11 +416,14 @@ export class PlatformService {
     ] satisfies DestinationKind[];
   }
 
-  listLivePromotions() {
+  listLivePromotions(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const campaign = this.listCampaigns(scope)[0] ?? this.seedCampaign(scope, "cmp_live_demo");
+
     return [
       {
-        id: "live_demo",
-        campaignId: "cmp_live_demo",
+        id: `live_${scope.workspaceId}`,
+        campaignId: campaign.id,
         destinationKind: "TIKTOK_LIVE",
         expectedStartAt: now(),
         realtimeBoostEnabled: true,
@@ -398,8 +433,12 @@ export class PlatformService {
     ];
   }
 
-  async createSmmOrder(input: CreateSmmOrderDto) {
-    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(input);
+  async createSmmOrder(context: AuthenticatedRequestContext | undefined, input: CreateSmmOrderDto) {
+    const scope = requireWorkspaceContext(context);
+    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(
+      scope,
+      input
+    );
 
     if (fraudAssessment.action === "BLOCK") {
       throw new BadRequestException({
@@ -419,7 +458,7 @@ export class PlatformService {
     this.pushEvent(
       createEvent({
         name: "SMMOrderCreated",
-        tenantId: workspaceId,
+        tenantId: scope.workspaceId,
         payload: { order: readyOrder }
       })
     );
@@ -432,8 +471,12 @@ export class PlatformService {
     };
   }
 
-  async quoteSmmOrder(input: CreateSmmOrderDto) {
-    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(input);
+  async quoteSmmOrder(context: AuthenticatedRequestContext | undefined, input: CreateSmmOrderDto) {
+    const scope = requireWorkspaceContext(context);
+    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(
+      scope,
+      input
+    );
 
     return {
       order,
@@ -481,12 +524,18 @@ export class PlatformService {
     };
   }
 
-  getSmmOrderStatuses(input: SmmSupplierReferencesDto) {
+  getSmmOrderStatuses(
+    context: AuthenticatedRequestContext | undefined,
+    input: SmmSupplierReferencesDto
+  ) {
+    const scope = requireWorkspaceContext(context);
     const supplierReferences =
       input.supplierReferences?.filter(Boolean) ??
       this.smmOrders
+        .filter((order) => order.workspaceId === scope.workspaceId)
         .map((order) => order.supplierReference)
         .filter((reference): reference is string => Boolean(reference));
+    this.assertSmmReferencesBelongToWorkspace(scope, supplierReferences);
 
     if (supplierReferences.length === 0) {
       throw new BadRequestException("At least one SMM supplier reference is required.");
@@ -495,28 +544,42 @@ export class PlatformService {
     return this.smmSupplier.getOrderStatuses(supplierReferences);
   }
 
-  requestSmmRefill(input: SmmSupplierReferenceDto) {
+  requestSmmRefill(
+    context: AuthenticatedRequestContext | undefined,
+    input: SmmSupplierReferenceDto
+  ) {
+    const scope = requireWorkspaceContext(context);
     if (!input.supplierReference) {
       throw new BadRequestException("SMM supplier reference is required.");
     }
+    this.assertSmmReferencesBelongToWorkspace(scope, [input.supplierReference]);
 
     return this.smmSupplier.requestRefill(input.supplierReference);
   }
 
-  requestSmmCancel(input: SmmSupplierReferencesDto) {
+  requestSmmCancel(
+    context: AuthenticatedRequestContext | undefined,
+    input: SmmSupplierReferencesDto
+  ) {
+    const scope = requireWorkspaceContext(context);
     const supplierReferences = input.supplierReferences?.filter(Boolean) ?? [];
 
     if (supplierReferences.length === 0) {
       throw new BadRequestException("At least one SMM supplier reference is required.");
     }
+    this.assertSmmReferencesBelongToWorkspace(scope, supplierReferences);
 
     return this.smmSupplier.requestCancel(supplierReferences);
   }
 
-  async createPaymentIntent(input: CreatePaymentIntentDto) {
+  async createPaymentIntent(
+    context: AuthenticatedRequestContext | undefined,
+    input: CreatePaymentIntentDto
+  ) {
+    const scope = requireWorkspaceContext(context);
     const intent = await this.paymentGateway.createPaymentIntent({
       amount: { amountMinor: input.amountMinor ?? 500000, currency: input.currency ?? "NGN" },
-      workspaceId,
+      workspaceId: scope.workspaceId,
       ...(input.customerEmail === undefined ? {} : { customerEmail: input.customerEmail }),
       ...(input.customerName === undefined ? {} : { customerName: input.customerName }),
       ...(input.redirectUrl === undefined ? {} : { redirectUrl: input.redirectUrl }),
@@ -529,8 +592,8 @@ export class PlatformService {
       this.pushEvent(
         createEvent({
           name: "PaymentCompleted",
-          tenantId: workspaceId,
-          payload: { payment: intent, wallet: this.getWallet() }
+          tenantId: scope.workspaceId,
+          payload: { payment: intent, wallet: this.getWallet(scope) }
         })
       );
     }
@@ -538,15 +601,21 @@ export class PlatformService {
     return intent;
   }
 
-  async verifyPayment(reference: string) {
+  async verifyPayment(context: AuthenticatedRequestContext | undefined, reference: string) {
+    const scope = requireWorkspaceContext(context);
     const result = await this.paymentGateway.verifyPayment(reference);
     const intent = this.paymentIntents.find(
       (paymentIntent) => paymentIntent.providerReference === reference
     );
+
+    if (intent && intent.workspaceId !== scope.workspaceId) {
+      throw new BadRequestException("Payment reference does not belong to the active workspace.");
+    }
+
     const updatedIntent: PaymentIntent = {
       ...(intent ?? {
         id: id("pay"),
-        workspaceId,
+        workspaceId: scope.workspaceId,
         gateway: this.paymentGateway.name === "korapay" ? "KORAPAY" : "MOCK",
         amount: { amountMinor: 0, currency: "NGN" },
         createdAt: now()
@@ -555,13 +624,20 @@ export class PlatformService {
       providerReference: result.providerReference,
       updatedAt: now()
     };
+    const existingIndex = this.paymentIntents.findIndex(
+      (paymentIntent) => paymentIntent.id === updatedIntent.id
+    );
+
+    if (existingIndex >= 0) {
+      this.paymentIntents[existingIndex] = updatedIntent;
+    }
 
     if (result.status === "COMPLETED") {
       this.pushEvent(
         createEvent({
           name: "PaymentCompleted",
-          tenantId: workspaceId,
-          payload: { payment: updatedIntent, wallet: this.getWallet() }
+          tenantId: scope.workspaceId,
+          payload: { payment: updatedIntent, wallet: this.getWallet(scope) }
         })
       );
     }
@@ -599,44 +675,63 @@ export class PlatformService {
     };
   }
 
-  getWallet(): Wallet {
+  getWallet(context?: AuthenticatedRequestContext): Wallet {
+    const scope = requireWorkspaceContext(context);
     const timestamp = now();
+    const walletId = walletIdFor(scope.workspaceId);
+    const workspaceLedgerEntries = this.ledgerEntries.filter(
+      (entry) => entry.walletId === walletId
+    );
 
-    if (this.ledgerEntries.length === 0) {
-      this.ledgerEntries.push({
+    if (workspaceLedgerEntries.length === 0) {
+      const openingEntry = {
         id: id("ledger"),
-        walletId: "wallet_demo",
+        walletId,
         kind: "CREDIT",
         amount: { amountMinor: 1250000, currency: "NGN" },
         reference: "opening_balance",
         description: "Demo wallet funding",
         createdAt: timestamp,
         updatedAt: timestamp
-      });
+      } satisfies LedgerEntry;
+
+      this.ledgerEntries.push(openingEntry);
+      workspaceLedgerEntries.push(openingEntry);
     }
 
     return {
-      id: "wallet_demo",
-      workspaceId,
-      availableBalance: calculateAvailableBalance(this.ledgerEntries),
+      id: walletId,
+      workspaceId: scope.workspaceId,
+      availableBalance: calculateAvailableBalance(workspaceLedgerEntries),
       heldBalance: { amountMinor: 175000, currency: "NGN" },
       createdAt: timestamp,
       updatedAt: timestamp
     };
   }
 
-  getAnalyticsOverview() {
+  getAnalyticsOverview(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
     const metrics: AnalyticsMetric[] = [
       createMetric({
-        workspaceId,
+        workspaceId: scope.workspaceId,
         name: "impressions",
         value: 428500,
         dimensions: { channel: "all" }
       }),
-      createMetric({ workspaceId, name: "clicks", value: 18420, dimensions: { channel: "all" } }),
-      createMetric({ workspaceId, name: "roi_bps", value: 1860, dimensions: { channel: "all" } }),
       createMetric({
-        workspaceId,
+        workspaceId: scope.workspaceId,
+        name: "clicks",
+        value: 18420,
+        dimensions: { channel: "all" }
+      }),
+      createMetric({
+        workspaceId: scope.workspaceId,
+        name: "roi_bps",
+        value: 1860,
+        dimensions: { channel: "all" }
+      }),
+      createMetric({
+        workspaceId: scope.workspaceId,
         name: "live_viewers",
         value: 1240,
         dimensions: { channel: "tiktok" }
@@ -654,15 +749,16 @@ export class PlatformService {
     };
   }
 
-  async getAiAdsInsights() {
-    const campaigns = this.listCampaigns();
+  async getAiAdsInsights(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const campaigns = this.listCampaigns(scope);
     const insights = await this.aiBrain.getAdsInsights({
-      account_id: workspaceId,
+      account_id: scope.workspaceId,
       campaign_ids: campaigns.map((campaign) => campaign.id),
       metrics: ["roi", "conversions", "budget_efficiency"],
       filters: { product: "ads_campaigner" },
       metadata: {
-        workspace_id: workspaceId,
+        workspace_id: scope.workspaceId,
         campaign_count: campaigns.length
       }
     });
@@ -674,7 +770,7 @@ export class PlatformService {
     return {
       summary: {
         mode: "local_fallback",
-        account_id: workspaceId,
+        account_id: scope.workspaceId,
         campaign_count: campaigns.length,
         ai_brain_enabled: this.aiBrain.enabled
       },
@@ -696,8 +792,25 @@ export class PlatformService {
     };
   }
 
-  listNotifications() {
-    return this.notifications;
+  listNotifications(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const notifications = this.notifications.filter(
+      (notification) => notification.workspaceId === scope.workspaceId
+    );
+
+    if (notifications.length === 0) {
+      const notification = createNotification({
+        workspaceId: scope.workspaceId,
+        channel: "IN_APP",
+        title: "Phase 1 foundation ready",
+        body: "Mock providers, queues, analytics, and admin surfaces are wired for validation."
+      });
+
+      this.notifications.push(notification);
+      notifications.push(notification);
+    }
+
+    return notifications;
   }
 
   async createAiSuggestion() {
@@ -708,19 +821,25 @@ export class PlatformService {
     });
   }
 
-  async createUploadUrl() {
+  async createUploadUrl(context: AuthenticatedRequestContext | undefined) {
+    const scope = requireWorkspaceContext(context);
+
     return this.storageProvider.createUploadUrl({
-      key: `campaign-assets/${id("asset")}.png`,
+      key: `${scope.workspaceId}/campaign-assets/${id("asset")}.png`,
       contentType: "image/png"
     });
   }
 
-  createSupportTicket(input: CreateSupportTicketDto) {
+  createSupportTicket(
+    context: AuthenticatedRequestContext | undefined,
+    input: CreateSupportTicketDto
+  ) {
+    const scope = requireWorkspaceContext(context);
     const timestamp = now();
     const ticket: SupportTicket = {
       id: id("ticket"),
-      workspaceId,
-      requesterUserId: userId,
+      workspaceId: scope.workspaceId,
+      requesterUserId: scope.userId,
       subject: input.subject ?? "Campaign review question",
       priority: input.priority ?? "NORMAL",
       status: "OPEN",
@@ -733,8 +852,10 @@ export class PlatformService {
     return ticket;
   }
 
-  listSupportTickets() {
-    return this.supportTickets;
+  listSupportTickets(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+
+    return this.supportTickets.filter((ticket) => ticket.workspaceId === scope.workspaceId);
   }
 
   search(query = "") {
@@ -767,14 +888,15 @@ export class PlatformService {
     };
   }
 
-  listAuditLogs(): AuditLog[] {
+  listAuditLogs(context?: AuthenticatedRequestContext): AuditLog[] {
+    const scope = requireWorkspaceContext(context);
     const timestamp = now();
 
     return [
       {
-        id: "audit_demo",
-        workspaceId,
-        actorUserId: userId,
+        id: `audit_${scope.workspaceId}`,
+        workspaceId: scope.workspaceId,
+        actorUserId: scope.userId,
         action: "campaign.created",
         entityType: "Campaign",
         entityId: "cmp_demo",
@@ -794,11 +916,29 @@ export class PlatformService {
     void this.aiBrain.trackPlatformEvent(event);
   }
 
-  private async prepareSmmOrder(input: CreateSmmOrderDto) {
+  private assertSmmReferencesBelongToWorkspace(
+    context: AuthenticatedRequestContext,
+    supplierReferences: string[]
+  ) {
+    const blockedReferences = supplierReferences.filter((reference) =>
+      this.smmOrders.some(
+        (order) =>
+          order.supplierReference === reference && order.workspaceId !== context.workspaceId
+      )
+    );
+
+    if (blockedReferences.length > 0) {
+      throw new BadRequestException(
+        "One or more SMM supplier references do not belong to the active workspace."
+      );
+    }
+  }
+
+  private async prepareSmmOrder(context: AuthenticatedRequestContext, input: CreateSmmOrderDto) {
     const timestamp = now();
     const order: SmmOrder = {
       id: id("smm"),
-      workspaceId,
+      workspaceId: context.workspaceId,
       serviceKind: input.serviceKind ?? "FOLLOWERS",
       destination: {
         kind: input.destinationKind ?? "INSTAGRAM_PROFILE",
@@ -821,7 +961,9 @@ export class PlatformService {
     const fraudAssessment = assessSmmOrderFraud({
       order,
       quote,
-      recentOrders: this.smmOrders
+      recentOrders: this.smmOrders.filter(
+        (recentOrder) => recentOrder.workspaceId === context.workspaceId
+      )
     });
     const queueJob = createSmmFulfillmentQueueJob({
       order,
@@ -839,13 +981,16 @@ export class PlatformService {
     };
   }
 
-  private seedCampaign(campaignId = "cmp_demo"): Campaign {
+  private seedCampaign(
+    context: Pick<AuthenticatedRequestContext, "workspaceId" | "userId">,
+    campaignId = "cmp_demo"
+  ): Campaign {
     const timestamp = now();
 
     return {
       id: campaignId,
-      workspaceId,
-      creatorUserId: userId,
+      workspaceId: context.workspaceId,
+      creatorUserId: context.userId,
       name: "TikTok LIVE launch boost",
       objective: "LIVE_VIEWERS",
       status: "ACTIVE",

@@ -1,4 +1,6 @@
-import { Bell, CheckCircle2, Search, SlidersHorizontal } from "lucide-react";
+"use client";
+
+import { Bell, CheckCircle2, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 
 import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
 
@@ -8,9 +10,13 @@ import {
   RequestStatus,
   ServiceStateBadge
 } from "./components";
-import { adminAccessEnabled, metrics, requests, services, timeline } from "./data";
+import { adminAccessEnabled, timeline } from "./data";
+import { useAdminDigitalAccessData } from "./use-admin-digital-access-data";
 
 export default function AdminDigitalAccessPage() {
+  const { error, loading, metrics, refresh, requests, services, source } =
+    useAdminDigitalAccessData();
+
   return (
     <AdminDigitalAccessShell active="/digital-access">
       <AdminPageHeader
@@ -19,6 +25,10 @@ export default function AdminDigitalAccessPage() {
             <Button variant="secondary">
               <Bell className="size-4" />
               Notify ops
+            </Button>
+            <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4" />
+              Refresh
             </Button>
             <Button>
               <SlidersHorizontal className="size-4" />
@@ -31,11 +41,19 @@ export default function AdminDigitalAccessPage() {
             <Badge tone={adminAccessEnabled ? "success" : "warning"}>
               {adminAccessEnabled ? "Admin live" : "Flag off"}
             </Badge>
-            <Badge tone="info">Manual fulfillment</Badge>
+            <Badge tone={source === "api" ? "success" : "info"}>
+              {source === "api" ? "API data" : source === "disabled" ? "Demo mode" : "Fallback"}
+            </Badge>
           </>
         }
         title="Digital Access command"
       />
+
+      {error ? (
+        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
+          {error}
+        </div>
+      ) : null}
 
       <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric) => (
@@ -43,7 +61,7 @@ export default function AdminDigitalAccessPage() {
             detail={metric.detail}
             key={metric.label}
             label={metric.label}
-            value={metric.value}
+            value={loading ? "..." : metric.value}
             {...(metric.tone === undefined ? {} : { tone: metric.tone })}
           />
         ))}
@@ -64,21 +82,27 @@ export default function AdminDigitalAccessPage() {
             </div>
           </div>
           <div className="divide-y divide-zinc-200">
-            {requests.slice(0, 3).map((request) => (
-              <div
-                className="grid gap-3 p-4 lg:grid-cols-[1fr_auto_auto] lg:items-center"
-                key={request.id}
-              >
-                <div>
-                  <div className="font-medium text-zinc-950">{request.service}</div>
-                  <div className="mt-1 text-sm text-zinc-500">
-                    {request.customer} · {request.contact} · {request.age}
+            {loading ? (
+              <PanelMessage label="Loading request queue" />
+            ) : requests.length === 0 ? (
+              <PanelMessage label="No requests yet" />
+            ) : (
+              requests.slice(0, 3).map((request) => (
+                <div
+                  className="grid gap-3 p-4 lg:grid-cols-[1fr_auto_auto] lg:items-center"
+                  key={request.id}
+                >
+                  <div>
+                    <div className="font-medium text-zinc-950">{request.service}</div>
+                    <div className="mt-1 text-sm text-zinc-500">
+                      {request.customer} - {request.contact} - {request.age}
+                    </div>
                   </div>
+                  <RequestStatus request={request} />
+                  <Button variant="secondary">Open</Button>
                 </div>
-                <RequestStatus request={request} />
-                <Button variant="secondary">Open</Button>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </Panel>
 
@@ -112,22 +136,32 @@ export default function AdminDigitalAccessPage() {
           <Badge tone="neutral">Drafts stay hidden from users</Badge>
         </div>
         <div className="grid gap-4 xl:grid-cols-3">
-          {services.slice(0, 3).map((service) => (
-            <Panel className="p-4" key={service.id}>
-              <div className="flex items-center justify-between">
-                <ServiceStateBadge state={service.state} />
-                <div className="text-sm text-zinc-500">{service.demand} requests</div>
-              </div>
-              <h3 className="mt-4 text-lg font-semibold text-zinc-950">{service.name}</h3>
-              <div className="mt-1 text-sm text-zinc-500">{service.category}</div>
-              <div className="mt-4 flex items-center justify-between border-t border-zinc-200 pt-4 text-sm">
-                <span className="text-zinc-500">{service.plans} plans</span>
-                <span className="font-semibold text-zinc-950">{service.startingPrice}</span>
-              </div>
-            </Panel>
-          ))}
+          {loading ? (
+            <Panel className="p-4 text-sm text-zinc-500 xl:col-span-3">Loading catalog</Panel>
+          ) : services.length === 0 ? (
+            <Panel className="p-4 text-sm text-zinc-500 xl:col-span-3">No services available</Panel>
+          ) : (
+            services.slice(0, 3).map((service) => (
+              <Panel className="p-4" key={service.id}>
+                <div className="flex items-center justify-between">
+                  <ServiceStateBadge state={service.state} />
+                  <div className="text-sm text-zinc-500">{service.demand} requests</div>
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-zinc-950">{service.name}</h3>
+                <div className="mt-1 text-sm text-zinc-500">{service.category}</div>
+                <div className="mt-4 flex items-center justify-between border-t border-zinc-200 pt-4 text-sm">
+                  <span className="text-zinc-500">{service.plans} plans</span>
+                  <span className="font-semibold text-zinc-950">{service.startingPrice}</span>
+                </div>
+              </Panel>
+            ))
+          )}
         </div>
       </section>
     </AdminDigitalAccessShell>
   );
+}
+
+function PanelMessage({ label }: { label: string }) {
+  return <div className="p-4 text-sm text-zinc-500">{label}</div>;
 }

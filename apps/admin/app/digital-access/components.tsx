@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { Badge, cn } from "@fliptrybe/ui";
 
+import { SessionPanel } from "../ui/session-panel";
 import {
   adminAccessEnabled,
   navItems,
@@ -72,6 +73,7 @@ export function AdminDigitalAccessShell({
               </div>
             </div>
           </div>
+          <SessionPanel />
         </aside>
 
         <section className="px-4 py-4 sm:px-6 lg:px-8">{children}</section>

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query, Req } from "@nestjs/common";
 
 import type {
   CreateCampaignDto,
@@ -11,7 +11,11 @@ import type {
 } from "./platform.dtos";
 import { AuthSessionService } from "./auth-session.service";
 import { PlatformService } from "./platform.service";
-import type { HeaderBag } from "./request-context";
+import {
+  workspaceContextFromRequest,
+  type HeaderBag,
+  type WorkspaceContextRequest
+} from "./request-context";
 
 @Controller("health")
 export class HealthController {
@@ -32,8 +36,23 @@ export class AuthController {
     return this.auth.getSession(headers);
   }
 
+  @Post("register")
+  register(@Body() body: unknown, @Headers() headers: HeaderBag) {
+    return this.auth.register(body, headers);
+  }
+
   @Post("login")
-  login(@Headers() headers: HeaderBag) {
+  login(@Body() body: unknown, @Headers() headers: HeaderBag) {
+    return this.auth.login(body, headers);
+  }
+
+  @Post("logout")
+  logout(@Headers() headers: HeaderBag) {
+    return this.auth.logout(headers);
+  }
+
+  @Post("exchange")
+  exchange(@Headers() headers: HeaderBag) {
     return this.auth.issueSession(headers);
   }
 }
@@ -63,23 +82,25 @@ export class CampaignsController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get()
-  list() {
-    return this.platform.listCampaigns();
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listCampaigns(workspaceContextFromRequest(request));
   }
 
   @Post()
-  create(@Body() body: CreateCampaignDto) {
-    return this.platform.createCampaign(body);
+  create(@Body() body: CreateCampaignDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.createCampaign(workspaceContextFromRequest(request), body);
   }
 
   @Post("quote")
-  quote(@Body() body: QuoteCampaignDto) {
+  quote(@Body() body: QuoteCampaignDto, @Req() request: WorkspaceContextRequest) {
+    workspaceContextFromRequest(request);
+
     return this.platform.quoteCampaign(body);
   }
 
   @Post(":id/start")
-  start(@Param("id") id: string) {
-    return this.platform.startCampaign(id);
+  start(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.platform.startCampaign(workspaceContextFromRequest(request), id);
   }
 }
 
@@ -98,13 +119,13 @@ export class LiveController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get()
-  list() {
-    return this.platform.listLivePromotions();
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listLivePromotions(workspaceContextFromRequest(request));
   }
 
   @Post("boosts")
-  createBoost() {
-    return this.platform.createCampaign({
+  createBoost(@Req() request: WorkspaceContextRequest) {
+    return this.platform.createCampaign(workspaceContextFromRequest(request), {
       name: "Realtime livestream boost",
       objective: "LIVE_VIEWERS",
       destinationKind: "TIKTOK_LIVE",
@@ -138,28 +159,28 @@ export class SmmController {
   }
 
   @Post("quote")
-  quote(@Body() body: CreateSmmOrderDto) {
-    return this.platform.quoteSmmOrder(body);
+  quote(@Body() body: CreateSmmOrderDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.quoteSmmOrder(workspaceContextFromRequest(request), body);
   }
 
   @Post("orders")
-  createOrder(@Body() body: CreateSmmOrderDto) {
-    return this.platform.createSmmOrder(body);
+  createOrder(@Body() body: CreateSmmOrderDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.createSmmOrder(workspaceContextFromRequest(request), body);
   }
 
   @Post("orders/status")
-  statuses(@Body() body: SmmSupplierReferencesDto) {
-    return this.platform.getSmmOrderStatuses(body);
+  statuses(@Body() body: SmmSupplierReferencesDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.getSmmOrderStatuses(workspaceContextFromRequest(request), body);
   }
 
   @Post("orders/refill")
-  refill(@Body() body: SmmSupplierReferenceDto) {
-    return this.platform.requestSmmRefill(body);
+  refill(@Body() body: SmmSupplierReferenceDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.requestSmmRefill(workspaceContextFromRequest(request), body);
   }
 
   @Post("orders/cancel")
-  cancel(@Body() body: SmmSupplierReferencesDto) {
-    return this.platform.requestSmmCancel(body);
+  cancel(@Body() body: SmmSupplierReferencesDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.requestSmmCancel(workspaceContextFromRequest(request), body);
   }
 }
 
@@ -168,13 +189,13 @@ export class PaymentsController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Post("intents")
-  createIntent(@Body() body: CreatePaymentIntentDto) {
-    return this.platform.createPaymentIntent(body);
+  createIntent(@Body() body: CreatePaymentIntentDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.createPaymentIntent(workspaceContextFromRequest(request), body);
   }
 
   @Post("verify/:reference")
-  verify(@Param("reference") reference: string) {
-    return this.platform.verifyPayment(reference);
+  verify(@Param("reference") reference: string, @Req() request: WorkspaceContextRequest) {
+    return this.platform.verifyPayment(workspaceContextFromRequest(request), reference);
   }
 }
 
@@ -193,8 +214,8 @@ export class WalletController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get()
-  getWallet() {
-    return this.platform.getWallet();
+  getWallet(@Req() request: WorkspaceContextRequest) {
+    return this.platform.getWallet(workspaceContextFromRequest(request));
   }
 }
 
@@ -203,13 +224,13 @@ export class AnalyticsController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get("overview")
-  overview() {
-    return this.platform.getAnalyticsOverview();
+  overview(@Req() request: WorkspaceContextRequest) {
+    return this.platform.getAnalyticsOverview(workspaceContextFromRequest(request));
   }
 
   @Get("ai-insights")
-  aiInsights() {
-    return this.platform.getAiAdsInsights();
+  aiInsights(@Req() request: WorkspaceContextRequest) {
+    return this.platform.getAiAdsInsights(workspaceContextFromRequest(request));
   }
 }
 
@@ -218,8 +239,8 @@ export class NotificationsController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get()
-  list() {
-    return this.platform.listNotifications();
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listNotifications(workspaceContextFromRequest(request));
   }
 }
 
@@ -241,13 +262,13 @@ export class SupportController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get("tickets")
-  listTickets() {
-    return this.platform.listSupportTickets();
+  listTickets(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listSupportTickets(workspaceContextFromRequest(request));
   }
 
   @Post("tickets")
-  createTicket(@Body() body: CreateSupportTicketDto) {
-    return this.platform.createSupportTicket(body);
+  createTicket(@Body() body: CreateSupportTicketDto, @Req() request: WorkspaceContextRequest) {
+    return this.platform.createSupportTicket(workspaceContextFromRequest(request), body);
   }
 }
 
@@ -256,8 +277,8 @@ export class MediaController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Post("uploads")
-  createUpload() {
-    return this.platform.createUploadUrl();
+  createUpload(@Req() request: WorkspaceContextRequest) {
+    return this.platform.createUploadUrl(workspaceContextFromRequest(request));
   }
 }
 
@@ -296,7 +317,7 @@ export class AuditController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get("logs")
-  list() {
-    return this.platform.listAuditLogs();
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listAuditLogs(workspaceContextFromRequest(request));
   }
 }
