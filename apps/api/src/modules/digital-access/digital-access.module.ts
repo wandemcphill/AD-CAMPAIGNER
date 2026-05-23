@@ -2,13 +2,20 @@ import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 
 import { PrismaService } from "../prisma.service";
 import { QueueProducerService } from "../queue-producer.service";
+import { AuthSessionService } from "../auth-session.service";
 import { WorkspaceContextMiddleware } from "../workspace-context.middleware";
 import { AdminDigitalAccessController, DigitalAccessController } from "./digital-access.controller";
 import { DigitalAccessHubService } from "./digital-access.service";
 
 @Module({
   controllers: [DigitalAccessController, AdminDigitalAccessController],
-  providers: [PrismaService, QueueProducerService, WorkspaceContextMiddleware, DigitalAccessHubService],
+  providers: [
+    PrismaService,
+    QueueProducerService,
+    AuthSessionService,
+    WorkspaceContextMiddleware,
+    DigitalAccessHubService
+  ],
   exports: [DigitalAccessHubService]
 })
 export class DigitalAccessModule implements NestModule {

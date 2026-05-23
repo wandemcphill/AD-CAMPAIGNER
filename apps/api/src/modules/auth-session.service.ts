@@ -32,15 +32,22 @@ export class AuthSessionService {
   constructor(private readonly prismaService: PrismaService) {}
 
   async getSession(headers: HeaderBag) {
-    const context = authenticatedContextFromHeaders(headers);
-    const token = bearerTokenFromHeaders(headers);
-    const scope = await this.resolveScope(context);
-
-    if (context.sessionId) {
-      await this.validateStoredSession(context.sessionId, context.userId, token);
-    }
+    const scope = await this.getValidatedScope(headers);
 
     return this.toSessionPayload(scope);
+  }
+
+  async getWorkspaceContext(headers: HeaderBag): Promise<AuthenticatedRequestContext> {
+    const scope = await this.getValidatedScope(headers);
+
+    return {
+      userId: scope.user.id,
+      workspaceId: scope.workspace.id,
+      organizationId: scope.organization.id,
+      ...(scope.sessionId === undefined ? {} : { sessionId: scope.sessionId }),
+      userEmail: scope.user.email,
+      userName: scope.user.name
+    };
   }
 
   async issueSession(headers: HeaderBag) {
@@ -79,6 +86,21 @@ export class AuthSessionService {
       ...this.toSessionPayload(scope),
       token,
       expiresAt: expiresAt.toISOString()
+    };
+  }
+
+  private async getValidatedScope(headers: HeaderBag) {
+    const context = authenticatedContextFromHeaders(headers);
+    const token = bearerTokenFromHeaders(headers);
+    const scope = await this.resolveScope(context);
+
+    if (context.sessionId) {
+      await this.validateStoredSession(context.sessionId, context.userId, token);
+    }
+
+    return {
+      ...scope,
+      ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId })
     };
   }
 

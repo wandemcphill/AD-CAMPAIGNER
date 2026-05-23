@@ -1,3 +1,4 @@
+import { UnauthorizedException } from "@nestjs/common";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { PrismaService } from "./prisma.service";
@@ -44,7 +45,12 @@ function createPrisma() {
       findFirst: ({ where }: { where: { id: string; userId: string } }) => {
         const session = sessions.get(where.id);
 
-        if (!session || session.userId !== where.userId) {
+        if (
+          !session ||
+          session.userId !== where.userId ||
+          session.revokedAt ||
+          session.expiresAt <= new Date()
+        ) {
           return Promise.resolve(null);
         }
 
@@ -79,8 +85,32 @@ describe("AuthSessionService", () => {
     expect(issued.workspace.id).toBe("workspace_123");
 
     const session = await service.getSession({ authorization: `Bearer ${issued.token}` });
+    const context = await service.getWorkspaceContext({ authorization: `Bearer ${issued.token}` });
 
     expect(session.user.id).toBe("user_123");
     expect(session.role).toBe("OWNER");
+    expect(context.workspaceId).toBe("workspace_123");
+    expect(context.organizationId).toBe("org_123");
+  });
+
+  it("rejects revoked stored sessions for protected workspace context", async () => {
+    const { prisma, sessions } = createPrisma();
+    const service = new AuthSessionService(prisma);
+
+    const issued = await service.issueSession({
+      "x-user-id": "user_123",
+      "x-workspace-id": "workspace_123",
+      "x-organization-id": "org_123"
+    });
+
+    const [session] = sessions.values();
+
+    if (session) {
+      sessions.set(session.id, { ...session, revokedAt: new Date() });
+    }
+
+    await expect(
+      service.getWorkspaceContext({ authorization: `Bearer ${issued.token}` })
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });
