@@ -42,7 +42,7 @@ function readBooleanFlag(value: string | undefined): boolean {
   return value === "1" || value === "true" || value === "TRUE" || value === "yes" || value === "on";
 }
 
-function resolveProcessorFlags(options?: ProcessorOptions): ProcessorFlags {
+export function resolveProcessorFlags(options?: ProcessorOptions): ProcessorFlags {
   const env = options?.env ?? process.env;
 
   return {
@@ -69,6 +69,30 @@ function isDigitalAccessQueueEnabled(
     flags.digitalAccessWorkerEnabled &&
     flags[digitalAccessQueueFlagNames[queue]]
   );
+}
+
+function isOtpQueueName(queue: QueueName): queue is keyof typeof otpQueueFlagNames {
+  return queue in otpQueueFlagNames;
+}
+
+function isDigitalAccessQueueName(
+  queue: QueueName
+): queue is keyof typeof digitalAccessQueueFlagNames {
+  return queue in digitalAccessQueueFlagNames;
+}
+
+export function shouldStartQueueWorker(queue: QueueName, options?: ProcessorOptions): boolean {
+  const flags = resolveProcessorFlags(options);
+
+  if (isOtpQueueName(queue)) {
+    return isOtpQueueEnabled(queue, flags);
+  }
+
+  if (isDigitalAccessQueueName(queue)) {
+    return isDigitalAccessQueueEnabled(queue, flags);
+  }
+
+  return true;
 }
 
 function createOtpSkippedResult(

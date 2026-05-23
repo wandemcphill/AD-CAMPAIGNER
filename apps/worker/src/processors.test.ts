@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { processQueueJob } from "./processors";
+import { processQueueJob, shouldStartQueueWorker } from "./processors";
 import { createQueueJobOptions, queueNames } from "./queues";
 import type { QueueName } from "./queues";
 
@@ -104,6 +104,16 @@ describe("queue processors", () => {
 
     expect(options.attempts).toBe(6);
     expect(options.removeOnFail.count).toBe(50000);
+  });
+
+  it("does not subscribe to disabled feature queues so jobs stay durable", () => {
+    expect(shouldStartQueueWorker("campaigns")).toBe(true);
+    expect(shouldStartQueueWorker("digital-access-automation")).toBe(false);
+    expect(shouldStartQueueWorker("otp-allocation")).toBe(false);
+    expect(
+      shouldStartQueueWorker("digital-access-automation", { flags: enabledDigitalAccessFlags })
+    ).toBe(true);
+    expect(shouldStartQueueWorker("otp-refunds", { flags: enabledOtpFlags })).toBe(true);
   });
 
   it("skips Digital Access automation jobs when worker flags are disabled", () => {

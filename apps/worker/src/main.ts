@@ -1,14 +1,16 @@
 import { Worker } from "bullmq";
 import IORedis from "ioredis";
 
-import { processQueueJob } from "./processors";
+import { processQueueJob, shouldStartQueueWorker } from "./processors";
 import { type QueueName, type QueuePayloads, queueNames, queueRuntimePolicies } from "./queues";
 
 const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
   maxRetriesPerRequest: null
 });
 
-const workers = queueNames.map(
+const enabledQueues = queueNames.filter((queueName) => shouldStartQueueWorker(queueName));
+const disabledQueues = queueNames.filter((queueName) => !shouldStartQueueWorker(queueName));
+const workers = enabledQueues.map(
   (queueName) =>
     new Worker<QueuePayloads[QueueName]>(
       queueName,
@@ -42,4 +44,4 @@ process.on("SIGINT", () => {
   void shutdown();
 });
 
-console.log("FlipTrybe worker listening", { queues: queueNames });
+console.log("FlipTrybe worker listening", { queues: enabledQueues, disabledQueues });
