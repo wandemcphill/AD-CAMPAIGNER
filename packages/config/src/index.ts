@@ -28,6 +28,8 @@ export const envSchema = z.object({
   ENABLE_OTP_ADMIN: z.string().optional(),
   ENABLE_DIGITAL_ACCESS: z.string().optional(),
   ENABLE_DIGITAL_ACCESS_ADMIN: z.string().optional(),
+  TRUST_PROXY_AUTH_HEADERS: z.string().optional(),
+  DIGITAL_ACCESS_TRUST_AUTH_HEADERS: z.string().optional(),
   OTP_PROVIDER_MODE: providerSchema,
   OTP_BETA_WORKSPACE_IDS: z.string().optional(),
   OTP_USD_TO_NGN_RATE: z.string().optional(),

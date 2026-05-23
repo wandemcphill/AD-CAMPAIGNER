@@ -32,7 +32,9 @@ describe("DigitalAccessHubService", () => {
     process.env.ENABLE_DIGITAL_ACCESS_ADMIN = "false";
     const service = new DigitalAccessHubService(prisma);
 
-    await expect(service.getAdminOverview()).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.getAdminOverview({ userId: "user_test", workspaceId: "workspace_test" })
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it("requires a logged-in user before opening a wallet transaction", async () => {

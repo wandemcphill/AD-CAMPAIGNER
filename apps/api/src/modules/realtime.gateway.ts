@@ -12,6 +12,7 @@ import type { Server, Socket } from "socket.io";
 import { PlatformService } from "./platform.service";
 import { OtpMarketplaceService } from "./otp/otp.service";
 import { DigitalAccessHubService } from "./digital-access/digital-access.service";
+import { optionalAuthenticatedContextFromHeaders } from "./request-context";
 
 @Injectable()
 @WebSocketGateway({
@@ -40,7 +41,8 @@ export class RealtimeGateway implements OnGatewayConnection {
       activeOrders: otpSnapshot.orders.length,
       emittedAt: new Date().toISOString()
     });
-    void this.emitDigitalAccessSnapshot(client);
+    const workspaceContext = optionalAuthenticatedContextFromHeaders(client.handshake.headers);
+    void this.emitDigitalAccessSnapshot(client, workspaceContext?.workspaceId);
   }
 
   @SubscribeMessage("events:latest")
@@ -56,8 +58,8 @@ export class RealtimeGateway implements OnGatewayConnection {
     });
   }
 
-  private async emitDigitalAccessSnapshot(client: Socket) {
-    const digitalAccessSnapshot = await this.digitalAccess.getRealtimeSnapshot();
+  private async emitDigitalAccessSnapshot(client: Socket, workspaceId?: string) {
+    const digitalAccessSnapshot = await this.digitalAccess.getRealtimeSnapshot(workspaceId);
 
     client.emit("digital-access-requests", digitalAccessSnapshot.requests);
     client.emit("digital-access-admin-monitoring", {

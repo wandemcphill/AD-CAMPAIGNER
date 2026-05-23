@@ -1,5 +1,10 @@
-import { Body, Controller, Get, Headers, Inject, Param, Patch, Post, Query } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
 
+import {
+  metadataContextFromRequest,
+  workspaceContextFromRequest,
+  type WorkspaceContextRequest
+} from "../request-context";
 import type {
   CreateDigitalAccessRequestDto,
   DigitalAccessAssignDto,
@@ -32,30 +37,23 @@ export class DigitalAccessController {
   }
 
   @Get("requests")
-  requests(@Headers("x-user-id") userId?: string) {
-    return this.hub.listRequests({ userId: userId ?? "user_demo" });
+  requests(@Req() request: WorkspaceContextRequest) {
+    return this.hub.listRequests(workspaceContextFromRequest(request));
   }
 
   @Get("requests/:id")
-  request(@Param("id") id: string, @Headers("x-user-id") userId?: string) {
-    return this.hub.getRequest(id, { userId: userId ?? "user_demo" });
+  request(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.hub.getRequest(id, workspaceContextFromRequest(request));
   }
 
   @Post("requests")
   createRequest(
     @Body() body: CreateDigitalAccessRequestDto,
-    @Headers("x-user-id") userId?: string,
-    @Headers("idempotency-key") idempotencyKey?: string,
-    @Headers("x-forwarded-for") ipAddress?: string,
-    @Headers("user-agent") userAgent?: string,
-    @Headers("x-device-id") deviceId?: string
+    @Req() request: WorkspaceContextRequest
   ) {
     return this.hub.createRequest(body, {
-      userId: userId ?? "user_demo",
-      ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
-      ...(ipAddress === undefined ? {} : { ipAddress }),
-      ...(userAgent === undefined ? {} : { userAgent }),
-      ...(deviceId === undefined ? {} : { deviceId })
+      ...workspaceContextFromRequest(request),
+      ...metadataContextFromRequest(request)
     });
   }
 }
@@ -65,67 +63,91 @@ export class AdminDigitalAccessController {
   constructor(@Inject(DigitalAccessHubService) private readonly hub: DigitalAccessHubService) {}
 
   @Get("overview")
-  overview() {
-    return this.hub.getAdminOverview();
+  overview(@Req() request: WorkspaceContextRequest) {
+    return this.hub.getAdminOverview(workspaceContextFromRequest(request));
   }
 
   @Get("categories")
-  categories() {
-    return this.hub.listAdminCategories();
+  categories(@Req() request: WorkspaceContextRequest) {
+    return this.hub.listAdminCategories(workspaceContextFromRequest(request));
   }
 
   @Post("categories")
-  createCategory(@Body() body: DigitalAccessCategoryDto) {
-    return this.hub.createCategory(body);
+  createCategory(@Body() body: DigitalAccessCategoryDto, @Req() request: WorkspaceContextRequest) {
+    return this.hub.createCategory(body, workspaceContextFromRequest(request));
   }
 
   @Patch("categories/:id")
-  updateCategory(@Param("id") id: string, @Body() body: DigitalAccessCategoryDto) {
-    return this.hub.updateCategory(id, body);
+  updateCategory(
+    @Param("id") id: string,
+    @Body() body: DigitalAccessCategoryDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.hub.updateCategory(id, body, workspaceContextFromRequest(request));
   }
 
   @Get("services")
-  services(@Query() query: DigitalAccessListQueryDto) {
-    return this.hub.listAdminServices(query);
+  services(@Query() query: DigitalAccessListQueryDto, @Req() request: WorkspaceContextRequest) {
+    return this.hub.listAdminServices(query, workspaceContextFromRequest(request));
   }
 
   @Post("services")
-  createService(@Body() body: DigitalAccessServiceDto) {
-    return this.hub.createService(body);
+  createService(@Body() body: DigitalAccessServiceDto, @Req() request: WorkspaceContextRequest) {
+    return this.hub.createService(body, workspaceContextFromRequest(request));
   }
 
   @Patch("services/:id")
-  updateService(@Param("id") id: string, @Body() body: DigitalAccessServiceDto) {
-    return this.hub.updateService(id, body);
+  updateService(
+    @Param("id") id: string,
+    @Body() body: DigitalAccessServiceDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.hub.updateService(id, body, workspaceContextFromRequest(request));
   }
 
   @Get("plans")
-  plans(@Query("serviceId") serviceId?: string) {
-    return this.hub.listAdminPlans(serviceId);
+  plans(@Req() request: WorkspaceContextRequest, @Query("serviceId") serviceId?: string) {
+    return this.hub.listAdminPlans(workspaceContextFromRequest(request), serviceId);
   }
 
   @Post("plans")
-  createPlan(@Body() body: DigitalAccessPlanDto) {
-    return this.hub.createPlan(body);
+  createPlan(@Body() body: DigitalAccessPlanDto, @Req() request: WorkspaceContextRequest) {
+    return this.hub.createPlan(body, workspaceContextFromRequest(request));
   }
 
   @Patch("plans/:id")
-  updatePlan(@Param("id") id: string, @Body() body: DigitalAccessPlanDto) {
-    return this.hub.updatePlan(id, body);
+  updatePlan(
+    @Param("id") id: string,
+    @Body() body: DigitalAccessPlanDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.hub.updatePlan(id, body, workspaceContextFromRequest(request));
   }
 
   @Get("requests")
-  requests(@Query() query: DigitalAccessRequestQueryDto) {
-    return this.hub.listAdminRequests(query);
+  requests(@Query() query: DigitalAccessRequestQueryDto, @Req() request: WorkspaceContextRequest) {
+    return this.hub.listAdminRequests(query, workspaceContextFromRequest(request));
   }
 
   @Patch("requests/:id/status")
-  status(@Param("id") id: string, @Body() body: DigitalAccessStatusDto) {
-    return this.hub.updateRequestStatus(id, body.status);
+  status(
+    @Param("id") id: string,
+    @Body() body: DigitalAccessStatusDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.hub.updateRequestStatus(id, body.status, workspaceContextFromRequest(request));
   }
 
   @Patch("requests/:id/assign")
-  assign(@Param("id") id: string, @Body() body: DigitalAccessAssignDto) {
-    return this.hub.assignRequest(id, body.assignedTo ?? null);
+  assign(
+    @Param("id") id: string,
+    @Body() body: DigitalAccessAssignDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.hub.assignRequest(
+      id,
+      body.assignedTo ?? null,
+      workspaceContextFromRequest(request)
+    );
   }
 }

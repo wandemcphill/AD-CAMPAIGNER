@@ -1,5 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { Buffer } from "node:buffer";
+import { BadRequestException, ForbiddenException, Injectable } from "@nestjs/common";
 
 import { Prisma, type DatabaseClient } from "@fliptrybe/database";
 import { createEvent, type PlatformEvent } from "@fliptrybe/events";
@@ -11,8 +10,10 @@ import {
   getDigitalAccessStartingPrice,
   normalizeDigitalAccessContact
 } from "@fliptrybe/service-digital-access";
+import { currencies } from "@fliptrybe/types";
 import type {
   AuditLog,
+  CurrencyCode,
   DigitalAccessCategory,
   DigitalAccessPlan,
   DigitalAccessRefundResult,
@@ -25,6 +26,7 @@ import type {
 } from "@fliptrybe/types";
 
 import { PrismaService } from "../prisma.service";
+import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   CreateDigitalAccessRequestDto,
   DigitalAccessCategoryDto,
@@ -34,11 +36,10 @@ import type {
   DigitalAccessServiceDto
 } from "./digital-access.dtos";
 
-const workspaceId = "workspace_demo";
-const organizationId = "org_demo";
-const walletCurrency = "NGN";
-const demoUserId = "user_demo";
+const catalogCurrency: CurrencyCode = "NGN";
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+const toCurrencyCode = (currency: string): CurrencyCode =>
+  currencies.includes(currency as CurrencyCode) ? (currency as CurrencyCode) : catalogCurrency;
 
 type DbClient = DatabaseClient | Prisma.TransactionClient;
 type DbDigitalAccessStatus = "PENDING" | "PROCESSING" | "FULFILLED" | "CANCELLED" | "FAILED";
@@ -153,10 +154,19 @@ type RequestWithRelations = DbRequestRow & {
 
 interface RequestContext {
   userId?: string;
+  workspaceId?: string;
+  organizationId?: string;
   idempotencyKey?: string;
   ipAddress?: string;
   userAgent?: string;
   deviceId?: string;
+}
+
+interface TenantScope {
+  userId: string;
+  workspaceId: string;
+  organizationId: string;
+  currency: string;
 }
 
 function isEnabled(value: string | undefined) {
@@ -209,7 +219,7 @@ export class DigitalAccessHubService {
               some: {
                 isActive: true,
                 deletedAt: null,
-                currency: walletCurrency,
+                currency: catalogCurrency,
                 priceMinor: { gt: 0 }
               }
             }
@@ -239,7 +249,7 @@ export class DigitalAccessHubService {
           some: {
             isActive: true,
             deletedAt: null,
-            currency: walletCurrency,
+            currency: catalogCurrency,
             priceMinor: { gt: 0 }
           }
         }
@@ -258,19 +268,23 @@ export class DigitalAccessHubService {
 
   async createRequest(input: CreateDigitalAccessRequestDto, context: RequestContext = {}) {
     this.ensureDigitalAccessEnabled();
-    const userId = this.requireUser(context);
+    const requestedScope = this.requireTenantContext(context);
     const idempotencyKey =
       input.idempotencyKey?.trim() || context.idempotencyKey?.trim() || id("da_idempotency");
 
     return this.db.$transaction(
       async (tx) => {
-        await this.ensureTenant(tx, userId);
+        const scope = await this.resolveTenantScope(tx, requestedScope);
         const existing = await tx.digitalAccessRequest.findUnique({
           where: { idempotencyKey },
           include: { service: true, plan: true, walletCharges: true }
         });
 
         if (existing) {
+          if (existing.userId !== scope.userId || existing.workspaceId !== scope.workspaceId) {
+            throw new BadRequestException("Idempotency key was already used for another scope.");
+          }
+
           const charge = existing.walletCharges[0];
 
           return {
@@ -293,15 +307,16 @@ export class DigitalAccessHubService {
         const contactValue = normalizeDigitalAccessContact(input.contactType, input.contactValue);
         const recentRequests = await tx.digitalAccessRequest.findMany({
           where: {
+            workspaceId: scope.workspaceId,
             deletedAt: null,
-            OR: [{ userId }, { serviceId: service.id }, { contactValue }]
+            OR: [{ userId: scope.userId }, { serviceId: service.id }, { contactValue }]
           },
           include: { service: true, plan: true, walletCharges: true },
           orderBy: { createdAt: "desc" },
           take: 50
         });
         const abuseAssessment = assessDigitalAccessAbuse({
-          userId,
+          userId: scope.userId,
           serviceId: service.id,
           contactValue,
           requests: recentRequests.map((request) =>
@@ -317,7 +332,7 @@ export class DigitalAccessHubService {
           });
         }
 
-        const wallet = await this.getOrCreateWallet(tx);
+        const wallet = await this.getOrCreateWallet(tx, scope.workspaceId, plan.currency);
         await this.lockWallet(tx, wallet.id);
         await this.assertWalletCanPay(tx, wallet.id, {
           amountMinor: plan.priceMinor,
@@ -333,8 +348,8 @@ export class DigitalAccessHubService {
         });
         const request = await tx.digitalAccessRequest.create({
           data: {
-            workspaceId,
-            userId,
+            workspaceId: scope.workspaceId,
+            userId: scope.userId,
             serviceId: service.id,
             planId: plan.id,
             contactType: input.contactType,
@@ -364,7 +379,7 @@ export class DigitalAccessHubService {
         });
         const charge = await tx.digitalAccessWalletCharge.create({
           data: {
-            workspaceId,
+            workspaceId: scope.workspaceId,
             walletId: wallet.id,
             requestId: request.id,
             idempotencyKey,
@@ -378,6 +393,7 @@ export class DigitalAccessHubService {
 
         await this.writeAudit(
           tx,
+          scope,
           "digital_access.request.created",
           "DigitalAccessRequest",
           request.id,
@@ -387,10 +403,10 @@ export class DigitalAccessHubService {
             riskScore: abuseAssessment.score
           }
         );
-        await this.queueSideEffects(tx, "created", request, service, plan);
+        await this.queueSideEffects(tx, scope.workspaceId, "created", request, service, plan);
 
         const domainRequest = this.toRequest({ ...request, walletCharges: [charge] }, charge.id);
-        this.pushEvent("DigitalAccessRequestCreated", {
+        this.pushEvent(scope.workspaceId, "DigitalAccessRequestCreated", {
           request: this.sanitizeRequest(domainRequest)
         });
 
@@ -405,11 +421,11 @@ export class DigitalAccessHubService {
     );
   }
 
-  async listRequests(context: { userId?: string }) {
+  async listRequests(context: AuthenticatedRequestContext) {
     this.ensureDigitalAccessEnabled();
-    const userId = this.requireUser(context);
+    const scope = await this.resolveTenantScope(this.db, context);
     const requests = await this.db.digitalAccessRequest.findMany({
-      where: { userId, deletedAt: null },
+      where: { userId: scope.userId, workspaceId: scope.workspaceId, deletedAt: null },
       include: { service: true, plan: true, walletCharges: true },
       orderBy: { createdAt: "desc" }
     });
@@ -417,22 +433,22 @@ export class DigitalAccessHubService {
     return requests.map((request) => this.toRequest(request, request.walletCharges[0]?.id));
   }
 
-  async getRequest(requestId: string, context: { userId?: string }) {
+  async getRequest(requestId: string, context: AuthenticatedRequestContext) {
     this.ensureDigitalAccessEnabled();
-    const userId = this.requireUser(context);
-    const request = await this.getStoredRequest(requestId);
+    const scope = await this.resolveTenantScope(this.db, context);
+    const request = await this.getStoredRequest(requestId, this.db, scope.workspaceId);
 
-    if (request.userId !== userId) {
+    if (request.userId !== scope.userId) {
       throw new BadRequestException("Digital Access request was not found.");
     }
 
     return this.toRequest(request, request.walletCharges[0]?.id);
   }
 
-  async getWallet() {
+  async getWallet(context: AuthenticatedRequestContext) {
     this.ensureDigitalAccessEnabled();
-    await this.ensureTenant(this.db, demoUserId);
-    const wallet = await this.getOrCreateWallet(this.db);
+    const scope = await this.resolveTenantScope(this.db, context);
+    const wallet = await this.getOrCreateWallet(this.db, scope.workspaceId, scope.currency);
     const entries = await this.db.ledgerEntry.findMany({
       where: { walletId: wallet.id },
       orderBy: { createdAt: "asc" }
@@ -441,8 +457,9 @@ export class DigitalAccessHubService {
     return this.toWallet(wallet, entries);
   }
 
-  async getAdminOverview() {
+  async getAdminOverview(context: AuthenticatedRequestContext) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
     const [
       totals,
       fulfilled,
@@ -454,23 +471,23 @@ export class DigitalAccessHubService {
     ] = await Promise.all([
       this.db.digitalAccessRequest.groupBy({
         by: ["status"],
-        where: { workspaceId, deletedAt: null },
+        where: { workspaceId: scope.workspaceId, deletedAt: null },
         _count: { _all: true }
       }),
       this.db.digitalAccessRequest.findMany({
-        where: { workspaceId, status: "FULFILLED", deletedAt: null },
+        where: { workspaceId: scope.workspaceId, status: "FULFILLED", deletedAt: null },
         select: { amountMinor: true, currency: true }
       }),
       this.db.digitalAccessService.count({ where: { isActive: true, deletedAt: null } }),
       this.db.digitalAccessService.count({ where: { isActive: false, deletedAt: null } }),
       this.db.notification.count({
-        where: { workspaceId, title: { contains: "Digital Access" } }
+        where: { workspaceId: scope.workspaceId, title: { contains: "Digital Access" } }
       }),
       this.db.analyticsMetric.count({
-        where: { workspaceId, name: { startsWith: "digital_access." } }
+        where: { workspaceId: scope.workspaceId, name: { startsWith: "digital_access." } }
       }),
       this.db.digitalAccessRequest.findMany({
-        where: { workspaceId, deletedAt: null },
+        where: { workspaceId: scope.workspaceId, deletedAt: null },
         include: { service: true, plan: true, walletCharges: true },
         orderBy: { createdAt: "desc" },
         take: 8
@@ -494,21 +511,22 @@ export class DigitalAccessHubService {
       totals: totalMap,
       revenue: {
         amountMinor: fulfilled.reduce((sum, request) => sum + request.amountMinor, 0),
-        currency: walletCurrency
+        currency: fulfilled[0]?.currency ?? scope.currency
       },
       activeServices,
       draftServices,
       queuedNotifications: notifications,
       queuedAnalytics: analytics,
-      topCategories: await this.getTopCategories(),
+      topCategories: await this.getTopCategories(scope.workspaceId),
       recentRequests: recentRequests.map((request) =>
         this.sanitizeRequest(this.toRequest(request, request.walletCharges[0]?.id))
       )
     };
   }
 
-  async listAdminCategories() {
+  async listAdminCategories(context: AuthenticatedRequestContext) {
     this.ensureAdminEnabled();
+    await this.resolveAdminScope(this.db, context);
     const categories = await this.db.digitalAccessCategory.findMany({
       where: { deletedAt: null },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }]
@@ -517,8 +535,9 @@ export class DigitalAccessHubService {
     return categories.map((category) => this.toCategory(category));
   }
 
-  async createCategory(input: DigitalAccessCategoryDto) {
+  async createCategory(input: DigitalAccessCategoryDto, context: AuthenticatedRequestContext) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
     if (!input.name?.trim()) {
       throw new BadRequestException("Category name is required.");
     }
@@ -535,6 +554,7 @@ export class DigitalAccessHubService {
 
     await this.writeAudit(
       this.db,
+      scope,
       "digital_access.category.created",
       "DigitalAccessCategory",
       category.id,
@@ -546,8 +566,13 @@ export class DigitalAccessHubService {
     return this.toCategory(category);
   }
 
-  async updateCategory(categoryId: string, input: DigitalAccessCategoryDto) {
+  async updateCategory(
+    categoryId: string,
+    input: DigitalAccessCategoryDto,
+    context: AuthenticatedRequestContext
+  ) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
     const category = await this.getCategory(categoryId);
     const nextSlug = input.slug?.trim() ? slugify(input.slug) : category.slug;
 
@@ -572,6 +597,7 @@ export class DigitalAccessHubService {
 
       await this.writeAudit(
         tx,
+        scope,
         "digital_access.category.updated",
         "DigitalAccessCategory",
         updated.id,
@@ -584,14 +610,19 @@ export class DigitalAccessHubService {
     });
   }
 
-  async listAdminServices(query: DigitalAccessListQueryDto = {}) {
+  async listAdminServices(
+    query: DigitalAccessListQueryDto = {},
+    context: AuthenticatedRequestContext
+  ) {
     this.ensureAdminEnabled();
+    await this.resolveAdminScope(this.db, context);
 
     return this.paginateServices(query, false);
   }
 
-  async createService(input: DigitalAccessServiceDto) {
+  async createService(input: DigitalAccessServiceDto, context: AuthenticatedRequestContext) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
     const categorySlug = input.category?.trim();
 
     if (!input.name?.trim() || !categorySlug || !input.description?.trim()) {
@@ -606,7 +637,7 @@ export class DigitalAccessHubService {
         slug: input.slug?.trim() ? slugify(input.slug) : slugify(input.name),
         description: input.description.trim(),
         startingPriceMinor: input.startingPriceMinor ?? 0,
-        currency: walletCurrency,
+        currency: catalogCurrency,
         deliveryEta: input.deliveryEta?.trim() ?? "Manual review",
         isActive: input.isActive ?? false,
         isFeatured: input.isFeatured ?? false,
@@ -617,6 +648,7 @@ export class DigitalAccessHubService {
 
     await this.writeAudit(
       this.db,
+      scope,
       "digital_access.service.created",
       "DigitalAccessService",
       service.id,
@@ -628,8 +660,13 @@ export class DigitalAccessHubService {
     return this.withPlans(service, false);
   }
 
-  async updateService(serviceId: string, input: DigitalAccessServiceDto) {
+  async updateService(
+    serviceId: string,
+    input: DigitalAccessServiceDto,
+    context: AuthenticatedRequestContext
+  ) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
     const service = await this.getServiceById(serviceId);
     const category = input.category?.trim();
 
@@ -655,6 +692,7 @@ export class DigitalAccessHubService {
 
     await this.writeAudit(
       this.db,
+      scope,
       "digital_access.service.updated",
       "DigitalAccessService",
       updated.id,
@@ -667,8 +705,9 @@ export class DigitalAccessHubService {
     return this.withPlans(updated, false);
   }
 
-  async listAdminPlans(serviceId?: string) {
+  async listAdminPlans(context: AuthenticatedRequestContext, serviceId?: string) {
     this.ensureAdminEnabled();
+    await this.resolveAdminScope(this.db, context);
     const plans = await this.db.digitalAccessPlan.findMany({
       where: { deletedAt: null, ...(serviceId ? { serviceId } : {}) },
       orderBy: { createdAt: "asc" }
@@ -677,8 +716,9 @@ export class DigitalAccessHubService {
     return plans.map((plan) => this.toPlan(plan));
   }
 
-  async createPlan(input: DigitalAccessPlanDto) {
+  async createPlan(input: DigitalAccessPlanDto, context: AuthenticatedRequestContext) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
     if (!input.serviceId || !input.planName?.trim() || !input.duration?.trim()) {
       throw new BadRequestException("Plan service, name, and duration are required.");
     }
@@ -690,22 +730,34 @@ export class DigitalAccessHubService {
         planName: input.planName.trim(),
         duration: input.duration.trim(),
         priceMinor: input.priceMinor ?? 0,
-        currency: walletCurrency,
+        currency: catalogCurrency,
         description: input.description?.trim() ?? "Owner-managed access plan.",
         isActive: input.isActive ?? false
       }
     });
 
     await this.refreshServiceStartingPrice(this.db, plan.serviceId);
-    await this.writeAudit(this.db, "digital_access.plan.created", "DigitalAccessPlan", plan.id, {
-      serviceId: plan.serviceId
-    });
+    await this.writeAudit(
+      this.db,
+      scope,
+      "digital_access.plan.created",
+      "DigitalAccessPlan",
+      plan.id,
+      {
+        serviceId: plan.serviceId
+      }
+    );
 
     return this.toPlan(plan);
   }
 
-  async updatePlan(planId: string, input: DigitalAccessPlanDto) {
+  async updatePlan(
+    planId: string,
+    input: DigitalAccessPlanDto,
+    context: AuthenticatedRequestContext
+  ) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
     const plan = await this.getPlanById(planId);
     const updated = await this.db.digitalAccessPlan.update({
       where: { id: plan.id },
@@ -719,26 +771,43 @@ export class DigitalAccessHubService {
     });
 
     await this.refreshServiceStartingPrice(this.db, updated.serviceId);
-    await this.writeAudit(this.db, "digital_access.plan.updated", "DigitalAccessPlan", updated.id, {
-      serviceId: updated.serviceId,
-      isActive: updated.isActive
-    });
+    await this.writeAudit(
+      this.db,
+      scope,
+      "digital_access.plan.updated",
+      "DigitalAccessPlan",
+      updated.id,
+      {
+        serviceId: updated.serviceId,
+        isActive: updated.isActive
+      }
+    );
 
     return this.toPlan(updated);
   }
 
-  async listAdminRequests(query: DigitalAccessRequestQueryDto = {}) {
+  async listAdminRequests(
+    query: DigitalAccessRequestQueryDto = {},
+    context: AuthenticatedRequestContext
+  ) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
 
-    return this.paginateRequests(query, false);
+    return this.paginateRequests(query, scope.workspaceId, false);
   }
 
-  async updateRequestStatus(requestId: string, status: DigitalAccessRequestStatus) {
+  async updateRequestStatus(
+    requestId: string,
+    status: DigitalAccessRequestStatus,
+    context: AuthenticatedRequestContext
+  ) {
     this.ensureAdminEnabled();
+    const requestedScope = this.requireTenantContext(context);
 
     return this.db.$transaction(
       async (tx) => {
-        const request = await this.getStoredRequest(requestId, tx);
+        const scope = await this.resolveAdminScope(tx, requestedScope);
+        const request = await this.getStoredRequest(requestId, tx, scope.workspaceId);
         const currentStatus = toDomainStatus(request.status);
 
         try {
@@ -751,7 +820,10 @@ export class DigitalAccessHubService {
 
         if (currentStatus !== status && (status === "failed" || status === "cancelled")) {
           refund = await this.refundRequest(tx, request);
-          this.pushEvent("DigitalAccessRequestRefunded", { requestId: request.id, refund });
+          this.pushEvent(scope.workspaceId, "DigitalAccessRequestRefunded", {
+            requestId: request.id,
+            refund
+          });
         }
 
         const updated = await tx.digitalAccessRequest.update({
@@ -762,6 +834,7 @@ export class DigitalAccessHubService {
 
         await this.writeAudit(
           tx,
+          scope,
           "digital_access.request.status_updated",
           "DigitalAccessRequest",
           updated.id,
@@ -769,8 +842,18 @@ export class DigitalAccessHubService {
             status
           }
         );
-        await this.queueSideEffects(tx, "status_updated", updated, updated.service, updated.plan);
-        this.pushEvent("DigitalAccessRequestUpdated", { requestId: updated.id, status });
+        await this.queueSideEffects(
+          tx,
+          scope.workspaceId,
+          "status_updated",
+          updated,
+          updated.service,
+          updated.plan
+        );
+        this.pushEvent(scope.workspaceId, "DigitalAccessRequestUpdated", {
+          requestId: updated.id,
+          status
+        });
 
         return {
           request: this.toRequest(updated, updated.walletCharges[0]?.id),
@@ -781,16 +864,23 @@ export class DigitalAccessHubService {
     );
   }
 
-  async assignRequest(requestId: string, assignedTo: string | null) {
+  async assignRequest(
+    requestId: string,
+    assignedTo: string | null,
+    context: AuthenticatedRequestContext
+  ) {
     this.ensureAdminEnabled();
+    const scope = await this.resolveAdminScope(this.db, context);
+    const request = await this.getStoredRequest(requestId, this.db, scope.workspaceId);
     const updated = await this.db.digitalAccessRequest.update({
-      where: { id: requestId },
+      where: { id: request.id },
       data: { assignedTo },
       include: { service: true, plan: true, walletCharges: true }
     });
 
     await this.writeAudit(
       this.db,
+      scope,
       "digital_access.request.assigned",
       "DigitalAccessRequest",
       updated.id,
@@ -802,7 +892,15 @@ export class DigitalAccessHubService {
     return this.toRequest(updated, updated.walletCharges[0]?.id);
   }
 
-  async getRealtimeSnapshot() {
+  async getRealtimeSnapshot(workspaceId?: string) {
+    if (!workspaceId) {
+      return {
+        requests: [],
+        admin: { pending: 0, processing: 0, fulfilled: 0 },
+        events: []
+      };
+    }
+
     const [requests, pending, processing, fulfilled] = await Promise.all([
       this.db.digitalAccessRequest.findMany({
         where: { workspaceId, deletedAt: null },
@@ -826,18 +924,21 @@ export class DigitalAccessHubService {
         this.sanitizeRequest(this.toRequest(request, request.walletCharges[0]?.id))
       ),
       admin: { pending, processing, fulfilled },
-      events: this.events.map((event) => ({
-        id: event.id,
-        name: event.name,
-        occurredAt: event.occurredAt,
-        tenantId: event.tenantId
-      }))
+      events: this.events
+        .filter((event) => event.tenantId === workspaceId)
+        .map((event) => ({
+          id: event.id,
+          name: event.name,
+          occurredAt: event.occurredAt,
+          tenantId: event.tenantId
+        }))
     };
   }
 
-  async getAuditLogs() {
+  async getAuditLogs(context: AuthenticatedRequestContext) {
+    const scope = await this.resolveAdminScope(this.db, context);
     const logs = await this.db.auditLog.findMany({
-      where: { workspaceId, action: { startsWith: "digital_access." } },
+      where: { workspaceId: scope.workspaceId, action: { startsWith: "digital_access." } },
       orderBy: { createdAt: "desc" },
       take: 100
     });
@@ -875,7 +976,7 @@ export class DigitalAccessHubService {
                 some: {
                   isActive: true,
                   deletedAt: null,
-                  currency: walletCurrency,
+                  currency: catalogCurrency,
                   priceMinor: { gt: 0 }
                 }
               }
@@ -905,7 +1006,11 @@ export class DigitalAccessHubService {
     };
   }
 
-  private async paginateRequests(query: DigitalAccessRequestQueryDto, sanitize = true) {
+  private async paginateRequests(
+    query: DigitalAccessRequestQueryDto,
+    workspaceId: string,
+    sanitize = true
+  ) {
     const search = query.q?.trim();
     const limit = parseLimit(query.limit);
     const requests = await this.db.digitalAccessRequest.findMany({
@@ -1017,9 +1122,9 @@ export class DigitalAccessHubService {
     return plan;
   }
 
-  private async getStoredRequest(requestId: string, db: DbClient = this.db) {
+  private async getStoredRequest(requestId: string, db: DbClient = this.db, workspaceId?: string) {
     const request = await db.digitalAccessRequest.findFirst({
-      where: { id: requestId, deletedAt: null },
+      where: { id: requestId, ...(workspaceId ? { workspaceId } : {}), deletedAt: null },
       include: { service: true, plan: true, walletCharges: true }
     });
 
@@ -1030,64 +1135,102 @@ export class DigitalAccessHubService {
     return request;
   }
 
-  private async ensureTenant(tx: DbClient, userId: string) {
-    await tx.user.upsert({
-      where: { id: userId },
-      update: {},
-      create: {
-        id: userId,
-        email: this.syntheticEmail(userId),
-        name: userId === demoUserId ? "Demo Operator" : "Digital Access User"
-      }
-    });
-    await tx.organization.upsert({
-      where: { id: organizationId },
-      update: {},
-      create: {
-        id: organizationId,
-        name: "FlipTrybe",
-        slug: "fliptrybe",
-        ownerUserId: userId,
-        region: "global"
-      }
-    });
-    await tx.workspace.upsert({
-      where: { id: workspaceId },
-      update: {},
-      create: {
-        id: workspaceId,
-        organizationId,
-        name: "FlipTrybe Growth HQ",
-        defaultCurrency: walletCurrency
-      }
-    });
-    await this.getOrCreateWallet(tx);
-
-    if (isEnabled(process.env.DIGITAL_ACCESS_DEMO_WALLET_CREDIT)) {
-      await tx.ledgerEntry.upsert({
-        where: { idempotencyKey: "digital_access:demo_wallet_credit" },
-        update: {},
-        create: {
-          walletId: (await this.getOrCreateWallet(tx)).id,
-          kind: "CREDIT",
-          amountMinor: 8500000,
-          currency: walletCurrency,
-          reference: "digital_access_demo_wallet_credit",
-          description: "Digital Access demo wallet funding",
-          idempotencyKey: "digital_access:demo_wallet_credit",
-          sourceType: "DigitalAccessHub",
-          sourceId: workspaceId,
-          metadata: { seeded: true }
+  private async resolveTenantScope(
+    tx: DbClient,
+    context: AuthenticatedRequestContext | RequestContext
+  ): Promise<TenantScope> {
+    const requested = this.requireTenantContext(context);
+    const workspace = await tx.workspace.findFirst({
+      where: {
+        id: requested.workspaceId,
+        deletedAt: null,
+        organization: { deletedAt: null }
+      },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            members: {
+              where: { userId: requested.userId, deletedAt: null },
+              select: { role: true, permissions: true },
+              take: 1
+            }
+          }
         }
-      });
+      }
+    });
+
+    if (!workspace || workspace.organization.members.length === 0) {
+      throw new ForbiddenException("User is not a member of the active workspace.");
     }
+
+    if (requested.organizationId && requested.organizationId !== workspace.organization.id) {
+      throw new ForbiddenException("Workspace does not belong to the requested organization.");
+    }
+
+    return {
+      userId: requested.userId,
+      workspaceId: workspace.id,
+      organizationId: workspace.organization.id,
+      currency: workspace.defaultCurrency
+    };
   }
 
-  private async getOrCreateWallet(tx: DbClient): Promise<DbWalletRow> {
+  private async resolveAdminScope(
+    tx: DbClient,
+    context: AuthenticatedRequestContext | RequestContext
+  ) {
+    const requested = this.requireTenantContext(context);
+    const workspace = await tx.workspace.findFirst({
+      where: {
+        id: requested.workspaceId,
+        deletedAt: null,
+        organization: { deletedAt: null }
+      },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            members: {
+              where: { userId: requested.userId, deletedAt: null },
+              select: { role: true, permissions: true },
+              take: 1
+            }
+          }
+        }
+      }
+    });
+    const membership = workspace?.organization.members[0];
+
+    if (!workspace || !membership) {
+      throw new ForbiddenException("User is not a member of the active workspace.");
+    }
+
+    if (requested.organizationId && requested.organizationId !== workspace.organization.id) {
+      throw new ForbiddenException("Workspace does not belong to the requested organization.");
+    }
+
+    if (!this.canManageDigitalAccess(membership)) {
+      throw new ForbiddenException("User cannot manage Digital Access for this workspace.");
+    }
+
+    return {
+      userId: requested.userId,
+      workspaceId: workspace.id,
+      organizationId: workspace.organization.id,
+      currency: workspace.defaultCurrency
+    };
+  }
+
+  private async getOrCreateWallet(
+    tx: DbClient,
+    workspaceId: string,
+    currency: string
+  ): Promise<DbWalletRow> {
     return tx.wallet.upsert({
-      where: { workspaceId_currency: { workspaceId, currency: walletCurrency } },
+      where: { workspaceId_currency: { workspaceId, currency } },
       update: {},
-      create: { workspaceId, currency: walletCurrency }
+      create: { workspaceId, currency }
     });
   }
 
@@ -1160,7 +1303,7 @@ export class DigitalAccessHubService {
         serviceId,
         isActive: true,
         deletedAt: null,
-        currency: walletCurrency,
+        currency: catalogCurrency,
         priceMinor: { gt: 0 }
       }
     });
@@ -1169,12 +1312,13 @@ export class DigitalAccessHubService {
 
     await tx.digitalAccessService.update({
       where: { id: serviceId },
-      data: { startingPriceMinor, currency: walletCurrency }
+      data: { startingPriceMinor, currency: catalogCurrency }
     });
   }
 
   private async queueSideEffects(
     tx: DbClient,
+    workspaceId: string,
     action: string,
     request: DbRequestRow,
     service: DbServiceRow,
@@ -1205,6 +1349,7 @@ export class DigitalAccessHubService {
 
   private async writeAudit(
     tx: DbClient,
+    scope: Pick<TenantScope, "workspaceId" | "userId">,
     action: string,
     entityType: string,
     entityId: string,
@@ -1212,8 +1357,8 @@ export class DigitalAccessHubService {
   ) {
     await tx.auditLog.create({
       data: {
-        workspaceId,
-        actorUserId: demoUserId,
+        workspaceId: scope.workspaceId,
+        actorUserId: scope.userId,
         action,
         entityType,
         entityId,
@@ -1222,7 +1367,7 @@ export class DigitalAccessHubService {
     });
   }
 
-  private async getTopCategories() {
+  private async getTopCategories(workspaceId: string) {
     const categories = await this.db.digitalAccessCategory.findMany({
       where: { deletedAt: null },
       orderBy: { sortOrder: "asc" }
@@ -1271,7 +1416,10 @@ export class DigitalAccessHubService {
       category: service.category,
       slug: service.slug,
       description: service.description,
-      startingPrice: { amountMinor: service.startingPriceMinor, currency: "NGN" },
+      startingPrice: {
+        amountMinor: service.startingPriceMinor,
+        currency: toCurrencyCode(service.currency)
+      },
       deliveryEta: service.deliveryEta,
       isActive: service.isActive,
       isFeatured: service.isFeatured,
@@ -1288,7 +1436,7 @@ export class DigitalAccessHubService {
       serviceId: plan.serviceId,
       planName: plan.planName,
       duration: plan.duration,
-      price: { amountMinor: plan.priceMinor, currency: "NGN" },
+      price: { amountMinor: plan.priceMinor, currency: toCurrencyCode(plan.currency) },
       description: plan.description,
       isActive: plan.isActive,
       createdAt: toDateString(plan.createdAt),
@@ -1311,7 +1459,7 @@ export class DigitalAccessHubService {
       ...(request.notes === null ? {} : { notes: request.notes }),
       status: toDomainStatus(request.status),
       ...(request.assignedTo === null ? {} : { assignedTo: request.assignedTo }),
-      amount: { amountMinor: request.amountMinor, currency: "NGN" },
+      amount: { amountMinor: request.amountMinor, currency: toCurrencyCode(request.currency) },
       idempotencyKey: request.idempotencyKey,
       ...(walletChargeId === undefined ? {} : { walletChargeId }),
       createdAt: toDateString(request.createdAt),
@@ -1327,7 +1475,7 @@ export class DigitalAccessHubService {
       walletId: charge.walletId,
       requestId: charge.requestId,
       idempotencyKey: charge.idempotencyKey,
-      amount: { amountMinor: charge.amountMinor, currency: "NGN" },
+      amount: { amountMinor: charge.amountMinor, currency: toCurrencyCode(charge.currency) },
       status: charge.status,
       ...(charge.debitLedgerEntryId === null
         ? {}
@@ -1344,7 +1492,7 @@ export class DigitalAccessHubService {
     return {
       requestId: charge.requestId,
       ledgerEntryId,
-      amount: { amountMinor: charge.amountMinor, currency: "NGN" },
+      amount: { amountMinor: charge.amountMinor, currency: toCurrencyCode(charge.currency) },
       status: "REFUNDED"
     };
   }
@@ -1356,7 +1504,7 @@ export class DigitalAccessHubService {
       availableBalance: calculateAvailableBalance(
         entries.map((entry) => this.toLedgerEntry(entry))
       ),
-      heldBalance: { amountMinor: 0, currency: "NGN" },
+      heldBalance: { amountMinor: 0, currency: toCurrencyCode(wallet.currency) },
       createdAt: toDateString(wallet.createdAt),
       updatedAt: toDateString(wallet.updatedAt)
     };
@@ -1367,7 +1515,7 @@ export class DigitalAccessHubService {
       id: entry.id,
       walletId: entry.walletId,
       kind: entry.kind,
-      amount: { amountMinor: entry.amountMinor, currency: "NGN" },
+      amount: { amountMinor: entry.amountMinor, currency: toCurrencyCode(entry.currency) },
       reference: entry.reference,
       description: entry.description,
       ...(entry.idempotencyKey === null ? {} : { idempotencyKey: entry.idempotencyKey }),
@@ -1407,21 +1555,39 @@ export class DigitalAccessHubService {
     );
   }
 
-  private syntheticEmail(userId: string) {
-    return `da-${Buffer.from(userId).toString("base64url").slice(0, 48)}@digital-access.local`;
-  }
-
-  private requireUser(context: { userId?: string }) {
+  private requireTenantContext(context: {
+    userId?: string;
+    workspaceId?: string;
+    organizationId?: string;
+  }) {
     const userId = context.userId?.trim();
+    const workspaceId = context.workspaceId?.trim();
+    const organizationId = context.organizationId?.trim();
 
-    if (!userId) {
-      throw new BadRequestException("Digital Access requests require a logged-in user.");
+    if (!userId || !workspaceId) {
+      throw new BadRequestException(
+        "Digital Access requires a logged-in user and active workspace."
+      );
     }
 
-    return userId;
+    return {
+      userId,
+      workspaceId,
+      ...(organizationId ? { organizationId } : {})
+    };
+  }
+
+  private canManageDigitalAccess(member: { role: string; permissions: string[] }) {
+    return (
+      member.role === "OWNER" ||
+      member.role === "ADMIN" ||
+      member.permissions.includes("admin:access") ||
+      member.permissions.includes("digital_access:manage")
+    );
   }
 
   private pushEvent<TEvent extends PlatformEvent["name"]>(
+    workspaceId: string,
     name: TEvent,
     payload: Extract<PlatformEvent, { name: TEvent }>["payload"]
   ) {

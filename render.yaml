@@ -108,6 +108,10 @@ services:
         value: "false"
       - key: ENABLE_DIGITAL_ACCESS_ADMIN
         value: "false"
+      - key: TRUST_PROXY_AUTH_HEADERS
+        value: "false"
+      - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
+        value: "false"
       - key: OTP_PROVIDER_MODE
         value: mock
       - key: OTP_BETA_WORKSPACE_IDS
@@ -280,6 +284,10 @@ services:
       - key: ENABLE_DIGITAL_ACCESS
         value: "false"
       - key: ENABLE_DIGITAL_ACCESS_ADMIN
+        value: "false"
+      - key: TRUST_PROXY_AUTH_HEADERS
+        value: "false"
+      - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
         value: "false"
       - key: OTP_PROVIDER_MODE
         value: mock
