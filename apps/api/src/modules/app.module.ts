@@ -6,9 +6,13 @@ import {
   AnalyticsController,
   AuditController,
   AuthController,
+  AdminCampaignOpsController,
   CampaignsController,
+  ClientProfileController,
+  CompanyProfilesController,
   DestinationsController,
   HealthController,
+  InvoicesController,
   LiveController,
   MediaController,
   NotificationsController,
@@ -22,6 +26,7 @@ import {
   WalletController,
   WebhooksController
 } from "./platform.controllers";
+import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { PrismaService } from "./prisma.service";
 import { AuthSessionService } from "./auth-session.service";
@@ -36,6 +41,8 @@ import { DigitalAccessModule } from "./digital-access/digital-access.module";
     AuthController,
     OrganizationsController,
     TeamsController,
+    ClientProfileController,
+    CompanyProfilesController,
     CampaignsController,
     DestinationsController,
     LiveController,
@@ -43,6 +50,7 @@ import { DigitalAccessModule } from "./digital-access/digital-access.module";
     PaymentsController,
     WebhooksController,
     WalletController,
+    InvoicesController,
     AnalyticsController,
     NotificationsController,
     ReferralsController,
@@ -50,8 +58,9 @@ import { DigitalAccessModule } from "./digital-access/digital-access.module";
     MediaController,
     SearchController,
     AdminController,
+    AdminCampaignOpsController,
     AuditController
   ],
-  providers: [PrismaService, AuthSessionService, PlatformService, RealtimeGateway]
+  providers: [PrismaService, AuthSessionService, PlatformService, ManagedAdsService, RealtimeGateway]
 })
 export class AppModule {}

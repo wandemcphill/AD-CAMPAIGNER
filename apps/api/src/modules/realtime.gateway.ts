@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Inject, Injectable } from "@nestjs/common";
 import {
   ConnectedSocket,
@@ -12,7 +13,11 @@ import type { Server, Socket } from "socket.io";
 import { PlatformService } from "./platform.service";
 import { OtpMarketplaceService } from "./otp/otp.service";
 import { DigitalAccessHubService } from "./digital-access/digital-access.service";
-import { optionalAuthenticatedContextFromHeaders } from "./request-context";
+import { ManagedAdsService } from "./managed-ads.service";
+import {
+  optionalAuthenticatedContextFromHeaders,
+  type AuthenticatedRequestContext
+} from "./request-context";
 
 @Injectable()
 @WebSocketGateway({
@@ -26,17 +31,13 @@ export class RealtimeGateway implements OnGatewayConnection {
   constructor(
     @Inject(PlatformService) private readonly platform: PlatformService,
     @Inject(OtpMarketplaceService) private readonly otp: OtpMarketplaceService,
+    @Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService,
     @Inject(DigitalAccessHubService) private readonly digitalAccess: DigitalAccessHubService
   ) {}
 
   handleConnection(client: Socket) {
     const workspaceContext = optionalAuthenticatedContextFromHeaders(client.handshake.headers);
 
-    client.emit(
-      "notifications",
-      workspaceContext ? this.platform.listNotifications(workspaceContext) : []
-    );
-    client.emit("campaigns", workspaceContext ? this.platform.listCampaigns(workspaceContext) : []);
     client.emit(
       "livestreams",
       workspaceContext ? this.platform.listLivePromotions(workspaceContext) : []
@@ -49,6 +50,7 @@ export class RealtimeGateway implements OnGatewayConnection {
       activeOrders: otpSnapshot.orders.length,
       emittedAt: new Date().toISOString()
     });
+    void this.emitManagedAdsSnapshot(client, workspaceContext);
     void this.emitDigitalAccessSnapshot(client, workspaceContext?.workspaceId);
   }
 
@@ -73,5 +75,23 @@ export class RealtimeGateway implements OnGatewayConnection {
       ...digitalAccessSnapshot.admin,
       emittedAt: new Date().toISOString()
     });
+  }
+
+  private async emitManagedAdsSnapshot(
+    client: Socket,
+    workspaceContext?: AuthenticatedRequestContext
+  ) {
+    if (!workspaceContext) {
+      client.emit("notifications", []);
+      client.emit("campaigns", []);
+      return;
+    }
+
+    const [notifications, campaigns] = await Promise.all([
+      this.managedAds.listNotifications(workspaceContext),
+      this.managedAds.listCampaigns(workspaceContext)
+    ]);
+    client.emit("notifications", notifications);
+    client.emit("campaigns", campaigns);
   }
 }

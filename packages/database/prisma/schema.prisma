@@ -37,11 +37,16 @@ enum CampaignObjective {
 enum CampaignStatus {
   DRAFT
   PENDING_REVIEW
+  APPROVED
+  CHANGES_REQUESTED
+  CREATIVE_IN_PROGRESS
   QUEUED
   ACTIVE
+  RUNNING
   PAUSED
   COMPLETED
   REJECTED
+  CANCELLED
   FAILED
 }
 
@@ -80,6 +85,136 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+enum CompanyProfileStatus {
+  INCOMPLETE
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum CompanyVerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum MediaAssetKind {
+  IMAGE
+  VIDEO
+  SCREENSHOT
+  REPORT_ATTACHMENT
+  OTHER
+}
+
+enum MediaAssetStatus {
+  PENDING_UPLOAD
+  UPLOADED
+  READY
+  FAILED
+  DELETED
+}
+
+enum MediaDeliveryType {
+  PUBLIC
+  AUTHENTICATED
+}
+
+enum CampaignCreativeFormat {
+  IMAGE
+  VIDEO
+  CAROUSEL
+  TEXT
+  MIXED
+}
+
+enum CampaignCreativeStatus {
+  DRAFT
+  IN_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum CampaignNoteVisibility {
+  INTERNAL
+  CLIENT_VISIBLE
+}
+
+enum CampaignAssignmentRole {
+  OPERATOR
+  DESIGNER
+  REVIEWER
+  FINANCE
+  SUPPORT
+}
+
+enum CampaignAssignmentStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ManualAdPlacementStatus {
+  DRAFT
+  LAUNCHED
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum ManualAdPlacementChannel {
+  TIKTOK
+  INSTAGRAM
+  FACEBOOK
+  WHATSAPP
+  GOOGLE
+  OTHER
+}
+
+enum CampaignReportStatus {
+  DRAFT
+  PUBLISHED
+  RETRACTED
+}
+
+enum CampaignBudgetHoldStatus {
+  ACTIVE
+  RELEASED
+  CAPTURED
+  EXPIRED
+  CANCELLED
+}
+
+enum CampaignInvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+  OVERDUE
+}
+
+enum CampaignSpendSource {
+  MANUAL
+  REPORT
+  AD_PLACEMENT
+}
+
+enum EventOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
 }
 
 enum SmmOrderStatus {
@@ -138,19 +273,27 @@ enum DigitalAccessWalletChargeStatus {
 }
 
 model User {
-  id                    String                 @id @default(uuid())
-  email                 String                 @unique
+  id                    String                   @id @default(uuid())
+  email                 String                   @unique
   name                  String
-  status                UserStatus             @default(ACTIVE)
+  status                UserStatus               @default(ACTIVE)
   passwordHash          String?
   emailVerifiedAt       DateTime?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
   deletedAt             DateTime?
   memberships           TeamMember[]
   sessions              Session[]
-  auditLogs             AuditLog[]             @relation("AuditActor")
+  auditLogs             AuditLog[]               @relation("AuditActor")
   digitalAccessRequests DigitalAccessRequest[]
+  companyProfiles       CompanyProfile[]         @relation("CompanyProfileOwner")
+  mediaAssets           MediaAsset[]             @relation("MediaAssetUploader")
+  campaignNotes         CampaignNote[]           @relation("CampaignNoteAuthor")
+  campaignAssignments   CampaignAssignment[]     @relation("CampaignAssignee")
+  assignedCampaigns     CampaignAssignment[]     @relation("CampaignAssigner")
+  campaignReports       CampaignReport[]         @relation("CampaignReportGenerator")
+  notifications         Notification[]           @relation("NotificationRecipient")
+  notificationPrefs     NotificationPreference[]
 
   @@index([status])
   @@index([deletedAt])
@@ -189,7 +332,12 @@ model Workspace {
   otpWalletCharges           OtpWalletCharge[]
   digitalAccessRequests      DigitalAccessRequest[]
   digitalAccessWalletCharges DigitalAccessWalletCharge[]
+  companyProfiles            CompanyProfile[]
+  mediaAssets                MediaAsset[]
+  campaignInvoices           CampaignInvoice[]
+  eventOutbox                EventOutbox[]
   notifications              Notification[]
+  notificationPrefs          NotificationPreference[]
   supportTickets             SupportTicket[]
   referralAccounts           ReferralAccount[]
   auditLogs                  AuditLog[]
@@ -232,28 +380,49 @@ model Session {
 }
 
 model Campaign {
-  id                String            @id @default(uuid())
+  id                String                  @id @default(uuid())
   workspaceId       String
   creatorUserId     String
   name              String
   objective         CampaignObjective
-  status            CampaignStatus    @default(DRAFT)
+  status            CampaignStatus          @default(DRAFT)
   budgetMinor       Int
-  currency          String            @default("NGN")
-  provider          String            @default("MOCK")
+  currency          String                  @default("NGN")
+  provider          String                  @default("MOCK")
   providerReference String?
+  companyProfileId  String?
+  brief             String?
+  targetAudience    Json                    @default("{}")
+  placementPlan     Json                    @default("{}")
+  submittedAt       DateTime?
+  approvedAt        DateTime?
+  approvedByUserId  String?
+  cancelledAt       DateTime?
+  metadata          Json                    @default("{}")
   startsAt          DateTime
   endsAt            DateTime?
-  timezone          String            @default("UTC")
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  timezone          String                  @default("UTC")
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
   deletedAt         DateTime?
-  workspace         Workspace         @relation(fields: [workspaceId], references: [id])
+  workspace         Workspace               @relation(fields: [workspaceId], references: [id])
+  companyProfile    CompanyProfile?         @relation(fields: [companyProfileId], references: [id])
   destination       Destination?
   livePromotion     LivePromotion?
   analytics         AnalyticsMetric[]
+  creatives         CampaignCreative[]
+  notes             CampaignNote[]
+  statusHistory     CampaignStatusHistory[]
+  assignments       CampaignAssignment[]
+  manualPlacements  ManualAdPlacement[]
+  reports           CampaignReport[]
+  budgetHolds       CampaignBudgetHold[]
+  invoices          CampaignInvoice[]
+  spendEntries      CampaignSpendEntry[]
+  paymentIntents    PaymentIntent[]
 
   @@index([workspaceId, status])
+  @@index([companyProfileId, status])
   @@index([provider, providerReference])
   @@index([startsAt])
   @@index([deletedAt])
@@ -292,12 +461,16 @@ model Wallet {
   id                   String                      @id @default(uuid())
   workspaceId          String
   currency             String                      @default("NGN")
+  status               String                      @default("ACTIVE")
+  metadata             Json                        @default("{}")
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
   workspace            Workspace                   @relation(fields: [workspaceId], references: [id])
   entries              LedgerEntry[]
   otpCharges           OtpWalletCharge[]
   digitalAccessCharges DigitalAccessWalletCharge[]
+  campaignBudgetHolds  CampaignBudgetHold[]
+  paymentIntents       PaymentIntent[]
 
   @@unique([workspaceId, currency])
 }
@@ -324,19 +497,391 @@ model LedgerEntry {
 }
 
 model PaymentIntent {
-  id                String        @id @default(uuid())
+  id                String           @id @default(uuid())
   workspaceId       String
   gateway           String
   amountMinor       Int
-  currency          String        @default("NGN")
-  status            PaymentStatus @default(PENDING)
+  currency          String           @default("NGN")
+  status            PaymentStatus    @default(PENDING)
   providerReference String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-  workspace         Workspace     @relation(fields: [workspaceId], references: [id])
+  walletId          String?
+  campaignId        String?
+  campaignInvoiceId String?
+  idempotencyKey    String?          @unique
+  checkoutUrl       String?
+  customerEmail     String?
+  customerName      String?
+  providerPayload   Json             @default("{}")
+  metadata          Json             @default("{}")
+  completedAt       DateTime?
+  creditedAt        DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  workspace         Workspace        @relation(fields: [workspaceId], references: [id])
+  wallet            Wallet?          @relation(fields: [walletId], references: [id])
+  campaign          Campaign?        @relation(fields: [campaignId], references: [id])
+  campaignInvoice   CampaignInvoice? @relation(fields: [campaignInvoiceId], references: [id])
 
   @@index([workspaceId, status])
   @@index([gateway, providerReference])
+  @@index([walletId, status])
+  @@index([campaignId, status])
+  @@index([campaignInvoiceId, status])
+}
+
+model CompanyProfile {
+  id                 String                    @id @default(uuid())
+  workspaceId        String
+  ownerUserId        String
+  name               String
+  legalName          String?
+  slug               String
+  websiteUrl         String?
+  industry           String?
+  countryCode        String?
+  city               String?
+  timezone           String                    @default("Africa/Lagos")
+  contactEmail       String?
+  contactPhone       String?
+  status             CompanyProfileStatus      @default(INCOMPLETE)
+  verificationStatus CompanyVerificationStatus @default(UNVERIFIED)
+  metadata           Json                      @default("{}")
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  deletedAt          DateTime?
+  workspace          Workspace                 @relation(fields: [workspaceId], references: [id])
+  owner              User                      @relation("CompanyProfileOwner", fields: [ownerUserId], references: [id])
+  campaigns          Campaign[]
+  mediaAssets        MediaAsset[]
+  invoices           CampaignInvoice[]
+
+  @@unique([workspaceId, slug])
+  @@index([workspaceId, status, createdAt])
+  @@index([ownerUserId, createdAt])
+  @@index([deletedAt])
+}
+
+model MediaAsset {
+  id                String                     @id @default(uuid())
+  workspaceId       String
+  uploaderUserId    String
+  companyProfileId  String?
+  kind              MediaAssetKind
+  status            MediaAssetStatus           @default(PENDING_UPLOAD)
+  deliveryType      MediaDeliveryType          @default(PUBLIC)
+  storageProvider   String                     @default("cloudinary")
+  storageKey        String
+  providerAssetId   String?
+  providerPublicId  String?
+  url               String?
+  secureUrl         String?
+  thumbnailUrl      String?
+  contentType       String
+  format            String?
+  byteSize          Int
+  width             Int?
+  height            Int?
+  durationMs        Int?
+  checksumSha256    String?
+  originalFilename  String?
+  altText           String?
+  metadata          Json                       @default("{}")
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  deletedAt         DateTime?
+  workspace         Workspace                  @relation(fields: [workspaceId], references: [id])
+  uploader          User                       @relation("MediaAssetUploader", fields: [uploaderUserId], references: [id])
+  companyProfile    CompanyProfile?            @relation(fields: [companyProfileId], references: [id])
+  creatives         CampaignCreative[]
+  reportScreenshots CampaignReportScreenshot[]
+
+  @@unique([workspaceId, storageProvider, storageKey])
+  @@unique([storageProvider, providerAssetId])
+  @@unique([storageProvider, providerPublicId])
+  @@index([workspaceId, status, createdAt])
+  @@index([companyProfileId, createdAt])
+  @@index([uploaderUserId, createdAt])
+  @@index([checksumSha256])
+  @@index([deletedAt])
+}
+
+model CampaignCreative {
+  id               String                 @id @default(uuid())
+  campaignId       String
+  mediaAssetId     String?
+  name             String
+  format           CampaignCreativeFormat @default(IMAGE)
+  status           CampaignCreativeStatus @default(DRAFT)
+  role             String?
+  placement        String?
+  sortOrder        Int                    @default(100)
+  primaryText      String?
+  headline         String?
+  description      String?
+  callToAction     String?
+  landingUrl       String?
+  reviewFeedback   String?
+  approvedByUserId String?
+  approvedAt       DateTime?
+  metadata         Json                   @default("{}")
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  deletedAt        DateTime?
+  campaign         Campaign               @relation(fields: [campaignId], references: [id])
+  mediaAsset       MediaAsset?            @relation(fields: [mediaAssetId], references: [id])
+  manualPlacements ManualAdPlacement[]
+
+  @@index([campaignId, status])
+  @@index([campaignId, sortOrder])
+  @@index([mediaAssetId])
+  @@index([deletedAt])
+}
+
+model CampaignNote {
+  id           String                 @id @default(uuid())
+  campaignId   String
+  authorUserId String
+  visibility   CampaignNoteVisibility @default(INTERNAL)
+  body         String
+  pinnedAt     DateTime?
+  metadata     Json                   @default("{}")
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  deletedAt    DateTime?
+  campaign     Campaign               @relation(fields: [campaignId], references: [id])
+  author       User                   @relation("CampaignNoteAuthor", fields: [authorUserId], references: [id])
+
+  @@index([campaignId, createdAt])
+  @@index([authorUserId, createdAt])
+  @@index([visibility, createdAt])
+  @@index([deletedAt])
+}
+
+model CampaignStatusHistory {
+  id                String          @id @default(uuid())
+  campaignId        String
+  fromStatus        CampaignStatus?
+  toStatus          CampaignStatus
+  actorUserId       String?
+  actorType         String          @default("USER")
+  reason            String?
+  providerReference String?
+  metadata          Json            @default("{}")
+  createdAt         DateTime        @default(now())
+  campaign          Campaign        @relation(fields: [campaignId], references: [id])
+
+  @@index([campaignId, createdAt])
+  @@index([toStatus, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model CampaignAssignment {
+  id             String                   @id @default(uuid())
+  campaignId     String
+  assigneeUserId String
+  assignerUserId String?
+  role           CampaignAssignmentRole   @default(OPERATOR)
+  status         CampaignAssignmentStatus @default(ACTIVE)
+  startsAt       DateTime?
+  dueAt          DateTime?
+  completedAt    DateTime?
+  metadata       Json                     @default("{}")
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  deletedAt      DateTime?
+  campaign       Campaign                 @relation(fields: [campaignId], references: [id])
+  assignee       User                     @relation("CampaignAssignee", fields: [assigneeUserId], references: [id])
+  assigner       User?                    @relation("CampaignAssigner", fields: [assignerUserId], references: [id])
+
+  @@index([campaignId, status])
+  @@index([assigneeUserId, status, dueAt])
+  @@index([deletedAt])
+}
+
+model ManualAdPlacement {
+  id                  String                   @id @default(uuid())
+  campaignId          String
+  creativeId          String?
+  assignedUserId      String?
+  channel             ManualAdPlacementChannel
+  provider            String?
+  externalPlacementId String?
+  destinationUrl      String?
+  status              ManualAdPlacementStatus  @default(DRAFT)
+  budgetMinor         Int                      @default(0)
+  spendMinor          Int                      @default(0)
+  currency            String                   @default("NGN")
+  startsAt            DateTime?
+  endsAt              DateTime?
+  impressions         Int                      @default(0)
+  clicks              Int                      @default(0)
+  conversions         Int                      @default(0)
+  metadata            Json                     @default("{}")
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  deletedAt           DateTime?
+  campaign            Campaign                 @relation(fields: [campaignId], references: [id])
+  creative            CampaignCreative?        @relation(fields: [creativeId], references: [id])
+  reports             CampaignReport[]
+  spendEntries        CampaignSpendEntry[]
+
+  @@index([campaignId, status])
+  @@index([channel, status])
+  @@index([provider, externalPlacementId])
+  @@index([deletedAt])
+}
+
+model CampaignReport {
+  id                String                     @id @default(uuid())
+  campaignId        String
+  placementId       String?
+  generatedByUserId String?
+  periodStart       DateTime
+  periodEnd         DateTime
+  status            CampaignReportStatus       @default(DRAFT)
+  summary           String?
+  spendMinor        Int                        @default(0)
+  revenueMinor      Int?
+  currency          String                     @default("NGN")
+  impressions       Int                        @default(0)
+  clicks            Int                        @default(0)
+  conversions       Int                        @default(0)
+  metrics           Json                       @default("{}")
+  publishedAt       DateTime?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  deletedAt         DateTime?
+  campaign          Campaign                   @relation(fields: [campaignId], references: [id])
+  placement         ManualAdPlacement?         @relation(fields: [placementId], references: [id])
+  generatedBy       User?                      @relation("CampaignReportGenerator", fields: [generatedByUserId], references: [id])
+  screenshots       CampaignReportScreenshot[]
+
+  @@index([campaignId, status, createdAt])
+  @@index([placementId, createdAt])
+  @@index([publishedAt])
+  @@index([deletedAt])
+}
+
+model CampaignReportScreenshot {
+  id               String         @id @default(uuid())
+  campaignReportId String
+  mediaAssetId     String
+  sourceUrl        String?
+  capturedAt       DateTime?
+  viewport         String?
+  metadata         Json           @default("{}")
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  report           CampaignReport @relation(fields: [campaignReportId], references: [id])
+  mediaAsset       MediaAsset     @relation(fields: [mediaAssetId], references: [id])
+
+  @@index([campaignReportId, capturedAt])
+  @@index([mediaAssetId])
+}
+
+model CampaignInvoice {
+  id               String                @id @default(uuid())
+  workspaceId      String
+  campaignId       String
+  companyProfileId String?
+  number           String
+  status           CampaignInvoiceStatus @default(DRAFT)
+  subtotalMinor    Int
+  taxMinor         Int                   @default(0)
+  totalMinor       Int
+  amountPaidMinor  Int                   @default(0)
+  currency         String                @default("NGN")
+  lineItems        Json                  @default("[]")
+  issuedAt         DateTime?
+  dueAt            DateTime?
+  paidAt           DateTime?
+  voidedAt         DateTime?
+  metadata         Json                  @default("{}")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  deletedAt        DateTime?
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id])
+  campaign         Campaign              @relation(fields: [campaignId], references: [id])
+  companyProfile   CompanyProfile?       @relation(fields: [companyProfileId], references: [id])
+  budgetHolds      CampaignBudgetHold[]
+  paymentIntents   PaymentIntent[]
+
+  @@unique([workspaceId, number])
+  @@index([workspaceId, status, createdAt])
+  @@index([campaignId, status])
+  @@index([dueAt])
+  @@index([deletedAt])
+}
+
+model CampaignBudgetHold {
+  id                          String                   @id @default(uuid())
+  campaignId                  String
+  walletId                    String
+  invoiceId                   String?
+  createdByUserId             String?
+  amountMinor                 Int
+  currency                    String                   @default("NGN")
+  status                      CampaignBudgetHoldStatus @default(ACTIVE)
+  idempotencyKey              String                   @unique
+  holdLedgerEntryId           String
+  releaseLedgerEntryId        String?
+  captureReleaseLedgerEntryId String?
+  captureDebitLedgerEntryId   String?
+  reason                      String?
+  expiresAt                   DateTime?
+  releasedAt                  DateTime?
+  capturedAt                  DateTime?
+  metadata                    Json                     @default("{}")
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  campaign                    Campaign                 @relation(fields: [campaignId], references: [id])
+  wallet                      Wallet                   @relation(fields: [walletId], references: [id])
+  invoice                     CampaignInvoice?         @relation(fields: [invoiceId], references: [id])
+
+  @@index([campaignId, status])
+  @@index([walletId, status, createdAt])
+  @@index([invoiceId])
+}
+
+model CampaignSpendEntry {
+  id              String              @id @default(uuid())
+  campaignId      String
+  placementId     String?
+  actorUserId     String?
+  amountMinor     Int
+  currency        String              @default("NGN")
+  source          CampaignSpendSource @default(MANUAL)
+  recordedForDate DateTime            @default(now())
+  notes           String?
+  metadata        Json                @default("{}")
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  campaign        Campaign            @relation(fields: [campaignId], references: [id])
+  placement       ManualAdPlacement?  @relation(fields: [placementId], references: [id])
+
+  @@index([campaignId, recordedForDate])
+  @@index([placementId, recordedForDate])
+  @@index([actorUserId, createdAt])
+}
+
+model EventOutbox {
+  id             String            @id @default(uuid())
+  workspaceId    String?
+  name           String
+  entityType     String
+  entityId       String
+  payload        Json              @default("{}")
+  idempotencyKey String            @unique
+  status         EventOutboxStatus @default(PENDING)
+  attempts       Int               @default(0)
+  processedAt    DateTime?
+  failedAt       DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  workspace      Workspace?        @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, status, createdAt])
+  @@index([entityType, entityId])
 }
 
 model SmmOrder {
@@ -654,17 +1199,73 @@ model AnalyticsMetric {
 }
 
 model Notification {
+  id                String                        @id @default(uuid())
+  workspaceId       String
+  recipientUserId   String?
+  eventId           String?
+  channel           String
+  category          String                        @default("campaign")
+  priority          String                        @default("normal")
+  status            NotificationStatus            @default(QUEUED)
+  title             String
+  body              String
+  actionUrl         String?
+  entityType        String?
+  entityId          String?
+  idempotencyKey    String?                       @unique
+  provider          String?
+  providerMessageId String?
+  deliveredAt       DateTime?
+  failedAt          DateTime?
+  errorCode         String?
+  metadata          Json                          @default("{}")
+  readAt            DateTime?
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+  workspace         Workspace                     @relation(fields: [workspaceId], references: [id])
+  recipient         User?                         @relation("NotificationRecipient", fields: [recipientUserId], references: [id])
+  deliveryAttempts  NotificationDeliveryAttempt[]
+
+  @@index([workspaceId, readAt])
+  @@index([workspaceId, status, createdAt])
+  @@index([recipientUserId, readAt, createdAt])
+  @@index([entityType, entityId])
+}
+
+model NotificationDeliveryAttempt {
+  id                String       @id @default(uuid())
+  notificationId    String
+  channel           String
+  provider          String
+  status            String
+  providerMessageId String?
+  response          Json         @default("{}")
+  errorCode         String?
+  errorMessage      String?
+  attemptedAt       DateTime     @default(now())
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  notification      Notification @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId, attemptedAt])
+  @@index([channel, provider, attemptedAt])
+}
+
+model NotificationPreference {
   id          String    @id @default(uuid())
   workspaceId String
-  channel     String
-  title       String
-  body        String
-  readAt      DateTime?
+  userId      String
+  eventName   String
+  inApp       Boolean   @default(true)
+  email       Boolean   @default(true)
+  whatsapp    Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
 
-  @@index([workspaceId, readAt])
+  @@unique([workspaceId, userId, eventName])
+  @@index([userId, eventName])
 }
 
 model SupportTicket {

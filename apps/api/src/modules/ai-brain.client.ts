@@ -87,6 +87,26 @@ const eventMap: Record<
     event: "digital_access_request_refunded",
     entityType: "digital_access_request",
     actorType: "merchant"
+  },
+  ManagedAdsRequestCreated: {
+    event: "managed_ads_request_created",
+    entityType: "managed_ads_request",
+    actorType: "merchant"
+  },
+  ManagedAdsRequestUpdated: {
+    event: "managed_ads_request_updated",
+    entityType: "managed_ads_request",
+    actorType: "merchant"
+  },
+  ManagedAdsCampaignLaunched: {
+    event: "managed_ads_campaign_launched",
+    entityType: "campaign",
+    actorType: "merchant"
+  },
+  ManagedAdsPerformanceSnapshotRecorded: {
+    event: "managed_ads_performance_snapshot_recorded",
+    entityType: "campaign",
+    actorType: "merchant"
   }
 };
 
@@ -215,6 +235,9 @@ function readEntity(eventName: PlatformEvent["name"], payload: Record<string, un
     return payload.order as Record<string, unknown> | undefined;
   }
   if (eventName === "DigitalAccessRequestCreated") {
+    return payload.request as Record<string, unknown> | undefined;
+  }
+  if (eventName === "ManagedAdsRequestCreated") {
     return payload.request as Record<string, unknown> | undefined;
   }
   return undefined;

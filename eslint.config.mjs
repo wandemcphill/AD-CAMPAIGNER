@@ -7,6 +7,8 @@ export default [
       "node_modules/**",
       ".next/**",
       "**/.next/**",
+      "out/**",
+      "**/out/**",
       "dist/**",
       "coverage/**",
       "generated/**",

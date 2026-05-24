@@ -13,6 +13,8 @@ export interface ProcessorResult {
 }
 
 export interface ProcessorFlags {
+  managedAdsWorkerEnabled: boolean;
+  managedAdsAutomationEnabled: boolean;
   digitalAccessWorkerEnabled: boolean;
   digitalAccessAutomationEnabled: boolean;
   otpWorkerEnabled: boolean;
@@ -38,6 +40,10 @@ const digitalAccessQueueFlagNames = {
   "digital-access-automation": "digitalAccessAutomationEnabled"
 } as const satisfies Partial<Record<QueueName, keyof ProcessorFlags>>;
 
+const managedAdsQueueFlagNames = {
+  "managed-ads-automation": "managedAdsAutomationEnabled"
+} as const satisfies Partial<Record<QueueName, keyof ProcessorFlags>>;
+
 function readBooleanFlag(value: string | undefined): boolean {
   return value === "1" || value === "true" || value === "TRUE" || value === "yes" || value === "on";
 }
@@ -46,6 +52,8 @@ export function resolveProcessorFlags(options?: ProcessorOptions): ProcessorFlag
   const env = options?.env ?? process.env;
 
   return {
+    managedAdsWorkerEnabled: readBooleanFlag(env.MANAGED_ADS_WORKER_ENABLED),
+    managedAdsAutomationEnabled: readBooleanFlag(env.MANAGED_ADS_AUTOMATION_WORKER_ENABLED),
     digitalAccessWorkerEnabled: readBooleanFlag(env.DIGITAL_ACCESS_WORKER_ENABLED),
     digitalAccessAutomationEnabled: readBooleanFlag(env.DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED),
     otpWorkerEnabled: readBooleanFlag(env.OTP_WORKER_ENABLED),
@@ -65,10 +73,14 @@ function isDigitalAccessQueueEnabled(
   queue: keyof typeof digitalAccessQueueFlagNames,
   flags: ProcessorFlags
 ): boolean {
-  return (
-    flags.digitalAccessWorkerEnabled &&
-    flags[digitalAccessQueueFlagNames[queue]]
-  );
+  return flags.digitalAccessWorkerEnabled && flags[digitalAccessQueueFlagNames[queue]];
+}
+
+function isManagedAdsQueueEnabled(
+  queue: keyof typeof managedAdsQueueFlagNames,
+  flags: ProcessorFlags
+): boolean {
+  return flags.managedAdsWorkerEnabled && flags[managedAdsQueueFlagNames[queue]];
 }
 
 function isOtpQueueName(queue: QueueName): queue is keyof typeof otpQueueFlagNames {
@@ -81,6 +93,10 @@ function isDigitalAccessQueueName(
   return queue in digitalAccessQueueFlagNames;
 }
 
+function isManagedAdsQueueName(queue: QueueName): queue is keyof typeof managedAdsQueueFlagNames {
+  return queue in managedAdsQueueFlagNames;
+}
+
 export function shouldStartQueueWorker(queue: QueueName, options?: ProcessorOptions): boolean {
   const flags = resolveProcessorFlags(options);
 
@@ -90,6 +106,10 @@ export function shouldStartQueueWorker(queue: QueueName, options?: ProcessorOpti
 
   if (isDigitalAccessQueueName(queue)) {
     return isDigitalAccessQueueEnabled(queue, flags);
+  }
+
+  if (isManagedAdsQueueName(queue)) {
+    return isManagedAdsQueueEnabled(queue, flags);
   }
 
   return true;
@@ -127,6 +147,22 @@ function createDigitalAccessSkippedResult(
   };
 }
 
+function createManagedAdsSkippedResult(
+  queue: keyof typeof managedAdsQueueFlagNames,
+  processedAt: string
+): ProcessorResult {
+  return {
+    queue,
+    status: "skipped",
+    detail: `${queue} skipped because Managed Ads worker flags are disabled`,
+    details: {
+      reason: "managed_ads_worker_disabled",
+      sideEffects: false
+    },
+    processedAt
+  };
+}
+
 export function processQueueJob(
   queue: QueueName,
   job: Job<QueuePayloads[QueueName]>,
@@ -142,6 +178,33 @@ export function processQueueJob(
         queue,
         status: "processed",
         detail: `Campaign ${data.campaignId} action ${data.action} accepted`,
+        processedAt
+      };
+    }
+    case "managed-ads-automation": {
+      if (!isManagedAdsQueueEnabled(queue, flags)) {
+        return createManagedAdsSkippedResult(queue, processedAt);
+      }
+
+      const data = job.data as QueuePayloads["managed-ads-automation"];
+      return {
+        queue,
+        status: "processed",
+        detail: `Managed Ads automation ${data.kind} accepted for ${data.requestId}`,
+        details: {
+          kind: data.kind,
+          workspaceId: data.workspaceId,
+          requestId: data.requestId,
+          ...(data.campaignId === undefined ? {} : { campaignId: data.campaignId }),
+          ...(data.provider === undefined ? {} : { provider: data.provider }),
+          ...(data.objective === undefined ? {} : { objective: data.objective }),
+          ...(data.destinationKind === undefined ? {} : { destinationKind: data.destinationKind }),
+          ...(data.previousStatus === undefined ? {} : { previousStatus: data.previousStatus }),
+          ...(data.nextStatus === undefined ? {} : { nextStatus: data.nextStatus }),
+          ...(data.amountMinor === undefined ? {} : { amountMinor: data.amountMinor }),
+          ...(data.currency === undefined ? {} : { currency: data.currency }),
+          sideEffects: false
+        },
         processedAt
       };
     }

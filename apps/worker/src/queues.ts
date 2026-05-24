@@ -1,5 +1,5 @@
 import { defaultSmmRetryPolicy } from "@fliptrybe/service-smm";
-import type { DigitalAccessAutomationJob } from "@fliptrybe/events";
+import type { DigitalAccessAutomationJob, ManagedAdsAutomationJob } from "@fliptrybe/events";
 import type {
   SmmFraudRiskLevel,
   SmmFulfillmentQueueJob,
@@ -8,6 +8,7 @@ import type {
 
 export const queueNames = [
   "campaigns",
+  "managed-ads-automation",
   "smm-fulfillment",
   "notifications",
   "analytics-ingestion",
@@ -135,6 +136,7 @@ export interface QueueJobOptions {
 
 export type QueuePayloads = {
   campaigns: CampaignJob;
+  "managed-ads-automation": ManagedAdsAutomationJob;
   "smm-fulfillment": SmmFulfillmentJob;
   notifications: NotificationJob;
   "analytics-ingestion": AnalyticsIngestionJob;
@@ -154,6 +156,12 @@ export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
     retryPolicy: { attempts: 4, baseDelayMs: 15_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
     removeOnComplete: { ageSeconds: 86_400, count: 5_000 },
     removeOnFail: { ageSeconds: 604_800, count: 10_000 }
+  },
+  "managed-ads-automation": {
+    concurrency: 10,
+    retryPolicy: { attempts: 6, baseDelayMs: 15_000, maxDelayMs: 600_000, jitterRatio: 0.1 },
+    removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
+    removeOnFail: { ageSeconds: 2_592_000, count: 50_000 }
   },
   "smm-fulfillment": {
     concurrency: 12,

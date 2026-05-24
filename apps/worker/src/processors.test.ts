@@ -5,6 +5,8 @@ import { createQueueJobOptions, queueNames } from "./queues";
 import type { QueueName } from "./queues";
 
 const enabledOtpFlags = {
+  managedAdsWorkerEnabled: false,
+  managedAdsAutomationEnabled: false,
   digitalAccessWorkerEnabled: false,
   digitalAccessAutomationEnabled: false,
   otpWorkerEnabled: true,
@@ -15,8 +17,22 @@ const enabledOtpFlags = {
 };
 
 const enabledDigitalAccessFlags = {
+  managedAdsWorkerEnabled: false,
+  managedAdsAutomationEnabled: false,
   digitalAccessWorkerEnabled: true,
   digitalAccessAutomationEnabled: true,
+  otpWorkerEnabled: false,
+  otpAllocationEnabled: false,
+  otpPollingEnabled: false,
+  otpRefundsEnabled: false,
+  otpProviderHealthEnabled: false
+};
+
+const enabledManagedAdsFlags = {
+  managedAdsWorkerEnabled: true,
+  managedAdsAutomationEnabled: true,
+  digitalAccessWorkerEnabled: false,
+  digitalAccessAutomationEnabled: false,
   otpWorkerEnabled: false,
   otpAllocationEnabled: false,
   otpPollingEnabled: false,
@@ -106,10 +122,22 @@ describe("queue processors", () => {
     expect(options.removeOnFail.count).toBe(50000);
   });
 
+  it("uses durable retry settings for Managed Ads automation jobs", () => {
+    const options = createQueueJobOptions("managed-ads-automation");
+
+    expect(options.attempts).toBe(6);
+    expect(options.removeOnComplete.count).toBe(20000);
+    expect(options.removeOnFail.count).toBe(50000);
+  });
+
   it("does not subscribe to disabled feature queues so jobs stay durable", () => {
     expect(shouldStartQueueWorker("campaigns")).toBe(true);
+    expect(shouldStartQueueWorker("managed-ads-automation")).toBe(false);
     expect(shouldStartQueueWorker("digital-access-automation")).toBe(false);
     expect(shouldStartQueueWorker("otp-allocation")).toBe(false);
+    expect(
+      shouldStartQueueWorker("managed-ads-automation", { flags: enabledManagedAdsFlags })
+    ).toBe(true);
     expect(
       shouldStartQueueWorker("digital-access-automation", { flags: enabledDigitalAccessFlags })
     ).toBe(true);
@@ -137,6 +165,76 @@ describe("queue processors", () => {
       reason: "digital_access_worker_disabled",
       sideEffects: false
     });
+  });
+
+  it("skips Managed Ads automation jobs when worker flags are disabled", () => {
+    const result = processQueueJob(
+      "managed-ads-automation",
+      {
+        data: {
+          id: "ma_job_123",
+          kind: "request_submitted",
+          workspaceId: "workspace_123",
+          requestId: "mads_req_123",
+          idempotencyKey: "managed_ads:request_submitted:mads_req_123",
+          queuedAt: "2026-05-23T12:00:00.000Z"
+        }
+      } as never,
+      { flags: { managedAdsWorkerEnabled: false } }
+    );
+
+    expect(result.status).toBe("skipped");
+    expect(result.details).toMatchObject({
+      reason: "managed_ads_worker_disabled",
+      sideEffects: false
+    });
+  });
+
+  it("processes Managed Ads automation without exposing provider references", () => {
+    const result = processQueueJob(
+      "managed-ads-automation",
+      {
+        data: {
+          id: "ma_job_123",
+          kind: "campaign_launch",
+          workspaceId: "workspace_123",
+          requestId: "mads_req_123",
+          campaignId: "cmp_123",
+          provider: "TIKTOK",
+          providerReference: "provider_secret_123",
+          objective: "LIVE_VIEWERS",
+          destinationKind: "TIKTOK_LIVE",
+          previousStatus: "approved",
+          nextStatus: "launching",
+          amountMinor: 500000,
+          currency: "NGN",
+          idempotencyKey: "managed_ads:campaign_launch:mads_req_123:launching:cmp_123:tiktok",
+          queuedAt: "2026-05-23T12:00:00.000Z"
+        }
+      } as never,
+      { flags: enabledManagedAdsFlags }
+    );
+
+    expect(result).toMatchObject({
+      queue: "managed-ads-automation",
+      status: "processed",
+      details: {
+        kind: "campaign_launch",
+        workspaceId: "workspace_123",
+        requestId: "mads_req_123",
+        campaignId: "cmp_123",
+        provider: "TIKTOK",
+        objective: "LIVE_VIEWERS",
+        destinationKind: "TIKTOK_LIVE",
+        previousStatus: "approved",
+        nextStatus: "launching",
+        amountMinor: 500000,
+        currency: "NGN",
+        sideEffects: false
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("managed_ads:campaign_launch");
+    expect(JSON.stringify(result)).not.toContain("provider_secret_123");
   });
 
   it("processes Digital Access automation without exposing idempotency keys", () => {

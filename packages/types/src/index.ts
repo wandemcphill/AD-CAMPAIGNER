@@ -16,11 +16,16 @@ export type CampaignObjective = (typeof campaignObjectives)[number];
 export const campaignStatuses = [
   "DRAFT",
   "PENDING_REVIEW",
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "CREATIVE_IN_PROGRESS",
   "QUEUED",
   "ACTIVE",
+  "RUNNING",
   "PAUSED",
   "COMPLETED",
   "REJECTED",
+  "CANCELLED",
   "FAILED"
 ] as const;
 export type CampaignStatus = (typeof campaignStatuses)[number];
@@ -181,6 +186,7 @@ export interface Campaign extends Timestamped {
   id: string;
   workspaceId: string;
   creatorUserId: string;
+  companyProfileId?: string | null;
   name: string;
   objective: CampaignObjective;
   status: CampaignStatus;
@@ -189,6 +195,12 @@ export interface Campaign extends Timestamped {
   schedule: CampaignSchedule;
   provider: ProviderKind;
   providerReference?: string;
+  brief?: string | null;
+  targetAudience?: Record<string, unknown>;
+  placementPlan?: Record<string, unknown>;
+  submittedAt?: string | null;
+  approvedAt?: string | null;
+  cancelledAt?: string | null;
 }
 
 export interface LivePromotion extends Timestamped {
@@ -407,6 +419,11 @@ export interface PaymentIntent extends Timestamped {
   status: "PENDING" | "REQUIRES_ACTION" | "COMPLETED" | "FAILED" | "CANCELLED";
   providerReference?: string;
   checkoutUrl?: string;
+  walletId?: string | null;
+  campaignId?: string | null;
+  campaignInvoiceId?: string | null;
+  completedAt?: string | null;
+  creditedAt?: string | null;
   metadata?: Record<string, string | number | boolean | null>;
 }
 

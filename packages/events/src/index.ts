@@ -1,8 +1,11 @@
 import type {
   AnalyticsMetric,
   Campaign,
+  CampaignObjective,
+  CurrencyCode,
   DigitalAccessRefundResult,
   DigitalAccessRequest,
+  DestinationKind,
   OtpOrder,
   OtpRefundResult,
   PaymentIntent,
@@ -26,7 +29,11 @@ export const eventNames = [
   "OtpOrderExpired",
   "DigitalAccessRequestCreated",
   "DigitalAccessRequestUpdated",
-  "DigitalAccessRequestRefunded"
+  "DigitalAccessRequestRefunded",
+  "ManagedAdsRequestCreated",
+  "ManagedAdsRequestUpdated",
+  "ManagedAdsCampaignLaunched",
+  "ManagedAdsPerformanceSnapshotRecorded"
 ] as const;
 
 export type PlatformEventName = (typeof eventNames)[number];
@@ -82,6 +89,81 @@ export type DigitalAccessRequestRefundedEvent = PlatformEventBase<
   "DigitalAccessRequestRefunded",
   { requestId: string; refund: DigitalAccessRefundResult }
 >;
+export const managedAdsRequestStatuses = [
+  "submitted",
+  "in_review",
+  "approved",
+  "launching",
+  "active",
+  "paused",
+  "completed",
+  "rejected",
+  "cancelled"
+] as const;
+export type ManagedAdsRequestStatus = (typeof managedAdsRequestStatuses)[number];
+export const managedAdsChannels = ["META", "TIKTOK", "GOOGLE", "MANUAL"] as const;
+export type ManagedAdsChannel = (typeof managedAdsChannels)[number];
+
+export interface ManagedAdsMoney {
+  amountMinor: number;
+  currency: CurrencyCode;
+}
+
+export interface ManagedAdsRequestSnapshot {
+  id: string;
+  workspaceId: string;
+  creatorUserId?: string;
+  name: string;
+  objective: CampaignObjective;
+  status: ManagedAdsRequestStatus;
+  budget: ManagedAdsMoney;
+  destinationKind: DestinationKind;
+  channels: ManagedAdsChannel[];
+}
+
+export interface ManagedAdsMetricSnapshot {
+  name: "spend" | "impressions" | "clicks" | "conversions" | "roas";
+  value: number;
+  unit: "minor" | "count" | "ratio";
+}
+
+export type ManagedAdsRequestCreatedEvent = PlatformEventBase<
+  "ManagedAdsRequestCreated",
+  { request: ManagedAdsRequestSnapshot }
+>;
+export type ManagedAdsRequestUpdatedEvent = PlatformEventBase<
+  "ManagedAdsRequestUpdated",
+  {
+    requestId: string;
+    previousStatus?: ManagedAdsRequestStatus;
+    nextStatus: ManagedAdsRequestStatus;
+    campaignId?: string;
+  }
+>;
+export type ManagedAdsCampaignLaunchedEvent = PlatformEventBase<
+  "ManagedAdsCampaignLaunched",
+  {
+    requestId: string;
+    campaignId: string;
+    provider: ManagedAdsChannel;
+    providerReference?: string;
+  }
+>;
+export type ManagedAdsPerformanceSnapshotRecordedEvent = PlatformEventBase<
+  "ManagedAdsPerformanceSnapshotRecorded",
+  {
+    requestId: string;
+    campaignId: string;
+    metrics: ManagedAdsMetricSnapshot[];
+    recordedAt: string;
+  }
+>;
+
+export type ManagedAdsPlatformEvent =
+  | ManagedAdsRequestCreatedEvent
+  | ManagedAdsRequestUpdatedEvent
+  | ManagedAdsCampaignLaunchedEvent
+  | ManagedAdsPerformanceSnapshotRecordedEvent;
 
 export type PlatformEvent =
   | CampaignCreatedEvent
@@ -99,7 +181,8 @@ export type PlatformEvent =
   | OtpOrderExpiredEvent
   | DigitalAccessRequestCreatedEvent
   | DigitalAccessRequestUpdatedEvent
-  | DigitalAccessRequestRefundedEvent;
+  | DigitalAccessRequestRefundedEvent
+  | ManagedAdsPlatformEvent;
 
 export const platformEvents = eventNames.map((name) => ({ name }));
 
@@ -167,6 +250,70 @@ export function createDigitalAccessAutomationJob(
     ...(input.sourceEventId === undefined ? {} : { sourceEventId: input.sourceEventId }),
     idempotencyKey:
       input.idempotencyKey ?? `digital_access:${input.kind}:${input.requestId}${suffix}`,
+    queuedAt: input.queuedAt ?? new Date().toISOString()
+  };
+}
+
+export const managedAdsAutomationJobKinds = [
+  "request_submitted",
+  "status_changed",
+  "campaign_launch",
+  "performance_sync",
+  "budget_check"
+] as const;
+
+export type ManagedAdsAutomationJobKind = (typeof managedAdsAutomationJobKinds)[number];
+
+export interface ManagedAdsAutomationJob {
+  id: string;
+  kind: ManagedAdsAutomationJobKind;
+  workspaceId: string;
+  requestId: string;
+  campaignId?: string;
+  provider?: ManagedAdsChannel;
+  providerReference?: string;
+  objective?: CampaignObjective;
+  destinationKind?: DestinationKind;
+  previousStatus?: ManagedAdsRequestStatus;
+  nextStatus?: ManagedAdsRequestStatus;
+  amountMinor?: number;
+  currency?: CurrencyCode;
+  sourceEventId?: string;
+  idempotencyKey: string;
+  queuedAt: string;
+}
+
+export function createManagedAdsAutomationJob(
+  input: Omit<ManagedAdsAutomationJob, "id" | "idempotencyKey" | "queuedAt"> &
+    Partial<Pick<ManagedAdsAutomationJob, "id" | "idempotencyKey" | "queuedAt">>
+): ManagedAdsAutomationJob {
+  const statusSuffix = input.nextStatus ? `:${input.nextStatus}` : "";
+  const campaignSuffix = input.campaignId ? `:${input.campaignId}` : "";
+  const providerSuffix = input.provider ? `:${input.provider.toLowerCase()}` : "";
+
+  return {
+    id:
+      input.id ??
+      globalThis.crypto?.randomUUID?.() ??
+      `ma_job_${Math.random().toString(36).slice(2, 12)}`,
+    kind: input.kind,
+    workspaceId: input.workspaceId,
+    requestId: input.requestId,
+    ...(input.campaignId === undefined ? {} : { campaignId: input.campaignId }),
+    ...(input.provider === undefined ? {} : { provider: input.provider }),
+    ...(input.providerReference === undefined
+      ? {}
+      : { providerReference: input.providerReference }),
+    ...(input.objective === undefined ? {} : { objective: input.objective }),
+    ...(input.destinationKind === undefined ? {} : { destinationKind: input.destinationKind }),
+    ...(input.previousStatus === undefined ? {} : { previousStatus: input.previousStatus }),
+    ...(input.nextStatus === undefined ? {} : { nextStatus: input.nextStatus }),
+    ...(input.amountMinor === undefined ? {} : { amountMinor: input.amountMinor }),
+    ...(input.currency === undefined ? {} : { currency: input.currency }),
+    ...(input.sourceEventId === undefined ? {} : { sourceEventId: input.sourceEventId }),
+    idempotencyKey:
+      input.idempotencyKey ??
+      `managed_ads:${input.kind}:${input.requestId}${statusSuffix}${campaignSuffix}${providerSuffix}`,
     queuedAt: input.queuedAt ?? new Date().toISOString()
   };
 }

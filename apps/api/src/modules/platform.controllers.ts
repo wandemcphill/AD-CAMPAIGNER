@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Query, Req } from "@nestjs/common";
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req
+} from "@nestjs/common";
 
 import type {
-  CreateCampaignDto,
-  CreatePaymentIntentDto,
   CreateSmmOrderDto,
   CreateSupportTicketDto,
   QuoteCampaignDto,
@@ -10,6 +20,7 @@ import type {
   SmmSupplierReferencesDto
 } from "./platform.dtos";
 import { AuthSessionService } from "./auth-session.service";
+import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import {
   workspaceContextFromRequest,
@@ -77,18 +88,79 @@ export class TeamsController {
   }
 }
 
-@Controller("campaigns")
-export class CampaignsController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+@Controller("client-profile")
+export class ClientProfileController {
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
+
+  @Get()
+  async get(@Req() request: WorkspaceContextRequest) {
+    const profiles = await this.managedAds.listCompanyProfiles(workspaceContextFromRequest(request));
+
+    return profiles[0] ?? null;
+  }
+
+  @Patch()
+  upsert(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.upsertCompanyProfile(workspaceContextFromRequest(request), body);
+  }
+}
+
+@Controller("company-profiles")
+export class CompanyProfilesController {
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
 
   @Get()
   list(@Req() request: WorkspaceContextRequest) {
-    return this.platform.listCampaigns(workspaceContextFromRequest(request));
+    return this.managedAds.listCompanyProfiles(workspaceContextFromRequest(request));
   }
 
   @Post()
-  create(@Body() body: CreateCampaignDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.createCampaign(workspaceContextFromRequest(request), body);
+  create(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.upsertCompanyProfile(workspaceContextFromRequest(request), body);
+  }
+
+  @Patch(":id")
+  update(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.upsertCompanyProfile(workspaceContextFromRequest(request), {
+      ...body,
+      id
+    });
+  }
+}
+
+@Controller("campaigns")
+export class CampaignsController {
+  constructor(
+    @Inject(PlatformService) private readonly platform: PlatformService,
+    @Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService
+  ) {}
+
+  @Get()
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listCampaigns(workspaceContextFromRequest(request));
+  }
+
+  @Get(":id")
+  get(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id);
+  }
+
+  @Post()
+  create(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.createCampaign(workspaceContextFromRequest(request), body);
+  }
+
+  @Patch(":id")
+  update(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.updateCampaign(workspaceContextFromRequest(request), id, body);
   }
 
   @Post("quote")
@@ -100,7 +172,97 @@ export class CampaignsController {
 
   @Post(":id/start")
   start(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
-    return this.platform.startCampaign(workspaceContextFromRequest(request), id);
+    return this.managedAds.startCampaign(workspaceContextFromRequest(request), id);
+  }
+
+  @Post(":id/submit")
+  submit(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.submitCampaign(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Get(":id/timeline")
+  timeline(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id).then((campaign) => ({
+      campaignId: id,
+      items: campaign.statusHistory ?? []
+    }));
+  }
+
+  @Get(":id/notes")
+  notes(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id).then((campaign) =>
+      (campaign.notes ?? []).filter((note: { visibility?: string }) => note.visibility === "CLIENT_VISIBLE")
+    );
+  }
+
+  @Post(":id/notes")
+  createNote(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.addCampaignNote(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Get(":id/assets")
+  assets(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id).then((campaign) => campaign.creatives ?? []);
+  }
+
+  @Post(":id/assets")
+  createAsset(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.addCampaignAsset(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Get(":id/reports")
+  reports(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listCampaignReports(workspaceContextFromRequest(request), id);
+  }
+
+  @Post(":id/invoices")
+  createInvoice(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.createCampaignInvoice(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Post(":id/budget-holds")
+  createBudgetHold(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.createBudgetHold(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Post(":id/budget-holds/:holdId/release")
+  releaseBudgetHold(
+    @Param("id") id: string,
+    @Param("holdId") holdId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.releaseBudgetHold(workspaceContextFromRequest(request), id, holdId, body);
+  }
+
+  @Post(":id/budget-holds/:holdId/capture")
+  captureBudgetHold(
+    @Param("id") id: string,
+    @Param("holdId") holdId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.captureBudgetHold(workspaceContextFromRequest(request), id, holdId, body);
   }
 }
 
@@ -116,7 +278,10 @@ export class DestinationsController {
 
 @Controller("live")
 export class LiveController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(
+    @Inject(PlatformService) private readonly platform: PlatformService,
+    @Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService
+  ) {}
 
   @Get()
   list(@Req() request: WorkspaceContextRequest) {
@@ -125,7 +290,7 @@ export class LiveController {
 
   @Post("boosts")
   createBoost(@Req() request: WorkspaceContextRequest) {
-    return this.platform.createCampaign(workspaceContextFromRequest(request), {
+    return this.managedAds.createCampaign(workspaceContextFromRequest(request), {
       name: "Realtime livestream boost",
       objective: "LIVE_VIEWERS",
       destinationKind: "TIKTOK_LIVE",
@@ -186,36 +351,68 @@ export class SmmController {
 
 @Controller("payments")
 export class PaymentsController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
 
   @Post("intents")
-  createIntent(@Body() body: CreatePaymentIntentDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.createPaymentIntent(workspaceContextFromRequest(request), body);
+  createIntent(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.createPaymentIntent(workspaceContextFromRequest(request), body);
   }
 
   @Post("verify/:reference")
   verify(@Param("reference") reference: string, @Req() request: WorkspaceContextRequest) {
-    return this.platform.verifyPayment(workspaceContextFromRequest(request), reference);
+    return this.managedAds.verifyPayment(workspaceContextFromRequest(request), reference);
   }
 }
 
 @Controller("api/webhooks")
 export class WebhooksController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
 
   @Post("korapay")
   korapay(@Body() body: unknown, @Headers("x-korapay-signature") signature?: string) {
-    return this.platform.handleKorapayWebhook(body, signature);
+    return this.managedAds.handleKorapayWebhook(body, signature);
   }
 }
 
 @Controller("wallet")
 export class WalletController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
 
   @Get()
   getWallet(@Req() request: WorkspaceContextRequest) {
-    return this.platform.getWallet(workspaceContextFromRequest(request));
+    return this.managedAds.getWallet(workspaceContextFromRequest(request));
+  }
+
+  @Post("funding-intents")
+  createFundingIntent(
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.createFundingIntent(workspaceContextFromRequest(request), body);
+  }
+}
+
+@Controller("invoices")
+export class InvoicesController {
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
+
+  @Get()
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listInvoices(workspaceContextFromRequest(request));
+  }
+
+  @Get(":id")
+  get(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getInvoice(workspaceContextFromRequest(request), id);
+  }
+
+  @Post(":id/pay")
+  pay(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.payInvoice(workspaceContextFromRequest(request), id, body);
   }
 }
 
@@ -236,11 +433,21 @@ export class AnalyticsController {
 
 @Controller("notifications")
 export class NotificationsController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
 
   @Get()
   list(@Req() request: WorkspaceContextRequest) {
-    return this.platform.listNotifications(workspaceContextFromRequest(request));
+    return this.managedAds.listNotifications(workspaceContextFromRequest(request));
+  }
+
+  @Patch(":id/read")
+  read(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.markNotificationRead(workspaceContextFromRequest(request), id);
+  }
+
+  @Post("read-all")
+  readAll(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.markAllNotificationsRead(workspaceContextFromRequest(request));
   }
 }
 
@@ -274,11 +481,28 @@ export class SupportController {
 
 @Controller("media")
 export class MediaController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
 
   @Post("uploads")
-  createUpload(@Req() request: WorkspaceContextRequest) {
-    return this.platform.createUploadUrl(workspaceContextFromRequest(request));
+  createUpload(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.createUploadIntent(workspaceContextFromRequest(request), body);
+  }
+
+  @Post("upload-intents")
+  createUploadIntent(
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.createUploadIntent(workspaceContextFromRequest(request), body);
+  }
+
+  @Post("uploads/:assetId/complete")
+  completeUpload(
+    @Param("assetId") assetId: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.completeUpload(workspaceContextFromRequest(request), assetId, body);
   }
 }
 
@@ -309,6 +533,119 @@ export class AdminController {
   @Post("ai/suggestions")
   suggestions() {
     return this.platform.createAiSuggestion();
+  }
+}
+
+@Controller("admin/campaign-ops")
+export class AdminCampaignOpsController {
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
+
+  @Get("overview")
+  overview(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getAdminOverview(workspaceContextFromRequest(request));
+  }
+
+  @Get("campaigns")
+  list(@Query() query: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listAdminCampaigns(workspaceContextFromRequest(request), query);
+  }
+
+  @Get("queue")
+  queue(@Query() query: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listAdminCampaigns(workspaceContextFromRequest(request), query);
+  }
+
+  @Get("campaigns/:id")
+  get(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id);
+  }
+
+  @Get("queue/:id")
+  getQueueItem(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id);
+  }
+
+  @Patch("campaigns/:id/status")
+  updateStatus(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.updateAdminStatus(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Patch("campaigns/:id/assignment")
+  updateAssignment(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.updateAssignment(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Post("campaigns/:id/notes")
+  addNote(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.addCampaignNote(workspaceContextFromRequest(request), id, body, true);
+  }
+
+  @Post("campaigns/:id/ad-urls")
+  addPlacement(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.createManualPlacement(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Post("campaigns/:id/metrics")
+  addMetrics(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.addManualMetric(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Post("campaigns/:id/reports")
+  createReport(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.createReport(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Post("reports/:reportId/publish")
+  publishReport(@Param("reportId") reportId: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.publishReport(workspaceContextFromRequest(request), reportId);
+  }
+
+  @Get("reports")
+  reports(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listAdminReports(workspaceContextFromRequest(request));
+  }
+
+  @Get("activity")
+  globalActivity(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listAdminActivity(workspaceContextFromRequest(request));
+  }
+
+  @Get("campaigns/:id/activity")
+  activity(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id).then((campaign) => ({
+      campaignId: id,
+      statusHistory: campaign.statusHistory ?? [],
+      notes: campaign.notes ?? []
+    }));
+  }
+
+  @Post("bulk")
+  bulk(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.bulkAdminAction(workspaceContextFromRequest(request), body);
   }
 }
 
