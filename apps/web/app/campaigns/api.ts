@@ -17,20 +17,35 @@ import {
   subscribeToSessionChanges
 } from "../lib/api-client";
 import {
-  fallbackAiInsights,
-  fallbackAnalytics,
   fallbackBillingActivity,
-  fallbackCampaigns,
   fallbackDestinations,
   fallbackHealth,
-  fallbackWallet,
   type BillingActivity,
   type CampaignAiInsights,
   type CampaignAnalyticsOverview,
-  type CampaignQuote,
   type ClientDataSource,
   type PlatformHealth
 } from "./data";
+
+type CampaignReportShape = {
+  clicks?: number | null;
+  conversions?: number | null;
+  createdAt?: string | null;
+  impressions?: number | null;
+  periodEnd?: string | null;
+  publishedAt?: string | null;
+  revenueMinor?: number | null;
+  spendMinor?: number | null;
+  status?: string | null;
+};
+
+type DashboardMetricTotals = {
+  clicks: number;
+  conversions: number;
+  impressions: number;
+  revenueMinor: number;
+  spendMinor: number;
+};
 
 export type CampaignDashboardState = {
   aiInsights: CampaignAiInsights | null;
@@ -75,13 +90,6 @@ export type CreateCampaignInput = {
   destinationUrl?: string;
 };
 
-export type QuoteCampaignInput = {
-  objective?: CampaignObjective;
-  budgetMinor?: number;
-  currency?: CurrencyCode;
-  destinationKind?: DestinationKind;
-};
-
 export type CreatePaymentIntentInput = {
   amountMinor?: number;
   currency?: CurrencyCode;
@@ -92,13 +100,13 @@ export type CreatePaymentIntentInput = {
 };
 
 export const defaultCampaignDashboardState: CampaignDashboardState = {
-  aiInsights: fallbackAiInsights,
-  analytics: fallbackAnalytics,
-  campaigns: fallbackCampaigns,
+  aiInsights: { items: [] },
+  analytics: { metrics: [], trend: [] },
+  campaigns: [],
   destinations: fallbackDestinations,
   loading: false,
   source: "fallback",
-  wallet: fallbackWallet
+  wallet: null
 };
 
 export const defaultCampaignBuilderState: CampaignBuilderState = {
@@ -111,7 +119,7 @@ export const defaultBillingState: BillingState = {
   activity: fallbackBillingActivity,
   loading: false,
   source: "fallback",
-  wallet: fallbackWallet
+  wallet: null
 };
 
 export const defaultOnboardingState: OnboardingState = {
@@ -126,13 +134,13 @@ export async function loadCampaignDashboardData(): Promise<CampaignDashboardStat
     return defaultCampaignDashboardState;
   }
 
-  const [campaigns, destinations, wallet, analytics, aiInsights] = await Promise.all([
+  const [campaigns, destinations, wallet] = await Promise.all([
     apiRequest<Campaign[]>("/campaigns"),
     apiRequest<DestinationKind[]>("/destinations/catalog"),
-    apiRequest<Wallet>("/wallet"),
-    apiRequest<CampaignAnalyticsOverview>("/analytics/overview"),
-    apiRequest<CampaignAiInsights>("/analytics/ai-insights")
+    apiRequest<Wallet>("/wallet")
   ]);
+  const analytics = buildDashboardAnalytics(campaigns);
+  const aiInsights = buildDashboardInsights(campaigns);
 
   return {
     aiInsights,
@@ -145,7 +153,86 @@ export async function loadCampaignDashboardData(): Promise<CampaignDashboardStat
   };
 }
 
+function publishedReports(campaign: Campaign): CampaignReportShape[] {
+  const reports = (campaign as Campaign & { reports?: CampaignReportShape[] }).reports ?? [];
+
+  return reports.filter((report) => report.status === "PUBLISHED" || Boolean(report.publishedAt));
+}
+
+function buildDashboardAnalytics(campaigns: Campaign[]): CampaignAnalyticsOverview {
+  const reports = campaigns.flatMap(publishedReports);
+  const totals = reports.reduce<DashboardMetricTotals>(
+    (sum, report) => ({
+      clicks: sum.clicks + Number(report.clicks ?? 0),
+      conversions: sum.conversions + Number(report.conversions ?? 0),
+      impressions: sum.impressions + Number(report.impressions ?? 0),
+      revenueMinor: sum.revenueMinor + Number(report.revenueMinor ?? 0),
+      spendMinor: sum.spendMinor + Number(report.spendMinor ?? 0)
+    }),
+    { clicks: 0, conversions: 0, impressions: 0, revenueMinor: 0, spendMinor: 0 }
+  );
+  const roiBps =
+    totals.spendMinor > 0 ? Math.round(((totals.revenueMinor - totals.spendMinor) / totals.spendMinor) * 10000) : 0;
+
+  return {
+    metrics: [
+      { name: "impressions", value: totals.impressions },
+      { name: "clicks", value: totals.clicks },
+      { name: "roi_bps", value: roiBps },
+      { name: "live_viewers", value: 0 }
+    ],
+    trend: reports
+      .map((report) => ({
+        day: formatShortDay(report.periodEnd ?? report.publishedAt ?? report.createdAt),
+        spendMinor: Number(report.spendMinor ?? 0),
+        conversions: Number(report.conversions ?? 0)
+      }))
+      .filter((point) => point.spendMinor > 0 || point.conversions > 0)
+      .slice(-7)
+  };
+}
+
+function buildDashboardInsights(campaigns: Campaign[]): CampaignAiInsights {
+  return {
+    summary: { mode: "operator_reports", campaign_count: campaigns.length },
+    items: campaigns
+      .filter((campaign) => publishedReports(campaign).length > 0)
+      .slice(0, 4)
+      .map((campaign) => ({
+        id: campaign.id,
+        label: campaign.name,
+        metrics: {
+          budget_minor: campaign.budget.amountMinor,
+          published_reports: publishedReports(campaign).length,
+          status: campaign.status
+        },
+        dimensions: {
+          objective: campaign.objective,
+          destination_kind: campaign.destination.kind
+        },
+        reasons: ["published_report_ready", "operator_metrics_reviewed"]
+      }))
+  };
+}
+
+function formatShortDay(value?: string | null) {
+  if (!value) {
+    return "Now";
+  }
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "Now";
+  }
+
+  return new Intl.DateTimeFormat("en-NG", { weekday: "short" }).format(date);
+}
+
 export async function loadCampaignBuilderData(): Promise<CampaignBuilderState> {
+  if (!getStoredToken()) {
+    return defaultCampaignBuilderState;
+  }
+
   const destinations = await apiRequest<DestinationKind[]>("/destinations/catalog");
 
   return {
@@ -171,6 +258,10 @@ export async function loadBillingData(): Promise<BillingState> {
 }
 
 export async function loadOnboardingData(): Promise<OnboardingState> {
+  if (!getStoredToken()) {
+    return defaultOnboardingState;
+  }
+
   const [health, destinations] = await Promise.all([
     apiRequest<PlatformHealth>("/health"),
     apiRequest<DestinationKind[]>("/destinations/catalog")
@@ -182,13 +273,6 @@ export async function loadOnboardingData(): Promise<OnboardingState> {
     loading: false,
     source: "api"
   };
-}
-
-export function quoteCampaign(input: QuoteCampaignInput) {
-  return apiRequest<CampaignQuote>("/campaigns/quote", {
-    method: "POST",
-    body: JSON.stringify(input)
-  });
 }
 
 export function createCampaign(input: CreateCampaignInput) {
@@ -210,8 +294,6 @@ export function createPaymentIntent(input: CreatePaymentIntentInput) {
     body: JSON.stringify(input)
   });
 }
-
-export type { CampaignQuote } from "./data";
 
 export function formatCampaignMoney(money?: Money | null) {
   return money ? formatMoney(money) : "No amount";

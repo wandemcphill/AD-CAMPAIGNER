@@ -1,8 +1,17 @@
 "use client";
 
-import { ArrowRight, Bell, ListChecks, RefreshCw, SlidersHorizontal } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  Bell,
+  ListChecks,
+  RefreshCw,
+  SlidersHorizontal
+} from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MobileAdminCard, Panel, SummaryStatStrip, cn } from "@fliptrybe/ui";
 
 import {
   ActionLink,
@@ -11,16 +20,102 @@ import {
   ErrorBanner,
   InlineEmptyState,
   LoadingRows,
+  PlatformChips,
   PriorityBadge,
+  ProgressBar,
   ReportStatusBadge,
   StatusBadge
 } from "./components";
 import { campaignOpsEnabled, operationStages } from "./data";
 import { useAdminCampaignOpsOverviewData } from "./use-admin-campaign-ops-data";
 
+const activitySeverityDot = {
+  danger: "bg-[var(--ft-red)]",
+  info: "bg-[var(--ft-blue)]",
+  success: "bg-[var(--ft-green)]",
+  warning: "bg-[var(--ft-yellow)]"
+} as const;
+
+function isAssigneeUnassigned(assignee: string) {
+  return assignee.trim().toLowerCase().includes("unassigned");
+}
+
+function needsImmediateAction(campaign: { assignee: string; priority: string; status: string }) {
+  return (
+    campaign.status === "blocked" ||
+    campaign.status === "failed" ||
+    campaign.status === "queued" ||
+    campaign.status === "reviewing" ||
+    campaign.priority === "urgent" ||
+    isAssigneeUnassigned(campaign.assignee)
+  );
+}
+
 export default function AdminCampaignOpsPage() {
-  const { activity, error, loading, metrics, queue, refresh, reports, source } =
+  const { activity, error, loading, queue, refresh, reports, source } =
     useAdminCampaignOpsOverviewData();
+
+  const attentionCount = queue.filter(needsImmediateAction).length;
+  const opsHealth = [
+    {
+      detail: "Briefs awaiting operator QA",
+      label: "Needs Action",
+      urgent: queue.some(
+        (campaign) => campaign.status === "queued" || campaign.status === "reviewing"
+      ),
+      value: queue.filter(
+        (campaign) => campaign.status === "queued" || campaign.status === "reviewing"
+      ).length
+    },
+    {
+      detail: "Approved work ready for platform setup",
+      label: "Launch Action",
+      urgent: queue.some((campaign) => campaign.status === "scheduled"),
+      value: queue.filter((campaign) => campaign.status === "scheduled").length
+    },
+    {
+      detail: "Client reports awaiting publish",
+      label: "Report Action",
+      urgent: reports.some((report) => report.status === "ready"),
+      value: reports.filter((report) => report.status === "ready").length
+    },
+    {
+      detail: "Needs owner before approval",
+      label: "Unassigned",
+      urgent: queue.some((campaign) => isAssigneeUnassigned(campaign.assignee)),
+      value: queue.filter((campaign) => isAssigneeUnassigned(campaign.assignee)).length
+    },
+    {
+      detail: "Live campaigns under watch",
+      label: "Live Now",
+      urgent: false,
+      value: queue.filter((campaign) => campaign.status === "running").length
+    }
+  ];
+  const opsHealthSummary = opsHealth.map((metric) => ({
+    label: metric.label,
+    value: loading ? "..." : metric.value
+  }));
+  const queuePreview = [...queue]
+    .sort((left, right) => {
+      const leftUnassigned = isAssigneeUnassigned(left.assignee);
+      const rightUnassigned = isAssigneeUnassigned(right.assignee);
+
+      if (leftUnassigned !== rightUnassigned) {
+        return leftUnassigned ? -1 : 1;
+      }
+
+      const leftAction = needsImmediateAction(left);
+      const rightAction = needsImmediateAction(right);
+
+      if (leftAction !== rightAction) {
+        return leftAction ? -1 : 1;
+      }
+
+      return left.name.localeCompare(right.name);
+    })
+    .slice(0, 10);
+  const activityPreview = activity.slice(0, 20);
 
   return (
     <AdminCampaignOpsShell active="/campaign-ops">
@@ -28,16 +123,16 @@ export default function AdminCampaignOpsPage() {
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button variant="secondary">
-              <Bell className="size-4" />
-              Notify ops
+              <Bell className="size-4 stroke-[1.5]" />
+              Send ops alert
             </Button>
             <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
-              <RefreshCw className="size-4" />
+              <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
             <Button>
-              <SlidersHorizontal className="size-4" />
-              Controls
+              <SlidersHorizontal className="size-4 stroke-[1.5]" />
+              Ops controls
             </Button>
           </div>
         }
@@ -46,124 +141,269 @@ export default function AdminCampaignOpsPage() {
             <Badge tone={campaignOpsEnabled ? "success" : "warning"}>
               {campaignOpsEnabled ? "Campaign ops enabled" : "Feature off"}
             </Badge>
-            <Badge tone={source === "api" ? "info" : "neutral"}>/v1 admin API</Badge>
+            <Badge tone={source === "api" ? "success" : "neutral"}>Live workspace</Badge>
           </>
         }
-        title="Campaign operations"
+        title="Campaign Operations Hub"
       />
 
       {error ? <ErrorBanner message={error} /> : null}
 
-      <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <MetricCard
-            detail={metric.detail}
-            key={metric.label}
-            label={metric.label}
-            value={loading ? "..." : metric.value}
-            {...(metric.tone === undefined ? {} : { tone: metric.tone })}
-          />
-        ))}
-      </section>
-
-      <section className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Panel className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-zinc-200 p-4">
+      {attentionCount > 0 ? (
+        <section className="mt-5 flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--ft-red)]/40 bg-[var(--ft-red-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="size-5 shrink-0 stroke-[1.5] text-[var(--ft-red)]" />
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">Queue watch</h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Intake, review, and launch state for operator-owned campaigns.
-              </p>
+              <div className="text-sm font-medium text-[var(--ft-text-primary)]">
+                {attentionCount} campaign{attentionCount === 1 ? "" : "s"} need ops action
+              </div>
+              <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                Needs Action, failed, or urgent queue items are waiting on an operator decision.
+              </div>
+            </div>
+          </div>
+          <ActionLink href="/campaign-ops/queue" variant="secondary">
+            Open action queue
+            <ArrowRight className="size-4 stroke-[1.5]" />
+          </ActionLink>
+        </section>
+      ) : null}
+
+      <SummaryStatStrip className="mt-6" items={opsHealthSummary} />
+
+      <section className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
+        <Panel className="overflow-hidden">
+          <div className="flex items-center justify-between gap-4 border-b border-[var(--ft-border)] p-4">
+            <div className="flex items-center gap-3">
+              <ListChecks className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+              <div>
+                <h2 className="text-base font-medium text-[var(--ft-text-primary)]">
+                  Needs action watch
+                </h2>
+                <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                  {queue.length} open campaign action{queue.length === 1 ? "" : "s"}
+                </p>
+              </div>
             </div>
             <ActionLink href="/campaign-ops/queue" variant="ghost">
-              <ListChecks className="size-4" />
-              Queue
+              Open queue
+              <ArrowRight className="size-4 stroke-[1.5]" />
             </ActionLink>
           </div>
 
           {loading ? (
-            <LoadingRows />
-          ) : queue.length === 0 ? (
+            <LoadingRows count={5} />
+          ) : queuePreview.length === 0 ? (
             <InlineEmptyState
-              detail="The planned queue endpoint returned no campaign work items."
-              title="No queue items"
+              detail="No campaign brief, launch, or report handoff is waiting on operators."
+              title="No campaigns need action"
             />
           ) : (
-            <div className="divide-y divide-zinc-200">
-              {queue.slice(0, 4).map((campaign) => (
+            <>
+              <div className="grid gap-3 p-3 md:hidden">
+                {queuePreview.map((campaign) => (
+                  <MobileAdminCard
+                    action={
+                      <div className="grid gap-3">
+                        <ProgressBar value={campaign.progress} />
+                        <ActionLink
+                          href={`/campaign-ops/detail?campaignId=${encodeURIComponent(campaign.id)}`}
+                          variant="secondary"
+                        >
+                          Open work item
+                        </ActionLink>
+                      </div>
+                    }
+                    key={campaign.id}
+                    meta={[
+                      { label: "Client", value: campaign.workspaceName },
+                      { label: "Platform", value: <PlatformChips channel={campaign.channel} /> },
+                      { label: "Owner", value: campaign.assignee },
+                      {
+                        label: "Needs action",
+                        value: (
+                          <span className="line-clamp-2 text-right text-[var(--ft-text-secondary)]">
+                            {campaign.nextAction}
+                          </span>
+                        )
+                      },
+                      { label: "Progress", value: `${campaign.progress}%` }
+                    ]}
+                    status={
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <StatusBadge status={campaign.status} />
+                        <PriorityBadge priority={campaign.priority} />
+                      </div>
+                    }
+                    title={campaign.name}
+                  />
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
+                <table className="w-full table-fixed border-collapse text-left text-sm">
+                  <colgroup>
+                    <col className="w-[240px]" />
+                    <col className="w-[150px]" />
+                    <col className="w-[130px]" />
+                    <col className="w-[150px]" />
+                    <col className="w-[120px]" />
+                    <col className="w-[92px]" />
+                  </colgroup>
+                  <thead className="bg-[var(--ft-bg-surface)]">
+                    <tr className="border-b border-[var(--ft-border)] font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                      <th className="px-4 py-3 font-medium">Campaign</th>
+                      <th className="px-4 py-3 font-medium">Client</th>
+                      <th className="px-4 py-3 font-medium">Channel</th>
+                      <th className="px-4 py-3 font-medium">Status</th>
+                      <th className="px-4 py-3 font-medium">Progress</th>
+                      <th className="px-4 py-3 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {queuePreview.map((campaign, index) => (
+                      <tr
+                        className={cn(
+                          "h-14 border-b border-[var(--ft-border)] transition hover:bg-[var(--ft-bg-raised)]",
+                          index % 2 === 1 ? "bg-[var(--ft-bg-muted)]/45" : "bg-transparent",
+                          campaign.priority === "urgent"
+                            ? "border-l-2 border-l-[var(--ft-red)]"
+                            : ""
+                        )}
+                        key={campaign.id}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="truncate font-medium text-[var(--ft-text-primary)]">
+                            {campaign.name}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className="truncate font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                              {campaign.id}
+                            </span>
+                            <PriorityBadge priority={campaign.priority} />
+                          </div>
+                        </td>
+                        <td className="truncate px-4 py-3 text-[var(--ft-text-secondary)]">
+                          {campaign.workspaceName}
+                        </td>
+                        <td className="truncate px-4 py-3 text-[var(--ft-text-secondary)]">
+                          {campaign.channel}
+                        </td>
+                        <td className="px-4 py-3">
+                          <StatusBadge status={campaign.status} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="grid gap-1">
+                            <ProgressBar value={campaign.progress} />
+                            <span className="font-mono text-[11px] text-[var(--ft-text-muted)]">
+                              {campaign.progress}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <ActionLink
+                            href={`/campaign-ops/detail?campaignId=${encodeURIComponent(campaign.id)}`}
+                            variant="ghost"
+                          >
+                            Open
+                          </ActionLink>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Panel>
+
+        <Panel className="overflow-hidden">
+          <div className="flex items-center justify-between border-b border-[var(--ft-border)] p-4">
+            <div className="flex items-center gap-3">
+              <Activity className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+              <div>
+                <h2 className="text-base font-medium text-[var(--ft-text-primary)]">
+                  Ops activity rail
+                </h2>
+                <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                  Last {activityPreview.length} events
+                </p>
+              </div>
+            </div>
+            <ActionLink href="/campaign-ops/activity" variant="ghost">
+              Activity
+            </ActionLink>
+          </div>
+
+          {loading ? (
+            <LoadingRows count={5} />
+          ) : activityPreview.length === 0 ? (
+            <InlineEmptyState detail="No recent admin or system actions." title="No activity" />
+          ) : (
+            <div className="max-h-[520px] overflow-y-auto">
+              {activityPreview.map((item) => (
                 <div
-                  className="grid gap-3 p-4 lg:grid-cols-[1fr_auto_auto] lg:items-center"
-                  key={campaign.id}
+                  className="grid min-h-10 grid-cols-[10px_1fr_auto] items-center gap-3 border-b border-[var(--ft-border)] px-4 py-3"
+                  key={item.id}
                 >
-                  <div>
-                    <div className="font-medium text-zinc-950">{campaign.name}</div>
-                    <div className="mt-1 text-sm text-zinc-500">
-                      {campaign.workspaceName} - {campaign.channel} - {campaign.budget}
+                  <span className={cn("size-2 rounded-full", activitySeverityDot[item.severity])} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-[var(--ft-text-primary)]">
+                      <span className="font-medium">{item.actor}</span>{" "}
+                      <span className="text-[var(--ft-text-secondary)]">{item.action}</span>
+                    </div>
+                    <div className="mt-1 truncate text-sm text-[var(--ft-text-muted)]">
+                      {item.target}
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <StatusBadge status={campaign.status} />
-                    <PriorityBadge priority={campaign.priority} />
+                  <div className="font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                    {item.timestamp}
                   </div>
-                  <ActionLink href={`/campaign-ops/detail?campaignId=${encodeURIComponent(campaign.id)}`}>
-                    Open
-                  </ActionLink>
                 </div>
               ))}
             </div>
           )}
         </Panel>
-
-        <Panel className="p-4">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-950">Operating path</h2>
-            <p className="mt-1 text-sm text-zinc-500">
-              The UI is wired for queue review, detail handling, reporting, and activity audit.
-            </p>
-          </div>
-          <div className="mt-5 grid gap-4">
-            {operationStages.map((stage) => (
-              <div className="grid grid-cols-[32px_1fr] gap-3" key={stage.label}>
-                <div className="flex size-8 items-center justify-center rounded-md bg-zinc-100">
-                  <stage.icon className="size-4 text-zinc-950" />
-                </div>
-                <div>
-                  <div className="font-medium text-zinc-950">{stage.label}</div>
-                  <div className="mt-1 text-sm text-zinc-500">{stage.value}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
       </section>
 
-      <section className="mt-6 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+      <section className="mt-6 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
         <Panel className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-zinc-200 p-4">
-            <div>
-              <h2 className="text-lg font-semibold text-zinc-950">Reports</h2>
-              <p className="mt-1 text-sm text-zinc-500">Latest operator report jobs.</p>
+          <div className="flex items-center justify-between border-b border-[var(--ft-border)] p-4">
+            <div className="flex items-center gap-3">
+              <BarChart3 className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+              <div>
+                <h2 className="text-base font-medium text-[var(--ft-text-primary)]">
+                  Client report queue
+                </h2>
+                <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                  {reports.length} report job{reports.length === 1 ? "" : "s"}
+                </p>
+              </div>
             </div>
             <ActionLink href="/campaign-ops/reports" variant="ghost">
-              View all
-              <ArrowRight className="size-4" />
+              Open reports
+              <ArrowRight className="size-4 stroke-[1.5]" />
             </ActionLink>
           </div>
           {loading ? (
-            <LoadingRows count={2} />
+            <LoadingRows count={3} />
           ) : reports.length === 0 ? (
             <InlineEmptyState
-              detail="The reports endpoint is ready for generated campaign summaries."
-              title="No reports yet"
+              detail="Reports will appear once operators prepare metrics and client-ready commentary."
+              title="No client reports need action"
             />
           ) : (
-            <div className="divide-y divide-zinc-200">
-              {reports.slice(0, 3).map((report) => (
-                <div className="grid gap-2 p-4 sm:grid-cols-[1fr_auto] sm:items-center" key={report.id}>
-                  <div>
-                    <div className="font-medium text-zinc-950">{report.title}</div>
-                    <div className="mt-1 text-sm text-zinc-500">
-                      {report.period} - {report.generatedAt}
+            <div className="divide-y divide-[var(--ft-border)]">
+              {reports.slice(0, 4).map((report) => (
+                <div
+                  className="grid gap-3 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+                  key={report.id}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium text-[var(--ft-text-primary)]">
+                      {report.title}
+                    </div>
+                    <div className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                      {report.period} / prepared {report.generatedAt}
                     </div>
                   </div>
                   <ReportStatusBadge status={report.status} />
@@ -174,37 +414,27 @@ export default function AdminCampaignOpsPage() {
         </Panel>
 
         <Panel className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-zinc-200 p-4">
-            <div>
-              <h2 className="text-lg font-semibold text-zinc-950">Activity</h2>
-              <p className="mt-1 text-sm text-zinc-500">Recent admin and system actions.</p>
-            </div>
-            <ActionLink href="/campaign-ops/activity" variant="ghost">
-              Activity
-              <ArrowRight className="size-4" />
-            </ActionLink>
+          <div className="border-b border-[var(--ft-border)] p-4">
+            <h2 className="text-base font-medium text-[var(--ft-text-primary)]">Operating path</h2>
+            <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+              Brief QA, risk gate, launch control, and client reporting handoff.
+            </p>
           </div>
-          {loading ? (
-            <LoadingRows count={2} />
-          ) : activity.length === 0 ? (
-            <InlineEmptyState
-              detail="No activity has arrived from the campaign ops activity endpoint."
-              title="No activity"
-            />
-          ) : (
-            <div className="divide-y divide-zinc-200">
-              {activity.slice(0, 4).map((item) => (
-                <div className="p-4" key={item.id}>
-                  <div className="font-medium text-zinc-950">
-                    {item.actor} {item.action}
-                  </div>
-                  <div className="mt-1 text-sm text-zinc-500">
-                    {item.target} - {item.timestamp}
+          <div className="grid divide-y divide-[var(--ft-border)] md:grid-cols-2 md:divide-x md:divide-y-0">
+            {operationStages.map((stage) => (
+              <div className="grid grid-cols-[32px_1fr] gap-3 p-4" key={stage.label}>
+                <div className="flex size-8 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
+                  <stage.icon className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+                </div>
+                <div>
+                  <div className="font-medium text-[var(--ft-text-primary)]">{stage.label}</div>
+                  <div className="mt-1 text-sm leading-5 text-[var(--ft-text-secondary)]">
+                    {stage.value}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
         </Panel>
       </section>
     </AdminCampaignOpsShell>

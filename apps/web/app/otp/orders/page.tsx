@@ -25,25 +25,37 @@ export default function OtpOrdersPage() {
       />
 
       <Panel className="mt-6 overflow-hidden">
-        <div className="divide-y divide-zinc-200">
+        <div className="hidden grid-cols-[0.75fr_0.8fr_1fr_0.75fr_0.6fr_0.6fr] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
+          <div>Order</div>
+          <div>Service</div>
+          <div>Number</div>
+          <div>Status</div>
+          <div>Expiry</div>
+          <div>Debit</div>
+        </div>
+        <div className="divide-y divide-[var(--ft-border)]">
           {orders.map((order) => (
             <Link
-              className="grid gap-3 p-4 transition hover:bg-zinc-50 xl:grid-cols-[0.75fr_0.8fr_1fr_0.75fr_0.6fr_0.6fr] xl:items-center"
+              className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-muted)] xl:grid-cols-[0.75fr_0.8fr_1fr_0.75fr_0.6fr_0.6fr] xl:items-center"
               href={`/otp/orders/${order.id}`}
               key={order.id}
             >
               <div>
-                <div className="font-semibold text-zinc-950">{order.id}</div>
-                <div className="text-sm text-zinc-500">{order.requestedAt}</div>
+                <div className="font-semibold text-[var(--ft-text-primary)]">{order.id}</div>
+                <div className="text-sm text-[var(--ft-text-muted)]">{order.requestedAt}</div>
               </div>
               <div>
-                <div className="font-medium text-zinc-950">{order.service}</div>
-                <div className="text-sm text-zinc-500">{order.country}</div>
+                <div className="font-medium text-[var(--ft-text-primary)]">{order.service}</div>
+                <div className="text-sm text-[var(--ft-text-muted)]">{order.country}</div>
               </div>
-              <div className="text-sm font-medium text-zinc-700">{order.number}</div>
+              <div className="text-sm font-medium text-[var(--ft-text-secondary)]">
+                {order.number}
+              </div>
               <StatusBadge status={order.status} />
-              <div className="text-sm text-zinc-600">{order.expiresIn}</div>
-              <div className="text-sm font-semibold text-zinc-950">{order.amount}</div>
+              <div className="text-sm text-[var(--ft-text-secondary)]">{order.expiresIn}</div>
+              <div className="font-mono text-sm font-semibold text-[var(--ft-text-primary)]">
+                {order.amount}
+              </div>
             </Link>
           ))}
         </div>

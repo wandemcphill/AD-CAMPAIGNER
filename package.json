@@ -17,10 +17,11 @@
     "test": "turbo test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prisma:validate": "pnpm --filter @fliptrybe/database prisma validate",
-    "prisma:generate": "pnpm --filter @fliptrybe/database prisma generate",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm prisma:validate",
-    "smoke": "tsx scripts/smoke.ts"
+    "prisma:validate": "corepack pnpm --filter @fliptrybe/database prisma validate",
+    "prisma:generate": "corepack pnpm --filter @fliptrybe/database prisma generate",
+    "verify": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test && corepack pnpm prisma:validate && corepack pnpm ui:audit",
+    "smoke": "tsx scripts/smoke.ts",
+    "ui:audit": "tsx scripts/ui-audit.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

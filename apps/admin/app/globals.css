@@ -1,21 +1,127 @@
 @import "tailwindcss";
+@import "../../../packages/ui/src/themes.css";
 @source "../../../packages/ui/src";
 
 :root {
-  color-scheme: light;
-  --background: #f5f4ef;
-  --foreground: #101113;
+  --font-display:
+    "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:
+    "Geist Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  min-width: 320px;
+  background: var(--ft-bg-base);
+}
+
 body {
   margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 100vh;
+  color: var(--ft-text-primary);
+  font-family: var(--font-display);
   letter-spacing: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+:where(a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--ft-accent);
+  outline-offset: 2px;
+}
+
+::placeholder {
+  color: var(--ft-text-muted);
+  opacity: 1;
+}
+
+::selection {
+  background: var(--ft-accent);
+  color: var(--ft-bg-base);
+}
+
+@keyframes ft-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes ft-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--ft-green-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+.bg-white,
+.bg-white\/90,
+.bg-white\/88,
+.bg-zinc-50,
+.bg-zinc-100 {
+  background-color: var(--ft-bg-surface) !important;
+}
+
+.bg-zinc-950,
+.bg-zinc-900 {
+  background-color: var(--ft-accent) !important;
+  color: var(--ft-bg-base) !important;
+}
+
+.text-zinc-950,
+.text-zinc-900,
+.text-zinc-800 {
+  color: var(--ft-text-primary) !important;
+}
+
+.text-zinc-700,
+.text-zinc-600,
+.text-zinc-500,
+.text-zinc-400 {
+  color: var(--ft-text-secondary) !important;
+}
+
+.border-zinc-200,
+.border-zinc-300,
+.divide-zinc-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--ft-border) !important;
+}
+
+.shadow-sm {
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.font-data {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.skeleton {
+  animation: ft-shimmer 1.5s infinite;
+  background: linear-gradient(
+    90deg,
+    var(--ft-bg-muted) 25%,
+    var(--ft-border-strong) 50%,
+    var(--ft-bg-muted) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 2px;
 }

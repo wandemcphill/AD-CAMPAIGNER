@@ -50,6 +50,30 @@ https://ft-campaigner-api-fra-g25g.onrender.com/api/webhooks/korapay
 
 The Korapay webhook is intentionally outside the `/v1` prefix.
 
+## Managed Ads MVP Manual Launch
+
+This MVP does not launch or optimize ads through TikTok, Meta, or other platform APIs. Operators manually place campaigns outside the app, then use FlipTrybe to track assignment, money state, evidence, reports, completion, and audit history.
+
+Before accepting live briefs:
+
+- Run the managed ads preflight commands in `docs/PRODUCTION_CHECKLIST.md`.
+- Confirm web and admin point at the production API and do not show mock or diagnostic data-source badges.
+- Confirm Cloudinary uploads, Korapay payments, wallet ledger entries, and audit logging are available.
+- Confirm operators have the manual placement accounts, proof capture process, and report-publishing owner assigned.
+
+Per-campaign operator flow:
+
+1. Confirm the client submitted a complete brief, business profile, budget, objective, audience, dates, and at least one usable media asset.
+2. In Campaign Operations, review the brief, assign an owner, record the decision, and keep internal notes admin-only.
+3. Issue the invoice or budget hold before launch; verify Korapay payment or wallet funding reconciles once against the campaign/workspace.
+4. Launch placements manually in the approved external platform/account. Do not mark the campaign live until placement URLs, platform/account names, dates, and operator are recorded.
+5. Upload proofs such as screenshots, receipts, links, or exported delivery evidence before client-facing status updates claim live delivery.
+6. Enter metrics from the external platform on the agreed cadence, preserving the source, date range, and operator for each update.
+7. Publish the client report only after placements, proofs, spend/payment state, and metrics have been reviewed by a second operator when available.
+8. Complete the campaign after the final report is visible to the client, invoices/wallet entries reconcile, and audit/history rows show submission, review, assignment, payment, proof, report, and completion events.
+
+Escalate instead of completing when the external platform rejects the placement, evidence is missing, payment state does not reconcile, client-visible report data differs from source metrics, or audit rows are absent.
+
 ## Rollback
 
 Feature flag rollback is the fastest rollback path for Digital Access and OTP incidents.

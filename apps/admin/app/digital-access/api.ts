@@ -153,7 +153,7 @@ function buildMetrics(overview: ApiOverview): AdminMetric[] {
     {
       label: "Open requests",
       value: String(openRequests),
-      detail: "Pending and processing",
+      detail: "Awaiting or in fulfillment",
       tone: "info"
     },
     {

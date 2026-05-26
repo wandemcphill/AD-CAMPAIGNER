@@ -164,7 +164,7 @@ export const requests: AdminAccessRequest[] = [
 ];
 
 export const metrics: AdminMetric[] = [
-  { label: "Open requests", value: "17", detail: "Pending and processing", tone: "info" },
+  { label: "Open requests", value: "17", detail: "Awaiting or in fulfillment", tone: "info" },
   { label: "Fulfilled today", value: "43", detail: "+12% from yesterday", tone: "success" },
   { label: "Refund rate", value: "3.1%", detail: "Auto reversals healthy", tone: "warning" },
   { label: "Revenue", value: "NGN 612k", detail: "Fulfilled request value" }

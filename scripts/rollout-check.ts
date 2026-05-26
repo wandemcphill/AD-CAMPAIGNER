@@ -5,7 +5,8 @@ type Stage =
   | "digital-access-api"
   | "digital-access-admin"
   | "digital-access-worker"
-  | "otp-beta";
+  | "otp-beta"
+  | "managed-ads-mvp";
 
 const targets = ["api", "worker", "web", "admin"];
 const stages = [
@@ -14,7 +15,8 @@ const stages = [
   "digital-access-api",
   "digital-access-admin",
   "digital-access-worker",
-  "otp-beta"
+  "otp-beta",
+  "managed-ads-mvp"
 ];
 
 const digitalAccessFlags = [
@@ -78,6 +80,13 @@ function requireEnv(names: string[], label: string) {
   }
 }
 
+function expectValue(name: string, expected: string, label: string) {
+  const actual = process.env[name]?.trim();
+  if (actual !== expected) {
+    errors.push(`${label}: expected ${name}=${expected}`);
+  }
+}
+
 function expect(name: string, expected: boolean, label: string) {
   if (enabled(name) !== expected) {
     errors.push(`${label}: expected ${name}=${expected ? "true" : "false"}`);
@@ -110,7 +119,16 @@ function checkStrictProduction(currentTarget: Target) {
       "api"
     );
     if (process.env.STORAGE_PROVIDER === "cloudinary") {
-      requireEnv(["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_UPLOAD_PRESET"], "api cloudinary");
+      requireEnv(
+        ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "CLOUDINARY_UPLOAD_PRESET"],
+        "api cloudinary"
+      );
+    }
+    if (process.env.STORAGE_PROVIDER === "mock") {
+      warnings.push("api: STORAGE_PROVIDER=mock is not suitable for production media uploads.");
+    }
+    if (enabled("MEDIA_UPLOAD_ALLOW_MOCK_STORAGE")) {
+      errors.push("api: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE must be false in strict production.");
     }
     if (process.env.PAYMENT_PROVIDER === "live") {
       requireEnv(
@@ -145,6 +163,62 @@ function checkStrictProduction(currentTarget: Target) {
   ) {
     errors.push(`${currentTarget}: SMM_PROVIDER=live needs at least one supplier API key`);
   }
+}
+
+function checkManagedAdsMvp(currentTarget: Target) {
+  const label = `${currentTarget}/managed-ads-mvp`;
+
+  if (currentTarget === "api") {
+    requireEnv(
+      [
+        "NODE_ENV",
+        "APP_URL",
+        "ADMIN_URL",
+        "API_URL",
+        "DATABASE_URL",
+        "REDIS_URL",
+        "JWT_SECRET",
+        "SESSION_SECRET"
+      ],
+      label
+    );
+    expectValue("STORAGE_PROVIDER", "cloudinary", label);
+    requireEnv(
+      ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "CLOUDINARY_UPLOAD_PRESET"],
+      `${label} cloudinary`
+    );
+    expectValue("PAYMENT_PROVIDER", "live", label);
+    requireEnv(
+      [
+        "KORAPAY_PUBLIC_KEY",
+        "KORAPAY_SECRET_KEY",
+        "KORAPAY_ENCRYPTION_KEY",
+        "KORAPAY_WEBHOOK_URL",
+        "KORAPAY_WEBHOOK_SECRET",
+        "KORAPAY_REDIRECT_URL",
+        "TREASURY_BANK_NAME",
+        "TREASURY_ACCOUNT_NAME",
+        "TREASURY_ACCOUNT_NUMBER"
+      ],
+      `${label} payments`
+    );
+    if (enabled("MEDIA_UPLOAD_ALLOW_MOCK_STORAGE")) {
+      errors.push(`${label}: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE must stay disabled.`);
+    }
+  }
+
+  if (currentTarget === "worker") {
+    requireEnv(["NODE_ENV", "DATABASE_URL", "REDIS_URL"], label);
+  }
+
+  if (currentTarget === "web" || currentTarget === "admin") {
+    requireEnv(["NEXT_PUBLIC_API_URL"], label);
+    if (enabled("NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE")) {
+      errors.push(`${label}: NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE must be disabled.`);
+    }
+  }
+
+  expectAll(trustedHeaderFlags, false, label);
 }
 
 function checkConsistency(currentTarget: Target) {
@@ -187,6 +261,11 @@ function checkConsistency(currentTarget: Target) {
 
 function checkStage(currentTarget: Target, currentStage: Stage) {
   const label = `${currentTarget}/${currentStage}`;
+
+  if (currentStage === "managed-ads-mvp") {
+    checkManagedAdsMvp(currentTarget);
+    return;
+  }
 
   if (currentStage === "off") {
     if (currentTarget === "web") return expect("NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS", false, label);
@@ -240,7 +319,9 @@ function checkStage(currentTarget: Target, currentStage: Stage) {
 const currentTarget = target();
 const currentStage = stage();
 
-checkStrictProduction(currentTarget);
+if (currentStage !== "managed-ads-mvp") {
+  checkStrictProduction(currentTarget);
+}
 checkConsistency(currentTarget);
 checkStage(currentTarget, currentStage);
 

@@ -4,11 +4,11 @@ import { Clock, RefreshCw, Wallet } from "lucide-react";
 
 import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
 
-import { DigitalAccessShell, PageHeader, RequestStatus } from "../components";
+import { DigitalAccessShell, ErrorNotice, PageHeader, RequestStatus } from "../components";
 import { useDigitalAccessData } from "../use-digital-access-data";
 
 export default function DigitalAccessRequestsPage() {
-  const { error, loading, refresh, requests, source } = useDigitalAccessData();
+  const { error, loading, refresh, requests } = useDigitalAccessData();
   const openRequests = requests.filter(
     (request) => request.status === "pending" || request.status === "processing"
   ).length;
@@ -26,25 +26,19 @@ export default function DigitalAccessRequestsPage() {
         eyebrow={
           <>
             <Badge tone="info">Request tracking</Badge>
-            <Badge tone={source === "api" ? "success" : "neutral"}>
-              {source === "api" ? "API data" : "Demo queue"}
-            </Badge>
+            <Badge tone="neutral">Managed queue</Badge>
           </>
         }
         title="Your access requests"
       />
 
-      {error ? (
-        <div className="mt-4 rounded-md border border-orange-200 bg-orange-50 p-3 text-sm text-orange-700">
-          {error}
-        </div>
-      ) : null}
+      <ErrorNotice message={error} />
 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <MetricCard
           label="Open requests"
           value={loading ? "..." : String(openRequests)}
-          detail="Pending and processing"
+          detail="Awaiting or in fulfillment"
           tone="info"
         />
         <MetricCard
@@ -60,15 +54,22 @@ export default function DigitalAccessRequestsPage() {
         />
       </section>
 
-      <section className="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-white">
-        <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-zinc-200 p-4">
+      <section className="mt-6 overflow-hidden rounded-lg border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
+        <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-[var(--ft-border)] p-4">
           <div>
-            <h2 className="font-semibold text-zinc-950">Request queue</h2>
-            <p className="mt-1 text-sm text-zinc-500">Track admin fulfillment state.</p>
+            <h2 className="font-semibold text-[var(--ft-text-primary)]">Request queue</h2>
+            <p className="mt-1 text-sm text-[var(--ft-text-muted)]">
+              Track admin fulfillment state.
+            </p>
           </div>
-          <Clock className="size-5 text-sky-600" />
+          <Clock className="size-5 text-[var(--ft-blue)]" />
         </div>
-        <div className="divide-y divide-zinc-200">
+        <div className="hidden grid-cols-[1fr_auto_auto] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
+          <div>Request</div>
+          <div>Status</div>
+          <div>Debit</div>
+        </div>
+        <div className="divide-y divide-[var(--ft-border)]">
           {loading ? (
             <QueueMessage label="Loading request queue" />
           ) : requests.length === 0 ? (
@@ -76,18 +77,20 @@ export default function DigitalAccessRequestsPage() {
           ) : (
             requests.map((request) => (
               <a
-                className="grid gap-3 p-4 transition hover:bg-zinc-50 sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] sm:grid-cols-[1fr_auto_auto] sm:items-center"
                 href={`/digital-access/requests/${request.id}`}
                 key={request.id}
               >
                 <div>
-                  <div className="font-medium text-zinc-950">{request.service}</div>
-                  <div className="mt-1 text-sm text-zinc-500">
+                  <div className="font-medium text-[var(--ft-text-primary)]">{request.service}</div>
+                  <div className="mt-1 text-sm text-[var(--ft-text-muted)]">
                     {request.id} - {request.plan} - {request.createdAt}
                   </div>
                 </div>
                 <RequestStatus request={request} />
-                <div className="text-sm font-semibold text-zinc-950">{request.amount}</div>
+                <div className="font-mono text-sm font-semibold text-[var(--ft-text-primary)]">
+                  {request.amount}
+                </div>
               </a>
             ))
           )}
@@ -95,11 +98,11 @@ export default function DigitalAccessRequestsPage() {
       </section>
 
       <Panel className="mt-6 p-4">
-        <div className="flex items-center gap-2 font-semibold text-zinc-950">
-          <Wallet className="size-5 text-green-600" />
+        <div className="flex items-center gap-2 font-semibold text-[var(--ft-text-primary)]">
+          <Wallet className="size-5 text-[var(--ft-green)]" />
           Refund behavior
         </div>
-        <p className="mt-2 text-sm leading-6 text-zinc-500">
+        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-muted)]">
           If a request cannot be fulfilled, the admin status update triggers an automatic wallet
           reversal. Completed requests remain charged.
         </p>
@@ -109,5 +112,5 @@ export default function DigitalAccessRequestsPage() {
 }
 
 function QueueMessage({ label }: { label: string }) {
-  return <div className="p-4 text-sm text-zinc-500">{label}</div>;
+  return <div className="p-4 text-sm text-[var(--ft-text-muted)]">{label}</div>;
 }

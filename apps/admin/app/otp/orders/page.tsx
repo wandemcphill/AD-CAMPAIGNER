@@ -24,16 +24,27 @@ export default function AdminOtpOrdersPage() {
       />
 
       <Panel className="mt-6 overflow-hidden">
-        <div className="divide-y divide-zinc-200">
+        <div className="hidden grid-cols-[0.7fr_1.1fr_0.8fr_0.9fr_0.65fr_0.5fr_0.55fr] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
+          <div>Order</div>
+          <div>User</div>
+          <div>Service</div>
+          <div>Provider</div>
+          <div>Status</div>
+          <div>Risk</div>
+          <div>GMV</div>
+        </div>
+        <div className="divide-y divide-[var(--ft-border)]">
           {orders.map((order) => (
             <div
-              className="grid gap-3 p-4 xl:grid-cols-[0.7fr_1.1fr_0.8fr_0.9fr_0.65fr_0.5fr_0.55fr] xl:items-center"
+              className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] xl:grid-cols-[0.7fr_1.1fr_0.8fr_0.9fr_0.65fr_0.5fr_0.55fr] xl:items-center"
               key={order.id}
             >
-              <div className="font-semibold text-zinc-950">{order.id}</div>
-              <div className="text-sm text-zinc-600">{order.user}</div>
-              <div className="text-sm font-medium text-zinc-950">{order.service}</div>
-              <div className="text-sm text-zinc-600">{order.provider}</div>
+              <div className="font-semibold text-[var(--ft-text-primary)]">{order.id}</div>
+              <div className="text-sm text-[var(--ft-text-secondary)]">{order.user}</div>
+              <div className="text-sm font-medium text-[var(--ft-text-primary)]">
+                {order.service}
+              </div>
+              <div className="text-sm text-[var(--ft-text-secondary)]">{order.provider}</div>
               <StatusBadge status={order.status} />
               <Badge
                 tone={
@@ -42,7 +53,9 @@ export default function AdminOtpOrdersPage() {
               >
                 {order.risk}
               </Badge>
-              <div className="text-sm font-semibold text-zinc-950">{order.amount}</div>
+              <div className="font-mono text-sm font-semibold text-[var(--ft-text-primary)]">
+                {order.amount}
+              </div>
             </div>
           ))}
         </div>

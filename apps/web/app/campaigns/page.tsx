@@ -4,15 +4,27 @@ import { useState } from "react";
 import {
   ArrowRight,
   BarChart3,
+  CalendarDays,
+  Eye,
+  Filter,
   Megaphone,
-  Play,
   Plus,
   RefreshCw,
   Search,
   Sparkles
 } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  FulfillmentStrip,
+  MetricStrip,
+  Panel,
+  PlatformChip,
+  SummaryStatStrip,
+  campaignStatusMeta,
+  cn
+} from "@fliptrybe/ui";
 
 import {
   fallbackCurrency,
@@ -20,7 +32,6 @@ import {
   formatCompact,
   formatDateTime,
   metricValue,
-  startCampaign,
   totalBudgetMinor
 } from "./api";
 import {
@@ -31,24 +42,108 @@ import {
   PageHeader,
   SourceBadge,
   StatusBadge,
+  campaignProgress,
+  destinationPlatform,
   linkButtonClass,
   secondaryLinkButtonClass
 } from "./components";
 import { destinationLabels, objectiveLabels } from "./data";
 import { useCampaignDashboardData } from "./use-campaign-dashboard-data";
 
+const filterControlClass =
+  "h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]";
+
+function campaignAccentClass(status: string) {
+  if (status === "ACTIVE" || status === "RUNNING") {
+    return "border-l-[var(--ft-green)]";
+  }
+  if (status === "PENDING_REVIEW" || status === "APPROVED" || status === "CHANGES_REQUESTED") {
+    return "border-l-[var(--ft-accent)]";
+  }
+  if (status === "REJECTED" || status === "FAILED" || status === "CANCELLED") {
+    return "border-l-[var(--ft-red)]";
+  }
+
+  return "border-l-[var(--ft-border-strong)]";
+}
+
+function campaignStageLabel(status: string) {
+  if (status === "ACTIVE" || status === "RUNNING") return "Live service";
+  if (status === "COMPLETED") return "Report ready";
+  if (status === "CREATIVE_IN_PROGRESS" || status === "QUEUED" || status === "APPROVED") {
+    return "Launch prep";
+  }
+  if (status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW") {
+    return "Ops review";
+  }
+  if (status === "CHANGES_REQUESTED") return "Client action";
+  if (status === "REJECTED" || status === "FAILED" || status === "CANCELLED") return "Needs review";
+
+  return "Briefing";
+}
+
+function campaignNextAction(status: string) {
+  if (status === "ACTIVE" || status === "RUNNING") return "Monitor pacing and published team updates.";
+  if (status === "COMPLETED") return "Open the report and confirm final outcomes.";
+  if (status === "CREATIVE_IN_PROGRESS") return "The team is checking creative and placement fit.";
+  if (status === "QUEUED" || status === "APPROVED") return "Launch setup is waiting on final operator handoff.";
+  if (status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW") {
+    return "Review is in progress; plan and invoice updates will follow.";
+  }
+  if (status === "CHANGES_REQUESTED") return "Add the requested details so review can continue.";
+  if (status === "REJECTED" || status === "FAILED" || status === "CANCELLED") {
+    return "Check the record before funding or relaunching.";
+  }
+
+  return "Complete the brief so the managed desk can review it.";
+}
+
+function isLiveCampaign(status: string) {
+  return status === "ACTIVE" || status === "RUNNING" || status === "LIVE";
+}
+
+function isReportReady(status: string) {
+  return status === "COMPLETED" || status === "REPORTING";
+}
+
+function isReviewOnly(status: string) {
+  return status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW";
+}
+
+function briefActionLabel(status: string) {
+  if (status === "DRAFT") return "Open draft";
+  if (status === "CHANGES_REQUESTED") return "Review request";
+  if (status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW") {
+    return "Track review";
+  }
+  if (status === "APPROVED" || status === "CREATIVE_IN_PROGRESS" || status === "QUEUED" || status === "PLAN_SENT") {
+    return "Check launch prep";
+  }
+  if (isLiveCampaign(status)) return "Monitor live";
+  if (isReportReady(status)) return "Review report";
+
+  return "View brief";
+}
+
 export default function CampaignsPage() {
   const { aiInsights, analytics, campaigns, error, loading, refresh, source, wallet } =
     useCampaignDashboardData();
-  const [actionError, setActionError] = useState<string>();
-  const [startingId, setStartingId] = useState<string>();
-  const activeCampaigns = campaigns.filter((campaign) => campaign.status === "ACTIVE").length;
-  const queuedCampaigns = campaigns.filter(
-    (campaign) => campaign.status === "QUEUED" || campaign.status === "PENDING_REVIEW"
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [platformFilter, setPlatformFilter] = useState("ALL");
+  const [query, setQuery] = useState("");
+  const activeCampaigns = campaigns.filter(
+    (campaign) => campaign.status === "ACTIVE" || campaign.status === "RUNNING"
   ).length;
+  const pendingReviewCampaigns = campaigns.filter((campaign) => campaign.status === "PENDING_REVIEW").length;
+  const completedCampaigns = campaigns.filter((campaign) => campaign.status === "COMPLETED").length;
   const budgetCurrency = fallbackCurrency(campaigns, wallet);
   const spend = formatCampaignMoney({
     amountMinor: totalBudgetMinor(campaigns),
+    currency: budgetCurrency
+  });
+  const impressions = metricValue(analytics, "impressions");
+  const avgCpm = formatCampaignMoney({
+    amountMinor: impressions > 0 ? Math.round((totalBudgetMinor(campaigns) * 1000) / impressions) : 0,
     currency: budgetCurrency
   });
   const liveViewers = metricValue(analytics, "live_viewers");
@@ -56,36 +151,35 @@ export default function CampaignsPage() {
   const trend = analytics?.trend ?? [];
   const maxSpend = Math.max(1, ...trend.map((point) => point.spendMinor));
   const primaryInsight = aiInsights?.items[0];
+  const platformOptions = Array.from(
+    new Set(campaigns.map((campaign) => destinationPlatform(campaign.destination.kind)))
+  );
+  const visibleCampaigns = campaigns.filter((campaign) => {
+    const platform = destinationPlatform(campaign.destination.kind);
+    const matchesStatus = statusFilter === "ALL" || campaign.status === statusFilter;
+    const matchesPlatform = platformFilter === "ALL" || platform === platformFilter;
+    const normalizedQuery = query.trim().toLowerCase();
+    const matchesQuery =
+      normalizedQuery.length === 0 ||
+      campaign.name.toLowerCase().includes(normalizedQuery) ||
+      destinationLabels[campaign.destination.kind].toLowerCase().includes(normalizedQuery) ||
+      objectiveLabels[campaign.objective].toLowerCase().includes(normalizedQuery);
 
-  async function handleStart(campaignId: string) {
-    setActionError(undefined);
-    setStartingId(campaignId);
-    try {
-      await startCampaign(campaignId);
-      await refresh();
-    } catch (caught) {
-      setActionError(caught instanceof Error ? caught.message : "Could not start this campaign.");
-    } finally {
-      setStartingId(undefined);
-    }
-  }
+    return matchesStatus && matchesPlatform && matchesQuery;
+  });
 
   return (
     <CampaignShell active="/campaigns">
       <PageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="flex h-10 min-w-64 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-500">
-              <Search className="size-4" />
-              Search campaigns
-            </div>
             <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
-              <RefreshCw className="size-4" />
+              <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
             <a className={linkButtonClass} href="/campaigns/new">
-              <Plus className="size-4" />
-              New campaign
+              <Plus className="size-4 stroke-[1.5]" />
+              Start a Campaign
             </a>
           </div>
         }
@@ -95,116 +189,275 @@ export default function CampaignsPage() {
             <SourceBadge source={source} />
           </>
         }
-        title="Campaign overview"
+        title="Your Campaigns"
       />
 
-      <ErrorNotice message={error ?? actionError} />
+      <ErrorNotice message={error} />
 
-      <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Campaign spend" value={loading ? "..." : spend} detail="Tracked budget" tone="success" />
-        <MetricCard
-          label="Live viewers"
-          value={loading ? "..." : formatCompact(liveViewers)}
-          detail="Realtime boost signal"
-          tone="info"
+      <section className="mt-6">
+        <SummaryStatStrip
+          className="mb-4"
+          items={[
+            { label: "active campaigns", value: loading ? "..." : activeCampaigns },
+            { label: "pending reviews", value: loading ? "..." : pendingReviewCampaigns },
+            { label: "next reports tracked", value: loading ? "..." : completedCampaigns },
+            { label: "portfolio spend", value: loading ? "..." : spend }
+          ]}
         />
-        <MetricCard
-          label="Active campaigns"
-          value={loading ? "..." : String(activeCampaigns)}
-          detail={`${queuedCampaigns} queued or in review`}
-          tone="warning"
-        />
-        <MetricCard
-          label="Wallet balance"
-          value={loading ? "..." : formatCampaignMoney(wallet?.availableBalance)}
-          detail="Available for launches"
+        <MetricStrip
+          items={[
+            {
+              label: "Live Campaigns",
+              value: loading ? "..." : String(activeCampaigns),
+              detail: "Currently monitored"
+            },
+            {
+              label: "Portfolio Budget",
+              value: loading ? "..." : spend,
+              detail: "Managed campaign funding"
+            },
+            {
+              label: "Impressions",
+              value: loading ? "..." : formatCompact(impressions),
+              detail: `${completedCampaigns} closed / ${pendingReviewCampaigns} in review`
+            },
+            {
+              label: "Avg CPM",
+              value: loading ? "..." : avgCpm,
+              detail: "Estimated portfolio cost"
+            }
+          ]}
         />
       </section>
 
+      <section className="mt-4 flex flex-col gap-3 border-y border-[var(--ft-border)] py-3 lg:flex-row lg:items-center">
+        <div className="flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <Filter className="size-4 stroke-[1.5]" />
+          Filters
+        </div>
+        <select
+          className={filterControlClass}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          value={statusFilter}
+        >
+          <option value="ALL">All statuses</option>
+          {Array.from(new Set(campaigns.map((campaign) => campaign.status))).map((status) => (
+            <option key={status} value={status}>
+              {campaignStatusMeta(status).label}
+            </option>
+          ))}
+        </select>
+        <select
+          className={filterControlClass}
+          onChange={(event) => setPlatformFilter(event.target.value)}
+          value={platformFilter}
+        >
+          <option value="ALL">All platforms</option>
+          {platformOptions.map((platform) => (
+            <option key={platform} value={platform}>
+              {platform}
+            </option>
+          ))}
+        </select>
+        <label className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-secondary)] lg:max-w-sm">
+          <Search className="size-4 shrink-0 stroke-[1.5]" />
+          <input
+            className="min-w-0 flex-1 bg-transparent text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)]"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search campaigns"
+            value={query}
+          />
+        </label>
+      </section>
+
       <section className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.85fr]">
-        <Panel className="overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-zinc-200 p-4">
+        <div className="min-w-0">
+          <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">Campaign queue</h2>
-              <p className="mt-1 text-sm text-zinc-500">Current workspace launch state.</p>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Your active campaigns</h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                Track live work, submitted briefs, launch holds, and reports in one client view.
+              </p>
             </div>
-            <Megaphone className="size-5 text-sky-600" />
+            <Megaphone className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
           </div>
-          <div className="divide-y divide-zinc-200">
-            {loading ? (
-              <div className="p-4">
-                <LoadingBlock label="Loading campaigns" />
-              </div>
-            ) : campaigns.length === 0 ? (
-              <div className="p-4">
-                <EmptyState
-                  action={
-                    <a className={secondaryLinkButtonClass} href="/campaigns/new">
-                      <Plus className="size-4" />
-                      Create campaign
-                    </a>
-                  }
-                  copy="Your workspace does not have any campaigns yet."
-                  icon={Megaphone}
-                  title="No campaigns"
-                />
-              </div>
-            ) : (
-              campaigns.map((campaign) => (
-                <div
-                  className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center"
-                  key={campaign.id}
-                >
-                  <div>
-                    <a
-                      className="font-medium text-zinc-950 hover:text-sky-700"
-                      href={`/campaigns/${campaign.id}`}
-                    >
-                      {campaign.name}
-                    </a>
-                    <div className="mt-1 text-sm text-zinc-500">
-                      {objectiveLabels[campaign.objective]} - {destinationLabels[campaign.destination.kind]}
+          {loading ? (
+            <Panel className="p-4">
+              <LoadingBlock label="Loading campaigns" />
+            </Panel>
+          ) : visibleCampaigns.length === 0 ? (
+            <Panel className="p-4">
+              <EmptyState
+                action={
+                  <a className={secondaryLinkButtonClass} href="/campaigns/new">
+                    <Plus className="size-4 stroke-[1.5]" />
+                    Start a Campaign
+                  </a>
+                }
+                copy={
+                  campaigns.length === 0
+                    ? "When you're ready to grow, our team is here to help. Start with a brief and we'll build your campaign strategy."
+                    : "No campaigns match the selected filters."
+                }
+                icon={Megaphone}
+                title={campaigns.length === 0 ? "No campaigns yet." : "No campaigns match this filter."}
+              />
+            </Panel>
+          ) : (
+            <div className="grid gap-3">
+              {visibleCampaigns.map((campaign) => {
+                const platform = destinationPlatform(campaign.destination.kind);
+                const reviewOnly = isReviewOnly(campaign.status);
+
+                return (
+                  <Panel
+                    className={cn(
+                      "overflow-hidden border-l-4 transition hover:border-[var(--ft-border-strong)] hover:bg-[var(--ft-bg-raised)]",
+                      campaignAccentClass(campaign.status)
+                    )}
+                    key={campaign.id}
+                  >
+                    <div className="grid gap-4 p-4 sm:p-5">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge status={campaign.status} />
+                            <PlatformChip platform={platform} />
+                            <Badge tone="neutral">{campaignStageLabel(campaign.status)}</Badge>
+                          </div>
+                          <a
+                            className="mt-3 block text-lg font-semibold text-[var(--ft-text-primary)] transition hover:text-[var(--ft-accent)]"
+                            href={`/campaigns/${campaign.id}`}
+                          >
+                            {campaign.name}
+                          </a>
+                          <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                            {objectiveLabels[campaign.objective]} service for{" "}
+                            {destinationLabels[campaign.destination.kind]}.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[280px]">
+                          <div className="border-t border-[var(--ft-border)] pt-3 sm:border-t-0 sm:pt-0">
+                            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              Budget
+                            </div>
+                            <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">
+                              {formatCampaignMoney(campaign.budget)}
+                            </div>
+                          </div>
+                          <div className="border-t border-[var(--ft-border)] pt-3 sm:border-t-0 sm:pt-0">
+                            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              Launch window
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-sm text-[var(--ft-text-secondary)]">
+                              <CalendarDays className="size-4 shrink-0 stroke-[1.5]" />
+                              <span>{formatDateTime(campaign.schedule.startsAt)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 border-t border-[var(--ft-border)] pt-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                        <div>
+                          <div className="flex items-center justify-between gap-3 text-sm">
+                            <span className="font-medium text-[var(--ft-text-primary)]">
+                              Fulfillment path
+                            </span>
+                            <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              {campaignProgress(campaign.status)}%
+                            </span>
+                          </div>
+                          <FulfillmentStrip
+                            className="mt-3"
+                            currentStep={Math.min(4, Math.max(0, Math.round(campaignProgress(campaign.status) / 25)))}
+                            steps={["Brief", "Strategy", "Creative", "Live", "Report"]}
+                            variant="labeled"
+                          />
+                          <div className="mt-4 grid gap-3 text-sm text-[var(--ft-text-secondary)] md:grid-cols-3">
+                            <div>
+                              <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                                Next action
+                              </div>
+                              <div className="mt-1 leading-5">{campaignNextAction(campaign.status)}</div>
+                            </div>
+                            <div>
+                              <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                                Provider
+                              </div>
+                              <div className="mt-1 font-medium text-[var(--ft-text-primary)]">
+                                {campaign.provider}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                                Destination
+                              </div>
+                              <div className="mt-1 font-medium text-[var(--ft-text-primary)]">
+                                {destinationLabels[campaign.destination.kind]}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
+                          <a
+                            aria-disabled={reviewOnly}
+                            className={cn(
+                              `${secondaryLinkButtonClass} h-9 px-3`,
+                              reviewOnly ? "cursor-not-allowed opacity-60" : ""
+                            )}
+                            href={`/campaigns/${campaign.id}`}
+                            onClick={(event) => {
+                              if (reviewOnly) {
+                                event.preventDefault();
+                              }
+                            }}
+                            title={
+                              reviewOnly
+                                ? "The Fliptrybe team is reviewing this brief. Campaign actions unlock after the plan is ready."
+                                : undefined
+                            }
+                          >
+                            <Eye className="size-4 stroke-[1.5]" />
+                            {briefActionLabel(campaign.status)}
+                          </a>
+                          {isLiveCampaign(campaign.status) || isReportReady(campaign.status) ? (
+                            <a className={`${linkButtonClass} h-9 px-3`} href="/reports">
+                              <BarChart3 className="size-4 stroke-[1.5]" />
+                              View report
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <StatusBadge status={campaign.status} />
-                  <div className="flex items-center gap-2 sm:justify-end">
-                    <div className="text-sm font-semibold text-zinc-950">
-                      {formatCampaignMoney(campaign.budget)}
-                    </div>
-                    <Button
-                      className="px-3"
-                      disabled={source !== "api" || campaign.status === "ACTIVE" || startingId === campaign.id}
-                      onClick={() => void handleStart(campaign.id)}
-                      variant="secondary"
-                    >
-                      <Play className="size-4" />
-                      {startingId === campaign.id ? "Starting" : "Start"}
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Panel>
+                  </Panel>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">AI growth desk</h2>
-              <p className="mt-1 text-sm text-zinc-500">Campaign-aware recommendations.</p>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Managed ads desk</h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                Review signals the operators will use before launch.
+              </p>
             </div>
-            <Sparkles className="size-5 text-orange-500" />
+            <Sparkles className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
           </div>
           {loading ? (
             <div className="mt-5">
               <LoadingBlock label="Loading insights" />
             </div>
           ) : primaryInsight ? (
-            <div className="mt-5 rounded-md border border-zinc-200 bg-zinc-50 p-4">
-              <div className="font-semibold text-zinc-950">{primaryInsight.label}</div>
-              <div className="mt-3 grid gap-2 text-sm text-zinc-600">
+            <div className="mt-5 border-y border-[var(--ft-border)] py-4">
+              <div className="font-medium text-[var(--ft-text-primary)]">{primaryInsight.label}</div>
+              <div className="mt-3 divide-y divide-[var(--ft-border)] text-sm text-[var(--ft-text-secondary)]">
                 {primaryInsight.reasons.slice(0, 3).map((reason) => (
-                  <div className="rounded-md bg-white px-3 py-2" key={reason}>
+                  <div className="py-2 first:pt-0 last:pb-0" key={reason}>
                     {reason.replaceAll("_", " ")}
                   </div>
                 ))}
@@ -213,15 +466,15 @@ export default function CampaignsPage() {
           ) : (
             <div className="mt-5">
               <EmptyState
-                copy="Insights will appear once campaign analytics are available."
+                copy="Team observations will appear after the campaign desk has enough delivery signal to review."
                 icon={Sparkles}
-                title="No AI insights"
+                title="No desk insights yet"
               />
             </div>
           )}
           <a className={`${secondaryLinkButtonClass} mt-4 w-full`} href="/campaigns/analytics">
-            <BarChart3 className="size-4" />
-            View analytics
+            <BarChart3 className="size-4 stroke-[1.5]" />
+            View performance snapshots
           </a>
         </Panel>
       </section>
@@ -230,10 +483,12 @@ export default function CampaignsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">Performance pulse</h2>
-              <p className="mt-1 text-sm text-zinc-500">{(roiBps / 100).toFixed(1)}% ROI signal</p>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Performance pulse</h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                {(roiBps / 100).toFixed(1)}% ROI signal / {formatCompact(liveViewers)} live viewers
+              </p>
             </div>
-            <BarChart3 className="size-5 text-green-600" />
+            <BarChart3 className="size-5 stroke-[1.5] text-[var(--ft-green)]" />
           </div>
           {trend.length === 0 ? (
             <div className="mt-5">
@@ -244,14 +499,16 @@ export default function CampaignsPage() {
               />
             </div>
           ) : (
-            <div className="mt-5 flex h-56 items-end gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mt-5 flex h-56 items-end gap-2 border-t border-[var(--ft-border)] pt-4">
               {trend.map((point) => (
                 <div className="flex flex-1 flex-col items-center gap-2" key={point.day}>
                   <div
-                    className="w-full rounded-t-sm bg-zinc-950"
+                    className="w-full rounded-t-[var(--radius-sm)] bg-[var(--ft-accent)]"
                     style={{ height: `${Math.max(18, (point.spendMinor / maxSpend) * 180)}px` }}
                   />
-                  <div className="text-xs font-medium text-zinc-500">{point.day}</div>
+                  <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    {point.day}
+                  </div>
                 </div>
               ))}
             </div>
@@ -261,30 +518,53 @@ export default function CampaignsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">Recent launch window</h2>
-              <p className="mt-1 text-sm text-zinc-500">Latest schedule and provider state.</p>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Recent launch window</h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                Latest schedule and provider state.
+              </p>
             </div>
-            <ArrowRight className="size-5 text-zinc-500" />
+            <ArrowRight className="size-5 stroke-[1.5] text-[var(--ft-text-muted)]" />
           </div>
-          <div className="mt-5 grid gap-3">
-            {campaigns.slice(0, 3).map((campaign) => (
-              <a
-                className="grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 transition hover:bg-white sm:grid-cols-[1fr_auto]"
-                href={`/campaigns/${campaign.id}`}
-                key={campaign.id}
-              >
-                <div>
-                  <div className="font-medium text-zinc-950">{campaign.name}</div>
-                  <div className="mt-1 text-sm text-zinc-500">
-                    Starts {formatDateTime(campaign.schedule.startsAt)}
+          <div className="mt-5 divide-y divide-[var(--ft-border)] border-y border-[var(--ft-border)]">
+            {loading ? (
+              <div className="py-4">
+                <LoadingBlock label="Loading launch windows" />
+              </div>
+            ) : campaigns.length === 0 ? (
+              <div className="py-4">
+                <EmptyState
+                  copy="Your first launch window will appear once a campaign brief is submitted."
+                  icon={CalendarDays}
+                  title="No launch windows yet"
+                />
+              </div>
+            ) : (
+              campaigns.slice(0, 3).map((campaign) => (
+                <a
+                  className="grid gap-3 py-3 transition hover:bg-[var(--ft-bg-muted)] sm:grid-cols-[1fr_auto]"
+                  href={`/campaigns/${campaign.id}`}
+                  key={campaign.id}
+                >
+                  <div>
+                    <div className="font-medium text-[var(--ft-text-primary)]">{campaign.name}</div>
+                    <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                      Starts {formatDateTime(campaign.schedule.startsAt)}
+                    </div>
                   </div>
-                </div>
-                <StatusBadge status={campaign.status} />
-              </a>
-            ))}
+                  <StatusBadge status={campaign.status} />
+                </a>
+              ))
+            )}
           </div>
         </Panel>
       </section>
+      <a
+        className="fixed bottom-20 right-4 z-40 inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-transparent bg-[var(--ft-accent)] px-4 text-sm font-semibold text-[var(--ft-text-inverse)] shadow-[var(--shadow-lg)] transition hover:bg-[var(--ft-accent-dim)] md:hidden"
+        href="/campaigns/new"
+      >
+        <Plus className="size-4 stroke-[1.5]" />
+        Start
+      </a>
     </CampaignShell>
   );
 }

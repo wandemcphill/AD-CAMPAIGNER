@@ -103,10 +103,10 @@ export const campaignOpsActivitySeverities: CampaignOpsActivitySeverity[] = [
 ];
 
 export const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
-  { label: "Overview", href: "/campaign-ops", icon: Gauge },
-  { label: "Queue", href: "/campaign-ops/queue", icon: ListChecks },
-  { label: "Reports", href: "/campaign-ops/reports", icon: BarChart3 },
-  { label: "Activity", href: "/campaign-ops/activity", icon: Activity }
+  { label: "Ops Overview", href: "/campaign-ops", icon: Gauge },
+  { label: "Review Queue", href: "/campaign-ops/queue", icon: ListChecks },
+  { label: "Reports Queue", href: "/campaign-ops/reports", icon: BarChart3 },
+  { label: "Audit Log", href: "/campaign-ops/activity", icon: Activity }
 ];
 
 export const campaignOpsApiRoutes = [
@@ -150,28 +150,28 @@ export const activitySeverityTone = {
 export const operationStages = [
   {
     icon: ClipboardList,
-    label: "Intake review",
-    value: "Creative, targeting, budget, and destination checks"
+    label: "Brief QA",
+    value: "Creative, targeting, budget, and destination readiness checks"
   },
   {
     icon: ShieldAlert,
-    label: "Risk decision",
-    value: "Policy, fraud, payment, and workspace signals"
+    label: "Risk gate",
+    value: "Policy, fraud, payment, and workspace trust signals"
   },
   {
     icon: Radio,
-    label: "Launch watch",
-    value: "Queue handoff, provider tracking, and closeout notes"
+    label: "Launch control",
+    value: "Owner handoff, provider tracking, and live monitoring"
   },
   {
     icon: FileText,
-    label: "Reporting",
-    value: "Operator-ready summaries and export status"
+    label: "Client reporting",
+    value: "Client-ready summaries, proof links, and publish status"
   }
 ];
 
 export const emptyCampaignOpsMetrics: CampaignOpsMetric[] = [
-  { label: "Open queue", value: "0", detail: "Queued, reviewing, and blocked", tone: "info" },
+  { label: "Needs action", value: "0", detail: "Queued, reviewing, and blocked", tone: "info" },
   { label: "Running", value: "0", detail: "Live campaigns under watch", tone: "success" },
   { label: "Escalations", value: "0", detail: "Blocked or urgent campaigns", tone: "warning" },
   { label: "Operators", value: "0", detail: "Assigned campaign ops users" }

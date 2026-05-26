@@ -26,7 +26,7 @@ export default function OtpWalletPage() {
           tone="success"
         />
         <MetricCard
-          label="Active debits"
+          label="Live debits"
           value="NGN 1,300"
           detail="Refund-safe OTP orders"
           tone="warning"
@@ -41,21 +41,25 @@ export default function OtpWalletPage() {
 
       <div className="mt-6 grid gap-4 xl:grid-cols-[0.72fr_1.28fr]">
         <Panel className="p-4">
-          <WalletCards className="size-5 text-zinc-950" />
-          <h2 className="mt-4 text-lg font-semibold text-zinc-950">Funding rails</h2>
+          <WalletCards className="size-5 text-[var(--ft-text-primary)]" />
+          <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">
+            Funding rails
+          </h2>
           <div className="mt-4 grid gap-3">
             {[
               { icon: CreditCard, label: "Card", detail: "Instant funding" },
               { icon: Banknote, label: "Bank transfer", detail: "Manual reference" }
             ].map((rail) => (
               <div
-                className="flex items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3"
+                className="flex items-center gap-3 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3"
                 key={rail.label}
               >
-                <rail.icon className="size-4 text-zinc-700" />
+                <rail.icon className="size-4 text-[var(--ft-text-secondary)]" />
                 <div>
-                  <div className="text-sm font-semibold text-zinc-950">{rail.label}</div>
-                  <div className="text-sm text-zinc-500">{rail.detail}</div>
+                  <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                    {rail.label}
+                  </div>
+                  <div className="text-sm text-[var(--ft-text-muted)]">{rail.detail}</div>
                 </div>
               </div>
             ))}
@@ -63,18 +67,23 @@ export default function OtpWalletPage() {
         </Panel>
 
         <Panel className="overflow-hidden">
-          <div className="border-b border-zinc-200 p-4">
-            <h2 className="text-lg font-semibold text-zinc-950">Ledger</h2>
+          <div className="border-b border-[var(--ft-border)] p-4">
+            <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Ledger</h2>
           </div>
-          <div className="divide-y divide-zinc-200">
+          <div className="hidden grid-cols-[1fr_auto_auto] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
+            <div>Movement</div>
+            <div>Status</div>
+            <div>Amount</div>
+          </div>
+          <div className="divide-y divide-[var(--ft-border)]">
             {walletLedger.map((entry) => (
               <div
-                className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] sm:grid-cols-[1fr_auto_auto] sm:items-center"
                 key={`${entry.label}-${entry.at}`}
               >
                 <div>
-                  <div className="font-medium text-zinc-950">{entry.label}</div>
-                  <div className="text-sm text-zinc-500">
+                  <div className="font-medium text-[var(--ft-text-primary)]">{entry.label}</div>
+                  <div className="text-sm text-[var(--ft-text-muted)]">
                     {entry.rail} at {entry.at}
                   </div>
                 </div>
@@ -89,7 +98,9 @@ export default function OtpWalletPage() {
                 >
                   {entry.status}
                 </Badge>
-                <div className="text-sm font-semibold text-zinc-950">{entry.amount}</div>
+                <div className="font-mono text-sm font-semibold text-[var(--ft-text-primary)]">
+                  {entry.amount}
+                </div>
               </div>
             ))}
           </div>

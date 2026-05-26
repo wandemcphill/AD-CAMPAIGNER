@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -166,6 +167,11 @@ export class CampaignsController {
   @Post("quote")
   quote(@Body() body: QuoteCampaignDto, @Req() request: WorkspaceContextRequest) {
     workspaceContextFromRequest(request);
+    if (process.env.NODE_ENV === "production") {
+      throw new BadRequestException(
+        "Campaign estimates are prepared by the Fliptrybe team after brief review."
+      );
+    }
 
     return this.platform.quoteCampaign(body);
   }
@@ -557,12 +563,12 @@ export class AdminCampaignOpsController {
 
   @Get("campaigns/:id")
   get(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
-    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id);
+    return this.managedAds.getAdminCampaign(workspaceContextFromRequest(request), id);
   }
 
   @Get("queue/:id")
   getQueueItem(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
-    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id);
+    return this.managedAds.getAdminCampaign(workspaceContextFromRequest(request), id);
   }
 
   @Patch("campaigns/:id/status")
@@ -636,7 +642,7 @@ export class AdminCampaignOpsController {
 
   @Get("campaigns/:id/activity")
   activity(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
-    return this.managedAds.getCampaign(workspaceContextFromRequest(request), id).then((campaign) => ({
+    return this.managedAds.getAdminCampaign(workspaceContextFromRequest(request), id).then((campaign) => ({
       campaignId: id,
       statusHistory: campaign.statusHistory ?? [],
       notes: campaign.notes ?? []

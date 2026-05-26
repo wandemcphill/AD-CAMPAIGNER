@@ -246,7 +246,7 @@ export const overviewMetrics = [
     icon: BadgeDollarSign
   },
   {
-    label: "Active orders",
+    label: "Live orders",
     value: "214",
     detail: "37 waiting now",
     tone: "warning" as const,

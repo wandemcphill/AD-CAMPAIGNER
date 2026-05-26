@@ -37,7 +37,7 @@ export default async function DigitalAccessRequestDetailPage({
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
         <Panel className="p-4">
-          <h2 className="text-lg font-semibold text-zinc-950">Summary</h2>
+          <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Summary</h2>
           <div className="mt-5 grid gap-4 text-sm">
             {[
               ["Plan", request.plan],
@@ -47,15 +47,17 @@ export default async function DigitalAccessRequestDetailPage({
               ["Update", request.updatedAt]
             ].map(([label, value]) => (
               <div className="flex justify-between gap-4" key={label}>
-                <span className="text-zinc-500">{label}</span>
-                <span className="text-right font-medium text-zinc-950">{value}</span>
+                <span className="text-[var(--ft-text-muted)]">{label}</span>
+                <span className="text-right font-medium text-[var(--ft-text-primary)]">
+                  {value}
+                </span>
               </div>
             ))}
           </div>
         </Panel>
 
         <Panel className="p-4">
-          <h2 className="text-lg font-semibold text-zinc-950">Timeline</h2>
+          <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Timeline</h2>
           <div className="mt-5 grid gap-4">
             {[
               {
@@ -76,12 +78,14 @@ export default async function DigitalAccessRequestDetailPage({
               }
             ].map((item) => (
               <div className="grid grid-cols-[32px_1fr] gap-3" key={item.title}>
-                <div className="flex size-8 items-center justify-center rounded-md bg-zinc-100">
-                  <item.icon className="size-4 text-zinc-950" />
+                <div className="flex size-8 items-center justify-center rounded-md bg-[var(--ft-bg-raised)]">
+                  <item.icon className="size-4 text-[var(--ft-text-primary)]" />
                 </div>
                 <div>
-                  <div className="font-medium text-zinc-950">{item.title}</div>
-                  <div className="mt-1 text-sm leading-6 text-zinc-500">{item.body}</div>
+                  <div className="font-medium text-[var(--ft-text-primary)]">{item.title}</div>
+                  <div className="mt-1 text-sm leading-6 text-[var(--ft-text-muted)]">
+                    {item.body}
+                  </div>
                 </div>
               </div>
             ))}

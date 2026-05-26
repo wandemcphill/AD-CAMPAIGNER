@@ -11,7 +11,7 @@ export default function AdminDigitalAccessServicesPage() {
       <AdminPageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="flex h-10 min-w-64 items-center gap-2 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-500">
+            <div className="flex h-10 min-w-64 items-center gap-2 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-muted)]">
               <Search className="size-4" />
               Search services
             </div>
@@ -32,24 +32,27 @@ export default function AdminDigitalAccessServicesPage() {
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel className="p-4">
-          <h2 className="text-lg font-semibold text-zinc-950">Service editor</h2>
+          <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Service editor</h2>
           <div className="mt-5 grid gap-3">
             {["Service name", "Category", "Delivery ETA", "Thumbnail URL"].map((label) => (
-              <label className="grid gap-2 text-sm font-medium text-zinc-700" key={label}>
+              <label
+                className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]"
+                key={label}
+              >
                 {label}
-                <input className="h-11 rounded-md border border-zinc-200 bg-white px-3 text-zinc-950" />
+                <input className="h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-[var(--ft-text-primary)]" />
               </label>
             ))}
-            <label className="grid gap-2 text-sm font-medium text-zinc-700">
+            <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
               Description
-              <textarea className="min-h-24 rounded-md border border-zinc-200 bg-white px-3 py-2 text-zinc-950" />
+              <textarea className="min-h-24 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 py-2 text-[var(--ft-text-primary)]" />
             </label>
             <div className="grid grid-cols-2 gap-2">
               <Button variant="secondary">
                 <ImagePlus className="size-4" />
                 Cloudinary
               </Button>
-              <Button>Save draft</Button>
+              <Button>Update service draft</Button>
             </div>
           </div>
         </Panel>
@@ -60,14 +63,16 @@ export default function AdminDigitalAccessServicesPage() {
               <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-center">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-zinc-950">{service.name}</h2>
+                    <h2 className="font-semibold text-[var(--ft-text-primary)]">{service.name}</h2>
                     <ServiceStateBadge state={service.state} />
                   </div>
-                  <div className="mt-1 text-sm text-zinc-500">
+                  <div className="mt-1 text-sm text-[var(--ft-text-muted)]">
                     {service.category} · {service.eta}
                   </div>
                 </div>
-                <div className="text-sm font-semibold text-zinc-950">{service.startingPrice}</div>
+                <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                  {service.startingPrice}
+                </div>
                 <div className="flex gap-2">
                   <Button variant="secondary">Plans</Button>
                   <Button variant={service.state === "active" ? "danger" : "secondary"}>

@@ -19,28 +19,49 @@ export default function AdminOtpProvidersPage() {
       />
 
       <Panel className="mt-6 overflow-hidden">
-        <div className="divide-y divide-zinc-200">
+        <div className="hidden grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
+          <div>Provider</div>
+          <div>State</div>
+          <div>Fill</div>
+          <div>Latency</div>
+          <div>Stock</div>
+          <div>Refund</div>
+          <div>Action</div>
+        </div>
+        <div className="divide-y divide-[var(--ft-border)]">
           {providers.map((provider) => (
             <div
-              className="grid gap-3 p-4 xl:grid-cols-[1fr_auto_auto_auto_auto_auto_auto] xl:items-center"
+              className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] xl:grid-cols-[1fr_auto_auto_auto_auto_auto_auto] xl:items-center"
               key={provider.name}
             >
               <div>
-                <div className="font-semibold text-zinc-950">{provider.name}</div>
-                <div className="text-sm text-zinc-500">{provider.spend} processed today</div>
+                <div className="font-semibold text-[var(--ft-text-primary)]">{provider.name}</div>
+                <div className="text-sm text-[var(--ft-text-muted)]">
+                  {provider.spend} processed today
+                </div>
               </div>
               <ProviderBadge state={provider.state} />
-              <div className="text-sm text-zinc-600">
-                <span className="font-semibold text-zinc-950">{provider.fill}</span> fill
+              <div className="font-mono text-sm text-[var(--ft-text-secondary)]">
+                <span className="font-semibold text-[var(--ft-text-primary)]">{provider.fill}</span>{" "}
+                fill
               </div>
-              <div className="text-sm text-zinc-600">
-                <span className="font-semibold text-zinc-950">{provider.latency}</span> latency
+              <div className="font-mono text-sm text-[var(--ft-text-secondary)]">
+                <span className="font-semibold text-[var(--ft-text-primary)]">
+                  {provider.latency}
+                </span>{" "}
+                latency
               </div>
-              <div className="text-sm text-zinc-600">
-                <span className="font-semibold text-zinc-950">{provider.stock}</span> stock
+              <div className="font-mono text-sm text-[var(--ft-text-secondary)]">
+                <span className="font-semibold text-[var(--ft-text-primary)]">
+                  {provider.stock}
+                </span>{" "}
+                stock
               </div>
-              <div className="text-sm text-zinc-600">
-                <span className="font-semibold text-zinc-950">{provider.refund}</span> refund
+              <div className="font-mono text-sm text-[var(--ft-text-secondary)]">
+                <span className="font-semibold text-[var(--ft-text-primary)]">
+                  {provider.refund}
+                </span>{" "}
+                refund
               </div>
               <Button
                 className="px-3"

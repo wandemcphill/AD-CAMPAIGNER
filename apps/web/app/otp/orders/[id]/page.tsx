@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Clipboard, RotateCcw, XCircle } from "lucide-react";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, OtpCodeBoxes, Panel } from "@fliptrybe/ui";
 
 import { Field, OtpShell, PageHeader, StatusBadge } from "../../components";
 import { orders } from "../../data";
@@ -44,14 +44,16 @@ export default async function OtpOrderDetailPage({ params }: { params: Promise<{
         <Panel className="p-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">{order.service}</h2>
-              <p className="mt-1 text-sm text-zinc-500">{order.country}</p>
+              <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">
+                {order.service}
+              </h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-muted)]">{order.country}</p>
             </div>
             <StatusBadge status={order.status} />
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <Field label="Number" value={order.number} />
-            <Field label="OTP code" value={order.code ?? "Waiting"} />
+            <OtpCodeBoxes code={order.code} />
             <Field label="Amount" value={order.amount} />
             <Field label="Expires in" value={order.expiresIn} />
           </div>
@@ -62,15 +64,15 @@ export default async function OtpOrderDetailPage({ params }: { params: Promise<{
         </Panel>
 
         <Panel className="p-4">
-          <h2 className="text-lg font-semibold text-zinc-950">Event timeline</h2>
+          <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Event timeline</h2>
           <div className="mt-5 grid gap-3">
             {order.events.map((event) => (
               <div
-                className="grid gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 sm:grid-cols-[auto_1fr_auto] sm:items-center"
+                className="grid gap-3 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 sm:grid-cols-[auto_1fr_auto] sm:items-center"
                 key={`${event.label}-${event.at}`}
               >
-                <div className="size-2 rounded-full bg-zinc-950" />
-                <div className="font-medium text-zinc-950">{event.label}</div>
+                <div className="size-2 rounded-full bg-[var(--ft-accent)]" />
+                <div className="font-medium text-[var(--ft-text-primary)]">{event.label}</div>
                 <Badge tone={event.tone}>{event.at}</Badge>
               </div>
             ))}

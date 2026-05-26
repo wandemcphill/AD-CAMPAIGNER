@@ -12,7 +12,7 @@ import {
   Users
 } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, ThemeToggle } from "@fliptrybe/ui";
 
 const queues = [
   { name: "campaigns", depth: 18, status: "healthy" },
@@ -38,14 +38,14 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen">
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[260px_1fr]">
-        <aside className="border-b border-zinc-200 bg-zinc-950 px-4 py-4 text-white xl:border-b-0 xl:border-r">
+        <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-4 xl:border-b-0 xl:border-r">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-md bg-white text-sm font-semibold text-zinc-950">
+            <div className="flex size-10 items-center justify-center rounded-md bg-[var(--ft-accent)] text-sm font-semibold text-[var(--ft-text-inverse)]">
               FA
             </div>
             <div>
-              <div className="text-sm font-semibold">FlipTrybe Admin</div>
-              <div className="text-xs text-zinc-400">Governance console</div>
+              <div className="text-sm font-semibold text-[var(--ft-text-primary)]">FlipTrybe Admin</div>
+              <div className="text-xs text-[var(--ft-text-muted)]">Governance console</div>
             </div>
           </div>
 
@@ -59,7 +59,7 @@ export default function AdminPage() {
               { label: "Access", icon: LockKeyhole }
             ].map((item) => (
               <button
-                className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-zinc-300 transition hover:bg-white/10 hover:text-white"
+                className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
                 key={item.label}
               >
                 <item.icon className="size-4" />
@@ -67,16 +67,18 @@ export default function AdminPage() {
               </button>
             ))}
           </nav>
+
+          <ThemeToggle className="mt-4 w-full justify-center" />
         </aside>
 
         <section className="px-4 py-4 sm:px-6 lg:px-8">
-          <header className="flex flex-col gap-4 border-b border-zinc-200 pb-5 lg:flex-row lg:items-center lg:justify-between">
+          <header className="flex flex-col gap-4 border-b border-[var(--ft-border)] pb-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="success">Systems nominal</Badge>
                 <Badge tone="warning">18 moderation items</Badge>
               </div>
-              <h1 className="mt-3 text-3xl font-semibold tracking-normal text-zinc-950 sm:text-4xl">
+              <h1 className="mt-3 text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
                 Operations command
               </h1>
             </div>
@@ -103,20 +105,20 @@ export default function AdminPage() {
             <Panel className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-zinc-950">System monitoring</h2>
-                  <p className="mt-1 text-sm text-zinc-500">API, queues, providers, and realtime channels.</p>
+                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">System monitoring</h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">API, queues, providers, and realtime channels.</p>
                 </div>
-                <Network className="size-5 text-sky-600" />
+                <Network className="size-5 text-[var(--ft-blue)]" />
               </div>
 
               <div className="mt-5 grid gap-3">
                 {queues.map((queue) => (
                   <div
-                    className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-3"
+                    className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3"
                     key={queue.name}
                   >
-                    <div className="font-medium text-zinc-950">{queue.name}</div>
-                    <div className="text-sm text-zinc-500">{queue.depth} jobs</div>
+                    <div className="font-medium text-[var(--ft-text-primary)]">{queue.name}</div>
+                    <div className="text-sm text-[var(--ft-text-muted)]">{queue.depth} jobs</div>
                     <Badge tone={queue.status === "healthy" ? "success" : "warning"}>{queue.status}</Badge>
                   </div>
                 ))}
@@ -126,18 +128,18 @@ export default function AdminPage() {
             <Panel className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-zinc-950">Risk desk</h2>
-                  <p className="mt-1 text-sm text-zinc-500">Moderation, fraud, disputes, and suspicious activity.</p>
+                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Risk desk</h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Moderation, fraud, disputes, and suspicious activity.</p>
                 </div>
-                <AlertTriangle className="size-5 text-orange-500" />
+                <AlertTriangle className="size-5 text-[var(--ft-accent)]" />
               </div>
 
-              <div className="mt-5 divide-y divide-zinc-200">
+              <div className="mt-5 divide-y divide-[var(--ft-border)]">
                 {moderation.map((item) => (
                   <div className="grid gap-2 py-3 sm:grid-cols-[1fr_auto]" key={item.item}>
                     <div>
-                      <div className="font-medium text-zinc-950">{item.item}</div>
-                      <div className="mt-1 text-sm text-zinc-500">{item.reason}</div>
+                      <div className="font-medium text-[var(--ft-text-primary)]">{item.item}</div>
+                      <div className="mt-1 text-sm text-[var(--ft-text-muted)]">{item.reason}</div>
                     </div>
                     <Badge tone={item.risk === "High" ? "danger" : item.risk === "Medium" ? "warning" : "success"}>
                       {item.risk}
@@ -150,34 +152,34 @@ export default function AdminPage() {
 
           <div className="mt-6 grid gap-4 xl:grid-cols-3">
             <Panel className="p-4">
-              <Users className="size-5 text-zinc-950" />
-              <h2 className="mt-4 text-lg font-semibold text-zinc-950">User management</h2>
-              <div className="mt-3 grid gap-3 text-sm text-zinc-600">
-                <div className="flex justify-between"><span>New accounts</span><span className="font-medium text-zinc-950">842</span></div>
-                <div className="flex justify-between"><span>Suspended</span><span className="font-medium text-zinc-950">13</span></div>
-                <div className="flex justify-between"><span>Team invites</span><span className="font-medium text-zinc-950">91</span></div>
+              <Users className="size-5 text-[var(--ft-text-primary)]" />
+              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">User management</h2>
+              <div className="mt-3 grid gap-3 text-sm text-[var(--ft-text-secondary)]">
+                <div className="flex justify-between"><span>New accounts</span><span className="font-medium text-[var(--ft-text-primary)]">842</span></div>
+                <div className="flex justify-between"><span>Suspended</span><span className="font-medium text-[var(--ft-text-primary)]">13</span></div>
+                <div className="flex justify-between"><span>Team invites</span><span className="font-medium text-[var(--ft-text-primary)]">91</span></div>
               </div>
             </Panel>
 
             <Panel className="p-4">
-              <Banknote className="size-5 text-zinc-950" />
-              <h2 className="mt-4 text-lg font-semibold text-zinc-950">Fee controls</h2>
+              <Banknote className="size-5 text-[var(--ft-text-primary)]" />
+              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">Fee controls</h2>
               <div className="mt-4 grid gap-3">
                 {["Korapay", "Paystack", "Stripe", "Manual transfer"].map((rail) => (
-                  <div className="flex h-10 items-center justify-between rounded-md border border-zinc-200 px-3 text-sm" key={rail}>
+                  <div className="flex h-10 items-center justify-between rounded-md border border-[var(--ft-border)] px-3 text-sm text-[var(--ft-text-secondary)]" key={rail}>
                     <span>{rail}</span>
-                    <span className="font-medium text-zinc-950">adapter</span>
+                    <span className="font-medium text-[var(--ft-text-primary)]">adapter</span>
                   </div>
                 ))}
               </div>
             </Panel>
 
             <Panel className="p-4">
-              <FileSearch className="size-5 text-zinc-950" />
-              <h2 className="mt-4 text-lg font-semibold text-zinc-950">Audit trail</h2>
+              <FileSearch className="size-5 text-[var(--ft-text-primary)]" />
+              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">Audit trail</h2>
               <div className="mt-4 space-y-3">
                 {audits.map((audit) => (
-                  <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-700" key={audit}>
+                  <div className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]" key={audit}>
                     {audit}
                   </div>
                 ))}

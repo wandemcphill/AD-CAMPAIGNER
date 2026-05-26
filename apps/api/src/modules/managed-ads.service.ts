@@ -72,6 +72,41 @@ function getSecret(value: string | undefined) {
   return trimmed;
 }
 
+function allowMockMediaStorageFallback() {
+  if (process.env.NODE_ENV !== "production") {
+    return true;
+  }
+
+  return ["1", "true", "yes", "on"].includes(
+    process.env.MEDIA_UPLOAD_ALLOW_MOCK_STORAGE?.trim().toLowerCase() ?? ""
+  );
+}
+
+function verifyCloudinaryUploadCompletion(asset: Record<string, any>, input: Record<string, any>) {
+  if (asset.storageProvider !== "cloudinary") {
+    return true;
+  }
+
+  const apiSecret = getSecret(process.env.CLOUDINARY_API_SECRET);
+  const publicId = String(input.public_id ?? input.providerPublicId ?? "");
+  const version = input.version === undefined ? "" : String(input.version);
+  const signature = String(input.signature ?? "");
+
+  if (!apiSecret || !publicId || !version || !signature) {
+    return false;
+  }
+  if (asset.providerPublicId && publicId !== asset.providerPublicId) {
+    return false;
+  }
+
+  const expected = Buffer.from(
+    createHash("sha1").update(`public_id=${publicId}&version=${version}${apiSecret}`).digest("hex")
+  );
+  const actual = Buffer.from(signature);
+
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
 function getCurrency(value: string | undefined, fallback: CurrencyCode): CurrencyCode {
   return currencies.includes(value as CurrencyCode) ? (value as CurrencyCode) : fallback;
 }
@@ -205,6 +240,20 @@ function getPaymentGateway() {
   return createMockPaymentGateway();
 }
 
+function assertLivePaymentsConfiguredForProduction() {
+  if (process.env.NODE_ENV !== "production") {
+    return;
+  }
+
+  if (process.env.PAYMENT_PROVIDER === "live" && getSecret(process.env.KORAPAY_SECRET_KEY)) {
+    return;
+  }
+
+  throw new BadRequestException(
+    "Payments are unavailable because Korapay live configuration is missing."
+  );
+}
+
 function verifyKorapaySignature(input: { body: unknown; signature?: string | undefined }) {
   const signingSecret = getSecret(process.env.KORAPAY_WEBHOOK_SECRET) ?? getSecret(process.env.KORAPAY_SECRET_KEY);
 
@@ -332,6 +381,13 @@ export class ManagedAdsService {
     const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
 
     return this.toCampaign(campaign);
+  }
+
+  async getAdminCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+
+    return this.toCampaign(campaign, { includeInternal: true });
   }
 
   async createCampaign(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
@@ -548,6 +604,11 @@ export class ManagedAdsService {
     const storageKey = `${scope.workspaceId}/campaign-assets/${id("asset")}`;
     const publicId = `${(process.env.CLOUDINARY_FOLDER ?? "fliptrybe").replace(/^\/+|\/+$/g, "")}/${storageKey}`;
     const signedUpload = this.createCloudinarySignedUpload(resourceType, publicId);
+    if (!signedUpload && !allowMockMediaStorageFallback()) {
+      throw new BadRequestException(
+        "Media uploads are unavailable because Cloudinary signing is not configured."
+      );
+    }
     const fallback = signedUpload
       ? undefined
       : await this.mockStorageProvider.createUploadUrl({ key: storageKey, contentType: mimeType });
@@ -589,6 +650,9 @@ export class ManagedAdsService {
     const asset = await this.db.mediaAsset.findFirst({ where: { id: assetId, workspaceId: scope.workspaceId } });
     if (!asset) {
       throw new NotFoundException("Media asset was not found in the active workspace.");
+    }
+    if (!verifyCloudinaryUploadCompletion(asset, input)) {
+      throw new BadRequestException("Cloudinary upload completion could not be verified.");
     }
 
     return this.db.mediaAsset.update({
@@ -636,6 +700,7 @@ export class ManagedAdsService {
   }
 
   async createPaymentIntent(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
+    assertLivePaymentsConfiguredForProduction();
     const scope = requireScope(context);
     const amountMinor = Number(input.amountMinor ?? input.amount ?? 500000);
     const currency = getCurrency(input.currency, "NGN");
@@ -673,6 +738,7 @@ export class ManagedAdsService {
   }
 
   async verifyPayment(context: AuthenticatedRequestContext | undefined, reference: string) {
+    assertLivePaymentsConfiguredForProduction();
     const scope = requireScope(context);
     const result = await this.paymentGateway.verifyPayment(reference);
     const intent = await this.db.paymentIntent.findFirst({
@@ -686,6 +752,7 @@ export class ManagedAdsService {
   }
 
   async handleKorapayWebhook(body: unknown, signature?: string) {
+    assertLivePaymentsConfiguredForProduction();
     if (!verifyKorapaySignature({ body, signature })) {
       throw new BadRequestException("Invalid Korapay webhook signature.");
     }
@@ -1569,7 +1636,15 @@ export class ManagedAdsService {
     return "FAILED";
   }
 
-  private toCampaign(campaign: any) {
+  private toCampaign(campaign: any, options: { includeInternal?: boolean } = {}) {
+    const includeInternal = options.includeInternal === true;
+    const reports = (campaign.reports ?? []).filter((report: any) =>
+      includeInternal ? true : report.status === "PUBLISHED" && !report.deletedAt
+    );
+    const notes = (campaign.notes ?? []).filter((note: any) =>
+      includeInternal ? true : note.visibility === "CLIENT_VISIBLE"
+    );
+
     return {
       id: campaign.id,
       workspaceId: campaign.workspaceId,
@@ -1602,11 +1677,11 @@ export class ManagedAdsService {
       cancelledAt: iso(campaign.cancelledAt),
       companyProfile: campaign.companyProfile,
       creatives: campaign.creatives ?? [],
-      notes: campaign.notes ?? [],
+      notes,
       statusHistory: campaign.statusHistory ?? [],
-      assignments: campaign.assignments ?? [],
-      manualPlacements: campaign.manualPlacements ?? [],
-      reports: campaign.reports ?? [],
+      assignments: includeInternal ? (campaign.assignments ?? []) : [],
+      manualPlacements: includeInternal ? (campaign.manualPlacements ?? []) : [],
+      reports,
       invoices: campaign.invoices ?? [],
       budgetHolds: campaign.budgetHolds ?? [],
       createdAt: iso(campaign.createdAt),

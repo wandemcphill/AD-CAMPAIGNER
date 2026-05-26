@@ -213,7 +213,7 @@ export const quickStats = [
     icon: CreditCard
   },
   {
-    label: "Active orders",
+    label: "Live orders",
     value: "2",
     detail: "1 waiting, 1 received",
     tone: "warning" as const,

@@ -43,36 +43,41 @@ export default function AdminOtpPage() {
       <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
         <Panel className="p-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-zinc-950">Provider health</h2>
+            <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Provider health</h2>
             <ProviderBadge state={providers[0]?.state ?? "healthy"} />
           </div>
-          <div className="mt-5 flex h-56 items-end gap-2 rounded-md border border-zinc-200 bg-zinc-50 p-4">
+          <div className="mt-5 flex h-56 items-end gap-2 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
             {healthBars.map((value, index) => (
               <div className="flex flex-1 items-end" key={`${value}-${index}`}>
-                <div className="w-full rounded-t-sm bg-zinc-950" style={{ height: `${value}%` }} />
+                <div
+                  className="w-full rounded-t-sm bg-[var(--ft-bg-raised)]"
+                  style={{ height: `${value}%` }}
+                />
               </div>
             ))}
           </div>
         </Panel>
 
         <Panel className="overflow-hidden">
-          <div className="border-b border-zinc-200 p-4">
-            <h2 className="text-lg font-semibold text-zinc-950">Order watch</h2>
+          <div className="border-b border-[var(--ft-border)] p-4">
+            <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Order watch</h2>
           </div>
-          <div className="divide-y divide-zinc-200">
+          <div className="divide-y divide-[var(--ft-border)]">
             {orders.slice(0, 4).map((order) => (
               <div
                 className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center"
                 key={order.id}
               >
                 <div>
-                  <div className="font-medium text-zinc-950">{order.id}</div>
-                  <div className="text-sm text-zinc-500">
+                  <div className="font-medium text-[var(--ft-text-primary)]">{order.id}</div>
+                  <div className="text-sm text-[var(--ft-text-muted)]">
                     {order.service} via {order.provider}
                   </div>
                 </div>
                 <StatusBadge status={order.status} />
-                <div className="text-sm font-semibold text-zinc-950">{order.amount}</div>
+                <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                  {order.amount}
+                </div>
               </div>
             ))}
           </div>

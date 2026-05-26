@@ -1,0 +1,140 @@
+/* Fliptrybe theme contract.
+   Components consume --ft-* tokens so Studio and Clay can swap without per-component branches. */
+:root,
+[data-theme="studio"] {
+  color-scheme: light;
+  --font-display:
+    "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:
+    "Geist Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ft-bg-base: #f5f2ee;
+  --ft-bg-surface: #fdfbf8;
+  --ft-bg-raised: #ffffff;
+  --ft-bg-muted: #ede9e3;
+  --ft-bg-sunken: #e8e3db;
+  --ft-bg-page-gradient: linear-gradient(180deg, #f5f2ee 0%, #efe8dd 54%, #f5f2ee 100%);
+  --ft-border: #e0dad1;
+  --ft-border-strong: #cfc8bc;
+  --ft-border-emphasis: #a89880;
+  --ft-text-primary: #1a1611;
+  --ft-text-secondary: #5c5346;
+  --ft-text-muted: #9e9285;
+  --ft-text-inverse: #fdfbf8;
+  --ft-accent: #d97706;
+  --ft-accent-dim: #b45309;
+  --ft-accent-strong: #92400e;
+  --ft-accent-subtle: #fff8ee;
+  --ft-accent-glow: rgba(217, 119, 6, 0.14);
+  --ft-green: #16a34a;
+  --ft-green-subtle: #dcfce7;
+  --ft-green-glow: rgba(22, 163, 74, 0.22);
+  --ft-red: #dc2626;
+  --ft-red-subtle: #fee2e2;
+  --ft-red-hover: #fff1f2;
+  --ft-yellow: #ea580c;
+  --ft-yellow-subtle: #ffedd5;
+  --ft-blue: #2563eb;
+  --ft-blue-subtle: #dbeafe;
+  --ft-purple: #7c3aed;
+  --ft-purple-subtle: #ede9fe;
+  --ft-slate: #64748b;
+  --ft-slate-subtle: #f1f5f9;
+  --ft-platform-default-bg: var(--ft-bg-muted);
+  --ft-platform-default-border: var(--ft-border-strong);
+  --ft-platform-default-text: var(--ft-text-secondary);
+  --ft-platform-instagram-bg: #fdf4ff;
+  --ft-platform-instagram-border: #e9d5ff;
+  --ft-platform-instagram-text: #7e22ce;
+  --ft-platform-meta-bg: #e8f0fe;
+  --ft-platform-meta-border: #bfd1ff;
+  --ft-platform-meta-text: #1a44c2;
+  --ft-platform-tiktok-bg: #fff0f5;
+  --ft-platform-tiktok-border: #ffb3ce;
+  --ft-platform-tiktok-text: #c9063e;
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --shadow-xs: 0 1px 2px rgba(26, 22, 17, 0.06);
+  --shadow-sm: 0 1px 4px rgba(26, 22, 17, 0.08), 0 0 0 1px rgba(26, 22, 17, 0.04);
+  --shadow-md: 0 4px 12px rgba(26, 22, 17, 0.1), 0 1px 3px rgba(26, 22, 17, 0.06);
+  --shadow-lg: 0 8px 24px rgba(26, 22, 17, 0.12), 0 2px 6px rgba(26, 22, 17, 0.06);
+  --shadow-xl: 0 20px 48px rgba(26, 22, 17, 0.14);
+  --background: var(--ft-bg-base);
+  --foreground: var(--ft-text-primary);
+  --muted: var(--ft-text-secondary);
+  --line: var(--ft-border);
+}
+
+[data-theme="clay"] {
+  color-scheme: dark;
+  --ft-bg-base: #0d0b09;
+  --ft-bg-surface: #141210;
+  --ft-bg-raised: #1a1714;
+  --ft-bg-muted: #221e1a;
+  --ft-bg-sunken: #17130f;
+  --ft-bg-page-gradient: linear-gradient(180deg, #0d0b09 0%, #100e0c 52%, #0d0b09 100%);
+  --ft-border: #2e2924;
+  --ft-border-strong: #3d3730;
+  --ft-border-emphasis: #6f6254;
+  --ft-text-primary: #e8ddd4;
+  --ft-text-secondary: #a89b8e;
+  --ft-text-muted: #7a6e64;
+  --ft-text-inverse: #0d0b09;
+  --ft-accent: #f59e0b;
+  --ft-accent-dim: #fbbf24;
+  --ft-accent-strong: #d97706;
+  --ft-accent-subtle: #1c1400;
+  --ft-accent-glow: rgba(245, 158, 11, 0.28);
+  --ft-green: #16a34a;
+  --ft-green-subtle: #102416;
+  --ft-green-glow: rgba(22, 163, 74, 0.32);
+  --ft-red: #dc2626;
+  --ft-red-subtle: #2a0d0d;
+  --ft-red-hover: #3a1111;
+  --ft-yellow: #ea580c;
+  --ft-yellow-subtle: #2a1605;
+  --ft-blue: #2563eb;
+  --ft-blue-subtle: #0c1731;
+  --ft-purple: #9b72cf;
+  --ft-purple-subtle: #18102a;
+  --ft-slate: #7a8899;
+  --ft-slate-subtle: #111418;
+  --ft-platform-default-bg: var(--ft-bg-muted);
+  --ft-platform-default-border: var(--ft-border);
+  --ft-platform-default-text: var(--ft-text-secondary);
+  --ft-platform-instagram-bg: var(--ft-bg-muted);
+  --ft-platform-instagram-border: rgba(155, 69, 109, 0.45);
+  --ft-platform-instagram-text: #d58aa9;
+  --ft-platform-meta-bg: var(--ft-bg-muted);
+  --ft-platform-meta-border: rgba(93, 127, 180, 0.45);
+  --ft-platform-meta-text: #9fb7df;
+  --ft-platform-tiktok-bg: var(--ft-bg-muted);
+  --ft-platform-tiktok-border: var(--ft-border-strong);
+  --ft-platform-tiktok-text: var(--ft-text-primary);
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.65);
+}
+
+html {
+  background: var(--ft-bg-base);
+  transition: background-color 150ms ease;
+}
+
+body {
+  background: var(--ft-bg-page-gradient);
+}
+
+[data-theme="studio"] .ft-only-clay,
+[data-theme="clay"] .ft-only-studio {
+  display: none;
+}

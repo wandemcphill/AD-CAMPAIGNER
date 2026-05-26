@@ -8,7 +8,7 @@ export default function AdminCampaignOpsDetailPage() {
     <Suspense
       fallback={
         <AdminCampaignOpsShell active="/campaign-ops/queue">
-          <div className="mt-6 overflow-hidden rounded-lg border border-zinc-200 bg-white">
+          <div className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
             <LoadingRows count={4} />
           </div>
         </AdminCampaignOpsShell>

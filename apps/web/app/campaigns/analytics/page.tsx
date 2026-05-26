@@ -1,8 +1,8 @@
 "use client";
 
-import { BarChart3, Lightbulb, RefreshCw, TrendingUp } from "lucide-react";
+import { BarChart3, Eye, Lightbulb, RefreshCw, TrendingUp } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricStrip, Panel, PlatformChip } from "@fliptrybe/ui";
 
 import { formatCampaignMoney, formatCompact, metricValue } from "../api";
 import {
@@ -11,7 +11,10 @@ import {
   ErrorNotice,
   LoadingBlock,
   PageHeader,
+  ReportCard,
   SourceBadge,
+  StatusBadge,
+  destinationPlatform,
   secondaryLinkButtonClass
 } from "../components";
 import { destinationLabels, objectiveLabels } from "../data";
@@ -23,55 +26,60 @@ export default function CampaignAnalyticsPage() {
   const trend = analytics?.trend ?? [];
   const maxConversions = Math.max(1, ...trend.map((point) => point.conversions));
   const insights = aiInsights?.items ?? [];
+  const impressions = metricValue(analytics, "impressions");
+  const clicks = metricValue(analytics, "clicks");
+  const roi = metricValue(analytics, "roi_bps") / 100;
 
   return (
-    <CampaignShell active="/campaigns/analytics">
+    <CampaignShell active="/reports">
       <PageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
-              <RefreshCw className="size-4" />
+              <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href="/campaigns/new">
-              New campaign
+            <a className={secondaryLinkButtonClass} href="/reports">
+              <Eye className="size-4 stroke-[1.5]" />
+              Report Center
             </a>
           </div>
         }
         eyebrow={
           <>
-            <Badge tone="info">Analytics</Badge>
+            <Badge tone="info">Performance snapshots</Badge>
             <SourceBadge source={source} />
           </>
         }
-        title="Campaign analytics"
+        title="Performance Snapshots"
       />
 
       <ErrorNotice message={error} />
 
-      <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="Impressions"
-          value={loading ? "..." : formatCompact(metricValue(analytics, "impressions"))}
-          detail="All campaign channels"
-          tone="info"
-        />
-        <MetricCard
-          label="Clicks"
-          value={loading ? "..." : formatCompact(metricValue(analytics, "clicks"))}
-          detail="Tracked interactions"
-          tone="success"
-        />
-        <MetricCard
-          label="ROI"
-          value={loading ? "..." : `${(metricValue(analytics, "roi_bps") / 100).toFixed(1)}%`}
-          detail="Basis point signal"
-          tone="success"
-        />
-        <MetricCard
-          label="Campaigns"
-          value={loading ? "..." : String(campaigns.length)}
-          detail="Current workspace"
+      <section className="mt-6">
+        <MetricStrip
+          items={[
+            {
+              label: "Impressions",
+              value: loading ? "..." : formatCompact(impressions),
+              detail: "All campaign channels"
+            },
+            {
+              label: "Clicks",
+              value: loading ? "..." : formatCompact(clicks),
+              detail: "Tracked interactions"
+            },
+            {
+              label: "ROI",
+              value: loading ? "..." : `${roi.toFixed(1)}%`,
+              detail: "Basis point signal"
+            },
+            {
+              label: "Campaigns",
+              value: loading ? "..." : String(campaigns.length),
+              detail: "Current workspace"
+            }
+          ]}
         />
       </section>
 
@@ -79,10 +87,12 @@ export default function CampaignAnalyticsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">Conversion trend</h2>
-              <p className="mt-1 text-sm text-zinc-500">Spend-weighted campaign movement.</p>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Delivery trend</h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                Spend-weighted campaign movement.
+              </p>
             </div>
-            <TrendingUp className="size-5 text-green-600" />
+            <TrendingUp className="size-5 stroke-[1.5] text-[var(--ft-green)]" />
           </div>
           {loading ? (
             <div className="mt-5">
@@ -91,22 +101,24 @@ export default function CampaignAnalyticsPage() {
           ) : trend.length === 0 ? (
             <div className="mt-5">
               <EmptyState
-                copy="Analytics trend points will appear after campaigns begin reporting."
+                copy="Delivery trend points will appear after the team begins publishing campaign updates."
                 icon={BarChart3}
                 title="No trend data"
               />
             </div>
           ) : (
-            <div className="mt-5 flex h-72 items-end gap-3 rounded-md border border-zinc-200 bg-zinc-50 p-4">
+            <div className="mt-5 flex h-72 items-end gap-3 border-t border-[var(--ft-border)] pt-4">
               {trend.map((point) => (
                 <div className="flex flex-1 flex-col items-center gap-2" key={point.day}>
                   <div
-                    className="w-full rounded-t-sm bg-sky-600"
+                    className="w-full rounded-t-[var(--radius-sm)] bg-[var(--ft-accent)]"
                     style={{
                       height: `${Math.max(18, (point.conversions / maxConversions) * 220)}px`
                     }}
                   />
-                  <div className="text-xs font-medium text-zinc-500">{point.day}</div>
+                  <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    {point.day}
+                  </div>
                 </div>
               ))}
             </div>
@@ -116,24 +128,30 @@ export default function CampaignAnalyticsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-zinc-950">AI insights</h2>
-              <p className="mt-1 text-sm text-zinc-500">Signals grouped by campaign.</p>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Managed insights</h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                Signals grouped by campaign once reporting is published.
+              </p>
             </div>
-            <Lightbulb className="size-5 text-orange-500" />
+            <Lightbulb className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
           </div>
-          <div className="mt-5 grid gap-3">
+          <div className="mt-5 divide-y divide-[var(--ft-border)] border-y border-[var(--ft-border)]">
             {loading ? (
-              <LoadingBlock label="Loading insights" />
+              <div className="py-4">
+                <LoadingBlock label="Loading insights" />
+              </div>
             ) : insights.length === 0 ? (
-              <EmptyState
-                copy="Campaign insights will appear after the AI ads endpoint returns items."
-                icon={Lightbulb}
-                title="No insights"
-              />
+              <div className="py-4">
+                <EmptyState
+                  copy="Campaign insights will appear after the team has enough delivery data to explain what changed."
+                  icon={Lightbulb}
+                  title="No insights"
+                />
+              </div>
             ) : (
               insights.slice(0, 4).map((insight) => (
-                <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3" key={insight.id}>
-                  <div className="font-medium text-zinc-950">{insight.label}</div>
+                <div className="py-3" key={insight.id}>
+                  <div className="font-medium text-[var(--ft-text-primary)]">{insight.label}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {Object.entries(insight.dimensions).slice(0, 3).map(([key, value]) => (
                       <Badge key={key} tone="neutral">
@@ -149,15 +167,58 @@ export default function CampaignAnalyticsPage() {
       </section>
 
       <section className="mt-6">
-        <Panel className="overflow-hidden">
-          <div className="border-b border-zinc-200 p-4">
-            <h2 className="text-lg font-semibold text-zinc-950">Campaign breakdown</h2>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Report snapshots</h2>
+            <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+              Reports are published by the Fliptrybe team at key campaign milestones.
+            </p>
           </div>
-          <div className="divide-y divide-zinc-200">
-            {campaigns.length === 0 ? (
+        </div>
+        {loading ? (
+          <Panel className="p-4">
+            <LoadingBlock label="Loading report snapshots" />
+          </Panel>
+        ) : campaigns.length === 0 ? (
+          <EmptyState
+            copy="We publish campaign reports at key milestones - usually halfway through your campaign and at the end. Our team will notify you when your first report is ready."
+            icon={BarChart3}
+            title="Your reports will appear here."
+          />
+        ) : (
+          <div className="grid gap-4">
+            {campaigns.slice(0, 3).map((campaign) => (
+              <ReportCard campaign={campaign} key={campaign.id} metrics={analytics?.metrics} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="mt-6">
+        <Panel className="overflow-hidden">
+          <div className="border-b border-[var(--ft-border)] p-4">
+            <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Campaign breakdown</h2>
+            <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+              Campaign-level report readiness and spend.
+            </p>
+          </div>
+          <div>
+            <div className="hidden grid-cols-[minmax(220px,1fr)_140px_140px_120px_120px_120px] gap-3 border-b border-[var(--ft-border)] px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)] xl:grid">
+              <div>Campaign</div>
+              <div>Status</div>
+              <div>Platform</div>
+              <div>Objective</div>
+              <div>Budget</div>
+              <div>Action</div>
+            </div>
+            {loading ? (
+              <div className="p-4">
+                <LoadingBlock label="Loading campaign breakdown" />
+              </div>
+            ) : campaigns.length === 0 ? (
               <div className="p-4">
                 <EmptyState
-                  copy="Campaign-level analytics will appear when campaigns exist."
+                  copy="Campaign-level results will appear once our team publishes report-ready metrics."
                   icon={BarChart3}
                   title="No campaign breakdown"
                 />
@@ -165,20 +226,28 @@ export default function CampaignAnalyticsPage() {
             ) : (
               campaigns.map((campaign) => (
                 <div
-                  className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                  className="grid gap-3 border-b border-[var(--ft-border)] p-4 last:border-b-0 xl:grid-cols-[minmax(220px,1fr)_140px_140px_120px_120px_120px] xl:items-center"
                   key={campaign.id}
                 >
                   <div>
-                    <div className="font-medium text-zinc-950">{campaign.name}</div>
-                    <div className="mt-1 text-sm text-zinc-500">
-                      {objectiveLabels[campaign.objective]} - {destinationLabels[campaign.destination.kind]}
+                    <div className="font-medium text-[var(--ft-text-primary)]">{campaign.name}</div>
+                    <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                      {destinationLabels[campaign.destination.kind]}
                     </div>
                   </div>
-                  <div className="text-sm font-medium text-zinc-700">
+                  <StatusBadge status={campaign.status} />
+                  <div>
+                    <PlatformChip platform={destinationPlatform(campaign.destination.kind)} />
+                  </div>
+                  <div className="text-sm text-[var(--ft-text-secondary)]">
+                    {objectiveLabels[campaign.objective]}
+                  </div>
+                  <div className="font-mono text-sm text-[var(--ft-text-primary)]">
                     {formatCampaignMoney(campaign.budget)}
                   </div>
-                  <a className={secondaryLinkButtonClass} href={`/campaigns/${campaign.id}`}>
-                    Open
+                  <a className={`${secondaryLinkButtonClass} h-9 px-3`} href={`/campaigns/${campaign.id}`}>
+                    <Eye className="size-4 stroke-[1.5]" />
+                    View brief
                   </a>
                 </div>
               ))

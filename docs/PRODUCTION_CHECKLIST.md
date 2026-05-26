@@ -17,6 +17,36 @@ Use this checklist with `docs/OPERATIONS.md` before enabling production traffic 
 - Render alerts cover failed deploys, API health failures, worker restart loops, Postgres capacity, Redis capacity, and payment mismatches.
 - Owner names are assigned for deploy, API, worker, payments, database, and customer support.
 
+## Managed Ads MVP
+
+### Preflight
+
+- Run the managed ads rollout check for every deployed surface before launch:
+
+```powershell
+corepack pnpm exec tsx scripts/rollout-check.ts --target=api --stage=managed-ads-mvp --strict-production
+corepack pnpm exec tsx scripts/rollout-check.ts --target=worker --stage=managed-ads-mvp --strict-production
+corepack pnpm exec tsx scripts/rollout-check.ts --target=web --stage=managed-ads-mvp --strict-production
+corepack pnpm exec tsx scripts/rollout-check.ts --target=admin --stage=managed-ads-mvp --strict-production
+```
+
+- API uses real persistent dependencies: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, and `SESSION_SECRET`.
+- Media uploads use signed Cloudinary upload intents. `STORAGE_PROVIDER=cloudinary`, Cloudinary cloud name, API key, API secret, and upload preset are present.
+- `MEDIA_UPLOAD_ALLOW_MOCK_STORAGE` is unset or false in production.
+- Payments use live Korapay. `PAYMENT_PROVIDER=live`, Korapay keys, webhook secret, redirect URL, and treasury account details are present.
+- Web and admin use the deployed API URL and do not expose diagnostic data-source badges.
+- Trusted proxy auth flags stay disabled unless a trusted proxy boundary has been reviewed.
+
+### MVP Smoke Flow
+
+1. Client signs in, completes business profile, and submits a campaign brief with at least one media upload.
+2. Admin opens Campaign Operations, claims the new brief, posts an internal note, and moves the campaign through review.
+3. Admin issues an invoice or budget hold tied to the campaign.
+4. Client pays through Korapay or funds wallet; duplicate webhook/verify events do not double-credit wallet state.
+5. Admin stores manual ad placement links, uploads proofs/screenshots, enters metrics, and publishes a report.
+6. Client sees the timeline update, published report, invoice/payment state, and no admin-only notes.
+7. Admin closes the campaign and confirms audit/history rows remain visible.
+
 ## Digital Access Beta
 
 ### Preflight

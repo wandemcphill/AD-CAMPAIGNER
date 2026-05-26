@@ -21,10 +21,13 @@ web_modules/
 
 # Build outputs
 .next
+.next-build
+.next-dev-*
 out
 dist
 build
 coverage
+screenshots/
 *.lcov
 .nyc_output
 .turbo

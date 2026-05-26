@@ -30,20 +30,26 @@ export default function AdminOtpRiskPage() {
       </section>
 
       <Panel className="mt-6 overflow-hidden">
-        <div className="border-b border-zinc-200 p-4">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-950">
-            <ShieldAlert className="size-5 text-orange-500" />
+        <div className="border-b border-[var(--ft-border)] p-4">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--ft-text-primary)]">
+            <ShieldAlert className="size-5 text-[var(--ft-accent)]" />
             Signals
           </h2>
         </div>
-        <div className="divide-y divide-zinc-200">
+        <div className="hidden grid-cols-[1fr_1fr_auto_1fr] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase lg:grid">
+          <div>Signal</div>
+          <div>Entity</div>
+          <div>Severity</div>
+          <div>Action</div>
+        </div>
+        <div className="divide-y divide-[var(--ft-border)]">
           {riskSignals.map((signal) => (
             <div
-              className="grid gap-3 p-4 lg:grid-cols-[1fr_1fr_auto_1fr] lg:items-center"
+              className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] lg:grid-cols-[1fr_1fr_auto_1fr] lg:items-center"
               key={`${signal.label}-${signal.entity}`}
             >
-              <div className="font-semibold text-zinc-950">{signal.label}</div>
-              <div className="text-sm text-zinc-600">{signal.entity}</div>
+              <div className="font-semibold text-[var(--ft-text-primary)]">{signal.label}</div>
+              <div className="text-sm text-[var(--ft-text-secondary)]">{signal.entity}</div>
               <Badge
                 tone={
                   signal.severity === "High"
@@ -55,7 +61,9 @@ export default function AdminOtpRiskPage() {
               >
                 {signal.severity}
               </Badge>
-              <div className="text-sm font-medium text-zinc-700">{signal.action}</div>
+              <div className="text-sm font-medium text-[var(--ft-text-secondary)]">
+                {signal.action}
+              </div>
             </div>
           ))}
         </div>

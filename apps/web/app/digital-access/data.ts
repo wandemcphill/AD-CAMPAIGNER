@@ -53,10 +53,20 @@ export type AccessRequest = {
 export const accessEnabled = process.env.NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS === "true";
 
 export const categories: AccessCategory[] = [
-  { label: "AI Tools", slug: "ai-creator-tools", icon: Sparkles, tone: "text-sky-600" },
-  { label: "Streaming", slug: "streaming-entertainment", icon: Tv, tone: "text-rose-600" },
-  { label: "Gaming", slug: "gaming-coins", icon: Gamepad2, tone: "text-emerald-600" },
-  { label: "VPN & Security", slug: "infrastructure", icon: ShieldCheck, tone: "text-amber-600" }
+  { label: "AI Tools", slug: "ai-creator-tools", icon: Sparkles, tone: "text-[var(--ft-accent)]" },
+  {
+    label: "Streaming",
+    slug: "streaming-entertainment",
+    icon: Tv,
+    tone: "text-[var(--ft-purple)]"
+  },
+  { label: "Gaming", slug: "gaming-coins", icon: Gamepad2, tone: "text-[var(--ft-green)]" },
+  {
+    label: "VPN & Security",
+    slug: "infrastructure",
+    icon: ShieldCheck,
+    tone: "text-[var(--ft-yellow)]"
+  }
 ];
 
 export const services: AccessService[] = [

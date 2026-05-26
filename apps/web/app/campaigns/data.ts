@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Bell,
   CreditCard,
   Gauge,
   Megaphone,
@@ -82,11 +83,12 @@ export type PlatformHealth = {
 };
 
 export const campaignNavItems = [
-  { label: "Overview", href: "/campaigns", icon: Gauge },
-  { label: "Builder", href: "/campaigns/new", icon: Sparkles },
-  { label: "Analytics", href: "/campaigns/analytics", icon: BarChart3 },
-  { label: "Billing", href: "/billing", icon: CreditCard },
-  { label: "Onboarding", href: "/onboarding", icon: ShieldCheck }
+  { label: "My Campaigns", href: "/campaigns", icon: Gauge },
+  { label: "Start a Campaign", href: "/campaigns/new", icon: Sparkles },
+  { label: "Campaign Reports", href: "/reports", icon: BarChart3 },
+  { label: "Wallet & Billing", href: "/billing", icon: CreditCard },
+  { label: "Business Setup", href: "/onboarding", icon: ShieldCheck },
+  { label: "Notifications", href: "/notifications", icon: Bell }
 ] satisfies Array<{ label: string; href: string; icon: LucideIcon }>;
 
 export const objectiveOptions = campaignObjectives;

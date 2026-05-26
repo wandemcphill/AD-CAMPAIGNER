@@ -1,78 +1,34 @@
 "use client";
 
-import { useState } from "react";
-import type { FormEvent } from "react";
-import { LogIn, LogOut, RefreshCw, UserPlus } from "lucide-react";
+import { ArrowRight, LogOut, RefreshCw, ShieldCheck } from "lucide-react";
 
-import { Badge, Button, cn } from "@fliptrybe/ui";
+import { Badge, Button } from "@fliptrybe/ui";
 
-import { getApiBaseUrl, type AuthCredentials } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
 
 export function SessionPanel({ title = "Admin session" }: { title?: string }) {
-  const { error, loading, refresh, session, signIn, signOut, signUp } = useApiSession();
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [workspaceName, setWorkspaceName] = useState("");
-  const [formError, setFormError] = useState<string>();
-  const [submitting, setSubmitting] = useState(false);
-
-  async function submitSession(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setFormError(undefined);
-
-    const credentials: AuthCredentials = { email, password };
-    if (mode === "register" && name.trim()) {
-      credentials.name = name.trim();
-    }
-    if (mode === "register" && workspaceName.trim()) {
-      credentials.workspaceName = workspaceName.trim();
-    }
-
-    try {
-      if (mode === "register") {
-        await signUp(credentials);
-      } else {
-        await signIn(credentials);
-      }
-      setPassword("");
-    } catch (caught) {
-      setFormError(caught instanceof Error ? caught.message : "Session request failed.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    void submitSession(event);
-  }
+  const { error, loading, refresh, session, signOut } = useApiSession();
 
   if (session) {
     return (
-      <div className="mt-6 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white xl:block">
+      <div className="mt-6 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4 text-sm shadow-[var(--shadow-sm)]">
         <div className="flex items-center justify-between gap-3">
-          <div className="font-medium">{title}</div>
+          <div className="font-medium text-[var(--ft-text-primary)]">{title}</div>
           <Badge tone="success">Connected</Badge>
         </div>
-        <div className="mt-4 grid gap-2 text-zinc-300">
-          <div className="truncate font-medium text-white">{session.workspace.name}</div>
+        <div className="mt-4 grid gap-2 text-[var(--ft-text-secondary)]">
+          <div className="truncate font-medium text-[var(--ft-text-primary)]">{session.workspace.name}</div>
           <div className="truncate">{session.user.email}</div>
-          <div className="text-xs text-zinc-400">{session.role ?? "member"}</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            {session.role ?? "member"}
+          </div>
         </div>
         <div className="mt-4 flex gap-2">
           <Button className="flex-1 px-3" disabled={loading} onClick={() => void refresh()} variant="secondary">
             <RefreshCw className="size-4" />
             Refresh
           </Button>
-          <Button
-            className="flex-1 border-white/10 bg-white/10 px-3 text-white hover:bg-white/15"
-            disabled={loading}
-            onClick={() => void signOut()}
-            variant="secondary"
-          >
+          <Button className="flex-1 px-3" disabled={loading} onClick={() => void signOut()} variant="ghost">
             <LogOut className="size-4" />
             Sign out
           </Button>
@@ -82,88 +38,38 @@ export function SessionPanel({ title = "Admin session" }: { title?: string }) {
   }
 
   return (
-    <form
-      className="mt-6 grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white"
-      onSubmit={handleSubmit}
-    >
+    <div className="mt-6 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4 text-sm shadow-[var(--shadow-sm)]">
       <div className="flex items-center justify-between gap-3">
-        <div className="font-medium">{title}</div>
-        <Badge tone={loading ? "info" : "warning"}>{loading ? "Checking" : "Signed out"}</Badge>
+        <div className="font-medium text-[var(--ft-text-primary)]">{title}</div>
+        <Badge tone={loading ? "info" : "warning"}>{loading ? "Checking" : "Not connected"}</Badge>
       </div>
-
-      <div className="grid grid-cols-2 gap-1 rounded-md bg-white/10 p-1">
-        {[
-          { value: "login", label: "Login", icon: LogIn },
-          { value: "register", label: "Register", icon: UserPlus }
-        ].map((item) => (
-          <button
-            className={cn(
-              "flex h-9 items-center justify-center gap-2 rounded-md text-xs font-medium transition",
-              mode === item.value ? "bg-white text-zinc-950 shadow-sm" : "text-zinc-300"
-            )}
-            key={item.value}
-            onClick={() => setMode(item.value as "login" | "register")}
-            type="button"
-          >
-            <item.icon className="size-3.5" />
-            {item.label}
-          </button>
-        ))}
-      </div>
-
-      {mode === "register" ? (
-        <>
-          <label className="grid gap-1 text-xs font-medium text-zinc-300">
-            Name
-            <input
-              className="h-10 rounded-md border border-white/10 bg-white px-3 text-sm text-zinc-950"
-              onChange={(event) => setName(event.target.value)}
-              value={name}
-            />
-          </label>
-          <label className="grid gap-1 text-xs font-medium text-zinc-300">
-            Workspace
-            <input
-              className="h-10 rounded-md border border-white/10 bg-white px-3 text-sm text-zinc-950"
-              onChange={(event) => setWorkspaceName(event.target.value)}
-              value={workspaceName}
-            />
-          </label>
-        </>
-      ) : null}
-
-      <label className="grid gap-1 text-xs font-medium text-zinc-300">
-        Email
-        <input
-          className="h-10 rounded-md border border-white/10 bg-white px-3 text-sm text-zinc-950"
-          onChange={(event) => setEmail(event.target.value)}
-          required
-          type="email"
-          value={email}
-        />
-      </label>
-      <label className="grid gap-1 text-xs font-medium text-zinc-300">
-        Password
-        <input
-          className="h-10 rounded-md border border-white/10 bg-white px-3 text-sm text-zinc-950"
-          onChange={(event) => setPassword(event.target.value)}
-          required
-          type="password"
-          value={password}
-        />
-      </label>
-
-      {formError || error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs leading-5 text-red-700">
-          {formError ?? error}
+      <div className="mt-4 flex gap-3">
+        <div className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-accent)]/35 bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]">
+          <ShieldCheck className="size-5 stroke-[1.5]" />
         </div>
-      ) : null}
-
-      <Button disabled={submitting || loading} type="submit">
-        {mode === "register" ? <UserPlus className="size-4" /> : <LogIn className="size-4" />}
-        {submitting ? "Working" : mode === "register" ? "Create session" : "Sign in"}
-      </Button>
-      <div className="break-all text-xs text-zinc-400">{getApiBaseUrl()}</div>
-    </form>
+        <div className="min-w-0">
+          <p className="text-sm leading-5 text-[var(--ft-text-secondary)]">
+            Connect an admin workspace before reviewing briefs, assigning operators, or publishing reports.
+          </p>
+          {error ? (
+            <p className="mt-2 text-xs leading-5 text-[var(--ft-red)]">
+              Admin session check is unavailable. Refresh the workspace before taking ops actions.
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-4 flex gap-2">
+        <a
+          className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-accent)] bg-[var(--ft-accent)] px-3 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
+          href="/campaign-ops"
+        >
+          <span className="truncate">Open desk</span>
+          <ArrowRight className="size-4" />
+        </a>
+        <Button className="px-3" disabled={loading} onClick={() => void refresh()} variant="secondary">
+          <RefreshCw className="size-4" />
+        </Button>
+      </div>
+    </div>
   );
 }

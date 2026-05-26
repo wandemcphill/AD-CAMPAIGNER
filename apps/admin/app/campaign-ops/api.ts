@@ -256,12 +256,12 @@ function formatBudget(value: ApiCampaign["budget"]) {
     return formatMoney(value);
   }
 
-  return "Budget pending";
+  return "Needs Action: budget pending";
 }
 
 function formatDateTime(value?: string) {
   if (!value) {
-    return "Not scheduled";
+    return "Needs Action: not scheduled";
   }
 
   const date = new Date(value);
@@ -280,7 +280,7 @@ function buildRunWindow(campaign: ApiCampaign) {
   const end = campaign.endsAt;
 
   if (!start && !end) {
-    return "Window pending";
+    return "Needs Action: set flight window";
   }
   if (!end) {
     return formatDateTime(start);
@@ -297,8 +297,8 @@ function mapCampaign(campaign: ApiCampaign, index = 0): CampaignOpsCampaign {
     name: stringValue(campaign.name ?? campaign.title, "Untitled campaign"),
     workspaceName: stringValue(campaign.workspaceName ?? campaign.workspace?.name, "Workspace"),
     ownerName: actorName(campaign.ownerName ?? campaign.owner, "Campaign owner"),
-    channel: stringValue(campaign.channel, "Mixed channels"),
-    objective: stringValue(campaign.objective, "Campaign objective"),
+    channel: stringValue(campaign.channel, "Needs Action: choose channel"),
+    objective: stringValue(campaign.objective, "Needs Action: capture campaign objective"),
     budget: formatBudget(campaign.budget),
     status: normalizeStatus(campaign.status),
     priority: normalizePriority(campaign.priority),
@@ -306,12 +306,12 @@ function mapCampaign(campaign: ApiCampaign, index = 0): CampaignOpsCampaign {
     submittedAt: formatDateTime(campaign.submittedAt ?? campaign.createdAt),
     updatedAt: formatDateTime(campaign.updatedAt),
     runWindow: buildRunWindow(campaign),
-    destinationUrl: stringValue(campaign.destinationUrl, "Not provided"),
-    notes: stringValue(campaign.notes, "No operator notes yet."),
-    sla: stringValue(campaign.sla, "SLA pending"),
-    risk: stringValue(campaign.risk, "Unscored"),
+    destinationUrl: stringValue(campaign.destinationUrl, "Needs Action: add destination URL"),
+    notes: stringValue(campaign.notes, "Needs Action: add operator context before handoff."),
+    sla: stringValue(campaign.sla, "Needs Action: set SLA"),
+    risk: stringValue(campaign.risk, "Needs Action: risk unscored"),
     progress: Math.min(100, Math.max(0, numberValue(campaign.progress, 0))),
-    nextAction: stringValue(campaign.nextAction, "Review campaign details"),
+    nextAction: stringValue(campaign.nextAction, "Needs Action: review campaign details"),
     tags: Array.isArray(campaign.tags) ? campaign.tags.filter((tag) => typeof tag === "string") : []
   };
 }
@@ -338,7 +338,7 @@ function buildMetrics(overview: ApiOverview): CampaignOpsMetric[] {
 
   return [
     {
-      label: "Open queue",
+      label: "Needs action",
       value: String(queued + reviewing + blocked),
       detail: "Queued, reviewing, and blocked",
       tone: "info"
@@ -371,7 +371,7 @@ function mapReport(report: ApiReport, index = 0): CampaignOpsReport {
     generatedAt: formatDateTime(report.generatedAt ?? report.createdAt),
     status: normalizeReportStatus(report.status),
     owner: actorName(report.owner, "Ops"),
-    summary: stringValue(report.summary, "No report summary available yet."),
+    summary: stringValue(report.summary, "Needs Action: add a client-ready report summary before publishing."),
     metrics: Array.isArray(report.metrics)
       ? report.metrics.map((metric, metricIndex) => ({
           label: stringValue(metric.label, `Metric ${metricIndex + 1}`),
@@ -389,7 +389,7 @@ function mapActivity(item: ApiActivity, index = 0): CampaignOpsActivityItem {
     target: stringValue(item.target, "Campaign queue"),
     timestamp: formatDateTime(item.timestamp ?? item.createdAt),
     severity: normalizeSeverity(item.severity),
-    description: stringValue(item.description, "No additional activity details were provided.")
+    description: stringValue(item.description, "Needs Action: add enough context for the ops audit trail.")
   };
 }
 
@@ -466,6 +466,85 @@ export async function loadAdminCampaignOpsActivity() {
   };
 
   return cursor === undefined ? state : { ...state, nextCursor: cursor };
+}
+
+const adminStatusToApiStatus: Record<CampaignOpsStatus, string> = {
+  blocked: "CHANGES_REQUESTED",
+  completed: "COMPLETED",
+  failed: "FAILED",
+  queued: "PENDING_REVIEW",
+  reviewing: "PENDING_REVIEW",
+  running: "RUNNING",
+  scheduled: "APPROVED"
+};
+type AdminCampaignStatusMutation =
+  | CampaignOpsStatus
+  | "APPROVED"
+  | "CANCELLED"
+  | "CHANGES_REQUESTED"
+  | "COMPLETED"
+  | "FAILED"
+  | "PENDING_REVIEW"
+  | "REJECTED"
+  | "RUNNING";
+
+export async function updateAdminCampaignStatus(
+  campaignId: string,
+  status: AdminCampaignStatusMutation,
+  reason?: string
+) {
+  const apiStatus = adminStatusToApiStatus[status as CampaignOpsStatus] ?? status;
+
+  return apiRequest(`/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/status`, {
+    body: JSON.stringify({ reason, status: apiStatus }),
+    method: "PATCH"
+  });
+}
+
+export async function updateAdminCampaignAssignment(
+  campaignId: string,
+  input: { assignedToUserId?: string; assigneeUserId?: string; role?: string } = {}
+) {
+  return apiRequest(`/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/assignment`, {
+    body: JSON.stringify(input),
+    method: "PATCH"
+  });
+}
+
+export async function addAdminCampaignNote(
+  campaignId: string,
+  input: { body: string; visibility?: "INTERNAL" | "CLIENT_VISIBLE"; metadata?: Record<string, unknown> }
+) {
+  return apiRequest(`/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/notes`, {
+    body: JSON.stringify(input),
+    method: "POST"
+  });
+}
+
+export async function addAdminCampaignMetrics(
+  campaignId: string,
+  input: Record<string, string | number | null | undefined>
+) {
+  return apiRequest(`/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/metrics`, {
+    body: JSON.stringify(input),
+    method: "POST"
+  });
+}
+
+export async function addAdminCampaignPlacement(
+  campaignId: string,
+  input: Record<string, string | number | boolean | null | undefined | Record<string, unknown>>
+) {
+  return apiRequest(`/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/ad-urls`, {
+    body: JSON.stringify(input),
+    method: "POST"
+  });
+}
+
+export async function publishAdminCampaignReport(reportId: string) {
+  return apiRequest(`/admin/campaign-ops/reports/${encodeURIComponent(reportId)}/publish`, {
+    method: "POST"
+  });
 }
 
 export { subscribeToSessionChanges };

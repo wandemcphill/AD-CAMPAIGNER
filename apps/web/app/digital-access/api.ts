@@ -117,16 +117,16 @@ function categoryVisual(slug: string): Pick<AccessCategory, "icon" | "tone"> {
     return { icon: fallback.icon, tone: fallback.tone };
   }
   if (slug.includes("stream")) {
-    return { icon: Tv, tone: "text-rose-600" };
+    return { icon: Tv, tone: "text-[var(--ft-purple)]" };
   }
   if (slug.includes("game")) {
-    return { icon: Gamepad2, tone: "text-emerald-600" };
+    return { icon: Gamepad2, tone: "text-[var(--ft-green)]" };
   }
   if (slug.includes("infra") || slug.includes("vpn") || slug.includes("security")) {
-    return { icon: ShieldCheck, tone: "text-amber-600" };
+    return { icon: ShieldCheck, tone: "text-[var(--ft-yellow)]" };
   }
 
-  return { icon: Sparkles, tone: "text-sky-600" };
+  return { icon: Sparkles, tone: "text-[var(--ft-accent)]" };
 }
 
 function serviceIcon(service: Pick<ApiService, "category" | "name" | "slug">): LucideIcon {
@@ -238,7 +238,8 @@ export async function loadDigitalAccessData(includeRequests: boolean) {
       : Promise.resolve(undefined)
   ]);
 
-  const categories = categoryPayload.length > 0 ? categoryPayload.map(mapCategory) : fallbackCategories;
+  const categories =
+    categoryPayload.length > 0 ? categoryPayload.map(mapCategory) : fallbackCategories;
   const services =
     servicePayload.items.length > 0 ? servicePayload.items.map(mapService) : fallbackServices;
   const requests = requestPayload ? requestPayload.map(mapRequest) : fallbackRequests;
