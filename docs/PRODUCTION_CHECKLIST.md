@@ -9,8 +9,13 @@ credentials or provider account access.
 Use `docs/MANAGED_ADS_EVIDENCE_PACKET.md` as the operator runbook and evidence
 packet for phase-by-phase launch signoff, rollback, incidents, and support
 macros.
+Use `docs/MANAGED_ADS_MONITORING_RUNBOOK.md` for Phase 7 support escalation,
+Phase 8 alert setup, manual review cadences, daily monitoring reviews, and
+incident acknowledgement templates.
 Use `corepack pnpm ops:phases` when release owners need a deterministic phase
 map for automation, launch notes, or JSON export.
+Use `corepack pnpm ops:evidence` to summarize task-level evidence from
+`OPS_001_EVIDENCE` through `OPS_110_EVIDENCE`.
 
 ## Global Preflight
 

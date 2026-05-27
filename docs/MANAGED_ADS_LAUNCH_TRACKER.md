@@ -8,8 +8,13 @@ external access, and what evidence is missing.
 For step-by-step operator instructions and copy/paste launch templates, use
 `docs/MANAGED_ADS_EVIDENCE_PACKET.md`.
 
+For Phase 7 support escalation and Phase 8 monitoring operations, use
+`docs/MANAGED_ADS_MONITORING_RUNBOOK.md`.
+
 For a machine-readable phase map, run `corepack pnpm ops:phases` or
 `corepack pnpm ops:phases -- --json`.
+For task-level evidence status, run `corepack pnpm ops:evidence` or
+`corepack pnpm ops:evidence -- --phase=N`.
 
 ## Status Key
 
@@ -76,6 +81,7 @@ Before the final go/no-go call, collect these links in the launch notes:
 - Korapay reconciliation evidence and duplicate webhook/idempotency result.
 - Cloudinary upload/proof evidence for image, video, rejected size, and rejected MIME cases.
 - Meta/TikTok/page access confirmation and external proof capture examples.
-- Monitoring alert names or manual review cadence for API, worker, payment, queue, and media failures.
+- Monitoring alert names or manual review cadence for API, worker, payment,
+  queue, media, deploy, and support failures.
 - Rollback target, rollback order, reconciliation plan, and customer messaging template.
 - Owner signoff thread using `go`, `go with risk`, or `no-go`.
