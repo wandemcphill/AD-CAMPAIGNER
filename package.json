@@ -20,6 +20,7 @@
     "prisma:validate": "corepack pnpm --filter @fliptrybe/database prisma validate",
     "prisma:generate": "corepack pnpm --filter @fliptrybe/database prisma generate",
     "verify": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test && corepack pnpm prisma:validate && corepack pnpm ui:audit",
+    "ops:phases": "node scripts/managed-ads-phases.ts",
     "ops:readiness": "tsx scripts/ops-readiness.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:deployed": "tsx scripts/deployed-smoke.ts",

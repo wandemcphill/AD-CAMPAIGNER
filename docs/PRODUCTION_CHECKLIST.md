@@ -6,6 +6,11 @@ For Managed Ads launch-room reporting, use
 `docs/MANAGED_ADS_LAUNCH_TRACKER.md` as the daily phase board. It separates
 local/code-complete evidence from blockers that require external dashboard
 credentials or provider account access.
+Use `docs/MANAGED_ADS_EVIDENCE_PACKET.md` as the operator runbook and evidence
+packet for phase-by-phase launch signoff, rollback, incidents, and support
+macros.
+Use `corepack pnpm ops:phases` when release owners need a deterministic phase
+map for automation, launch notes, or JSON export.
 
 ## Global Preflight
 

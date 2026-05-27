@@ -25,6 +25,23 @@ and gives the team a concise status table without reading the full inventory.
 | Incident commander | Owns incident coordination when delivery, data integrity, money state, or reporting may be wrong. | `OPS_INCIDENT_COMMANDER` |
 | Rollback owner | Owns rollback decision, rollback execution, and post-rollback reconciliation. | `OPS_ROLLBACK_OWNER` |
 
+## Ops Readiness Automation Metadata
+
+`corepack pnpm ops:readiness` validates the owner slots above plus the launch
+room metadata below. These values can point to launch-note anchors, tickets,
+docs, channels, or URLs; they do not require live provider credentials.
+
+| Readiness Variable | Purpose |
+| --- | --- |
+| `OPS_OWNER_ROSTER_URL` | Owner roster with backups and escalation handles. |
+| `OPS_LAUNCH_NOTES_URL` | Launch notes or go/no-go thread where evidence will be posted. |
+| `OPS_INCIDENT_RUNBOOK_URL` | Managed ads incident runbook. |
+| `OPS_ROLLBACK_PLAN_URL` | Rollback plan with order, target commit, and reconciliation owner. |
+| `OPS_SUPPORT_CONTACT` | Staffed client support contact for the launch. |
+| `OPS_ESCALATION_CONTACT` | Urgent escalation contact or group. |
+| `OPS_CONFIG_FREEZE_WINDOW` | Production config freeze window. |
+| `OPS_PHASE_0_EVIDENCE` - `OPS_PHASE_9_EVIDENCE` | Per-phase launch evidence placeholders. Use `--phase=N` to validate one phase. |
+
 ## Phase 0 - Access And Ownership
 
 External blockers for this phase are Render access, GitHub auth or repo access

@@ -5,6 +5,12 @@ Use this tracker for daily launch standups. Keep the full task inventory in
 this file so the team can see what is locally complete, what still needs
 external access, and what evidence is missing.
 
+For step-by-step operator instructions and copy/paste launch templates, use
+`docs/MANAGED_ADS_EVIDENCE_PACKET.md`.
+
+For a machine-readable phase map, run `corepack pnpm ops:phases` or
+`corepack pnpm ops:phases -- --json`.
+
 ## Status Key
 
 | Status | Meaning |

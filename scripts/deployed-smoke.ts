@@ -50,7 +50,13 @@ const protectedManagedAdsRoutes: Array<{
   path: string;
   payload?: Record<string, unknown>;
 }> = [
+  { method: "GET", name: "Client profile rejects unauthenticated", path: "/v1/client-profile" },
   { method: "GET", name: "Campaigns reject unauthenticated", path: "/v1/campaigns" },
+  { method: "GET", name: "Campaign detail rejects unauthenticated", path: "/v1/campaigns/smoke_campaign" },
+  { method: "GET", name: "Campaign timeline rejects unauthenticated", path: "/v1/campaigns/smoke_campaign/timeline" },
+  { method: "GET", name: "Campaign notes reject unauthenticated", path: "/v1/campaigns/smoke_campaign/notes" },
+  { method: "GET", name: "Campaign assets reject unauthenticated", path: "/v1/campaigns/smoke_campaign/assets" },
+  { method: "GET", name: "Campaign reports reject unauthenticated", path: "/v1/campaigns/smoke_campaign/reports" },
   { method: "GET", name: "Company profiles reject unauthenticated", path: "/v1/company-profiles" },
   { method: "GET", name: "Invoices reject unauthenticated", path: "/v1/invoices" },
   { method: "GET", name: "Notifications reject unauthenticated", path: "/v1/notifications" },
@@ -73,10 +79,62 @@ const protectedManagedAdsRoutes: Array<{
   },
   {
     method: "GET",
+    name: "Admin campaign ops campaigns reject unauthenticated",
+    path: "/v1/admin/campaign-ops/campaigns"
+  },
+  {
+    method: "GET",
     name: "Admin campaign ops queue rejects unauthenticated",
     path: "/v1/admin/campaign-ops/queue"
+  },
+  {
+    method: "GET",
+    name: "Admin campaign ops reports reject unauthenticated",
+    path: "/v1/admin/campaign-ops/reports"
+  },
+  {
+    method: "GET",
+    name: "Admin campaign ops activity rejects unauthenticated",
+    path: "/v1/admin/campaign-ops/activity"
   }
 ];
+
+const campaignStatuses = new Set([
+  "DRAFT",
+  "PENDING_REVIEW",
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "CREATIVE_IN_PROGRESS",
+  "RUNNING",
+  "ACTIVE",
+  "PAUSED",
+  "COMPLETED",
+  "REJECTED",
+  "CANCELLED",
+  "FAILED",
+  "QUEUED"
+]);
+
+const adminCampaignStatuses = new Set([
+  "queued",
+  "reviewing",
+  "scheduled",
+  "running",
+  "blocked",
+  "completed",
+  "failed"
+]);
+
+const invoiceStatuses = new Set([
+  "DRAFT",
+  "ISSUED",
+  "PAID",
+  "PARTIALLY_PAID",
+  "OVERDUE",
+  "VOID",
+  "CANCELLED",
+  "REFUNDED"
+]);
 
 function isEnabled(value: string | undefined) {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
@@ -121,14 +179,15 @@ function displayUrl(url: URL) {
 function withPath(base: URL, path: string) {
   const url = new URL(base.toString());
   const basePath = url.pathname.replace(/\/+$/, "");
-  let requestedPath = path.startsWith("/") ? path : `/${path}`;
+  const [pathPart, searchPart = ""] = path.split("?", 2);
+  let requestedPath = pathPart.startsWith("/") ? pathPart : `/${pathPart}`;
 
   if (basePath.endsWith("/v1") && requestedPath.startsWith("/v1/")) {
     requestedPath = requestedPath.slice("/v1".length);
   }
 
   url.pathname = `${basePath}${requestedPath}`.replace(/\/{2,}/g, "/");
-  url.search = "";
+  url.search = searchPart ? `?${searchPart}` : "";
   url.hash = "";
 
   return url;
@@ -176,8 +235,106 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+function formatUnknown(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (value === undefined) {
+    return "undefined";
+  }
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return value.toString();
+  }
+
+  try {
+    return JSON.stringify(value) ?? "[unserializable value]";
+  } catch {
+    return "[unserializable value]";
+  }
+}
+
 function hasString(value: Record<string, unknown>, key: string) {
   return typeof value[key] === "string" && value[key].trim().length > 0;
+}
+
+function hasNumber(value: Record<string, unknown>, key: string) {
+  const candidate = value[key];
+
+  return typeof candidate === "number" && Number.isFinite(candidate);
+}
+
+function hasArray(value: Record<string, unknown>, key: string) {
+  return Array.isArray(value[key]);
+}
+
+function expectString(value: Record<string, unknown>, key: string, label: string) {
+  if (!hasString(value, key)) {
+    throw new Error(`${label} did not include ${key}.`);
+  }
+}
+
+function readString(value: Record<string, unknown>, key: string, label: string) {
+  const candidate = value[key];
+
+  if (typeof candidate !== "string" || candidate.trim().length === 0) {
+    throw new Error(`${label} did not include ${key}.`);
+  }
+
+  return candidate;
+}
+
+function expectArrayField(value: Record<string, unknown>, key: string, label: string) {
+  if (!hasArray(value, key)) {
+    throw new Error(`${label} did not include ${key} array.`);
+  }
+}
+
+function expectStatusValue(
+  value: Record<string, unknown>,
+  key: string,
+  allowed: Set<string>,
+  label: string
+) {
+  const status = value[key];
+
+  if (typeof status !== "string" || !allowed.has(status)) {
+    throw new Error(`${label} returned unsupported ${key}=${formatUnknown(status)}.`);
+  }
+}
+
+function expectMoneyShape(value: unknown, label: string) {
+  if (!isRecord(value)) {
+    throw new Error(`${label} did not include a money object.`);
+  }
+  if (!hasNumber(value, "amountMinor")) {
+    throw new Error(`${label} money object did not include amountMinor.`);
+  }
+  expectString(value, "currency", `${label} money object`);
+}
+
+function expectOptionalIsoString(value: Record<string, unknown>, key: string, label: string) {
+  const candidate = value[key];
+
+  if (candidate !== null && candidate !== undefined && typeof candidate !== "string") {
+    throw new Error(`${label} ${key} must be an ISO string or null.`);
+  }
+}
+
+function skipResult(name: string, detail: string, target?: URL): CheckResult {
+  return {
+    name,
+    status: "SKIP",
+    detail,
+    durationMs: 0,
+    target: target ? displayUrl(target) : undefined
+  };
 }
 
 async function runCheck(name: string, target: URL | undefined, check: () => Promise<CheckResult>) {
@@ -219,7 +376,7 @@ function expectJsonRecord(body: ResponseBody, label: string) {
 }
 
 function expectJsonArray(body: ResponseBody, label: string) {
-  if (!Array.isArray(body.json)) {
+  if (!isUnknownArray(body.json)) {
     throw new Error(`${label} did not return a JSON array.`);
   }
 
@@ -346,25 +503,6 @@ async function checkJsonArrayRoute(config: SmokeConfig, name: string, path: stri
       name,
       status: "PASS",
       detail: "Returned JSON array.",
-      httpStatus: response.status,
-      target: displayUrl(url)
-    };
-  });
-}
-
-async function checkJsonObjectRoute(config: SmokeConfig, name: string, path: string) {
-  const url = withPath(config.apiUrl, path);
-
-  return runCheck(name, url, async () => {
-    const { response, body } = await get(url, config);
-
-    expectSuccess(response, name);
-    expectJsonRecord(body, name);
-
-    return {
-      name,
-      status: "PASS",
-      detail: "Returned JSON object.",
       httpStatus: response.status,
       target: displayUrl(url)
     };
@@ -549,48 +687,285 @@ async function checkAuthenticatedDigitalAccess(config: SmokeConfig, headers: Hea
   });
 }
 
-async function checkAuthenticatedJsonArray(
-  config: SmokeConfig,
-  headers: HeadersInit,
-  name: string,
-  path: string
-) {
-  const url = withPath(config.apiUrl, path);
+function expectCampaignShape(value: unknown, label: string) {
+  if (!isRecord(value)) {
+    throw new Error(`${label} was not a campaign object.`);
+  }
 
-  return runCheck(name, url, async () => {
+  expectString(value, "id", label);
+  expectString(value, "name", label);
+  expectStatusValue(value, "status", campaignStatuses, label);
+  expectMoneyShape(value.budget, `${label} budget`);
+  expectOptionalIsoString(value, "submittedAt", label);
+  expectOptionalIsoString(value, "approvedAt", label);
+  expectOptionalIsoString(value, "createdAt", label);
+  expectOptionalIsoString(value, "updatedAt", label);
+
+  if (value.destination !== undefined && value.destination !== null) {
+    const destination = isRecord(value.destination) ? value.destination : undefined;
+
+    if (!destination || !hasString(destination, "kind")) {
+      throw new Error(`${label} destination did not include kind.`);
+    }
+  }
+
+  return value;
+}
+
+function expectAdminCampaignShape(value: unknown, label: string) {
+  if (!isRecord(value)) {
+    throw new Error(`${label} was not an admin campaign object.`);
+  }
+
+  expectString(value, "id", label);
+  expectString(value, "name", label);
+  expectString(value, "workspaceName", label);
+  expectString(value, "ownerName", label);
+  expectString(value, "channel", label);
+  expectString(value, "nextAction", label);
+  expectStatusValue(value, "status", adminCampaignStatuses, label);
+  expectMoneyShape(value.budget, `${label} budget`);
+
+  if (!hasNumber(value, "progress")) {
+    throw new Error(`${label} did not include numeric progress.`);
+  }
+
+  return value;
+}
+
+function expectInvoiceShape(value: unknown, label: string) {
+  if (!isRecord(value)) {
+    throw new Error(`${label} was not an invoice object.`);
+  }
+
+  expectString(value, "id", label);
+  expectString(value, "number", label);
+  expectStatusValue(value, "status", invoiceStatuses, label);
+  if (!hasNumber(value, "totalMinor")) {
+    throw new Error(`${label} did not include totalMinor.`);
+  }
+  expectString(value, "currency", label);
+}
+
+function expectNotificationShape(value: unknown, label: string) {
+  if (!isRecord(value)) {
+    throw new Error(`${label} was not a notification object.`);
+  }
+
+  expectString(value, "id", label);
+  expectString(value, "title", label);
+  expectString(value, "body", label);
+  expectString(value, "channel", label);
+  expectString(value, "status", label);
+}
+
+function expectAdminReportShape(value: unknown, label: string) {
+  if (!isRecord(value)) {
+    throw new Error(`${label} was not an admin report object.`);
+  }
+
+  expectString(value, "id", label);
+  expectString(value, "title", label);
+  expectString(value, "status", label);
+  expectArrayField(value, "metrics", label);
+}
+
+function expectAdminActivityShape(value: unknown, label: string) {
+  if (!isRecord(value)) {
+    throw new Error(`${label} was not an activity object.`);
+  }
+
+  expectString(value, "id", label);
+  expectString(value, "action", label);
+  expectString(value, "target", label);
+  expectString(value, "severity", label);
+}
+
+async function checkAuthenticatedClientProfile(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/client-profile");
+
+  return runCheck("Authenticated managed ads client profile", url, async () => {
     const { response, body } = await get(url, config, headers);
 
-    expectSuccess(response, name);
-    expectJsonArray(body, name);
+    expectSuccess(response, "Authenticated managed ads client profile");
+
+    if (body.json !== null && body.text.trim() !== "null") {
+      expectJsonRecord(body, "Authenticated managed ads client profile");
+    }
 
     return {
-      name,
+      name: "Authenticated managed ads client profile",
       status: "PASS",
-      detail: "Returned authenticated workspace-scoped list.",
+      detail: "Returned client profile object or empty profile state.",
       httpStatus: response.status,
       target: displayUrl(url)
     };
   });
 }
 
-async function checkAuthenticatedJsonObject(
+async function checkAuthenticatedManagedAdsCampaigns(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/campaigns");
+  let firstCampaignId: string | undefined;
+
+  const result = await runCheck("Authenticated managed ads campaigns", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonArray(body, "Authenticated managed ads campaigns");
+
+    expectSuccess(response, "Authenticated managed ads campaigns");
+
+    json.slice(0, 5).forEach((campaign, index) => {
+      const normalized = expectCampaignShape(campaign, `Campaign ${index + 1}`);
+      firstCampaignId ??= readString(normalized, "id", `Campaign ${index + 1}`);
+    });
+
+    return {
+      name: "Authenticated managed ads campaigns",
+      status: "PASS",
+      detail: firstCampaignId
+        ? "Returned workspace-scoped campaign list with managed ads fields."
+        : "Returned an empty workspace-scoped campaign list.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+
+  return { result, firstCampaignId };
+}
+
+async function checkAuthenticatedCampaignDetail(
   config: SmokeConfig,
   headers: HeadersInit,
-  name: string,
-  path: string
+  campaignId: string | undefined
 ) {
-  const url = withPath(config.apiUrl, path);
+  const url = campaignId ? withPath(config.apiUrl, `/v1/campaigns/${campaignId}`) : undefined;
+
+  if (!campaignId || !url) {
+    return skipResult(
+      "Authenticated managed ads campaign detail",
+      "No campaign exists in this workspace; skipping detail shape check."
+    );
+  }
+
+  return runCheck("Authenticated managed ads campaign detail", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectCampaignShape(
+      expectJsonRecord(body, "Authenticated managed ads campaign detail"),
+      "Authenticated campaign detail"
+    );
+
+    expectSuccess(response, "Authenticated managed ads campaign detail");
+    for (const key of ["creatives", "notes", "statusHistory", "reports", "invoices", "budgetHolds"]) {
+      expectArrayField(json, key, "Authenticated campaign detail");
+    }
+
+    return {
+      name: "Authenticated managed ads campaign detail",
+      status: "PASS",
+      detail: "Returned campaign detail with timeline, media, billing, and report collections.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedCampaignCollection(
+  config: SmokeConfig,
+  headers: HeadersInit,
+  campaignId: string | undefined,
+  name: string,
+  suffix: string,
+  objectField?: string
+) {
+  const url = campaignId ? withPath(config.apiUrl, `/v1/campaigns/${campaignId}/${suffix}`) : undefined;
+
+  if (!campaignId || !url) {
+    return skipResult(name, "No campaign exists in this workspace; skipping route shape check.");
+  }
 
   return runCheck(name, url, async () => {
     const { response, body } = await get(url, config, headers);
 
     expectSuccess(response, name);
-    expectJsonRecord(body, name);
+
+    if (objectField) {
+      const json = expectJsonRecord(body, name);
+      expectArrayField(json, objectField, name);
+    } else {
+      expectJsonArray(body, name);
+    }
 
     return {
       name,
       status: "PASS",
-      detail: "Returned authenticated workspace-scoped object.",
+      detail: "Returned managed ads campaign sub-resource shape.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedManagedAdsWallet(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/wallet");
+
+  return runCheck("Authenticated managed ads wallet", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonRecord(body, "Authenticated managed ads wallet");
+
+    expectSuccess(response, "Authenticated managed ads wallet");
+    expectString(json, "id", "Authenticated managed ads wallet");
+    expectString(json, "workspaceId", "Authenticated managed ads wallet");
+    expectMoneyShape(json.availableBalance, "Authenticated managed ads wallet availableBalance");
+    expectMoneyShape(json.heldBalance, "Authenticated managed ads wallet heldBalance");
+    expectArrayField(json, "entries", "Authenticated managed ads wallet");
+
+    return {
+      name: "Authenticated managed ads wallet",
+      status: "PASS",
+      detail: "Returned wallet balance, holds, and ledger entry shape.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedManagedAdsInvoices(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/invoices");
+
+  return runCheck("Authenticated managed ads invoices", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonArray(body, "Authenticated managed ads invoices");
+
+    expectSuccess(response, "Authenticated managed ads invoices");
+    json.slice(0, 5).forEach((invoice, index) => {
+      expectInvoiceShape(invoice, `Invoice ${index + 1}`);
+    });
+
+    return {
+      name: "Authenticated managed ads invoices",
+      status: "PASS",
+      detail: "Returned invoice history with campaign funding fields.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedManagedAdsNotifications(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/notifications");
+
+  return runCheck("Authenticated managed ads notifications", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonArray(body, "Authenticated managed ads notifications");
+
+    expectSuccess(response, "Authenticated managed ads notifications");
+    json.slice(0, 5).forEach((notification, index) => {
+      expectNotificationShape(notification, `Notification ${index + 1}`);
+    });
+
+    return {
+      name: "Authenticated managed ads notifications",
+      status: "PASS",
+      detail: "Returned notification feed with delivery fields.",
       httpStatus: response.status,
       target: displayUrl(url)
     };
@@ -622,21 +997,163 @@ async function checkAuthenticatedAdminDigitalAccess(config: SmokeConfig, headers
 
 async function checkAuthenticatedAdminCampaignOps(config: SmokeConfig, headers: HeadersInit) {
   const url = withPath(config.apiUrl, "/v1/admin/campaign-ops/overview");
+  let firstCampaignId: string | undefined;
 
-  return runCheck("Authenticated admin Campaign Ops overview", url, async () => {
+  const result = await runCheck("Authenticated admin Campaign Ops overview", url, async () => {
     const { response, body } = await get(url, config, headers);
     const json = expectJsonRecord(body, "Authenticated admin Campaign Ops overview");
 
     expectSuccess(response, "Authenticated admin Campaign Ops overview");
 
-    if (!Array.isArray(json.queue) || !Array.isArray(json.reports) || !Array.isArray(json.activity)) {
-      throw new Error("Admin Campaign Ops overview did not include queue, reports, and activity arrays.");
+    if (!isRecord(json.totals)) {
+      throw new Error("Admin Campaign Ops overview did not include totals object.");
     }
+    expectArrayField(json, "metrics", "Admin Campaign Ops overview");
+    expectArrayField(json, "queue", "Admin Campaign Ops overview");
+    expectArrayField(json, "reports", "Admin Campaign Ops overview");
+    expectArrayField(json, "activity", "Admin Campaign Ops overview");
+
+    (json.queue as unknown[]).slice(0, 5).forEach((campaign, index) => {
+      const normalized = expectAdminCampaignShape(campaign, `Admin overview campaign ${index + 1}`);
+      firstCampaignId ??= readString(normalized, "id", `Admin overview campaign ${index + 1}`);
+    });
+    (json.reports as unknown[]).slice(0, 5).forEach((report, index) => {
+      expectAdminReportShape(report, `Admin overview report ${index + 1}`);
+    });
+    (json.activity as unknown[]).slice(0, 5).forEach((activity, index) => {
+      expectAdminActivityShape(activity, `Admin overview activity ${index + 1}`);
+    });
 
     return {
       name: "Authenticated admin Campaign Ops overview",
       status: "PASS",
-      detail: "Returned managed ads operations overview JSON.",
+      detail: "Returned managed ads operations overview with queue, report, activity, and totals shapes.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+
+  return { result, firstCampaignId };
+}
+
+async function checkAuthenticatedAdminCampaignList(
+  config: SmokeConfig,
+  headers: HeadersInit,
+  name: string,
+  path: string
+) {
+  const url = withPath(config.apiUrl, path);
+  let firstCampaignId: string | undefined;
+
+  const result = await runCheck(name, url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonArray(body, name);
+
+    expectSuccess(response, name);
+    json.slice(0, 10).forEach((campaign, index) => {
+      const normalized = expectAdminCampaignShape(campaign, `${name} item ${index + 1}`);
+      firstCampaignId ??= readString(normalized, "id", `${name} item ${index + 1}`);
+    });
+
+    return {
+      name,
+      status: "PASS",
+      detail: firstCampaignId
+        ? "Returned admin campaign list with operational status and next-action fields."
+        : "Returned an empty admin campaign list.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+
+  return { result, firstCampaignId };
+}
+
+async function checkAuthenticatedAdminCampaignDetail(
+  config: SmokeConfig,
+  headers: HeadersInit,
+  campaignId: string | undefined
+) {
+  const url = campaignId
+    ? withPath(config.apiUrl, `/v1/admin/campaign-ops/campaigns/${campaignId}`)
+    : undefined;
+
+  if (!campaignId || !url) {
+    return skipResult(
+      "Authenticated admin Campaign Ops detail",
+      "No admin campaign exists in this workspace; skipping detail shape check."
+    );
+  }
+
+  return runCheck("Authenticated admin Campaign Ops detail", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectCampaignShape(
+      expectJsonRecord(body, "Authenticated admin Campaign Ops detail"),
+      "Authenticated admin campaign detail"
+    );
+
+    expectSuccess(response, "Authenticated admin Campaign Ops detail");
+    for (const key of [
+      "creatives",
+      "notes",
+      "statusHistory",
+      "assignments",
+      "manualPlacements",
+      "reports",
+      "invoices",
+      "budgetHolds"
+    ]) {
+      expectArrayField(json, key, "Authenticated admin campaign detail");
+    }
+
+    return {
+      name: "Authenticated admin Campaign Ops detail",
+      status: "PASS",
+      detail: "Returned admin campaign workspace with assignments, proofs, billing, and reports.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedAdminReports(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/admin/campaign-ops/reports");
+
+  return runCheck("Authenticated admin Campaign Ops reports", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonArray(body, "Authenticated admin Campaign Ops reports");
+
+    expectSuccess(response, "Authenticated admin Campaign Ops reports");
+    json.slice(0, 10).forEach((report, index) => {
+      expectAdminReportShape(report, `Admin report ${index + 1}`);
+    });
+
+    return {
+      name: "Authenticated admin Campaign Ops reports",
+      status: "PASS",
+      detail: "Returned admin report queue with publish-state fields.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedAdminActivity(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/admin/campaign-ops/activity");
+
+  return runCheck("Authenticated admin Campaign Ops activity", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonArray(body, "Authenticated admin Campaign Ops activity");
+
+    expectSuccess(response, "Authenticated admin Campaign Ops activity");
+    json.slice(0, 10).forEach((activity, index) => {
+      expectAdminActivityShape(activity, `Admin activity ${index + 1}`);
+    });
+
+    return {
+      name: "Authenticated admin Campaign Ops activity",
+      status: "PASS",
+      detail: "Returned admin activity log with audit-friendly fields.",
       httpStatus: response.status,
       target: displayUrl(url)
     };
@@ -784,29 +1301,81 @@ async function main() {
   if (authHeaders) {
     results.push(await checkAuthenticatedSession(config, authHeaders));
     results.push(await checkAuthenticatedDigitalAccess(config, authHeaders));
+    results.push(await checkAuthenticatedClientProfile(config, authHeaders));
+
+    const campaignSmoke = await checkAuthenticatedManagedAdsCampaigns(config, authHeaders);
+    results.push(campaignSmoke.result);
     results.push(
-      await checkAuthenticatedJsonArray(
+      await checkAuthenticatedCampaignDetail(config, authHeaders, campaignSmoke.firstCampaignId)
+    );
+    results.push(
+      await checkAuthenticatedCampaignCollection(
         config,
         authHeaders,
-        "Authenticated managed ads campaigns",
-        "/v1/campaigns"
+        campaignSmoke.firstCampaignId,
+        "Authenticated managed ads campaign timeline",
+        "timeline",
+        "items"
       )
     );
     results.push(
-      await checkAuthenticatedJsonObject(config, authHeaders, "Authenticated managed ads wallet", "/v1/wallet")
-    );
-    results.push(
-      await checkAuthenticatedJsonArray(
+      await checkAuthenticatedCampaignCollection(
         config,
         authHeaders,
-        "Authenticated managed ads invoices",
-        "/v1/invoices"
+        campaignSmoke.firstCampaignId,
+        "Authenticated managed ads campaign notes",
+        "notes"
       )
     );
+    results.push(
+      await checkAuthenticatedCampaignCollection(
+        config,
+        authHeaders,
+        campaignSmoke.firstCampaignId,
+        "Authenticated managed ads campaign assets",
+        "assets"
+      )
+    );
+    results.push(
+      await checkAuthenticatedCampaignCollection(
+        config,
+        authHeaders,
+        campaignSmoke.firstCampaignId,
+        "Authenticated managed ads campaign reports",
+        "reports"
+      )
+    );
+    results.push(await checkAuthenticatedManagedAdsWallet(config, authHeaders));
+    results.push(await checkAuthenticatedManagedAdsInvoices(config, authHeaders));
+    results.push(await checkAuthenticatedManagedAdsNotifications(config, authHeaders));
 
     if (config.adminAuthChecksEnabled) {
       results.push(await checkAuthenticatedAdminDigitalAccess(config, authHeaders));
-      results.push(await checkAuthenticatedAdminCampaignOps(config, authHeaders));
+      const adminOverview = await checkAuthenticatedAdminCampaignOps(config, authHeaders);
+      results.push(adminOverview.result);
+      const adminCampaigns = await checkAuthenticatedAdminCampaignList(
+        config,
+        authHeaders,
+        "Authenticated admin Campaign Ops campaigns",
+        "/v1/admin/campaign-ops/campaigns?limit=10"
+      );
+      results.push(adminCampaigns.result);
+      const adminQueue = await checkAuthenticatedAdminCampaignList(
+        config,
+        authHeaders,
+        "Authenticated admin Campaign Ops queue",
+        "/v1/admin/campaign-ops/queue?limit=10"
+      );
+      results.push(adminQueue.result);
+      results.push(await checkAuthenticatedAdminReports(config, authHeaders));
+      results.push(await checkAuthenticatedAdminActivity(config, authHeaders));
+      results.push(
+        await checkAuthenticatedAdminCampaignDetail(
+          config,
+          authHeaders,
+          adminOverview.firstCampaignId ?? adminCampaigns.firstCampaignId ?? adminQueue.firstCampaignId
+        )
+      );
     }
   }
 
