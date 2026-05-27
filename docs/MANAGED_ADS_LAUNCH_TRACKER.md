@@ -11,10 +11,16 @@ For step-by-step operator instructions and copy/paste launch templates, use
 For Phase 7 support escalation and Phase 8 monitoring operations, use
 `docs/MANAGED_ADS_MONITORING_RUNBOOK.md`.
 
+For grouped wave execution, parallel worker prompts, and local-vs-external
+classification, use `docs/MANAGED_ADS_PHASE_EXECUTION.md` and
+`docs/MANAGED_ADS_LOCAL_VS_EXTERNAL_EVIDENCE.md`.
+
 For a machine-readable phase map, run `corepack pnpm ops:phases` or
 `corepack pnpm ops:phases -- --json`.
 For task-level evidence status, run `corepack pnpm ops:evidence` or
 `corepack pnpm ops:evidence -- --phase=N`.
+For the full phase runner, worker prompts, and optional local checks, run
+`corepack pnpm ops:run-phases` or `corepack pnpm ops:run-phases -- --run-local`.
 
 ## Status Key
 

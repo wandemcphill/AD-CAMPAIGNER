@@ -12,10 +12,16 @@ macros.
 Use `docs/MANAGED_ADS_MONITORING_RUNBOOK.md` for Phase 7 support escalation,
 Phase 8 alert setup, manual review cadences, daily monitoring reviews, and
 incident acknowledgement templates.
+Use `docs/MANAGED_ADS_PHASE_EXECUTION.md` and
+`docs/MANAGED_ADS_LOCAL_VS_EXTERNAL_EVIDENCE.md` to assign parallel phase
+workers and classify local evidence separately from credential-dependent
+external blockers.
 Use `corepack pnpm ops:phases` when release owners need a deterministic phase
 map for automation, launch notes, or JSON export.
 Use `corepack pnpm ops:evidence` to summarize task-level evidence from
 `OPS_001_EVIDENCE` through `OPS_110_EVIDENCE`.
+Use `corepack pnpm ops:run-phases` to print grouped waves, worker prompts, and
+optional local command results.
 
 ## Global Preflight
 
