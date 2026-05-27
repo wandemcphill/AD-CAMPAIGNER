@@ -26,6 +26,8 @@ Every meaningful slice should pass typecheck, lint, tests, Prisma validation, pr
 
 This sprint runs the managed marketplace UI in bounded phases so client, admin, shared theme, and QA work can move in parallel without blocking on TikTok or Meta APIs.
 
+Operational setup tasks for launch live in [MANAGED_ADS_PRODUCTION_TASKS.md](MANAGED_ADS_PRODUCTION_TASKS.md). Treat that inventory as the owner/evidence tracker for the final production gate.
+
 ### Phase 1: Workstream Split
 
 - Parent thread owns integration, validation, merge safety, and production copy gates.

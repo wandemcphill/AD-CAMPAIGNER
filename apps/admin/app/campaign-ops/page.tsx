@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import {
   Activity,
   AlertTriangle,
@@ -28,6 +29,10 @@ import {
 } from "./components";
 import { campaignOpsEnabled, operationStages } from "./data";
 import { useAdminCampaignOpsOverviewData } from "./use-admin-campaign-ops-data";
+
+function campaignDetailHref(campaignId: string): Route {
+  return `/campaign-ops/detail?campaignId=${encodeURIComponent(campaignId)}`;
+}
 
 const activitySeverityDot = {
   danger: "bg-[var(--ft-red)]",
@@ -207,7 +212,7 @@ export default function AdminCampaignOpsPage() {
                       <div className="grid gap-3">
                         <ProgressBar value={campaign.progress} />
                         <ActionLink
-                          href={`/campaign-ops/detail?campaignId=${encodeURIComponent(campaign.id)}`}
+                          href={campaignDetailHref(campaign.id)}
                           variant="secondary"
                         >
                           Open work item
@@ -301,7 +306,7 @@ export default function AdminCampaignOpsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <ActionLink
-                            href={`/campaign-ops/detail?campaignId=${encodeURIComponent(campaign.id)}`}
+                            href={campaignDetailHref(campaign.id)}
                             variant="ghost"
                           >
                             Open

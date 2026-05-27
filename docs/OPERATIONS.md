@@ -54,12 +54,44 @@ The Korapay webhook is intentionally outside the `/v1` prefix.
 
 This MVP does not launch or optimize ads through TikTok, Meta, or other platform APIs. Operators manually place campaigns outside the app, then use FlipTrybe to track assignment, money state, evidence, reports, completion, and audit history.
 
+Production operating roles:
+
+- Ops lead: owns the daily rota, assignment queue, escalation triage, launch exceptions, and end-of-day operating summary.
+- Campaign owner: owns one campaign from accepted brief through completion, including client context, external platform launch, evidence capture, metrics updates, and report readiness.
+- Launch verifier: second operator who checks brief fit, payment state, external placement details, proof quality, and report data before client-facing status changes.
+- Finance/reconciliation owner: owns Korapay, wallet, invoice, spend, refund, and settlement checks; approves manual money adjustments.
+- Support owner: owns client-channel responses and turns client requests into admin notes, internal tasks, or escalations.
+- Incident commander: owns incident coordination when managed ads delivery, money state, audit history, or client reporting may be wrong.
+
+Assignment rules:
+
+- Do not accept a paid live brief without one campaign owner and one launch verifier assigned in Campaign Operations.
+- The campaign owner may launch placements manually but should not be the final verifier. If staffing requires same-person launch and verification, the ops lead must record the exception.
+- One operator owns each client support thread at a time. Reassign only with an admin note that names the new owner, last client promise, current blocker, and next action.
+- Finance adjustments require finance owner approval. The campaign owner must not approve their own wallet credit, refund, or spend correction without ops lead signoff.
+- Every handoff must include campaign ID/workspace, external platform/account, current status, money state, evidence/report links, deadline, and next operator action.
+
 Before accepting live briefs:
 
 - Run the managed ads preflight commands in `docs/PRODUCTION_CHECKLIST.md`.
 - Confirm web and admin point at the production API and do not show mock or diagnostic data-source badges.
 - Confirm Cloudinary uploads, Korapay payments, wallet ledger entries, and audit logging are available.
 - Confirm operators have the manual placement accounts, proof capture process, and report-publishing owner assigned.
+
+Daily cadence:
+
+- Start of day: ops lead reviews new briefs, due launches, due reports, overdue proofs, payment exceptions, support threads, and open incidents.
+- Midday: campaign owners confirm manual placements are still live, check delivery against budget/dates, upload missing evidence, and update blocked campaigns.
+- End of day: finance owner reconciles Korapay/wallet/spend exceptions; campaign owners record metrics and next actions; ops lead posts the operating summary and names overnight blockers.
+- Before weekends or holidays: assign a named coverage owner for live campaigns, payment exceptions, support replies, and emergency rollback coordination.
+
+Support-channel routing:
+
+- Payment, wallet, invoice, duplicate charge, refund, and settlement questions route to the finance/reconciliation owner.
+- Placement rejection, account restriction, asset rejection, budget pacing, or external platform policy questions route to the campaign owner and ops lead.
+- Missing proof, missing report, incorrect client-visible status, or delivery-data mismatch routes to the campaign owner, with launch verifier review before client correction.
+- Broken uploads, missing audit rows, admin access issues, health check failures, queue issues, or database/payment inconsistency routes to the incident commander.
+- Client changes to budget, dates, audience, objective, creative, or destination links must be recorded before the campaign owner changes external placements.
 
 Per-campaign operator flow:
 
@@ -72,7 +104,35 @@ Per-campaign operator flow:
 7. Publish the client report only after placements, proofs, spend/payment state, and metrics have been reviewed by a second operator when available.
 8. Complete the campaign after the final report is visible to the client, invoices/wallet entries reconcile, and audit/history rows show submission, review, assignment, payment, proof, report, and completion events.
 
-Escalate instead of completing when the external platform rejects the placement, evidence is missing, payment state does not reconcile, client-visible report data differs from source metrics, or audit rows are absent.
+Escalation path:
+
+1. Campaign owner handles routine clarifications, missing assets, scheduling changes, and evidence gaps.
+2. Ops lead handles platform rejection, delivery risk, owner conflict, missed SLA, manual launch exception, or client-impacting correction.
+3. Finance/reconciliation owner handles any payment, wallet, refund, spend, settlement, duplicate credit, or chargeback risk.
+4. Incident commander takes over when data integrity, audit history, client-visible reporting, payment correctness, or multiple campaigns are affected.
+5. Engineering is paged only after the incident commander captures campaign IDs, workspace IDs, timestamps, expected state, actual state, logs/screenshots, and reproduction steps.
+
+Incident handoff expectations:
+
+- Freeze client-facing status changes for affected campaigns until the incident commander names the safe next action.
+- Preserve external platform state, screenshots, receipts, exported reports, admin notes, audit rows, Korapay references, and wallet ledger entries.
+- Handoff notes must state what changed, who changed it, when it changed, whether clients were notified, and which reports or money records may be wrong.
+- Resume normal campaign ownership only after the incident commander records recovery checks and the ops lead reassigns open actions.
+
+Rollback owner expectations:
+
+- Ops lead owns managed ads business rollback decisions such as pausing intake, pausing manual launches, hiding reports, or reverting a client-visible status.
+- Incident commander owns technical rollback coordination with Render/API/worker owners and confirms whether feature flags, redeploy, or code rollback is needed.
+- Campaign owners must not relaunch, republish, or complete affected campaigns after rollback until proof, report, payment, and audit state have been rechecked.
+- Finance owner signs off before any wallet, invoice, refund, or spend correction is considered recovered.
+
+Audit and reconciliation expectations:
+
+- Each live campaign must reconcile across brief, assignment, payment/wallet, external placement, proof, metrics, report, support thread, and completion history.
+- External platform spend and delivery metrics must include source platform/account, date range, operator, capture/export time, and supporting evidence.
+- Korapay references and wallet ledger entries must reconcile once per campaign/workspace before launch, before report publication, and at completion.
+- Manual corrections must include reason, approving owner, source evidence, affected amount or metric, client notification status, and timestamp.
+- Escalate instead of completing when the external platform rejects placement, evidence is missing, payment state does not reconcile, client-visible report data differs from source metrics, support promises are untracked, or audit rows are absent.
 
 ## Rollback
 

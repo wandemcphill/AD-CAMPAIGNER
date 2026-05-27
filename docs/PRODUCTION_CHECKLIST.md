@@ -30,12 +30,72 @@ corepack pnpm exec tsx scripts/rollout-check.ts --target=web --stage=managed-ads
 corepack pnpm exec tsx scripts/rollout-check.ts --target=admin --stage=managed-ads-mvp --strict-production
 ```
 
+- Run the operational owner/channel readiness check before go/no-go:
+
+```powershell
+corepack pnpm ops:readiness
+```
+
 - API uses real persistent dependencies: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, and `SESSION_SECRET`.
 - Media uploads use signed Cloudinary upload intents. `STORAGE_PROVIDER=cloudinary`, Cloudinary cloud name, API key, API secret, and upload preset are present.
 - `MEDIA_UPLOAD_ALLOW_MOCK_STORAGE` is unset or false in production.
 - Payments use live Korapay. `PAYMENT_PROVIDER=live`, Korapay keys, webhook secret, redirect URL, and treasury account details are present.
 - Web and admin use the deployed API URL and do not expose diagnostic data-source badges.
 - Trusted proxy auth flags stay disabled unless a trusted proxy boundary has been reviewed.
+
+### Operational Setup
+
+- Name the launch commander, backup commander, deploy owner, API owner, worker owner, payment owner, media owner, report QA owner, support owner, and customer comms owner in the launch notes.
+- Confirm each owner has a reachable phone number or escalation handle, a backup, and a clear handoff window for launch day.
+- Create the production admin operator list with named humans only; remove shared, test, contractor, and inactive admin accounts.
+- Assign least-privilege admin roles before launch: campaign operators can claim and update campaigns, finance operators can issue invoices and reconcile payments, support operators can read customer state and add support notes, and super-admin access is limited to approved owners.
+- Verify every admin operator can sign in with production credentials, complete MFA if enabled, and access only the Managed Ads screens needed for their role.
+- Record the first-line queue owner for campaign intake, media review, invoice issuance, payment verification, report publishing, customer support, and incident triage.
+- Define queue SLAs before launch: new brief first response, media review, invoice issuance after approval, payment verification, report QA, and incident acknowledgement.
+- Add a visible handoff field or internal note convention for every claimed campaign so operators can see current owner, next action, and blocker.
+- Verify launch accounts are ready: at least one real client workspace, one admin operator per role, one finance reviewer, and one support reviewer.
+- Confirm launch client accounts have verified email or phone, completed business profile data, and an agreed billing contact.
+- Store production access instructions for Render, Postgres, Redis/Key Value, Korapay, Cloudinary, domain/DNS, transactional email, and customer support tooling in the approved password manager.
+- Confirm no launch-critical credential is stored in chat, local files, screenshots, issue comments, or personal notes.
+- Confirm only approved owners can view or rotate Korapay live keys, Cloudinary API secrets, Render env vars, database URLs, and Redis credentials.
+- Verify support channels are live and staffed: public support email, internal incident channel, launch-room channel, finance escalation channel, and customer escalation path.
+- Publish support macros for campaign submitted, media rejected, invoice sent, payment received, payment delayed, report published, campaign paused, incident active, and incident resolved.
+- Add launch-window coverage for weekends, evenings, and local holidays if customers can submit campaigns during those periods.
+- Configure monitoring alerts for API health failures, elevated 4xx/5xx rates, slow campaign endpoints, worker restart loops, queue depth growth, failed jobs, payment webhook failures, duplicate payment attempts, Cloudinary upload failures, and report publish errors.
+- Route alerts to a channel watched by the named owner and backup; verify alerts are not email-only during the launch window.
+- Run a test alert for API, worker, payment, and media monitoring; confirm the owner acknowledges each alert and records the expected runbook link.
+- Create dashboards or saved views for campaign status counts, unclaimed campaigns, overdue operator tasks, failed uploads, unpaid invoices, wallet/payment mismatches, report drafts waiting for QA, and published report counts.
+- Confirm worker queue ownership: every enabled queue has a named responder, retry policy, dead-letter/manual recovery path, and clear criteria for pausing producers.
+- Confirm campaign jobs cannot run against mock providers or local queues in production.
+- Record the manual recovery steps for stuck campaign state transitions, failed media processing, failed invoice creation, failed payment verification, failed report publish, and duplicate webhook delivery.
+- Prepare a payment reconciliation sheet or dashboard with columns for campaign ID, workspace, invoice ID, Korapay reference, wallet ledger entry, expected amount, settled amount, fees, status, owner, and resolution notes.
+- Reconcile the launch test payment from Korapay event to invoice state, wallet ledger, campaign budget state, and customer-visible payment state.
+- Set daily reconciliation windows for the first launch week, plus an end-of-day signoff by the payment owner.
+- Define mismatch thresholds that trigger incident review, including missing webhook, duplicate credit, amount mismatch, unsettled charge, failed refund, and manual adjustment.
+- Verify refund, reversal, and manual wallet adjustment authority: who can request, who can approve, who can execute, and where evidence is stored.
+- Confirm Cloudinary production folder naming, allowed formats, max file sizes, transformation behavior, signed upload expiry, and access controls.
+- Upload at least one production-safe image and one production-safe video or large creative through the client flow, then verify admin preview, stored metadata, CDN delivery, and deletion/replacement behavior.
+- Verify rejected media is visible to operators with a reason, hidden from public customer report surfaces when appropriate, and traceable in audit/history.
+- Check Cloudinary usage limits, billing alerts, backup/export expectations, and emergency contact path before exposing customer uploads.
+- Define report QA rules: metrics source evidence required, screenshots/proofs required, placement links validated, totals checked, dates checked, customer-only language reviewed, and internal notes excluded.
+- Require a second operator or report QA owner to approve the first production report before publishing to a customer.
+- Verify a published report cannot be edited silently; corrections need an internal note, customer-safe explanation, and audit/history record.
+- Prepare a report correction template for wrong metric, wrong media proof, broken placement link, typo, delayed data, and customer dispute.
+- Confirm customer communications are ready for launch announcement, campaign received, missing information, media issue, invoice ready, payment confirmed, campaign live, report ready, campaign completed, delay notice, and incident update.
+- Assign who can send proactive customer comms during launch and who approves broad customer-facing incident language.
+- Confirm customer comms include expected response time, next action, and a single support channel; avoid exposing internal queue names, provider details, or admin notes.
+- Prepare internal incident levels for Managed Ads: payment-blocking, upload-blocking, admin-blocking, report-blocking, partial customer degradation, and full rollback.
+- Document rollback switches and owners for disabling new campaign submissions, disabling admin actions, pausing queue producers, pausing workers, disabling payment entry points, and switching customer comms to manual handling.
+- Verify rollback does not delete campaign briefs, media, invoices, wallet ledger entries, reports, audit history, or customer messages.
+- Prepare manual operating mode for a partial outage: intake by support, payment verification by finance, media collection fallback, report drafting fallback, and customer status updates.
+- Run one tabletop incident before launch covering a failed payment webhook, a Cloudinary upload outage, a worker queue backlog, and an incorrect report published to a customer.
+- Confirm database backup/export exists immediately before launch and the database owner knows the restore decision process.
+- Confirm audit/history retention expectations for campaign state changes, admin notes, invoice/payment actions, media changes, and report publishes.
+- Review privacy and data-handling expectations for customer creatives, business profiles, invoices, reports, screenshots, and placement links.
+- Confirm the launch go/no-go meeting has named decision owners for product, engineering, operations, finance, support, and customer comms.
+- Capture go/no-go evidence in one place: deployed commit, rollout checks, smoke flow result, alert test result, payment reconciliation result, media verification result, report QA result, support readiness, and open risks.
+- Require every go/no-go owner to sign off with `go`, `go with risk`, or `no-go`, plus the risk owner and mitigation for any non-clean signoff.
+- Do not enable unmanaged customer access or widen launch accounts until operational setup, smoke flow, reconciliation, and go/no-go signoff are complete.
 
 ### MVP Smoke Flow
 

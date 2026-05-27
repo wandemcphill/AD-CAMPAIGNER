@@ -22,6 +22,24 @@ const uploadEnvKeys = [
 
 type UploadEnvKey = (typeof uploadEnvKeys)[number];
 
+type MediaAssetCreateInput = {
+  data: {
+    byteSize?: number;
+    contentType?: string;
+    status: string;
+    storageProvider?: string;
+    workspaceId?: string;
+  };
+};
+
+type MediaAssetUpdateInput = {
+  data: {
+    id?: string;
+    providerPublicId?: string;
+    status?: string;
+  };
+};
+
 function snapshotUploadEnv() {
   return Object.fromEntries(uploadEnvKeys.map((key) => [key, process.env[key]])) as Record<
     UploadEnvKey,
@@ -47,14 +65,14 @@ function clearCloudinarySigningEnv() {
 }
 
 function createService() {
-  const mediaAssetCreate = vi.fn((input: { data: { status: string } }) =>
+  const mediaAssetCreate = vi.fn((input: MediaAssetCreateInput) =>
     Promise.resolve({
       id: "asset_123",
       status: input.data.status
     })
   );
-  const mediaAssetFindFirst = vi.fn();
-  const mediaAssetUpdate = vi.fn();
+  const mediaAssetFindFirst = vi.fn((): Promise<Record<string, unknown> | null> => Promise.resolve(null));
+  const mediaAssetUpdate = vi.fn((input: MediaAssetUpdateInput) => Promise.resolve(input.data));
   const service = new ManagedAdsService({
     client: {
       mediaAsset: {
@@ -112,9 +130,11 @@ describe("ManagedAdsService media upload intents", () => {
       expect(result.uploadUrl).toMatch(
         /^https:\/\/storage\.mock\/upload\/workspace_a\/campaign-assets\/asset_/
       );
-      const createArg = mediaAssetCreate.mock.calls[0]?.[0] as {
-        data: { byteSize: number; contentType: string; storageProvider: string; workspaceId: string };
-      };
+      const createArg = mediaAssetCreate.mock.calls[0]?.[0];
+      expect(createArg).toBeDefined();
+      if (!createArg) {
+        throw new Error("Expected media asset create input.");
+      }
       expect(createArg.data.byteSize).toBe(1024);
       expect(createArg.data.contentType).toBe("image/png");
       expect(createArg.data.storageProvider).toBe("mock-storage");
@@ -201,9 +221,11 @@ describe("ManagedAdsService production payment and media guards", () => {
           version
         })
       ).resolves.toEqual({ id: "asset_123", status: "READY" });
-      const updateArg = mediaAssetUpdate.mock.calls[0]?.[0] as {
-        data: { providerPublicId: string; status: string };
-      };
+      const updateArg = mediaAssetUpdate.mock.calls[0]?.[0];
+      expect(updateArg).toBeDefined();
+      if (!updateArg) {
+        throw new Error("Expected media asset update input.");
+      }
       expect(updateArg.data.providerPublicId).toBe(providerPublicId);
       expect(updateArg.data.status).toBe("READY");
     } finally {

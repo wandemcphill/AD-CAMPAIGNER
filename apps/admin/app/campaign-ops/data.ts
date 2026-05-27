@@ -9,6 +9,7 @@ import {
   ShieldAlert,
   type LucideIcon
 } from "lucide-react";
+import type { Route } from "next";
 
 export type CampaignOpsStatus =
   | "queued"
@@ -102,7 +103,7 @@ export const campaignOpsActivitySeverities: CampaignOpsActivitySeverity[] = [
   "danger"
 ];
 
-export const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
+export const navItems: Array<{ label: string; href: Route; icon: LucideIcon }> = [
   { label: "Ops Overview", href: "/campaign-ops", icon: Gauge },
   { label: "Review Queue", href: "/campaign-ops/queue", icon: ListChecks },
   { label: "Reports Queue", href: "/campaign-ops/reports", icon: BarChart3 },

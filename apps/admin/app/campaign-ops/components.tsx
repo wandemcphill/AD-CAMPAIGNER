@@ -106,7 +106,7 @@ const activitySeverityMeta: Record<CampaignOpsActivitySeverity, { label: string;
     warning: { label: "Warning", tone: "warning" }
   };
 
-const mobileNavItems = [
+const mobileNavItems: Array<{ href: Route; icon: typeof Activity; label: string }> = [
   { href: "/campaign-ops", icon: Activity, label: "Overview" },
   { href: "/campaign-ops/queue", icon: Inbox, label: "Queue" },
   { href: "/campaign-ops/reports", icon: BarChart3, label: "Reports" },
@@ -195,7 +195,7 @@ export function AdminCampaignOpsShell({
                   ? "border-l-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]"
                   : "border-l-transparent text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
               )}
-              href={item.href as Route}
+              href={item.href}
               key={item.href}
             >
               <span className="relative">
@@ -281,7 +281,7 @@ export function AdminCampaignOpsShell({
               "grid place-items-center gap-0.5 py-1 text-[var(--ft-text-muted)]",
               active === item.href ? "text-[var(--ft-accent)]" : ""
             )}
-            href={item.href as Route}
+            href={item.href}
             key={item.href}
           >
             <item.icon className="size-5 stroke-[1.5]" />
@@ -321,7 +321,7 @@ export function ActionLink({
   variant = "secondary"
 }: {
   children: ReactNode;
-  href: string;
+  href: Route;
   variant?: "primary" | "secondary" | "ghost";
 }) {
   const variants = {
@@ -339,7 +339,7 @@ export function ActionLink({
         "inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-sm)] border px-5 text-sm font-semibold transition focus:ring-2 focus:ring-[var(--ft-accent)] focus:outline-none",
         variants[variant]
       )}
-      href={href as Route}
+      href={href}
     >
       {children}
     </Link>
