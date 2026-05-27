@@ -4,6 +4,11 @@ This inventory turns the final operational setup work into concrete tasks for th
 
 Use this file before every production launch window. A task is not done until the evidence column has been captured in the launch notes or incident channel.
 
+For daily standups and launch-room reporting, use
+`docs/MANAGED_ADS_LAUNCH_TRACKER.md`. It groups these tasks into phase gates,
+marks local/code-complete evidence separately from external credential blockers,
+and gives the team a concise status table without reading the full inventory.
+
 ## Owner Map
 
 | Owner Slot | Responsibility | Required Before Launch |
@@ -22,6 +27,11 @@ Use this file before every production launch window. A task is not done until th
 
 ## Phase 0 - Access And Ownership
 
+External blockers for this phase are Render access, GitHub auth or repo access
+for release owners, Korapay dashboard access, Cloudinary dashboard access, and
+support channel access. Local evidence is limited to owner names, route checks,
+channel links, and documented rollback responsibilities.
+
 | ID | Task | Owner Slot | Evidence |
 | --- | --- | --- | --- |
 | OPS-001 | Confirm named humans for every owner slot above. | Deploy owner | Owner list posted in launch channel. |
@@ -36,6 +46,12 @@ Use this file before every production launch window. A task is not done until th
 | OPS-010 | Confirm incident channel exists and is separate from ordinary launch chatter. | Support owner | Channel link captured. |
 
 ## Phase 1 - Production Environment
+
+Local/code-complete evidence for this phase is the strict rollout check output,
+expected commit SHA, migration dry-run output, production env review, and backup
+reference. External blockers are Render service access, production data service
+access, GitHub deploy provenance, Korapay live env values, and Cloudinary live
+env values.
 
 | ID | Task | Owner Slot | Evidence |
 | --- | --- | --- | --- |
@@ -91,6 +107,10 @@ Use this file before every production launch window. A task is not done until th
 | OPS-050 | Confirm mobile bottom navigation does not obscure final page content. | Support owner | Mobile screenshots. |
 
 ## Phase 4 - Manual Launch Accounts
+
+This phase cannot be closed from the local codebase alone. It requires Meta,
+TikTok, Instagram/Facebook page, and external Ads Manager access evidence from
+the campaign operations owner.
 
 | ID | Task | Owner Slot | Evidence |
 | --- | --- | --- | --- |

@@ -32,29 +32,91 @@ const blockedTerms = [
 
 const blockedPatterns = [
   { label: "Demo fallback", pattern: /\bdemo fallback\b/i },
-  { label: "missing id", pattern: /\bmissing id\b/i }
+  { label: "missing id", pattern: /\bmissing id\b/i },
+  {
+    label: "raw debug label",
+    pattern: /\b(?:debug|todo|fixme|lorem ipsum|mock data|sample data|dummy data|test data)\b/i
+  },
+  { label: "console debug call", pattern: /\bconsole\.(?:debug|log|trace)\s*\(/i }
 ];
 
 const fileScopedBlockedPatterns = [
   {
     filePattern: /apps[\\/]web[\\/]app[\\/]ui[\\/]session-panel\.tsx$/,
     label: "sidebar auth form",
-    pattern: /<form\b|type=["']password["']|\bsignIn\b|\bsignUp\b|Create account|Sign in/i
+    pattern:
+      /<form\b|type=["']password["']|\bsignIn\b|\bsignUp\b|\bauth(?:entication)?\s+form\b|Create account|Sign in/i
   }
 ];
 
 const requiredRoutes = [
   "apps/web/app/campaigns/page.tsx",
   "apps/web/app/campaigns/new/page.tsx",
+  "apps/web/app/campaigns/[id]/page.tsx",
+  "apps/web/app/campaigns/analytics/page.tsx",
   "apps/web/app/billing/page.tsx",
   "apps/web/app/reports/page.tsx",
   "apps/web/app/profile/page.tsx",
   "apps/web/app/notifications/page.tsx",
+  "apps/web/app/onboarding/page.tsx",
   "apps/admin/app/campaign-ops/page.tsx",
   "apps/admin/app/campaign-ops/queue/page.tsx",
   "apps/admin/app/campaign-ops/detail/page.tsx",
   "apps/admin/app/campaign-ops/reports/page.tsx",
   "apps/admin/app/campaign-ops/activity/page.tsx"
+];
+
+const serviceLanguageRequirements = [
+  {
+    file: "apps/web/app/campaigns/page.tsx",
+    label: "client campaigns",
+    requiredTerms: ["campaign", "operator", "report", "spend"]
+  },
+  {
+    file: "apps/web/app/campaigns/new/page.tsx",
+    label: "campaign intake",
+    requiredTerms: ["brief", "budget", "invoice", "operator"]
+  },
+  {
+    file: "apps/web/app/billing/page.tsx",
+    label: "billing",
+    requiredTerms: ["campaign", "invoice", "wallet", "budget"]
+  },
+  {
+    file: "apps/web/app/reports/page.tsx",
+    label: "client reports",
+    requiredTerms: ["campaign", "report", "operator", "proof"]
+  },
+  {
+    file: "apps/web/app/profile/page.tsx",
+    label: "business profile",
+    requiredTerms: ["profile", "campaign", "billing", "operator"]
+  },
+  {
+    file: "apps/admin/app/campaign-ops/page.tsx",
+    label: "admin ops hub",
+    requiredTerms: ["campaign", "operator", "queue", "client report"]
+  },
+  {
+    file: "apps/admin/app/campaign-ops/queue/page.tsx",
+    label: "admin ops queue",
+    requiredTerms: ["campaign", "operator", "queue", "review"]
+  },
+  {
+    file: "apps/admin/app/campaign-ops/detail/detail-client.tsx",
+    label: "admin campaign detail",
+    requiredTerms: ["campaign", "client", "operator", "proof"]
+  },
+  {
+    file: "apps/admin/app/campaign-ops/reports/page.tsx",
+    label: "admin reports",
+    requiredTerms: ["client report", "campaign", "metrics", "publish"]
+  },
+  {
+    file: "apps/admin/app/campaign-ops/activity/page.tsx",
+    label: "admin activity",
+    requiredTerms: ["campaign", "admin actions", "operator", "client-visible"]
+  }
 ];
 
 async function collectFiles(root: string): Promise<string[]> {
@@ -83,11 +145,36 @@ async function assertRouteExists(path: string) {
   }
 }
 
+async function assertServiceLanguage(violations: string[]) {
+  await Promise.all(
+    serviceLanguageRequirements.map(async ({ file, label, requiredTerms }) => {
+      let content: string;
+      try {
+        content = await readFile(file, "utf8");
+      } catch {
+        violations.push(`${file} is missing required managed-ads surface: ${label}`);
+        return;
+      }
+
+      const normalizedContent = content.toLowerCase();
+      const missingTerms = requiredTerms.filter(
+        (term) => !normalizedContent.includes(term.toLowerCase())
+      );
+      if (missingTerms.length > 0) {
+        violations.push(
+          `${file} is missing managed-ads language for ${label}: ${missingTerms.join(", ")}`
+        );
+      }
+    })
+  );
+}
+
 async function main() {
   await Promise.all(requiredRoutes.map(assertRouteExists));
 
   const files = (await Promise.all(scanRoots.map(collectFiles))).flat();
   const violations: string[] = [];
+  await assertServiceLanguage(violations);
 
   await Promise.all(
     files.map(async (file) => {
@@ -118,6 +205,7 @@ async function main() {
   console.log("UI audit passed", {
     blockedTerms: blockedTerms.length,
     files: files.length,
+    serviceLanguageRequirements: serviceLanguageRequirements.length,
     requiredRoutes: requiredRoutes.length
   });
 }

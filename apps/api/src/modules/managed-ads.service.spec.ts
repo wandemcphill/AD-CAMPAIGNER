@@ -40,6 +40,22 @@ type MediaAssetUpdateInput = {
   };
 };
 
+type PaymentIntentCreateInput = {
+  data: {
+    idempotencyKey?: string;
+    workspaceId?: string;
+    walletId?: string;
+  };
+};
+
+type CampaignFindFirstInput = {
+  where?: {
+    deletedAt?: null;
+    id?: string;
+    workspaceId?: string;
+  };
+};
+
 function snapshotUploadEnv() {
   return Object.fromEntries(uploadEnvKeys.map((key) => [key, process.env[key]])) as Record<
     UploadEnvKey,
@@ -65,6 +81,30 @@ function clearCloudinarySigningEnv() {
 }
 
 function createService() {
+  const campaignFindFirst = vi.fn((input?: CampaignFindFirstInput) => {
+    void input;
+
+    return Promise.resolve({
+      id: "campaign_123",
+      workspaceId: workspace.workspaceId,
+      currency: "NGN",
+      budgetMinor: 500000,
+      creatives: [],
+      notes: [],
+      statusHistory: [],
+      assignments: [],
+      manualPlacements: [],
+      reports: [],
+      invoices: [],
+      budgetHolds: []
+    });
+  });
+  const campaignBudgetHoldCreate = vi.fn();
+  const campaignBudgetHoldFindUnique = vi.fn(
+    (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
+  );
+  const eventOutboxUpsert = vi.fn();
+  const ledgerEntryCreate = vi.fn();
   const mediaAssetCreate = vi.fn((input: MediaAssetCreateInput) =>
     Promise.resolve({
       id: "asset_123",
@@ -73,17 +113,90 @@ function createService() {
   );
   const mediaAssetFindFirst = vi.fn((): Promise<Record<string, unknown> | null> => Promise.resolve(null));
   const mediaAssetUpdate = vi.fn((input: MediaAssetUpdateInput) => Promise.resolve(input.data));
+  const paymentIntentCreate = vi.fn((input: PaymentIntentCreateInput) =>
+    Promise.resolve({
+      id: "payment_123",
+      workspaceId: input.data.workspaceId,
+      walletId: input.data.walletId,
+      gateway: "mock",
+      amountMinor: 1000,
+      currency: "NGN",
+      status: "PENDING",
+      providerReference: "mock_ref_123",
+      checkoutUrl: "https://payments.mock/checkout/mock_ref_123",
+      campaignId: null,
+      campaignInvoiceId: null,
+      completedAt: null,
+      creditedAt: null,
+      metadata: {},
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z")
+    })
+  );
+  const transaction = vi.fn((callback: (tx: Record<string, unknown>) => unknown) =>
+    callback({
+      auditLog: { create: vi.fn() },
+      campaignBudgetHold: {
+        create: campaignBudgetHoldCreate,
+        findUnique: campaignBudgetHoldFindUnique
+      },
+      eventOutbox: { upsert: eventOutboxUpsert },
+      ledgerEntry: { create: ledgerEntryCreate },
+      wallet: {
+        findUnique: vi.fn(() => Promise.resolve({ id: "wallet_123", workspaceId: workspace.workspaceId }))
+      }
+    })
+  );
+  const walletUpsert = vi.fn(() =>
+    Promise.resolve({
+      id: "wallet_123",
+      workspaceId: workspace.workspaceId,
+      currency: "NGN"
+    })
+  );
   const service = new ManagedAdsService({
     client: {
+      $transaction: transaction,
+      campaign: {
+        findFirst: campaignFindFirst
+      },
+      campaignBudgetHold: {
+        create: campaignBudgetHoldCreate,
+        findUnique: campaignBudgetHoldFindUnique
+      },
+      eventOutbox: {
+        upsert: eventOutboxUpsert
+      },
+      ledgerEntry: {
+        create: ledgerEntryCreate
+      },
       mediaAsset: {
         create: mediaAssetCreate,
         findFirst: mediaAssetFindFirst,
         update: mediaAssetUpdate
+      },
+      paymentIntent: {
+        create: paymentIntentCreate
+      },
+      wallet: {
+        upsert: walletUpsert
       }
     }
   } as unknown as PrismaService);
 
-  return { mediaAssetCreate, mediaAssetFindFirst, mediaAssetUpdate, service };
+  return {
+    campaignBudgetHoldCreate,
+    campaignBudgetHoldFindUnique,
+    campaignFindFirst,
+    ledgerEntryCreate,
+    mediaAssetCreate,
+    mediaAssetFindFirst,
+    mediaAssetUpdate,
+    paymentIntentCreate,
+    service,
+    transaction,
+    walletUpsert
+  };
 }
 
 describe("ManagedAdsService media upload intents", () => {
@@ -192,6 +305,17 @@ describe("ManagedAdsService production payment and media guards", () => {
     }
   });
 
+  it("scopes Cloudinary upload completion lookup to the active workspace", async () => {
+    const { mediaAssetFindFirst, service } = createService();
+
+    await expect(service.completeUpload(workspace, "asset_foreign", {})).rejects.toThrow(
+      "Media asset was not found in the active workspace."
+    );
+    expect(mediaAssetFindFirst).toHaveBeenCalledWith({
+      where: { id: "asset_foreign", workspaceId: workspace.workspaceId }
+    });
+  });
+
   it("accepts Cloudinary upload completion when the response signature matches the asset", async () => {
     const env = snapshotUploadEnv();
     process.env.CLOUDINARY_API_SECRET = "cloudinary-secret";
@@ -231,5 +355,77 @@ describe("ManagedAdsService production payment and media guards", () => {
     } finally {
       restoreUploadEnv(env);
     }
+  });
+
+  it("persists caller idempotency keys on payment intents within the workspace wallet", async () => {
+    const env = snapshotUploadEnv();
+    process.env.NODE_ENV = "test";
+    process.env.PAYMENT_PROVIDER = "mock";
+    const { paymentIntentCreate, service, walletUpsert } = createService();
+
+    try {
+      await expect(
+        service.createPaymentIntent(workspace, {
+          amountMinor: 1000,
+          currency: "NGN",
+          idempotencyKey: "checkout:workspace_a:campaign_123"
+        })
+      ).resolves.toEqual(
+        expect.objectContaining({
+          id: "payment_123",
+          workspaceId: workspace.workspaceId
+        })
+      );
+      expect(walletUpsert).toHaveBeenCalledWith({
+        where: { workspaceId_currency: { workspaceId: workspace.workspaceId, currency: "NGN" } },
+        update: {},
+        create: { workspaceId: workspace.workspaceId, currency: "NGN" }
+      });
+      const paymentIntentInput = paymentIntentCreate.mock.calls.at(-1)?.[0];
+      expect(paymentIntentInput?.data).toMatchObject({
+        idempotencyKey: "checkout:workspace_a:campaign_123",
+        workspaceId: workspace.workspaceId,
+        walletId: "wallet_123"
+      });
+    } finally {
+      restoreUploadEnv(env);
+    }
+  });
+
+  it("returns an existing budget hold without duplicating ledger writes for the same idempotency key", async () => {
+    const existingHold = {
+      id: "hold_123",
+      amountMinor: 500000,
+      currency: "NGN",
+      idempotencyKey: "campaign:campaign_123:hold:500000",
+      status: "ACTIVE"
+    };
+    const {
+      campaignBudgetHoldCreate,
+      campaignBudgetHoldFindUnique,
+      campaignFindFirst,
+      ledgerEntryCreate,
+      service
+    } = createService();
+    campaignBudgetHoldFindUnique.mockResolvedValue(existingHold);
+
+    await expect(
+      service.createBudgetHold(workspace, "campaign_123", {
+        amountMinor: 500000,
+        idempotencyKey: "campaign:campaign_123:hold:500000"
+      })
+    ).resolves.toBe(existingHold);
+
+    const campaignQuery = campaignFindFirst.mock.calls.at(-1)?.[0];
+    expect(campaignQuery?.where).toMatchObject({
+      id: "campaign_123",
+      workspaceId: workspace.workspaceId,
+      deletedAt: null
+    });
+    expect(campaignBudgetHoldFindUnique).toHaveBeenCalledWith({
+      where: { idempotencyKey: "campaign:campaign_123:hold:500000" }
+    });
+    expect(ledgerEntryCreate).not.toHaveBeenCalled();
+    expect(campaignBudgetHoldCreate).not.toHaveBeenCalled();
   });
 });

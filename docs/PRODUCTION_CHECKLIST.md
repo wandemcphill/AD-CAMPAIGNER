@@ -2,6 +2,11 @@
 
 Use this checklist with `docs/OPERATIONS.md` before enabling production traffic or beta feature flags.
 
+For Managed Ads launch-room reporting, use
+`docs/MANAGED_ADS_LAUNCH_TRACKER.md` as the daily phase board. It separates
+local/code-complete evidence from blockers that require external dashboard
+credentials or provider account access.
+
 ## Global Preflight
 
 - Render API, web, admin, worker, Postgres, and Key Value services are `Live`.
@@ -54,6 +59,8 @@ $env:API_URL="https://api.example.com"; $env:APP_URL="https://app.example.com"; 
 ### Operational Setup
 
 - Name the launch commander, backup commander, deploy owner, API owner, worker owner, payment owner, media owner, report QA owner, support owner, and customer comms owner in the launch notes.
+- Update the Managed Ads phase tracker daily with each phase status, owner, evidence link, blocker, and next action.
+- Mark phases as `Local complete` only when repo-side checks and app behavior are verified; mark phases as `External blocked` when waiting on Render, GitHub auth, Korapay, Cloudinary, Meta, TikTok, or support tooling access.
 - Confirm each owner has a reachable phone number or escalation handle, a backup, and a clear handoff window for launch day.
 - Create the production admin operator list with named humans only; remove shared, test, contractor, and inactive admin accounts.
 - Assign least-privilege admin roles before launch: campaign operators can claim and update campaigns, finance operators can issue invoices and reconcile payments, support operators can read customer state and add support notes, and super-admin access is limited to approved owners.

@@ -72,6 +72,10 @@ function present(name: string) {
   return Boolean(process.env[name]?.trim());
 }
 
+function value(name: string) {
+  return process.env[name]?.trim();
+}
+
 function requireEnv(names: string[], label: string) {
   for (const name of names) {
     if (!present(name)) {
@@ -81,7 +85,7 @@ function requireEnv(names: string[], label: string) {
 }
 
 function expectValue(name: string, expected: string, label: string) {
-  const actual = process.env[name]?.trim();
+  const actual = value(name);
   if (actual !== expected) {
     errors.push(`${label}: expected ${name}=${expected}`);
   }
@@ -96,6 +100,59 @@ function expect(name: string, expected: boolean, label: string) {
 function expectAll(names: string[], expected: boolean, label: string) {
   for (const name of names) {
     expect(name, expected, label);
+  }
+}
+
+function expectNotValue(name: string, rejected: string, label: string) {
+  const actual = value(name);
+
+  if (actual === rejected) {
+    errors.push(`${label}: ${name} must not be ${rejected}`);
+  }
+}
+
+function validateAbsoluteUrl(
+  name: string,
+  label: string,
+  options: { allowLocalhost?: boolean; path?: string } = {}
+) {
+  const raw = value(name);
+
+  if (!raw) {
+    return;
+  }
+
+  try {
+    const url = new URL(raw);
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      errors.push(`${label}: ${name} must start with http:// or https://`);
+      return;
+    }
+
+    if (!options.allowLocalhost && ["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
+      errors.push(`${label}: ${name} must not point at localhost for production`);
+    }
+
+    if (options.path && url.pathname.replace(/\/+$/, "") !== options.path) {
+      errors.push(`${label}: ${name} must use path ${options.path}`);
+    }
+  } catch {
+    errors.push(`${label}: ${name} must be a valid absolute URL`);
+  }
+}
+
+function validateIntegerRange(name: string, label: string, min: number, max: number) {
+  const raw = value(name);
+
+  if (!raw) {
+    return;
+  }
+
+  const parsed = Number(raw);
+
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    errors.push(`${label}: ${name} must be an integer between ${min} and ${max}`);
   }
 }
 
@@ -182,11 +239,16 @@ function checkManagedAdsMvp(currentTarget: Target) {
       ],
       label
     );
+    expectValue("NODE_ENV", "production", label);
+    validateAbsoluteUrl("APP_URL", label);
+    validateAbsoluteUrl("ADMIN_URL", label);
+    validateAbsoluteUrl("API_URL", label);
     expectValue("STORAGE_PROVIDER", "cloudinary", label);
     requireEnv(
       ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "CLOUDINARY_UPLOAD_PRESET"],
       `${label} cloudinary`
     );
+    validateIntegerRange("MEDIA_UPLOAD_SIGNATURE_TTL_SECONDS", label, 60, 1800);
     expectValue("PAYMENT_PROVIDER", "live", label);
     requireEnv(
       [
@@ -202,6 +264,8 @@ function checkManagedAdsMvp(currentTarget: Target) {
       ],
       `${label} payments`
     );
+    validateAbsoluteUrl("KORAPAY_WEBHOOK_URL", label, { path: "/api/webhooks/korapay" });
+    validateAbsoluteUrl("KORAPAY_REDIRECT_URL", label);
     if (enabled("MEDIA_UPLOAD_ALLOW_MOCK_STORAGE")) {
       errors.push(`${label}: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE must stay disabled.`);
     }
@@ -209,13 +273,26 @@ function checkManagedAdsMvp(currentTarget: Target) {
 
   if (currentTarget === "worker") {
     requireEnv(["NODE_ENV", "DATABASE_URL", "REDIS_URL"], label);
+    expectValue("NODE_ENV", "production", label);
   }
 
   if (currentTarget === "web" || currentTarget === "admin") {
     requireEnv(["NEXT_PUBLIC_API_URL"], label);
+    validateAbsoluteUrl("NEXT_PUBLIC_API_URL", label);
     if (enabled("NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE")) {
       errors.push(`${label}: NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE must be disabled.`);
     }
+  }
+
+  if (currentTarget === "web") {
+    requireEnv(["APP_URL"], label);
+    validateAbsoluteUrl("APP_URL", label);
+  }
+
+  if (currentTarget === "admin") {
+    requireEnv(["ADMIN_URL"], label);
+    validateAbsoluteUrl("ADMIN_URL", label);
+    expectNotValue("NEXT_PUBLIC_ENABLE_CAMPAIGN_OPS_ADMIN", "false", label);
   }
 
   expectAll(trustedHeaderFlags, false, label);
