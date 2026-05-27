@@ -36,6 +36,14 @@ corepack pnpm exec tsx scripts/rollout-check.ts --target=admin --stage=managed-a
 corepack pnpm ops:readiness
 ```
 
+- Run the deployed smoke against the live Render URLs. Add `AUTH_SMOKE_TOKEN` or
+  `AUTH_SMOKE_EMAIL`/`AUTH_SMOKE_PASSWORD` to include authenticated workspace checks,
+  and `AUTH_SMOKE_ADMIN=true` to include admin Campaign Ops checks:
+
+```powershell
+$env:API_URL="https://api.example.com"; $env:APP_URL="https://app.example.com"; $env:ADMIN_URL="https://admin.example.com"; corepack pnpm smoke:deployed
+```
+
 - API uses real persistent dependencies: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, and `SESSION_SECRET`.
 - Media uploads use signed Cloudinary upload intents. `STORAGE_PROVIDER=cloudinary`, Cloudinary cloud name, API key, API secret, and upload preset are present.
 - `MEDIA_UPLOAD_ALLOW_MOCK_STORAGE` is unset or false in production.

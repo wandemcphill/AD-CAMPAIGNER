@@ -1,6 +1,5 @@
-import process from "node:process";
-
 type CheckStatus = "PASS" | "FAIL" | "SKIP";
+type HttpMethod = "GET" | "POST";
 
 interface CheckResult {
   name: string;
@@ -27,6 +26,57 @@ interface ResponseBody {
 }
 
 const userAgent = "fliptrybe-deployed-smoke/1.0";
+
+const webRoutes = [
+  { name: "Web campaigns route", path: "/campaigns" },
+  { name: "Web campaign intake route", path: "/campaigns/new" },
+  { name: "Web billing route", path: "/billing" },
+  { name: "Web reports route", path: "/reports" },
+  { name: "Web profile route", path: "/profile" },
+  { name: "Web notifications route", path: "/notifications" }
+];
+
+const adminRoutes = [
+  { name: "Admin campaign ops route", path: "/campaign-ops" },
+  { name: "Admin review queue route", path: "/campaign-ops/queue" },
+  { name: "Admin campaign detail route", path: "/campaign-ops/detail" },
+  { name: "Admin reports queue route", path: "/campaign-ops/reports" },
+  { name: "Admin activity route", path: "/campaign-ops/activity" }
+];
+
+const protectedManagedAdsRoutes: Array<{
+  method: HttpMethod;
+  name: string;
+  path: string;
+  payload?: Record<string, unknown>;
+}> = [
+  { method: "GET", name: "Campaigns reject unauthenticated", path: "/v1/campaigns" },
+  { method: "GET", name: "Company profiles reject unauthenticated", path: "/v1/company-profiles" },
+  { method: "GET", name: "Invoices reject unauthenticated", path: "/v1/invoices" },
+  { method: "GET", name: "Notifications reject unauthenticated", path: "/v1/notifications" },
+  {
+    method: "POST",
+    name: "Media upload intents reject unauthenticated",
+    path: "/v1/media/upload-intents",
+    payload: { byteSize: 1024, contentType: "image/png", filename: "smoke.png" }
+  },
+  {
+    method: "POST",
+    name: "Wallet funding intents reject unauthenticated",
+    path: "/v1/wallet/funding-intents",
+    payload: { amountMinor: 1000, currency: "NGN" }
+  },
+  {
+    method: "GET",
+    name: "Admin campaign ops overview rejects unauthenticated",
+    path: "/v1/admin/campaign-ops/overview"
+  },
+  {
+    method: "GET",
+    name: "Admin campaign ops queue rejects unauthenticated",
+    path: "/v1/admin/campaign-ops/queue"
+  }
+];
 
 function isEnabled(value: string | undefined) {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
@@ -251,6 +301,12 @@ async function checkStaticApp(name: string, url: URL | undefined, config: SmokeC
   });
 }
 
+async function checkStaticRoute(name: string, baseUrl: URL | undefined, path: string, config: SmokeConfig) {
+  const url = baseUrl ? withPath(baseUrl, path) : undefined;
+
+  return checkStaticApp(name, url, config);
+}
+
 async function checkApiHealth(config: SmokeConfig) {
   const url = withPath(config.apiUrl, "/v1/health");
 
@@ -320,6 +376,31 @@ async function checkProtectedRouteRejects(config: SmokeConfig, name: string, pat
 
   return runCheck(name, url, async () => {
     const { response } = await get(url, config);
+
+    expectStatus(response, [401, 403], name);
+
+    return {
+      name,
+      status: "PASS",
+      detail: "Rejected unauthenticated request.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkProtectedRequestRejects(
+  config: SmokeConfig,
+  name: string,
+  method: HttpMethod,
+  path: string,
+  payload: Record<string, unknown> = {}
+) {
+  const url = withPath(config.apiUrl, path);
+
+  return runCheck(name, url, async () => {
+    const { response } =
+      method === "POST" ? await postJson(url, config, payload) : await get(url, config);
 
     expectStatus(response, [401, 403], name);
 
@@ -468,6 +549,54 @@ async function checkAuthenticatedDigitalAccess(config: SmokeConfig, headers: Hea
   });
 }
 
+async function checkAuthenticatedJsonArray(
+  config: SmokeConfig,
+  headers: HeadersInit,
+  name: string,
+  path: string
+) {
+  const url = withPath(config.apiUrl, path);
+
+  return runCheck(name, url, async () => {
+    const { response, body } = await get(url, config, headers);
+
+    expectSuccess(response, name);
+    expectJsonArray(body, name);
+
+    return {
+      name,
+      status: "PASS",
+      detail: "Returned authenticated workspace-scoped list.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedJsonObject(
+  config: SmokeConfig,
+  headers: HeadersInit,
+  name: string,
+  path: string
+) {
+  const url = withPath(config.apiUrl, path);
+
+  return runCheck(name, url, async () => {
+    const { response, body } = await get(url, config, headers);
+
+    expectSuccess(response, name);
+    expectJsonRecord(body, name);
+
+    return {
+      name,
+      status: "PASS",
+      detail: "Returned authenticated workspace-scoped object.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
 async function checkAuthenticatedAdminDigitalAccess(config: SmokeConfig, headers: HeadersInit) {
   const url = withPath(config.apiUrl, "/v1/admin/digital-access/overview");
 
@@ -485,6 +614,29 @@ async function checkAuthenticatedAdminDigitalAccess(config: SmokeConfig, headers
       name: "Authenticated admin Digital Access overview",
       status: "PASS",
       detail: "Returned admin overview JSON.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkAuthenticatedAdminCampaignOps(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/admin/campaign-ops/overview");
+
+  return runCheck("Authenticated admin Campaign Ops overview", url, async () => {
+    const { response, body } = await get(url, config, headers);
+    const json = expectJsonRecord(body, "Authenticated admin Campaign Ops overview");
+
+    expectSuccess(response, "Authenticated admin Campaign Ops overview");
+
+    if (!Array.isArray(json.queue) || !Array.isArray(json.reports) || !Array.isArray(json.activity)) {
+      throw new Error("Admin Campaign Ops overview did not include queue, reports, and activity arrays.");
+    }
+
+    return {
+      name: "Authenticated admin Campaign Ops overview",
+      status: "PASS",
+      detail: "Returned managed ads operations overview JSON.",
       httpStatus: response.status,
       target: displayUrl(url)
     };
@@ -554,6 +706,7 @@ Optional auth:
   AUTH_SMOKE_EMAIL=operator@example.com AUTH_SMOKE_PASSWORD=...
   AUTH_SMOKE_LOGIN_URL=https://your-api.example.com/v1/auth/login
   AUTH_SMOKE_ADMIN=true
+  AUTH_SMOKE_EXPECT_ADMIN=true
 
 Optional behavior:
   SMOKE_TIMEOUT_MS=15000
@@ -597,6 +750,12 @@ async function main() {
   results.push(await checkApiHealth(config));
   results.push(await checkStaticApp("Web app availability", config.appUrl, config));
   results.push(await checkStaticApp("Admin app availability", config.adminUrl, config));
+  for (const route of webRoutes) {
+    results.push(await checkStaticRoute(route.name, config.appUrl, route.path, config));
+  }
+  for (const route of adminRoutes) {
+    results.push(await checkStaticRoute(route.name, config.adminUrl, route.path, config));
+  }
   results.push(await checkJsonArrayRoute(config, "Destination catalog", "/v1/destinations/catalog"));
   results.push(await checkJsonArrayRoute(config, "SMM services catalog", "/v1/smm/services"));
   results.push(await checkProtectedRouteRejects(config, "Wallet rejects unauthenticated", "/v1/wallet"));
@@ -608,15 +767,46 @@ async function main() {
       "/v1/digital-access/requests"
     )
   );
+  for (const route of protectedManagedAdsRoutes) {
+    results.push(
+      await checkProtectedRequestRejects(
+        config,
+        route.name,
+        route.method,
+        route.path,
+        route.payload
+      )
+    );
+  }
 
   const authHeaders = await resolveAuthHeaders(config, results);
 
   if (authHeaders) {
     results.push(await checkAuthenticatedSession(config, authHeaders));
     results.push(await checkAuthenticatedDigitalAccess(config, authHeaders));
+    results.push(
+      await checkAuthenticatedJsonArray(
+        config,
+        authHeaders,
+        "Authenticated managed ads campaigns",
+        "/v1/campaigns"
+      )
+    );
+    results.push(
+      await checkAuthenticatedJsonObject(config, authHeaders, "Authenticated managed ads wallet", "/v1/wallet")
+    );
+    results.push(
+      await checkAuthenticatedJsonArray(
+        config,
+        authHeaders,
+        "Authenticated managed ads invoices",
+        "/v1/invoices"
+      )
+    );
 
     if (config.adminAuthChecksEnabled) {
       results.push(await checkAuthenticatedAdminDigitalAccess(config, authHeaders));
+      results.push(await checkAuthenticatedAdminCampaignOps(config, authHeaders));
     }
   }
 

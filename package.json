@@ -22,6 +22,7 @@
     "verify": "corepack pnpm typecheck && corepack pnpm lint && corepack pnpm test && corepack pnpm prisma:validate && corepack pnpm ui:audit",
     "ops:readiness": "tsx scripts/ops-readiness.ts",
     "smoke": "tsx scripts/smoke.ts",
+    "smoke:deployed": "tsx scripts/deployed-smoke.ts",
     "ui:audit": "tsx scripts/ui-audit.ts"
   },
   "devDependencies": {
