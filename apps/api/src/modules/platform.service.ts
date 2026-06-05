@@ -23,13 +23,21 @@ import {
 } from "@fliptrybe/providers";
 import type { PerfectPanelSmmSupplierConfig } from "@fliptrybe/providers";
 import {
+  applyGrowthServiceAdminControls,
   assessSmmOrderFraud,
   calculateSmmPrice,
+  calculateGrowthDeliveredQuantity,
+  createSmmSupplierAudit,
   createSmmFulfillmentQueueJob,
   createSmmServiceHealthMonitor,
+  defaultGrowthServicesCatalog,
   defaultSmmPricingRules,
+  getGrowthExpectedCompletionAt,
+  getGrowthServiceRiskReport,
+  mapSmmOrderStatusToGrowthStatus,
   summarizeSmmSupplierHealth
 } from "@fliptrybe/service-smm";
+import type { SmmSupplierAuditProvider } from "@fliptrybe/service-smm";
 import {
   currencies,
   type AnalyticsMetric,
@@ -37,23 +45,30 @@ import {
   type Campaign,
   type CurrencyCode,
   type DestinationKind,
+  type GrowthOrder,
+  type GrowthOrderStatus,
+  type GrowthServiceCatalogItem,
   type LedgerEntry,
   type NotificationMessage,
   type PaymentIntent,
   type PromotionDestination,
   type SmmOrder,
+  type SmmServiceKind,
   type SupportTicket,
   type Wallet
 } from "@fliptrybe/types";
 
 import type {
   CreateCampaignDto,
+  CreateGrowthOrderDto,
   CreatePaymentIntentDto,
   CreateSmmOrderDto,
   CreateSupportTicketDto,
   QuoteCampaignDto,
   SmmSupplierReferenceDto,
-  SmmSupplierReferencesDto
+  SmmSupplierReferencesDto,
+  UpdateGrowthOrderDto,
+  UpdateGrowthServiceDto
 } from "./platform.dtos";
 import { AiBrainClient } from "./ai-brain.client";
 import type { AuthenticatedRequestContext } from "./request-context";
@@ -62,6 +77,20 @@ const demoWorkspaceId = "workspace_demo";
 const demoUserId = "user_demo";
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+const growthActiveStatuses = new Set<GrowthOrderStatus>(["PENDING", "SUBMITTED", "IN_PROGRESS"]);
+
+interface GrowthMonitoringEvent {
+  id: string;
+  workspaceId: string;
+  orderId?: string;
+  kind:
+    | "UNPAID_EXECUTION_ATTEMPT"
+    | "SUPPLIER_SUBMISSION_FAILED"
+    | "SUPPLIER_SUBMISSION_SKIPPED_DUPLICATE"
+    | "FULFILLMENT_DELAY";
+  detail: string;
+  createdAt: string;
+}
 
 function requireWorkspaceContext(context?: AuthenticatedRequestContext) {
   if (!context?.workspaceId || !context.userId) {
@@ -155,11 +184,96 @@ function verifyKorapaySignature(input: { body: unknown; signature?: string | und
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
+function getApiHost(apiUrl: string) {
+  try {
+    return new URL(apiUrl).hostname;
+  } catch {
+    return apiUrl;
+  }
+}
+
+function getServiceMapCoverage(serviceMap?: Partial<Record<SmmServiceKind, string>>) {
+  return Object.keys(serviceMap ?? {}) as SmmServiceKind[];
+}
+
+function getAllSmmServiceKinds() {
+  return defaultSmmPricingRules.map((rule) => rule.serviceKind);
+}
+
+function getGrowthPricingRules(service: GrowthServiceCatalogItem) {
+  const baseRule = defaultSmmPricingRules.find((rule) => rule.serviceKind === service.serviceKind);
+
+  return [
+    {
+      serviceKind: service.serviceKind,
+      markupBps: service.marginBps,
+      rushMarkupBps: 0,
+      minimumMarginMinor: baseRule?.minimumMarginMinor ?? 100,
+      platformFeeMinor: baseRule?.platformFeeMinor ?? 25
+    }
+  ];
+}
+
+function getDefaultGrowthDestinationUrl(service: GrowthServiceCatalogItem) {
+  switch (service.platform) {
+    case "TIKTOK":
+      return "https://www.tiktok.com/@fliptrybe";
+    case "INSTAGRAM":
+      return "https://www.instagram.com/fliptrybe";
+    case "YOUTUBE":
+      return "https://www.youtube.com/@fliptrybe";
+    case "TELEGRAM":
+      return "https://t.me/fliptrybe";
+    case "WEBSITE":
+    default:
+      return "https://fliptrybe.example";
+  }
+}
+
+function cloneGrowthService(service: GrowthServiceCatalogItem): GrowthServiceCatalogItem {
+  return {
+    ...service,
+    baseRate: { ...service.baseRate },
+    supplierRouting: {
+      ...service.supplierRouting,
+      fallbackSuppliers: [...service.supplierRouting.fallbackSuppliers]
+    },
+    risk: {
+      ...service.risk,
+      mitigations: [...service.risk.mitigations]
+    }
+  };
+}
+
+function normalizeGrowthOrderStatus(status?: string) {
+  const allowed: GrowthOrderStatus[] = [
+    "PENDING",
+    "SUBMITTED",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "FAILED",
+    "REFUNDED"
+  ];
+
+  return allowed.includes(status as GrowthOrderStatus) ? (status as GrowthOrderStatus) : undefined;
+}
+
 function createSmmSupplierBundle() {
   if (process.env.SMM_PROVIDER !== "live") {
     const supplier = createMockSmmSupplier();
+    const providerAudit: SmmSupplierAuditProvider[] = [
+      {
+        name: supplier.name,
+        mode: "mock",
+        configured: true,
+        supportedCategories: getAllSmmServiceKinds(),
+        pricingModel: "per-1000-rate-card",
+        routingRole: "primary",
+        serviceMapCoverage: []
+      }
+    ];
 
-    return { supplier, suppliers: [supplier] };
+    return { providerAudit, supplier, suppliers: [supplier] };
   }
 
   const supplierConfigs = [
@@ -201,8 +315,24 @@ function createSmmSupplierBundle() {
   const suppliers = supplierConfigs
     .filter((config) => Boolean(config.apiKey))
     .map((config) => createPerfectPanelSmmSupplier(config));
+  const firstConfiguredSupplier = supplierConfigs.find((config) => Boolean(config.apiKey))?.name;
+  const providerAudit: SmmSupplierAuditProvider[] = supplierConfigs.map((config) => ({
+    name: config.name,
+    mode: "perfect-panel",
+    configured: Boolean(config.apiKey),
+    apiHost: getApiHost(config.apiUrl),
+    supportedCategories: getAllSmmServiceKinds(),
+    pricingModel: "per-1000-rate-card",
+    routingRole: !config.apiKey
+      ? "disabled"
+      : config.name === firstConfiguredSupplier
+        ? "primary"
+        : "fallback",
+    serviceMapCoverage: getServiceMapCoverage(config.serviceMap)
+  }));
 
   return {
+    providerAudit,
     supplier: createRoutedSmmSupplier(suppliers),
     suppliers
   };
@@ -226,7 +356,12 @@ export class PlatformService {
   private readonly campaigns: Campaign[] = [];
   private readonly paymentIntents: PaymentIntent[] = [];
   private readonly ledgerEntries: LedgerEntry[] = [];
+  private readonly auditLogs: AuditLog[] = [];
   private readonly smmOrders: SmmOrder[] = [];
+  private readonly growthServices: GrowthServiceCatalogItem[] =
+    defaultGrowthServicesCatalog.map(cloneGrowthService);
+  private readonly growthOrders: GrowthOrder[] = [];
+  private readonly growthMonitoringEvents: GrowthMonitoringEvent[] = [];
   private readonly supportTickets: SupportTicket[] = [];
   private readonly notifications: NotificationMessage[] = [];
 
@@ -572,6 +707,452 @@ export class PlatformService {
     return this.smmSupplier.requestCancel(supplierReferences);
   }
 
+  listGrowthServices(options?: { includeDisabled?: boolean }) {
+    return this.growthServices
+      .filter((service) => options?.includeDisabled || service.enabled)
+      .map(cloneGrowthService);
+  }
+
+  listAdminGrowthServices(context: AuthenticatedRequestContext | undefined) {
+    requireWorkspaceContext(context);
+
+    return this.listGrowthServices({ includeDisabled: true });
+  }
+
+  listGrowthCatalog() {
+    const services = this.listGrowthServices();
+    const categories = Array.from(
+      new Map(
+        services.map((service) => [
+          service.category,
+          {
+            label: service.category,
+            platform: service.platform,
+            serviceCount: services.filter((item) => item.category === service.category).length
+          }
+        ])
+      ).values()
+    );
+
+    return { categories, services };
+  }
+
+  async createGrowthOrder(
+    context: AuthenticatedRequestContext | undefined,
+    input: CreateGrowthOrderDto
+  ) {
+    const scope = requireWorkspaceContext(context);
+    const service = this.requireGrowthService(input.serviceCode);
+
+    if (!service.enabled) {
+      throw new BadRequestException("Growth service is currently disabled.");
+    }
+
+    const quantity = Math.round(input.quantity ?? service.minimumQuantity);
+
+    if (quantity < service.minimumQuantity || quantity > service.maximumQuantity) {
+      throw new BadRequestException(
+        `Quantity must be between ${service.minimumQuantity} and ${service.maximumQuantity}.`
+      );
+    }
+
+    const timestamp = now();
+    const destinationUrl = input.destinationUrl?.trim() || getDefaultGrowthDestinationUrl(service);
+    const idempotencyKey = input.idempotencyKey?.trim() || id("growth_idempotency");
+    const existingIdempotentOrder = this.findGrowthOrderByIdempotencyKey(
+      scope.workspaceId,
+      idempotencyKey
+    );
+
+    if (existingIdempotentOrder) {
+      this.recordGrowthMonitoringEvent({
+        workspaceId: scope.workspaceId,
+        orderId: existingIdempotentOrder.id,
+        kind: "SUPPLIER_SUBMISSION_SKIPPED_DUPLICATE",
+        detail: "Growth order idempotency key reused; returning existing order without supplier execution."
+      });
+
+      return {
+        order: existingIdempotentOrder,
+        reviewRequired:
+          existingIdempotentOrder.status === "PENDING" && !existingIdempotentOrder.supplierReference,
+        idempotent: true
+      };
+    }
+
+    const activeDuplicate = this.findActiveGrowthDuplicate({
+      workspaceId: scope.workspaceId,
+      serviceCode: service.code,
+      destinationUrl,
+      quantity
+    });
+
+    if (activeDuplicate) {
+      this.recordGrowthMonitoringEvent({
+        workspaceId: scope.workspaceId,
+        orderId: activeDuplicate.id,
+        kind: "SUPPLIER_SUBMISSION_SKIPPED_DUPLICATE",
+        detail: "Growth supplier execution blocked because an equivalent active order already exists."
+      });
+      throw new BadRequestException(
+        "An active Growth order already exists for this service, destination, and quantity."
+      );
+    }
+
+    const smmOrder: SmmOrder = {
+      id: id("smm"),
+      workspaceId: scope.workspaceId,
+      serviceKind: service.serviceKind,
+      destination: {
+        kind: service.destinationKind,
+        url: destinationUrl
+      },
+      quantity,
+      status: "QUEUED",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    const quote = await this.smmSupplier.quoteService({
+      serviceKind: service.serviceKind,
+      quantity,
+      destination: smmOrder.destination
+    });
+    const pricedQuote = calculateSmmPrice({
+      quote,
+      serviceKind: service.serviceKind,
+      rules: getGrowthPricingRules(service)
+    });
+    const fraudAssessment = assessSmmOrderFraud({
+      order: smmOrder,
+      quote,
+      recentOrders: this.smmOrders.filter(
+        (recentOrder) => recentOrder.workspaceId === scope.workspaceId
+      )
+    });
+
+    if (fraudAssessment.action === "BLOCK") {
+      throw new BadRequestException({
+        message: "Growth order blocked by fraud controls.",
+        fraudAssessment
+      });
+    }
+
+    const orderId = id("growth");
+    const reservation = this.reserveGrowthFunds({
+      context: scope,
+      orderId,
+      amount: pricedQuote.customerPrice,
+      idempotencyKey
+    });
+    const baseGrowthOrder: GrowthOrder = {
+      id: orderId,
+      workspaceId: scope.workspaceId,
+      serviceCode: service.code,
+      serviceName: service.name,
+      platform: service.platform,
+      serviceKind: service.serviceKind,
+      destinationKind: service.destinationKind,
+      destinationUrl,
+      quantityOrdered: quantity,
+      quantityDelivered: 0,
+      status: "PENDING",
+      amount: pricedQuote.customerPrice,
+      supplierCost: pricedQuote.supplierCost,
+      grossMargin: pricedQuote.grossMargin,
+      expectedCompletionAt: getGrowthExpectedCompletionAt({
+        estimatedDeliveryMinutes: pricedQuote.estimatedDeliveryMinutes,
+        now: timestamp
+      }),
+      idempotencyKey,
+      paymentStatus: "FUNDS_RESERVED",
+      reservationLedgerEntryId: reservation.id,
+      refundEligibility: "NONE",
+      refundReviewStatus: "NOT_REQUIRED",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ...(pricedQuote.supplierName === undefined ? {} : { supplierName: pricedQuote.supplierName })
+    };
+    this.growthOrders.unshift(baseGrowthOrder);
+
+    if (
+      fraudAssessment.action === "REVIEW" ||
+      service.supplierRouting.strategy === "MANUAL_REVIEW"
+    ) {
+      const reviewOrder: GrowthOrder = {
+        ...baseGrowthOrder,
+        paymentStatus: "MANUAL_REVIEW",
+        refundEligibility: "MANUAL_REVIEW",
+        refundReviewStatus: "PENDING",
+        updatedAt: now()
+      };
+      this.growthOrders[0] = reviewOrder;
+      this.recordAuditLog({
+        workspaceId: scope.workspaceId,
+        actorUserId: scope.userId,
+        action: "growth.manual_review_required",
+        entityType: "GrowthOrder",
+        entityId: reviewOrder.id,
+        metadata: {
+          fraudAction: fraudAssessment.action,
+          serviceCode: service.code,
+          amountMinor: reviewOrder.amount.amountMinor
+        }
+      });
+
+      return {
+        order: reviewOrder,
+        fraudAssessment,
+        pricing: pricedQuote,
+        reviewRequired: true
+      };
+    }
+
+    try {
+      const result = await this.smmSupplier.createOrder(smmOrder);
+      const submittedSmmOrder: SmmOrder = {
+        ...smmOrder,
+        supplierReference: result.supplierReference,
+        status: result.status,
+        updatedAt: now()
+      };
+      const status = mapSmmOrderStatusToGrowthStatus(result.status);
+      const finance = this.applyGrowthFinancialTransition(baseGrowthOrder, status);
+      const growthOrder: GrowthOrder = {
+        ...baseGrowthOrder,
+        status,
+        ...finance,
+        quantityDelivered: calculateGrowthDeliveredQuantity({
+          quantityOrdered: quantity,
+          status
+        }),
+        supplierReference: result.supplierReference,
+        submittedAt: timestamp,
+        updatedAt: submittedSmmOrder.updatedAt,
+        ...(status === "COMPLETED" ? { completedAt: submittedSmmOrder.updatedAt } : {})
+      };
+
+      this.smmOrders.unshift(submittedSmmOrder);
+      const growthOrderIndex = this.growthOrders.findIndex((order) => order.id === baseGrowthOrder.id);
+      if (growthOrderIndex >= 0) {
+        this.growthOrders[growthOrderIndex] = growthOrder;
+      } else {
+        this.growthOrders.unshift(growthOrder);
+      }
+      this.pushEvent(
+        createEvent({
+          name: "SMMOrderCreated",
+          tenantId: scope.workspaceId,
+          payload: { order: submittedSmmOrder }
+        })
+      );
+
+      return {
+        order: growthOrder,
+        fraudAssessment,
+        pricing: pricedQuote,
+        reviewRequired: false
+      };
+    } catch (error) {
+      const failedOrder: GrowthOrder = {
+        ...baseGrowthOrder,
+        status: "FAILED",
+        failureReason:
+          error instanceof Error ? error.message : "Supplier submission failed unexpectedly.",
+        ...this.applyGrowthFinancialTransition(baseGrowthOrder, "FAILED"),
+        updatedAt: now()
+      };
+
+      const growthOrderIndex = this.growthOrders.findIndex((order) => order.id === baseGrowthOrder.id);
+      if (growthOrderIndex >= 0) {
+        this.growthOrders[growthOrderIndex] = failedOrder;
+      } else {
+        this.growthOrders.unshift(failedOrder);
+      }
+      this.recordGrowthMonitoringEvent({
+        workspaceId: scope.workspaceId,
+        orderId: failedOrder.id,
+        kind: "SUPPLIER_SUBMISSION_FAILED",
+        detail: failedOrder.failureReason ?? "Supplier submission failed unexpectedly."
+      });
+
+      return {
+        order: failedOrder,
+        fraudAssessment,
+        pricing: pricedQuote,
+        reviewRequired: false
+      };
+    }
+  }
+
+  async listGrowthOrders(context: AuthenticatedRequestContext | undefined) {
+    const scope = requireWorkspaceContext(context);
+
+    await this.refreshGrowthOrders(scope);
+
+    return this.growthOrders.filter((order) => order.workspaceId === scope.workspaceId);
+  }
+
+  async getGrowthOrder(context: AuthenticatedRequestContext | undefined, orderId: string) {
+    const scope = requireWorkspaceContext(context);
+
+    await this.refreshGrowthOrders(scope);
+
+    const order = this.growthOrders.find(
+      (item) => item.id === orderId && item.workspaceId === scope.workspaceId
+    );
+
+    if (!order) {
+      throw new NotFoundException("Growth order was not found.");
+    }
+
+    return order;
+  }
+
+  async getGrowthOverview(context: AuthenticatedRequestContext | undefined) {
+    const scope = requireWorkspaceContext(context);
+    const orders = await this.listGrowthOrders(scope);
+    const totals = orders.reduce(
+      (summary, order) => ({
+        ...summary,
+        [order.status]: summary[order.status] + 1
+      }),
+      {
+        PENDING: 0,
+        SUBMITTED: 0,
+        IN_PROGRESS: 0,
+        COMPLETED: 0,
+        FAILED: 0,
+        REFUNDED: 0
+      } satisfies Record<GrowthOrderStatus, number>
+    );
+
+    return {
+      totals,
+      activeServices: this.growthServices.filter((service) => service.enabled).length,
+      disabledServices: this.growthServices.filter((service) => !service.enabled).length,
+      revenue: {
+        amountMinor: orders
+          .filter((order) => order.status === "COMPLETED")
+          .reduce((total, order) => total + order.amount.amountMinor, 0),
+        currency: "NGN" as const
+      },
+      monitoring: this.getGrowthMonitoringSummary(scope.workspaceId, orders),
+      recentOrders: orders.slice(0, 8)
+    };
+  }
+
+  async getGrowthSupplierAudit(context: AuthenticatedRequestContext | undefined) {
+    requireWorkspaceContext(context);
+    const health = await this.getSmmSupplierHealth();
+
+    return createSmmSupplierAudit({
+      providers: this.smmSupplierBundle.providerAudit,
+      reliability: health.suppliers
+    });
+  }
+
+  getGrowthRiskReport() {
+    return {
+      generatedAt: now(),
+      disclaimer:
+        "Risk levels are operational guidance for Growth Services controls, not legal advice.",
+      services: getGrowthServiceRiskReport(this.growthServices)
+    };
+  }
+
+  updateGrowthService(
+    context: AuthenticatedRequestContext | undefined,
+    serviceCode: string,
+    input: UpdateGrowthServiceDto
+  ) {
+    requireWorkspaceContext(context);
+    const index = this.growthServices.findIndex((service) => service.code === serviceCode);
+
+    if (index < 0) {
+      throw new NotFoundException("Growth service was not found.");
+    }
+
+    const current = this.growthServices[index];
+
+    if (!current) {
+      throw new NotFoundException("Growth service was not found.");
+    }
+
+    const updated = applyGrowthServiceAdminControls(current, input);
+    this.growthServices[index] = updated;
+
+    return cloneGrowthService(updated);
+  }
+
+  updateGrowthOrder(
+    context: AuthenticatedRequestContext | undefined,
+    orderId: string,
+    input: UpdateGrowthOrderDto
+  ) {
+    const scope = requireWorkspaceContext(context);
+    const index = this.growthOrders.findIndex(
+      (order) => order.id === orderId && order.workspaceId === scope.workspaceId
+    );
+
+    if (index < 0) {
+      throw new NotFoundException("Growth order was not found.");
+    }
+
+    const current = this.growthOrders[index];
+
+    if (!current) {
+      throw new NotFoundException("Growth order was not found.");
+    }
+
+    const timestamp = now();
+    const nextStatus = normalizeGrowthOrderStatus(input.status);
+    if (nextStatus !== undefined) {
+      this.assertGrowthStatusTransition(current, nextStatus);
+    }
+    const finance = nextStatus === undefined ? {} : this.applyGrowthFinancialTransition(current, nextStatus);
+    const updated: GrowthOrder = {
+      ...current,
+      ...(nextStatus === undefined ? {} : { status: nextStatus }),
+      ...finance,
+      ...(typeof input.quantityDelivered === "number"
+        ? {
+            quantityDelivered: Math.max(
+              0,
+              Math.min(Math.round(input.quantityDelivered), current.quantityOrdered)
+            )
+          }
+        : {}),
+      ...(input.supplierName === undefined ? {} : { supplierName: input.supplierName }),
+      ...(input.supplierReference === undefined
+        ? {}
+        : { supplierReference: input.supplierReference }),
+      ...(input.adminNote === undefined ? {} : { adminNote: input.adminNote }),
+      ...(input.failureReason === undefined ? {} : { failureReason: input.failureReason }),
+      updatedAt: timestamp,
+      ...((nextStatus === "COMPLETED" || nextStatus === "REFUNDED") && !current.completedAt
+        ? { completedAt: timestamp }
+        : {})
+    };
+
+    this.growthOrders[index] = updated;
+    if (nextStatus) {
+      this.recordAuditLog({
+        workspaceId: scope.workspaceId,
+        actorUserId: scope.userId,
+        action: `growth.status_${nextStatus.toLowerCase()}`,
+        entityType: "GrowthOrder",
+        entityId: updated.id,
+        metadata: {
+          status: nextStatus,
+          paymentStatus: updated.paymentStatus ?? null,
+          amountMinor: updated.amount.amountMinor
+        }
+      });
+    }
+
+    return updated;
+  }
+
   async createPaymentIntent(
     context: AuthenticatedRequestContext | undefined,
     input: CreatePaymentIntentDto
@@ -703,7 +1284,7 @@ export class PlatformService {
       id: walletId,
       workspaceId: scope.workspaceId,
       availableBalance: calculateAvailableBalance(workspaceLedgerEntries),
-      heldBalance: { amountMinor: 175000, currency: "NGN" },
+      heldBalance: this.calculateHeldBalance(walletId),
       createdAt: timestamp,
       updatedAt: timestamp
     };
@@ -893,6 +1474,7 @@ export class PlatformService {
     const timestamp = now();
 
     return [
+      ...this.auditLogs.filter((log) => log.workspaceId === scope.workspaceId),
       {
         id: `audit_${scope.workspaceId}`,
         workspaceId: scope.workspaceId,
@@ -916,6 +1498,408 @@ export class PlatformService {
     void this.aiBrain.trackPlatformEvent(event);
   }
 
+  private recordAuditLog(input: {
+    workspaceId: string;
+    actorUserId?: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    metadata?: Record<string, string | number | boolean | null>;
+  }) {
+    const timestamp = now();
+    this.auditLogs.unshift({
+      id: id("audit"),
+      workspaceId: input.workspaceId,
+      ...(input.actorUserId === undefined ? {} : { actorUserId: input.actorUserId }),
+      action: input.action,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      metadata: input.metadata ?? {},
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
+  }
+
+  private recordGrowthMonitoringEvent(input: Omit<GrowthMonitoringEvent, "id" | "createdAt">) {
+    if (
+      input.kind === "FULFILLMENT_DELAY" &&
+      input.orderId &&
+      this.growthMonitoringEvents.some(
+        (event) =>
+          event.workspaceId === input.workspaceId &&
+          event.orderId === input.orderId &&
+          event.kind === input.kind
+      )
+    ) {
+      return;
+    }
+
+    this.growthMonitoringEvents.unshift({
+      id: id("growth_monitor"),
+      createdAt: now(),
+      ...input
+    });
+  }
+
+  private getGrowthMonitoringSummary(workspaceId: string, orders: GrowthOrder[]) {
+    const events = this.growthMonitoringEvents.filter((event) => event.workspaceId === workspaceId);
+    const delayedActiveOrders = orders.filter(
+      (order) =>
+        growthActiveStatuses.has(order.status) &&
+        new Date(order.expectedCompletionAt).getTime() < Date.now()
+    );
+
+    return {
+      unpaidExecutionAttempts: events.filter((event) => event.kind === "UNPAID_EXECUTION_ATTEMPT")
+        .length,
+      failedSupplierOrders: events.filter((event) => event.kind === "SUPPLIER_SUBMISSION_FAILED")
+        .length,
+      duplicateSupplierSubmissionsPrevented: events.filter(
+        (event) => event.kind === "SUPPLIER_SUBMISSION_SKIPPED_DUPLICATE"
+      ).length,
+      fulfillmentDelays:
+        events.filter((event) => event.kind === "FULFILLMENT_DELAY").length +
+        delayedActiveOrders.length,
+      recentEvents: events.slice(0, 8)
+    };
+  }
+
+  private findGrowthOrderByIdempotencyKey(workspaceId: string, idempotencyKey: string) {
+    return this.growthOrders.find(
+      (order) => order.workspaceId === workspaceId && order.idempotencyKey === idempotencyKey
+    );
+  }
+
+  private findActiveGrowthDuplicate(input: {
+    workspaceId: string;
+    serviceCode: string;
+    destinationUrl: string;
+    quantity: number;
+  }) {
+    const destinationUrl = input.destinationUrl.toLowerCase();
+
+    return this.growthOrders.find(
+      (order) =>
+        order.workspaceId === input.workspaceId &&
+        order.serviceCode === input.serviceCode &&
+        order.destinationUrl.toLowerCase() === destinationUrl &&
+        order.quantityOrdered === input.quantity &&
+        growthActiveStatuses.has(order.status)
+    );
+  }
+
+  private growthLedgerKey(order: Pick<GrowthOrder, "id" | "idempotencyKey">) {
+    return order.idempotencyKey ?? order.id;
+  }
+
+  private assertGrowthStatusTransition(current: GrowthOrder, nextStatus: GrowthOrderStatus) {
+    if (current.status === nextStatus) {
+      return;
+    }
+
+    if (current.status === "COMPLETED" && nextStatus !== "REFUNDED") {
+      throw new BadRequestException("Completed Growth orders can only transition to refunded.");
+    }
+
+    if (current.status === "REFUNDED") {
+      throw new BadRequestException("Refunded Growth orders cannot be moved to another status.");
+    }
+
+    if (current.status === "FAILED" && nextStatus !== "REFUNDED") {
+      throw new BadRequestException("Failed Growth orders can only transition to refunded.");
+    }
+  }
+
+  private hasLedgerEntry(idempotencyKey: string) {
+    return this.ledgerEntries.some((entry) => entry.idempotencyKey === idempotencyKey);
+  }
+
+  private pushLedgerEntry(entry: Omit<LedgerEntry, "id" | "createdAt" | "updatedAt">) {
+    const existing = entry.idempotencyKey
+      ? this.ledgerEntries.find((item) => item.idempotencyKey === entry.idempotencyKey)
+      : undefined;
+
+    if (existing) {
+      return existing;
+    }
+
+    const timestamp = now();
+    const ledgerEntry: LedgerEntry = {
+      id: id("ledger"),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ...entry
+    };
+
+    this.ledgerEntries.push(ledgerEntry);
+
+    return ledgerEntry;
+  }
+
+  private calculateHeldBalance(walletId: string): Wallet["heldBalance"] {
+    const activeHoldMinor = this.ledgerEntries
+      .filter((entry) => entry.walletId === walletId && entry.kind === "HOLD")
+      .reduce((total, hold) => {
+        const sourceId = hold.sourceId ?? hold.metadata?.sourceId;
+        const hasReleaseOrCapture = this.ledgerEntries.some(
+          (entry) =>
+            entry.walletId === walletId &&
+            (entry.kind === "RELEASE" || entry.kind === "DEBIT") &&
+            (entry.sourceId ?? entry.metadata?.sourceId) === sourceId &&
+            entry.reference.includes("growth_")
+        );
+
+        return hasReleaseOrCapture ? total : total + hold.amount.amountMinor;
+      }, 0);
+
+    return { amountMinor: activeHoldMinor, currency: "NGN" };
+  }
+
+  private reserveGrowthFunds(input: {
+    context: AuthenticatedRequestContext;
+    orderId: string;
+    amount: Wallet["availableBalance"];
+    idempotencyKey: string;
+  }) {
+    if (input.amount.amountMinor <= 0) {
+      throw new BadRequestException("Growth order amount must be greater than zero.");
+    }
+
+    const wallet = this.getWallet(input.context);
+
+    if (wallet.availableBalance.currency !== input.amount.currency) {
+      throw new BadRequestException("Growth order currency must match wallet currency.");
+    }
+
+    if (wallet.availableBalance.amountMinor < input.amount.amountMinor) {
+      this.recordGrowthMonitoringEvent({
+        workspaceId: input.context.workspaceId,
+        orderId: input.orderId,
+        kind: "UNPAID_EXECUTION_ATTEMPT",
+        detail: "Growth supplier execution blocked because wallet funds were unavailable."
+      });
+      this.recordAuditLog({
+        workspaceId: input.context.workspaceId,
+        actorUserId: input.context.userId,
+        action: "growth.payment_blocked",
+        entityType: "GrowthOrder",
+        entityId: input.orderId,
+        metadata: {
+          amountMinor: input.amount.amountMinor,
+          availableMinor: wallet.availableBalance.amountMinor
+        }
+      });
+
+      throw new BadRequestException(
+        "Growth order requires a paid invoice or enough wallet balance to reserve funds."
+      );
+    }
+
+    const reservation = this.pushLedgerEntry({
+      walletId: wallet.id,
+      kind: "HOLD",
+      amount: input.amount,
+      reference: `growth_hold:${input.orderId}`,
+      description: "Growth Services funds reserved before supplier execution",
+      idempotencyKey: `growth:${input.idempotencyKey}:reserve`,
+      sourceType: "GrowthOrder",
+      sourceId: input.orderId,
+      metadata: {
+        orderId: input.orderId,
+        sourceId: input.orderId,
+        idempotencyKey: input.idempotencyKey
+      }
+    });
+
+    this.recordAuditLog({
+      workspaceId: input.context.workspaceId,
+      actorUserId: input.context.userId,
+      action: "growth.funds_reserved",
+      entityType: "GrowthOrder",
+      entityId: input.orderId,
+      metadata: {
+        amountMinor: input.amount.amountMinor,
+        ledgerEntryId: reservation.id
+      }
+    });
+
+    return reservation;
+  }
+
+  private releaseGrowthFunds(order: GrowthOrder, reason: string) {
+    const ledgerKey = this.growthLedgerKey(order);
+
+    if (this.hasLedgerEntry(`growth:${ledgerKey}:capture`)) {
+      return undefined;
+    }
+
+    const release = this.pushLedgerEntry({
+      walletId: walletIdFor(order.workspaceId),
+      kind: "RELEASE",
+      amount: order.amount,
+      reference: `growth_release:${order.id}`,
+      description: `Growth Services funds released: ${reason}`,
+      idempotencyKey: `growth:${ledgerKey}:release`,
+      sourceType: "GrowthOrder",
+      sourceId: order.id,
+      metadata: {
+        orderId: order.id,
+        sourceId: order.id,
+        reason
+      }
+    });
+
+    this.recordAuditLog({
+      workspaceId: order.workspaceId,
+      action: "growth.funds_released",
+      entityType: "GrowthOrder",
+      entityId: order.id,
+      metadata: {
+        amountMinor: order.amount.amountMinor,
+        ledgerEntryId: release.id,
+        reason
+      }
+    });
+
+    return release;
+  }
+
+  private captureGrowthFunds(order: GrowthOrder) {
+    const ledgerKey = this.growthLedgerKey(order);
+
+    if (this.hasLedgerEntry(`growth:${ledgerKey}:capture`)) {
+      return undefined;
+    }
+
+    const release = this.pushLedgerEntry({
+      walletId: walletIdFor(order.workspaceId),
+      kind: "RELEASE",
+      amount: order.amount,
+      reference: `growth_capture_release:${order.id}`,
+      description: "Growth Services hold released for capture",
+      idempotencyKey: `growth:${ledgerKey}:capture_release`,
+      sourceType: "GrowthOrder",
+      sourceId: order.id,
+      metadata: {
+        orderId: order.id,
+        sourceId: order.id
+      }
+    });
+    const capture = this.pushLedgerEntry({
+      walletId: walletIdFor(order.workspaceId),
+      kind: "DEBIT",
+      amount: order.amount,
+      reference: `growth_capture:${order.id}`,
+      description: "Growth Services supplier fulfillment captured",
+      idempotencyKey: `growth:${ledgerKey}:capture`,
+      sourceType: "GrowthOrder",
+      sourceId: order.id,
+      metadata: {
+        orderId: order.id,
+        sourceId: order.id,
+        supplierReference: order.supplierReference ?? null
+      }
+    });
+
+    this.recordAuditLog({
+      workspaceId: order.workspaceId,
+      action: "growth.funds_captured",
+      entityType: "GrowthOrder",
+      entityId: order.id,
+      metadata: {
+        amountMinor: order.amount.amountMinor,
+        releaseLedgerEntryId: release.id,
+        captureLedgerEntryId: capture.id
+      }
+    });
+
+    return { release, capture };
+  }
+
+  private refundGrowthOrder(order: GrowthOrder, reason: string) {
+    const ledgerKey = this.growthLedgerKey(order);
+
+    if (this.hasLedgerEntry(`growth:${ledgerKey}:refund`)) {
+      return undefined;
+    }
+
+    if (!this.hasLedgerEntry(`growth:${ledgerKey}:capture`)) {
+      return this.releaseGrowthFunds(order, reason);
+    }
+
+    const refund = this.pushLedgerEntry({
+      walletId: walletIdFor(order.workspaceId),
+      kind: "REVERSAL",
+      amount: order.amount,
+      reference: `growth_refund:${order.id}`,
+      description: `Growth Services refund: ${reason}`,
+      idempotencyKey: `growth:${ledgerKey}:refund`,
+      sourceType: "GrowthOrder",
+      sourceId: order.id,
+      metadata: {
+        orderId: order.id,
+        sourceId: order.id,
+        reason
+      }
+    });
+
+    this.recordAuditLog({
+      workspaceId: order.workspaceId,
+      action: "growth.refund_recorded",
+      entityType: "GrowthOrder",
+      entityId: order.id,
+      metadata: {
+        amountMinor: order.amount.amountMinor,
+        ledgerEntryId: refund.id,
+        reason
+      }
+    });
+
+    return refund;
+  }
+
+  private applyGrowthFinancialTransition(order: GrowthOrder, status: GrowthOrderStatus) {
+    if (status === "COMPLETED") {
+      const capture = this.captureGrowthFunds(order);
+
+      return {
+        paymentStatus: "FUNDS_CAPTURED" as const,
+        refundEligibility: "NONE" as const,
+        refundReviewStatus: "NOT_REQUIRED" as const,
+        ...(capture?.release === undefined ? {} : { releaseLedgerEntryId: capture.release.id }),
+        ...(capture?.capture === undefined ? {} : { captureLedgerEntryId: capture.capture.id })
+      };
+    }
+
+    if (status === "FAILED") {
+      const release = this.releaseGrowthFunds(order, "supplier_failure");
+
+      return {
+        paymentStatus: "FUNDS_RELEASED" as const,
+        refundEligibility: "AUTOMATIC" as const,
+        refundReviewStatus: "NOT_REQUIRED" as const,
+        ...(release === undefined ? {} : { releaseLedgerEntryId: release.id })
+      };
+    }
+
+    if (status === "REFUNDED") {
+      const refund = this.refundGrowthOrder(order, "manual_or_supplier_refund");
+
+      return {
+        paymentStatus: "REFUNDED" as const,
+        refundEligibility: "AUTOMATIC" as const,
+        refundReviewStatus: "APPROVED" as const,
+        ...(refund === undefined
+          ? {}
+          : refund.kind === "REVERSAL"
+            ? { refundLedgerEntryId: refund.id }
+            : { releaseLedgerEntryId: refund.id })
+      };
+    }
+
+    return {};
+  }
+
   private assertSmmReferencesBelongToWorkspace(
     context: AuthenticatedRequestContext,
     supplierReferences: string[]
@@ -931,6 +1915,105 @@ export class PlatformService {
       throw new BadRequestException(
         "One or more SMM supplier references do not belong to the active workspace."
       );
+    }
+  }
+
+  private requireGrowthService(serviceCode?: string) {
+    const service =
+      this.growthServices.find((item) => item.code === serviceCode) ?? this.growthServices[0];
+
+    if (!service) {
+      throw new NotFoundException("Growth Services catalog is empty.");
+    }
+
+    return service;
+  }
+
+  private async refreshGrowthOrders(context: AuthenticatedRequestContext) {
+    const orders = this.growthOrders.filter(
+      (order) =>
+        order.workspaceId === context.workspaceId &&
+        order.supplierReference &&
+        order.status !== "COMPLETED" &&
+        order.status !== "FAILED" &&
+        order.status !== "REFUNDED"
+    );
+    const timestampMs = Date.now();
+
+    for (const order of orders) {
+      if (new Date(order.expectedCompletionAt).getTime() < timestampMs) {
+        this.recordGrowthMonitoringEvent({
+          workspaceId: context.workspaceId,
+          orderId: order.id,
+          kind: "FULFILLMENT_DELAY",
+          detail: "Growth supplier order is past the expected completion timestamp."
+        });
+      }
+    }
+
+    const supplierReferences = orders
+      .map((order) => order.supplierReference)
+      .filter((reference): reference is string => Boolean(reference));
+
+    if (supplierReferences.length === 0) {
+      return;
+    }
+
+    try {
+      const snapshots = await this.smmSupplier.getOrderStatuses(supplierReferences);
+      const timestamp = now();
+
+      for (const snapshot of snapshots) {
+        const index = this.growthOrders.findIndex(
+          (order) =>
+            order.workspaceId === context.workspaceId &&
+            order.supplierReference === snapshot.supplierReference
+        );
+
+        if (index < 0) {
+          continue;
+        }
+
+        const current = this.growthOrders[index];
+
+        if (!current) {
+          continue;
+        }
+
+        const status = mapSmmOrderStatusToGrowthStatus(snapshot.status);
+        const finance = this.applyGrowthFinancialTransition(current, status);
+        this.growthOrders[index] = {
+          ...current,
+          status,
+          ...finance,
+          quantityDelivered: calculateGrowthDeliveredQuantity({
+            quantityOrdered: current.quantityOrdered,
+            status,
+            ...(snapshot.remains === undefined ? {} : { remains: snapshot.remains })
+          }),
+          updatedAt: timestamp,
+          ...(status === "COMPLETED" && !current.completedAt ? { completedAt: timestamp } : {})
+        };
+
+        if (status === "FAILED") {
+          this.recordGrowthMonitoringEvent({
+            workspaceId: context.workspaceId,
+            orderId: current.id,
+            kind: "SUPPLIER_SUBMISSION_FAILED",
+            detail: "Growth supplier reported the order as failed during status refresh."
+          });
+        }
+      }
+    } catch {
+      for (const order of orders) {
+        this.recordGrowthMonitoringEvent({
+          workspaceId: context.workspaceId,
+          orderId: order.id,
+          kind: "FULFILLMENT_DELAY",
+          detail: "Growth supplier status refresh failed; order retained its last known state."
+        });
+      }
+      // Status refresh is best-effort; order pages should keep their last known lifecycle state.
     }
   }
 

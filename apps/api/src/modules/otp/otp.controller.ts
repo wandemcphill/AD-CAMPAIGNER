@@ -6,18 +6,22 @@ import type {
   OtpProviderControlDto,
   QuoteOtpOrderDto
 } from "./otp.dtos";
+import { Public, RequirePermissions } from "../authorization.decorators";
 import { OtpMarketplaceService } from "./otp.service";
 
 @Controller("otp")
+@RequirePermissions("payment:manage")
 export class OtpController {
   constructor(@Inject(OtpMarketplaceService) private readonly otp: OtpMarketplaceService) {}
 
   @Get("services")
+  @Public()
   services() {
     return this.otp.listServices();
   }
 
   @Post("quote")
+  @RequirePermissions("analytics:read")
   quote(@Body() body: QuoteOtpOrderDto) {
     return this.otp.quote(body);
   }
@@ -63,6 +67,7 @@ export class OtpController {
 }
 
 @Controller("admin/otp")
+@RequirePermissions("admin:access")
 export class AdminOtpController {
   constructor(@Inject(OtpMarketplaceService) private readonly otp: OtpMarketplaceService) {}
 

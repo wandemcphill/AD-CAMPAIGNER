@@ -1,13 +1,31 @@
 /* eslint-disable @typescript-eslint/no-base-to-string, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException
+} from "@nestjs/common";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { hasPermission } from "@fliptrybe/auth";
 import {
   createKorapayPaymentGateway,
   createMockPaymentGateway,
   createMockStorageProvider
 } from "@fliptrybe/providers";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
-import { currencies, type CurrencyCode, type LedgerEntry } from "@fliptrybe/types";
+import {
+  campaignLedgerEntryTypes,
+  currencies,
+  type CampaignBudgetSummary,
+  type CampaignLedgerEntry,
+  type CampaignLedgerEntryDirection,
+  type CampaignLedgerEntryType,
+  type CampaignSpendBreakdown,
+  type CurrencyCode,
+  type LedgerEntry,
+  type Permission
+} from "@fliptrybe/types";
 
 import { PrismaService } from "./prisma.service";
 import type { AuthenticatedRequestContext } from "./request-context";
@@ -25,11 +43,15 @@ const campaignInclude = {
   creatives: { include: { mediaAsset: true }, orderBy: { sortOrder: "asc" } },
   notes: { orderBy: { createdAt: "desc" } },
   statusHistory: { orderBy: { createdAt: "asc" } },
-  assignments: { orderBy: { createdAt: "desc" } },
+  assignments: {
+    include: { assignee: { select: { id: true, name: true, email: true } } },
+    orderBy: { createdAt: "desc" }
+  },
   manualPlacements: { orderBy: { createdAt: "desc" } },
   reports: { orderBy: { createdAt: "desc" } },
   invoices: { orderBy: { createdAt: "desc" } },
-  budgetHolds: { orderBy: { createdAt: "desc" } }
+  budgetHolds: { orderBy: { createdAt: "desc" } },
+  spendEntries: { orderBy: { createdAt: "desc" } }
 };
 
 const allowedCampaignStatuses = [
@@ -47,6 +69,41 @@ const allowedCampaignStatuses = [
   "CANCELLED",
   "FAILED"
 ] as const;
+
+const launchedCampaignStatuses = new Set(["ACTIVE", "RUNNING", "PAUSED", "COMPLETED"]);
+const terminalCampaignStatuses = new Set(["COMPLETED", "CANCELLED", "FAILED", "REJECTED"]);
+const clientPauseStatuses = new Set(["ACTIVE", "RUNNING"]);
+const clientResumeStatuses = new Set(["PAUSED"]);
+const clientChangeRequestStatuses = new Set([
+  "PENDING_REVIEW",
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "CREATIVE_IN_PROGRESS",
+  "QUEUED",
+  "ACTIVE",
+  "RUNNING",
+  "PAUSED"
+]);
+const clientStopStatuses = new Set([
+  "DRAFT",
+  "PENDING_REVIEW",
+  "APPROVED",
+  "CHANGES_REQUESTED",
+  "CREATIVE_IN_PROGRESS",
+  "QUEUED",
+  "ACTIVE",
+  "RUNNING",
+  "PAUSED"
+]);
+const manualPlacementChannels = new Set([
+  "TIKTOK",
+  "INSTAGRAM",
+  "FACEBOOK",
+  "WHATSAPP",
+  "GOOGLE",
+  "OTHER"
+]);
+const reportTypes = new Set(["daily_update", "weekly_report", "final_report"]);
 
 const imageMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const videoMimeTypes = new Set(["video/mp4", "video/quicktime", "video/webm"]);
@@ -109,6 +166,72 @@ function verifyCloudinaryUploadCompletion(asset: Record<string, any>, input: Rec
 
 function getCurrency(value: string | undefined, fallback: CurrencyCode): CurrencyCode {
   return currencies.includes(value as CurrencyCode) ? (value as CurrencyCode) : fallback;
+}
+
+const campaignLedgerLabels: Record<CampaignLedgerEntryType, string> = {
+  WALLET_FUNDING: "Wallet funding",
+  INVOICE_PAYMENT: "Invoice payment",
+  BUDGET_ALLOCATION: "Budget allocation",
+  AD_SPEND: "Ad spend",
+  CREATIVE_COST: "Creative cost",
+  AGENCY_FEE: "Agency fee",
+  REFUND: "Refund",
+  ADJUSTMENT: "Adjustment"
+};
+
+const campaignSpendTypes = new Set<CampaignLedgerEntryType>([
+  "AD_SPEND",
+  "CREATIVE_COST",
+  "AGENCY_FEE",
+  "ADJUSTMENT"
+]);
+
+function normalizeCampaignLedgerEntryType(value: unknown): CampaignLedgerEntryType {
+  const normalized = String(value ?? "AD_SPEND").toUpperCase().replace(/[\s-]+/g, "_");
+
+  return campaignLedgerEntryTypes.includes(normalized as CampaignLedgerEntryType)
+    ? (normalized as CampaignLedgerEntryType)
+    : "AD_SPEND";
+}
+
+function normalizeCampaignLedgerDirection(
+  value: unknown,
+  type: CampaignLedgerEntryType
+): CampaignLedgerEntryDirection {
+  const normalized = String(value ?? "").toUpperCase();
+  if (["CREDIT", "DEBIT", "HOLD", "RELEASE", "REVERSAL"].includes(normalized)) {
+    return normalized as CampaignLedgerEntryDirection;
+  }
+  if (type === "BUDGET_ALLOCATION") {
+    return "HOLD";
+  }
+  if (type === "WALLET_FUNDING") {
+    return "CREDIT";
+  }
+  if (type === "REFUND") {
+    return "RELEASE";
+  }
+
+  return "DEBIT";
+}
+
+function campaignLedgerCategory(type: CampaignLedgerEntryType) {
+  return campaignLedgerLabels[type] ?? "Campaign finance";
+}
+
+function money(amountMinor: number, currency: string | undefined) {
+  return {
+    amountMinor: Math.max(0, Math.round(Number(amountMinor) || 0)),
+    currency: getCurrency(currency, "NGN")
+  };
+}
+
+function entrySourceKey(entry: Pick<CampaignLedgerEntry, "sourceType" | "sourceId" | "type" | "direction">) {
+  return `${entry.sourceType ?? "entry"}:${entry.sourceId ?? "none"}:${entry.type}:${entry.direction}`;
+}
+
+function isDebitSpend(entry: CampaignLedgerEntry) {
+  return campaignSpendTypes.has(entry.type) && entry.direction === "DEBIT";
 }
 
 function slugify(value: string) {
@@ -175,6 +298,134 @@ function normalizeCampaignStatus(value: unknown) {
 
 function normalizeJsonObject(value: unknown) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+}
+
+function requiredString(value: unknown, message: string) {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new BadRequestException(message);
+  }
+
+  return value.trim();
+}
+
+function normalizeReportType(value: unknown) {
+  const normalized = String(value ?? "weekly_report").toLowerCase().replace(/[\s-]+/g, "_");
+
+  if (reportTypes.has(normalized)) {
+    return normalized;
+  }
+
+  throw new BadRequestException("Report type must be daily_update, weekly_report, or final_report.");
+}
+
+function normalizeManualPlacementChannel(value: unknown) {
+  const normalized = String(value ?? "OTHER").toUpperCase().replace(/[\s-]+/g, "_");
+
+  if (manualPlacementChannels.has(normalized)) {
+    return normalized;
+  }
+
+  return "OTHER";
+}
+
+function parseDateInput(value: unknown, message: string) {
+  const date = value ? new Date(String(value)) : undefined;
+
+  if (!date || Number.isNaN(date.getTime())) {
+    throw new BadRequestException(message);
+  }
+
+  return date;
+}
+
+function parseMinorAmount(value: unknown, message: string) {
+  const numeric = typeof value === "string" ? Number(value.replace(/,/g, "")) : Number(value);
+
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new BadRequestException(message);
+  }
+
+  return Math.round(numeric);
+}
+
+function parsePositiveMinorAmount(value: unknown, message: string) {
+  const amountMinor = parseMinorAmount(value, message);
+
+  if (amountMinor <= 0) {
+    throw new BadRequestException(message);
+  }
+
+  return amountMinor;
+}
+
+function parseNonNegativeMinorAmount(value: unknown, message: string) {
+  return parseMinorAmount(value, message);
+}
+
+function parseSpendMinor(input: Record<string, any>, required = false) {
+  const value =
+    input.spendMinor ??
+    input.amountMinor ??
+    input.spend ??
+    input.amount ??
+    (normalizeJsonObject(input.metadata) as Record<string, any>).spendMinor;
+
+  if (value === undefined || value === null || value === "") {
+    if (required) {
+      throw new BadRequestException("Spend must be recorded as a non-negative amount.");
+    }
+
+    return 0;
+  }
+
+  return parseMinorAmount(value, "Spend must be recorded as a non-negative amount.");
+}
+
+function normalizeIdempotencyKey(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim().slice(0, 191) : undefined;
+}
+
+function eventFingerprint(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value ?? {})).digest("hex");
+}
+
+function normalizeInvoiceLineItems(
+  value: unknown,
+  fallback: Array<Record<string, unknown>>,
+  currency: string
+) {
+  const items = Array.isArray(value) && value.length > 0 ? value : fallback;
+
+  return items.map((item, index) => {
+    const record = normalizeJsonObject(item) as Record<string, unknown>;
+    const amountMinor = parsePositiveMinorAmount(
+      record.amountMinor,
+      `Invoice line item ${index + 1} must have a positive amount.`
+    );
+
+    return {
+      ...record,
+      label:
+        typeof record.label === "string" && record.label.trim().length > 0
+          ? record.label.trim()
+          : `Line item ${index + 1}`,
+      amountMinor,
+      currency: getCurrency(record.currency as string | undefined, getCurrency(currency, "NGN"))
+    };
+  });
+}
+
+function assertHttpUrl(value: string, message: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new BadRequestException(message);
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new BadRequestException(message);
+  }
 }
 
 function inferMediaKind(mimeType: string, purpose?: string) {
@@ -289,6 +540,34 @@ function mapLedgerEntry(entry: any): LedgerEntry {
   };
 }
 
+function buildWalletConsistency(entries: LedgerEntry[]) {
+  const availableBalance = calculateAvailableBalance(entries);
+  const currency = availableBalance.currency;
+  const openingBalanceMinor = entries
+    .filter((entry) => entry.kind === "CREDIT" && entry.reference === "opening_balance")
+    .reduce((sum, entry) => sum + entry.amount.amountMinor, 0);
+  const creditsMinor = entries
+    .filter(
+      (entry) =>
+        (entry.kind === "CREDIT" && entry.reference !== "opening_balance") ||
+        entry.kind === "RELEASE" ||
+        entry.kind === "REVERSAL"
+    )
+    .reduce((sum, entry) => sum + entry.amount.amountMinor, 0);
+  const debitsMinor = entries
+    .filter((entry) => entry.kind === "DEBIT" || entry.kind === "HOLD")
+    .reduce((sum, entry) => sum + entry.amount.amountMinor, 0);
+  const projectedBalanceMinor = openingBalanceMinor + creditsMinor - debitsMinor;
+
+  return {
+    openingBalance: { amountMinor: openingBalanceMinor, currency },
+    credits: { amountMinor: creditsMinor, currency },
+    debits: { amountMinor: debitsMinor, currency },
+    currentBalance: availableBalance,
+    consistent: projectedBalanceMinor === availableBalance.amountMinor
+  };
+}
+
 @Injectable()
 export class ManagedAdsService {
   private readonly paymentGateway = getPaymentGateway();
@@ -385,6 +664,7 @@ export class ManagedAdsService {
 
   async getAdminCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "admin:access");
     const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
 
     return this.toCampaign(campaign, { includeInternal: true });
@@ -392,6 +672,7 @@ export class ManagedAdsService {
 
   async createCampaign(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "campaign:create");
     const startsAt = input.startsAt ? new Date(String(input.startsAt)) : now();
     const currency = getCurrency(input.currency, "NGN");
     const budgetMinor = Number(input.budgetMinor ?? input.budget?.amountMinor ?? input.budget ?? 250000);
@@ -464,6 +745,7 @@ export class ManagedAdsService {
 
   async updateCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
     await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
 
     return this.db.$transaction(async (tx: DbClient) => {
@@ -509,6 +791,7 @@ export class ManagedAdsService {
 
   async submitCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "campaign:create");
     const existing = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
     if (existing.status !== "DRAFT" && existing.status !== "CHANGES_REQUESTED") {
       throw new BadRequestException("Only draft or changes-requested campaigns can be submitted.");
@@ -519,12 +802,130 @@ export class ManagedAdsService {
 
   async startCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
     return this.changeCampaignStatus(scope, campaignId, "RUNNING", "Manual ad launch started");
+  }
+
+  async pauseCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
+    this.assertStatusAllowed(campaign.status, clientPauseStatuses, "Only active campaigns can be paused.");
+
+    return this.applyClientStatusControl(scope, campaign, {
+      action: "pause",
+      auditAction: "campaign.client_control.paused",
+      eventName: "CampaignPaused",
+      nextStatus: "PAUSED",
+      notificationBody: `${scope.userName ?? "A client"} paused ${campaign.name}.`,
+      notificationTitle: "Campaign paused by client",
+      reason: String(input.reason ?? input.note ?? "Client paused campaign.")
+    });
+  }
+
+  async resumeCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
+    this.assertStatusAllowed(campaign.status, clientResumeStatuses, "Only paused campaigns can be resumed.");
+
+    return this.applyClientStatusControl(scope, campaign, {
+      action: "resume",
+      auditAction: "campaign.client_control.resumed",
+      eventName: "CampaignResumed",
+      nextStatus: "RUNNING",
+      notificationBody: `${scope.userName ?? "A client"} resumed ${campaign.name}.`,
+      notificationTitle: "Campaign resumed by client",
+      reason: String(input.reason ?? input.note ?? "Client resumed campaign.")
+    });
+  }
+
+  async requestCampaignChanges(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
+    this.assertStatusAllowed(
+      campaign.status,
+      clientChangeRequestStatuses,
+      "Changes can only be requested while a campaign is in review, preparation, live delivery, or pause."
+    );
+
+    const reason = String(input.reason ?? input.message ?? input.note ?? "Client requested campaign changes.");
+
+    return this.applyClientStatusControl(scope, campaign, {
+      action: "request_changes",
+      auditAction: "campaign.client_control.changes_requested",
+      eventName: "CampaignChangesRequested",
+      nextStatus: "CHANGES_REQUESTED",
+      notificationBody: reason,
+      notificationTitle: "Campaign change requested",
+      reason
+    });
+  }
+
+  async stopCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
+    this.assertStatusAllowed(campaign.status, clientStopStatuses, "This campaign can no longer be stopped.");
+
+    return this.applyClientStatusControl(scope, campaign, {
+      action: "stop",
+      auditAction: "campaign.client_control.stopped",
+      eventName: "CampaignTerminated",
+      nextStatus: "CANCELLED",
+      notificationBody: `${scope.userName ?? "A client"} stopped ${campaign.name}.`,
+      notificationTitle: "Campaign terminated by client",
+      reason: String(input.reason ?? input.note ?? "Client stopped campaign.")
+    });
+  }
+
+  async increaseCampaignBudget(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
+
+    return this.applyClientBudgetControl(scope, campaign, "increase_budget", input);
+  }
+
+  async decreaseCampaignBudget(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
+
+    return this.applyClientBudgetControl(scope, campaign, "decrease_budget", input);
+  }
+
+  async listCampaignAuditTrail(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireScope(context);
+    await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+
+    const [statusHistory, auditLogs] = await Promise.all([
+      this.db.campaignStatusHistory.findMany({
+        where: { campaignId },
+        orderBy: { createdAt: "desc" },
+        take: 100
+      }),
+      this.db.auditLog.findMany({
+        where: { workspaceId: scope.workspaceId, entityType: "Campaign", entityId: campaignId },
+        orderBy: { createdAt: "desc" },
+        take: 100
+      })
+    ]);
+
+    return {
+      campaignId,
+      items: [
+        ...statusHistory.map((item: any) => this.toAuditTrailItem("status", item)),
+        ...auditLogs.map((item: any) => this.toAuditTrailItem("audit", item))
+      ].sort((left: any, right: any) => String(right.timestamp).localeCompare(String(left.timestamp)))
+    };
   }
 
   async addCampaignNote(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>, admin = false) {
     const scope = requireScope(context);
     await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
 
     return this.db.$transaction(async (tx: DbClient) => {
       const note = await tx.campaignNote.create({
@@ -554,6 +955,7 @@ export class ManagedAdsService {
   async addCampaignAsset(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
     await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
     const asset = await this.db.mediaAsset.findFirst({
       where: { id: String(input.mediaAssetId ?? input.assetId), workspaceId: scope.workspaceId, deletedAt: null }
     });
@@ -682,6 +1084,7 @@ export class ManagedAdsService {
     ]);
     const mappedEntries = entries.map(mapLedgerEntry);
     const availableBalance = calculateAvailableBalance(mappedEntries);
+    const consistency = buildWalletConsistency(mappedEntries);
     const heldMinor = activeHolds.reduce((sum: number, hold: any) => sum + hold.amountMinor, 0);
 
     return {
@@ -689,10 +1092,34 @@ export class ManagedAdsService {
       workspaceId: wallet.workspaceId,
       availableBalance,
       heldBalance: { amountMinor: heldMinor, currency: getCurrency(wallet.currency, "NGN") },
+      consistency,
       entries: mappedEntries,
       createdAt: iso(wallet.createdAt),
       updatedAt: iso(wallet.updatedAt)
     };
+  }
+
+  async listCampaignLedger(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignFinancialRecord(scope.workspaceId, campaignId);
+
+    return this.buildCampaignLedger(campaign);
+  }
+
+  async getCampaignBudgetSummary(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignFinancialRecord(scope.workspaceId, campaignId);
+    const ledger = this.buildCampaignLedger(campaign);
+
+    return this.buildCampaignBudgetSummary(campaign, ledger);
+  }
+
+  async getCampaignSpendBreakdown(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignFinancialRecord(scope.workspaceId, campaignId);
+    const ledger = this.buildCampaignLedger(campaign);
+
+    return this.buildCampaignSpendBreakdown(campaign, ledger);
   }
 
   async createFundingIntent(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
@@ -702,8 +1129,51 @@ export class ManagedAdsService {
   async createPaymentIntent(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
     assertLivePaymentsConfiguredForProduction();
     const scope = requireScope(context);
-    const amountMinor = Number(input.amountMinor ?? input.amount ?? 500000);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
+    const amountMinor = parsePositiveMinorAmount(
+      input.amountMinor ?? input.amount ?? 500000,
+      "Payment amount must be a positive minor-unit integer."
+    );
     const currency = getCurrency(input.currency, "NGN");
+    const campaignId = typeof input.campaignId === "string" ? input.campaignId : undefined;
+    const campaignInvoiceId =
+      typeof input.invoiceId === "string"
+        ? input.invoiceId
+        : typeof input.campaignInvoiceId === "string"
+          ? input.campaignInvoiceId
+          : undefined;
+    let invoice: any | null = null;
+
+    if (campaignId) {
+      await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    }
+    if (campaignInvoiceId) {
+      invoice = await this.db.campaignInvoice.findFirst({
+        where: { id: campaignInvoiceId, workspaceId: scope.workspaceId, deletedAt: null }
+      });
+      if (!invoice) {
+        throw new NotFoundException("Invoice was not found in the active workspace.");
+      }
+      if (campaignId && invoice.campaignId !== campaignId) {
+        throw new BadRequestException("Payment invoice does not belong to the supplied campaign.");
+      }
+    }
+
+    const idempotencyKey =
+      normalizeIdempotencyKey(input.idempotencyKey) ??
+      (campaignInvoiceId
+        ? `payment-intent:invoice:${campaignInvoiceId}`
+        : campaignId
+          ? `payment-intent:campaign:${campaignId}:${amountMinor}:${currency}:${input.purpose ?? "payment"}`
+          : `payment-intent:wallet:${scope.workspaceId}:${amountMinor}:${currency}:${input.customerEmail ?? scope.userEmail ?? "customer"}`);
+    const existingIntent = await this.db.paymentIntent.findUnique?.({ where: { idempotencyKey } });
+    if (existingIntent) {
+      if (existingIntent.workspaceId !== scope.workspaceId) {
+        throw new BadRequestException("Idempotency key was already used for another workspace.");
+      }
+      return this.toPaymentIntent(existingIntent);
+    }
+
     const wallet = await this.getOrCreateWallet(this.db, scope.workspaceId, currency);
     const gatewayIntent = await this.paymentGateway.createPaymentIntent({
       amount: { amountMinor, currency },
@@ -711,15 +1181,15 @@ export class ManagedAdsService {
       customerEmail: input.customerEmail ?? scope.userEmail,
       customerName: input.customerName ?? scope.userName,
       redirectUrl: input.redirectUrl,
-      webhookUrl: input.webhookUrl
+      webhookUrl: process.env.NODE_ENV === "production" ? undefined : input.webhookUrl
     });
 
     const intent = await this.db.paymentIntent.create({
       data: {
         workspaceId: scope.workspaceId,
         walletId: wallet.id,
-        campaignId: input.campaignId,
-        campaignInvoiceId: input.invoiceId ?? input.campaignInvoiceId,
+        campaignId: campaignId ?? invoice?.campaignId,
+        campaignInvoiceId,
         gateway: gatewayIntent.gateway,
         amountMinor,
         currency,
@@ -728,7 +1198,7 @@ export class ManagedAdsService {
         checkoutUrl: gatewayIntent.checkoutUrl,
         customerEmail: input.customerEmail ?? scope.userEmail,
         customerName: input.customerName ?? scope.userName,
-        idempotencyKey: input.idempotencyKey,
+        idempotencyKey,
         metadata: { purpose: input.purpose ?? "payment" },
         providerPayload: gatewayIntent.metadata ?? {}
       }
@@ -740,6 +1210,7 @@ export class ManagedAdsService {
   async verifyPayment(context: AuthenticatedRequestContext | undefined, reference: string) {
     assertLivePaymentsConfiguredForProduction();
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
     const result = await this.paymentGateway.verifyPayment(reference);
     const intent = await this.db.paymentIntent.findFirst({
       where: { providerReference: result.providerReference ?? reference, workspaceId: scope.workspaceId }
@@ -764,6 +1235,34 @@ export class ManagedAdsService {
       throw new BadRequestException("Korapay webhook is missing a payment reference.");
     }
 
+    const eventId =
+      typeof eventBody.event === "string"
+        ? eventBody.event
+        : typeof eventBody.id === "string"
+          ? eventBody.id
+          : typeof data.id === "string"
+            ? data.id
+            : undefined;
+    const replayKey = `korapay:webhook:${eventId ?? reference}:${eventFingerprint(data)}`;
+    const existingReceipt = await this.db.eventOutbox.findUnique?.({
+      where: { idempotencyKey: replayKey }
+    });
+    if (existingReceipt?.processedAt) {
+      return { accepted: true, duplicate: true, reference, status: data.status ?? "processed" };
+    }
+    await this.db.eventOutbox.upsert?.({
+      where: { idempotencyKey: replayKey },
+      update: {},
+      create: {
+        workspaceId: null,
+        name: "KorapayWebhookReceived",
+        entityType: "PaymentIntent",
+        entityId: reference,
+        payload: { reference, status: data.status ?? null, eventId: eventId ?? null },
+        idempotencyKey: replayKey
+      }
+    });
+
     const intent = await this.db.paymentIntent.findFirst({ where: { providerReference: reference } });
     if (!intent) {
       return { accepted: true, reference, status: data.status ?? "unmatched" };
@@ -771,6 +1270,10 @@ export class ManagedAdsService {
 
     const status = this.mapPaymentStatus(data.status);
     await this.completePaymentIntent(intent.id, status, reference);
+    await this.db.eventOutbox.update?.({
+      where: { idempotencyKey: replayKey },
+      data: { workspaceId: intent.workspaceId, status: "PROCESSED", processedAt: now() }
+    });
     return { accepted: true, reference, status };
   }
 
@@ -796,8 +1299,26 @@ export class ManagedAdsService {
 
   async createCampaignInvoice(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
     const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
-    const totalMinor = Number(input.totalMinor ?? input.amountMinor ?? campaign.budgetMinor);
+    const subtotalMinor = parsePositiveMinorAmount(
+      input.subtotalMinor ?? input.totalMinor ?? input.amountMinor ?? campaign.budgetMinor,
+      "Invoice subtotal must be a positive minor-unit amount."
+    );
+    const taxMinor = parseNonNegativeMinorAmount(
+      input.taxMinor ?? 0,
+      "Invoice tax must be a non-negative minor-unit amount."
+    );
+    const totalMinor = subtotalMinor + taxMinor;
+    const lineItems = normalizeInvoiceLineItems(
+      input.lineItems,
+      [{ label: "Managed ad campaign budget", amountMinor: subtotalMinor, currency: campaign.currency }],
+      campaign.currency
+    );
+    const lineItemTotalMinor = lineItems.reduce((sum, item) => sum + item.amountMinor, 0);
+    if (lineItemTotalMinor !== subtotalMinor) {
+      throw new BadRequestException("Invoice line item amounts must equal the invoice subtotal.");
+    }
     const number = input.number ?? `INV-${Date.now().toString(36).toUpperCase()}-${campaign.id.slice(0, 6)}`;
 
     const invoice = await this.db.campaignInvoice.create({
@@ -807,13 +1328,11 @@ export class ManagedAdsService {
         companyProfileId: campaign.companyProfileId,
         number,
         status: "ISSUED",
-        subtotalMinor: totalMinor,
-        taxMinor: Number(input.taxMinor ?? 0),
-        totalMinor: totalMinor + Number(input.taxMinor ?? 0),
+        subtotalMinor,
+        taxMinor,
+        totalMinor,
         currency: campaign.currency,
-        lineItems: input.lineItems ?? [
-          { label: "Managed ad campaign budget", amountMinor: totalMinor, currency: campaign.currency }
-        ],
+        lineItems,
         issuedAt: now(),
         dueAt: input.dueAt ? new Date(String(input.dueAt)) : undefined,
         metadata: normalizeJsonObject(input.metadata)
@@ -835,14 +1354,19 @@ export class ManagedAdsService {
 
   async payInvoice(context: AuthenticatedRequestContext | undefined, invoiceId: string, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
     const invoice = await this.getInvoice(scope, invoiceId);
     if (invoice.status === "PAID") {
       return invoice;
     }
+    const amountDueMinor = parsePositiveMinorAmount(
+      invoice.totalMinor - invoice.amountPaidMinor,
+      "Invoice amount due must be positive before settlement."
+    );
 
     if (String(input.method ?? "wallet").toLowerCase() !== "wallet") {
       return this.createPaymentIntent(scope, {
-        amountMinor: invoice.totalMinor - invoice.amountPaidMinor,
+        amountMinor: amountDueMinor,
         currency: invoice.currency,
         invoiceId: invoice.id,
         campaignId: invoice.campaignId,
@@ -856,43 +1380,84 @@ export class ManagedAdsService {
     return this.db.$transaction(async (tx: DbClient) => {
       const wallet = await this.getOrCreateWallet(tx, scope.workspaceId, getCurrency(invoice.currency, "NGN"));
       await this.lockWallet(tx, wallet.id);
-      await this.assertWalletCanPay(tx, wallet.id, invoice.totalMinor - invoice.amountPaidMinor, invoice.currency);
-      await tx.ledgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: "DEBIT",
-          amountMinor: invoice.totalMinor - invoice.amountPaidMinor,
-          currency: invoice.currency,
-          reference: `invoice:${invoice.id}`,
-          description: `Campaign invoice ${invoice.number} paid from wallet`,
-          idempotencyKey: `invoice:${invoice.id}:wallet_payment`,
-          sourceType: "CampaignInvoice",
-          sourceId: invoice.id
-        }
+      const lockedInvoice = await tx.campaignInvoice.findFirst({
+        where: { id: invoice.id, workspaceId: scope.workspaceId, deletedAt: null }
+      });
+      if (!lockedInvoice) {
+        throw new NotFoundException("Invoice was not found in the active workspace.");
+      }
+      if (lockedInvoice.status === "PAID") {
+        return lockedInvoice;
+      }
+      const lockedAmountDueMinor = parsePositiveMinorAmount(
+        lockedInvoice.totalMinor - lockedInvoice.amountPaidMinor,
+        "Invoice amount due must be positive before settlement."
+      );
+      await this.assertWalletCanPay(tx, wallet.id, lockedAmountDueMinor, lockedInvoice.currency);
+      const walletDebit = await this.createWalletLedgerEntry(tx, {
+        walletId: wallet.id,
+        kind: "DEBIT",
+        amountMinor: lockedAmountDueMinor,
+        currency: lockedInvoice.currency,
+        reference: `invoice:${lockedInvoice.id}`,
+        description: `Campaign invoice ${lockedInvoice.number} paid from wallet`,
+        idempotencyKey: `invoice:${lockedInvoice.id}:wallet_payment`,
+        sourceType: "CampaignInvoice",
+        sourceId: lockedInvoice.id
       });
       const paid = await tx.campaignInvoice.update({
-        where: { id: invoice.id },
+        where: { id: lockedInvoice.id },
         data: {
           status: "PAID",
-          amountPaidMinor: invoice.totalMinor,
+          amountPaidMinor: lockedInvoice.totalMinor,
           paidAt: now()
         }
       });
-      await this.audit(tx, scope, "campaign_invoice.paid", "CampaignInvoice", invoice.id, {});
+      await this.audit(tx, scope, "campaign_invoice.paid", "CampaignInvoice", lockedInvoice.id, {});
+      await this.createCampaignLedgerEntry(tx, scope, lockedInvoice.campaignId, {
+        amountMinor: lockedAmountDueMinor,
+        campaignInvoiceId: lockedInvoice.id,
+        category: campaignLedgerCategory("INVOICE_PAYMENT"),
+        currency: lockedInvoice.currency,
+        description: `Campaign invoice ${lockedInvoice.number} paid from wallet`,
+        direction: "DEBIT",
+        idempotencyKey: `campaign-ledger:invoice:${lockedInvoice.id}:wallet-payment`,
+        occurredAt: paid.paidAt ?? now(),
+        sourceId: lockedInvoice.id,
+        sourceType: "CampaignInvoice",
+        type: "INVOICE_PAYMENT",
+        walletId: wallet.id,
+        walletLedgerEntryId: walletDebit.id
+      });
       await this.notify(tx, scope.workspaceId, "Invoice paid", "Your campaign invoice has been paid.", {
         entityType: "CampaignInvoice",
-        entityId: invoice.id,
-        actionUrl: `/billing/invoices/${invoice.id}`
+        entityId: lockedInvoice.id,
+        actionUrl: `/billing/invoices/${lockedInvoice.id}`
       });
+      await this.assertWalletConsistency(tx, wallet.id);
       return paid;
     });
   }
 
   async createBudgetHold(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
     const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
-    const amountMinor = Number(input.amountMinor ?? campaign.budgetMinor);
-    const idempotencyKey = input.idempotencyKey ?? `campaign:${campaignId}:hold:${amountMinor}`;
+    const amountMinor = parsePositiveMinorAmount(
+      input.amountMinor ?? campaign.budgetMinor,
+      "Budget hold amount must be a positive minor-unit amount."
+    );
+    const invoiceId = typeof input.invoiceId === "string" ? input.invoiceId : undefined;
+    if (invoiceId) {
+      const invoice = await this.db.campaignInvoice.findFirst({
+        where: { id: invoiceId, campaignId, workspaceId: scope.workspaceId, deletedAt: null }
+      });
+      if (!invoice) {
+        throw new NotFoundException("Invoice was not found in the active workspace.");
+      }
+    }
+    const idempotencyKey =
+      normalizeIdempotencyKey(input.idempotencyKey) ?? `campaign:${campaignId}:hold:${amountMinor}`;
 
     return this.db.$transaction(async (tx: DbClient) => {
       const existing = await tx.campaignBudgetHold.findUnique({ where: { idempotencyKey } });
@@ -902,24 +1467,22 @@ export class ManagedAdsService {
       const wallet = await this.getOrCreateWallet(tx, scope.workspaceId, getCurrency(campaign.currency, "NGN"));
       await this.lockWallet(tx, wallet.id);
       await this.assertWalletCanPay(tx, wallet.id, amountMinor, campaign.currency);
-      const ledger = await tx.ledgerEntry.create({
-        data: {
-          walletId: wallet.id,
-          kind: "HOLD",
-          amountMinor,
-          currency: campaign.currency,
-          reference: `campaign:${campaignId}:budget_hold`,
-          description: "Campaign budget hold",
-          idempotencyKey: `${idempotencyKey}:ledger`,
-          sourceType: "Campaign",
-          sourceId: campaignId
-        }
+      const ledger = await this.createWalletLedgerEntry(tx, {
+        walletId: wallet.id,
+        kind: "HOLD",
+        amountMinor,
+        currency: campaign.currency,
+        reference: `campaign:${campaignId}:budget_hold`,
+        description: "Campaign budget hold",
+        idempotencyKey: `${idempotencyKey}:ledger`,
+        sourceType: "Campaign",
+        sourceId: campaignId
       });
       const hold = await tx.campaignBudgetHold.create({
         data: {
           campaignId,
           walletId: wallet.id,
-          invoiceId: input.invoiceId,
+          invoiceId,
           createdByUserId: scope.userId,
           amountMinor,
           currency: campaign.currency,
@@ -928,13 +1491,32 @@ export class ManagedAdsService {
           reason: input.reason
         }
       });
+      await this.createCampaignLedgerEntry(tx, scope, campaignId, {
+        amountMinor,
+        campaignBudgetHoldId: hold.id,
+        campaignInvoiceId: invoiceId,
+        category: campaignLedgerCategory("BUDGET_ALLOCATION"),
+        currency: campaign.currency,
+        description: "Campaign budget allocated to launch reserve",
+        direction: "HOLD",
+        idempotencyKey: `campaign-ledger:hold:${hold.id}:allocation`,
+        notes: input.reason,
+        occurredAt: hold.createdAt ?? now(),
+        sourceId: hold.id,
+        sourceType: "CampaignBudgetHold",
+        type: "BUDGET_ALLOCATION",
+        walletId: wallet.id,
+        walletLedgerEntryId: ledger.id
+      });
       await this.audit(tx, scope, "campaign_budget_hold.created", "CampaignBudgetHold", hold.id, { campaignId });
+      await this.assertWalletConsistency(tx, wallet.id);
       return hold;
     });
   }
 
   async releaseBudgetHold(context: AuthenticatedRequestContext | undefined, campaignId: string, holdId: string, input: Record<string, any> = {}) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
     return this.db.$transaction(async (tx: DbClient) => {
       const hold = await tx.campaignBudgetHold.findFirst({ where: { id: holdId, campaignId }, include: { campaign: true } });
       if (!hold || hold.campaign.workspaceId !== scope.workspaceId) {
@@ -944,29 +1526,58 @@ export class ManagedAdsService {
         return hold;
       }
       await this.lockWallet(tx, hold.walletId);
-      const release = await tx.ledgerEntry.create({
-        data: {
-          walletId: hold.walletId,
-          kind: "RELEASE",
-          amountMinor: hold.amountMinor,
-          currency: hold.currency,
-          reference: `hold:${hold.id}:release`,
-          description: input.reason ?? "Campaign budget hold released",
-          idempotencyKey: `hold:${hold.id}:release`,
-          sourceType: "CampaignBudgetHold",
-          sourceId: hold.id
-        }
+      const lockedHold = await tx.campaignBudgetHold.findFirst({
+        where: { id: holdId, campaignId },
+        include: { campaign: true }
+      });
+      if (!lockedHold || lockedHold.campaign.workspaceId !== scope.workspaceId) {
+        throw new NotFoundException("Budget hold was not found in the active workspace.");
+      }
+      if (lockedHold.status !== "ACTIVE") {
+        return lockedHold;
+      }
+      const release = await this.createWalletLedgerEntry(tx, {
+        walletId: lockedHold.walletId,
+        kind: "RELEASE",
+        amountMinor: lockedHold.amountMinor,
+        currency: lockedHold.currency,
+        reference: `hold:${lockedHold.id}:release`,
+        description: input.reason ?? "Campaign budget hold released",
+        idempotencyKey: `hold:${lockedHold.id}:release`,
+        sourceType: "CampaignBudgetHold",
+        sourceId: lockedHold.id
       });
 
-      return tx.campaignBudgetHold.update({
-        where: { id: hold.id },
-        data: { status: "RELEASED", releaseLedgerEntryId: release.id, releasedAt: now(), reason: input.reason ?? hold.reason }
+      const updated = await tx.campaignBudgetHold.update({
+        where: { id: lockedHold.id },
+        data: { status: "RELEASED", releaseLedgerEntryId: release.id, releasedAt: now(), reason: input.reason ?? lockedHold.reason }
       });
+      await this.createCampaignLedgerEntry(tx, scope, campaignId, {
+        amountMinor: lockedHold.amountMinor,
+        campaignBudgetHoldId: lockedHold.id,
+        campaignInvoiceId: lockedHold.invoiceId,
+        category: campaignLedgerCategory("REFUND"),
+        currency: lockedHold.currency,
+        description: input.reason ?? "Campaign budget hold released",
+        direction: "RELEASE",
+        idempotencyKey: `campaign-ledger:hold:${lockedHold.id}:release`,
+        notes: input.reason ?? lockedHold.reason,
+        occurredAt: updated.releasedAt ?? now(),
+        sourceId: lockedHold.id,
+        sourceType: "CampaignBudgetHold",
+        type: "REFUND",
+        walletId: lockedHold.walletId,
+        walletLedgerEntryId: release.id
+      });
+      await this.assertWalletConsistency(tx, lockedHold.walletId);
+
+      return updated;
     });
   }
 
   async captureBudgetHold(context: AuthenticatedRequestContext | undefined, campaignId: string, holdId: string, input: Record<string, any> = {}) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
     return this.db.$transaction(async (tx: DbClient) => {
       const hold = await tx.campaignBudgetHold.findFirst({ where: { id: holdId, campaignId }, include: { campaign: true } });
       if (!hold || hold.campaign.workspaceId !== scope.workspaceId) {
@@ -975,49 +1586,81 @@ export class ManagedAdsService {
       if (hold.status !== "ACTIVE") {
         return hold;
       }
-      const amountMinor = Number(input.amountMinor ?? hold.amountMinor);
       await this.lockWallet(tx, hold.walletId);
-      const release = await tx.ledgerEntry.create({
-        data: {
-          walletId: hold.walletId,
-          kind: "RELEASE",
-          amountMinor: hold.amountMinor,
-          currency: hold.currency,
-          reference: `hold:${hold.id}:capture_release`,
-          description: "Campaign budget hold released for spend capture",
-          idempotencyKey: `hold:${hold.id}:capture_release`,
-          sourceType: "CampaignBudgetHold",
-          sourceId: hold.id
-        }
+      const lockedHold = await tx.campaignBudgetHold.findFirst({
+        where: { id: holdId, campaignId },
+        include: { campaign: true }
       });
-      const debit = await tx.ledgerEntry.create({
-        data: {
-          walletId: hold.walletId,
-          kind: "DEBIT",
-          amountMinor,
-          currency: hold.currency,
-          reference: `hold:${hold.id}:capture_debit`,
-          description: "Campaign spend captured",
-          idempotencyKey: `hold:${hold.id}:capture_debit`,
-          sourceType: "CampaignBudgetHold",
-          sourceId: hold.id
-        }
+      if (!lockedHold || lockedHold.campaign.workspaceId !== scope.workspaceId) {
+        throw new NotFoundException("Budget hold was not found in the active workspace.");
+      }
+      if (lockedHold.status !== "ACTIVE") {
+        return lockedHold;
+      }
+      const amountMinor = parsePositiveMinorAmount(
+        input.amountMinor ?? lockedHold.amountMinor,
+        "Budget capture amount must be a positive minor-unit amount."
+      );
+      if (amountMinor > lockedHold.amountMinor) {
+        throw new BadRequestException("Budget capture cannot exceed the active hold amount.");
+      }
+      const release = await this.createWalletLedgerEntry(tx, {
+        walletId: lockedHold.walletId,
+        kind: "RELEASE",
+        amountMinor: lockedHold.amountMinor,
+        currency: lockedHold.currency,
+        reference: `hold:${lockedHold.id}:capture_release`,
+        description: "Campaign budget hold released for spend capture",
+        idempotencyKey: `hold:${lockedHold.id}:capture_release`,
+        sourceType: "CampaignBudgetHold",
+        sourceId: lockedHold.id
       });
-      await tx.campaignSpendEntry.create({
+      const debit = await this.createWalletLedgerEntry(tx, {
+        walletId: lockedHold.walletId,
+        kind: "DEBIT",
+        amountMinor,
+        currency: lockedHold.currency,
+        reference: `hold:${lockedHold.id}:capture_debit`,
+        description: "Campaign spend captured",
+        idempotencyKey: `hold:${lockedHold.id}:capture_debit`,
+        sourceType: "CampaignBudgetHold",
+        sourceId: lockedHold.id
+      });
+      const spendEntry = await tx.campaignSpendEntry.create({
         data: {
           campaignId,
           placementId: input.placementId,
           actorUserId: scope.userId,
           amountMinor,
-          currency: hold.currency,
+          currency: lockedHold.currency,
           source: input.source ?? "MANUAL",
           notes: input.notes,
           recordedForDate: input.recordedForDate ? new Date(String(input.recordedForDate)) : now()
         }
       });
+      const ledgerType = normalizeCampaignLedgerEntryType(input.category ?? input.type ?? "AD_SPEND");
+      await this.createCampaignLedgerEntry(tx, scope, campaignId, {
+        amountMinor,
+        campaignBudgetHoldId: lockedHold.id,
+        campaignInvoiceId: lockedHold.invoiceId,
+        campaignSpendEntryId: spendEntry.id,
+        category: campaignLedgerCategory(ledgerType),
+        currency: lockedHold.currency,
+        description: input.description ?? campaignLedgerCategory(ledgerType),
+        direction: "DEBIT",
+        idempotencyKey: `campaign-ledger:hold:${lockedHold.id}:capture:${ledgerType}`,
+        metadata: normalizeJsonObject(input.metadata),
+        notes: input.notes,
+        occurredAt: spendEntry.recordedForDate ?? now(),
+        sourceId: spendEntry.id,
+        sourceType: "CampaignSpendEntry",
+        type: ledgerType,
+        walletId: lockedHold.walletId,
+        walletLedgerEntryId: debit.id
+      });
 
-      return tx.campaignBudgetHold.update({
-        where: { id: hold.id },
+      const updated = await tx.campaignBudgetHold.update({
+        where: { id: lockedHold.id },
         data: {
           status: "CAPTURED",
           captureReleaseLedgerEntryId: release.id,
@@ -1025,11 +1668,14 @@ export class ManagedAdsService {
           capturedAt: now()
         }
       });
+      await this.assertWalletConsistency(tx, lockedHold.walletId);
+      return updated;
     });
   }
 
   async getAdminOverview(context?: AuthenticatedRequestContext) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "admin:access");
     const [grouped, unassigned, campaigns, reports, activity, activeOperators] =
       await Promise.all([
         this.db.campaign.groupBy({
@@ -1071,54 +1717,63 @@ export class ManagedAdsService {
       ]);
     const byStatus = Object.fromEntries(grouped.map((row: any) => [row.status, row._count._all]));
     const running = Number(byStatus.RUNNING ?? 0) + Number(byStatus.ACTIVE ?? 0);
-    const reviewing =
-      Number(byStatus.PENDING_REVIEW ?? 0) +
+    const pendingReviews = Number(byStatus.PENDING_REVIEW ?? 0);
+    const launchPreparation =
       Number(byStatus.APPROVED ?? 0) +
-      Number(byStatus.CREATIVE_IN_PROGRESS ?? 0);
+      Number(byStatus.CREATIVE_IN_PROGRESS ?? 0) +
+      Number(byStatus.QUEUED ?? 0);
     const blocked =
       Number(byStatus.CHANGES_REQUESTED ?? 0) +
       Number(byStatus.REJECTED ?? 0) +
       Number(byStatus.FAILED ?? 0);
+    const adminCampaigns = campaigns.map((campaign: any) => this.toAdminCampaign(campaign));
+    const budgetAlerts = adminCampaigns.filter(
+      (campaign: any) => Number(campaign.budgetUtilization ?? 0) >= 85
+    ).length;
 
     return {
       byStatus,
       unassigned,
       totals: {
-        queued: Number(byStatus.PENDING_REVIEW ?? 0) + Number(byStatus.QUEUED ?? 0),
-        reviewing,
-        running,
+        assigned: Math.max(0, launchPreparation - unassigned),
         blocked,
-        urgent: unassigned,
-        completed: Number(byStatus.COMPLETED ?? 0)
+        completed: Number(byStatus.COMPLETED ?? 0),
+        launchPreparation,
+        pendingReviews,
+        queued: pendingReviews,
+        reporting: reports.filter((report: any) => report.status === "DRAFT").length,
+        reviewing: pendingReviews,
+        running,
+        urgent: unassigned
       },
       activeOperators: activeOperators.length,
       metrics: [
         {
-          label: "Open queue",
-          value: String(Number(byStatus.PENDING_REVIEW ?? 0) + reviewing + blocked),
-          detail: "Queued, reviewing, and blocked",
+          label: "Pending reviews",
+          value: String(pendingReviews),
+          detail: "Submitted campaigns in review",
           tone: "info"
         },
         {
-          label: "Running",
-          value: String(running),
-          detail: "Live campaigns under watch",
-          tone: "success"
+          label: "Launch prep",
+          value: String(launchPreparation),
+          detail: "Approved, assigned, creative, and launch work",
+          tone: "warning"
         },
         {
-          label: "Unassigned",
-          value: String(unassigned),
-          detail: "Campaigns waiting for owner",
-          tone: unassigned > 0 ? "warning" : "neutral"
+          label: "Budget alerts",
+          value: String(budgetAlerts),
+          detail: "Campaigns near spend allocation",
+          tone: budgetAlerts > 0 ? "warning" : "neutral"
         },
         {
-          label: "Reports",
+          label: "Reporting queue",
           value: String(reports.length),
-          detail: "Draft and published jobs",
+          detail: "Daily, weekly, and final reports",
           tone: "info"
         }
       ],
-      queue: campaigns.map((campaign: any) => this.toAdminCampaign(campaign)),
+      queue: adminCampaigns,
       reports: reports.map((report: any) => this.toAdminReport(report)),
       activity: activity.map((item: any) => this.toAdminActivity(item))
     };
@@ -1126,6 +1781,7 @@ export class ManagedAdsService {
 
   async listAdminCampaigns(context: AuthenticatedRequestContext | undefined, query: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "admin:access");
     const where: Record<string, any> = { workspaceId: scope.workspaceId, deletedAt: null };
     if (query.status) {
       where.status = normalizeCampaignStatus(query.status);
@@ -1149,6 +1805,7 @@ export class ManagedAdsService {
 
   async listAdminReports(context?: AuthenticatedRequestContext) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "admin:access");
     const reports = await this.db.campaignReport.findMany({
       where: { campaign: { workspaceId: scope.workspaceId }, deletedAt: null },
       include: { campaign: true },
@@ -1161,6 +1818,7 @@ export class ManagedAdsService {
 
   async listAdminActivity(context?: AuthenticatedRequestContext) {
     const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "admin:access");
     const activity = await this.db.auditLog.findMany({
       where: { workspaceId: scope.workspaceId },
       orderBy: { createdAt: "desc" },
@@ -1172,11 +1830,13 @@ export class ManagedAdsService {
 
   async updateAdminStatus(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:approve"]);
     return this.changeCampaignStatus(scope, campaignId, normalizeCampaignStatus(input.status), input.reason, true);
   }
 
   async updateAssignment(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:manage"]);
     await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
     const assigneeUserId = String(input.assignedToUserId ?? input.assigneeUserId ?? scope.userId);
 
@@ -1202,77 +1862,173 @@ export class ManagedAdsService {
 
   async createManualPlacement(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
-    await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
-    const placement = await this.db.manualAdPlacement.create({
-      data: {
-        campaignId,
-        creativeId: input.creativeId,
-        assignedUserId: input.assignedUserId ?? scope.userId,
-        channel: String(input.channel ?? input.provider ?? "OTHER").toUpperCase(),
-        provider: input.provider,
-        externalPlacementId: input.externalPlacementId,
-        destinationUrl: input.url ?? input.destinationUrl,
-        status: input.status ?? "LAUNCHED",
-        budgetMinor: Number(input.budgetMinor ?? 0),
-        spendMinor: Number(input.spendMinor ?? 0),
-        currency: input.currency ?? "NGN",
-        startsAt: input.startsAt ? new Date(String(input.startsAt)) : now(),
-        metadata: normalizeJsonObject(input.metadata)
-      }
-    });
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:manage"]);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    const metadata = normalizeJsonObject(input.metadata) as Record<string, any>;
+    const adAccountId = requiredString(
+      input.adAccountId ?? input.adAccount ?? metadata.adAccountId,
+      "Ad account is required before saving a placement."
+    );
+    const placementUrl = requiredString(
+      input.placementUrl ?? input.adUrl ?? input.url ?? input.destinationUrl,
+      "Placement URL is required before saving a placement."
+    );
+    assertHttpUrl(placementUrl, "Placement URL must be a valid http or https URL.");
+    const launchDate = parseDateInput(
+      input.launchDate ?? input.launchedAt ?? input.startsAt,
+      "Launch date is required before saving a placement."
+    );
+    const notes = requiredString(
+      input.notes ?? metadata.notes,
+      "Placement notes are required before saving a placement."
+    );
+    const spendMinor = parseSpendMinor(input, true);
 
-    await this.db.auditLog.create({
-      data: {
-        workspaceId: scope.workspaceId,
-        actorUserId: scope.userId,
-        action: "campaign.manual_placement.created",
-        entityType: "ManualAdPlacement",
-        entityId: placement.id,
-        metadata: { campaignId }
+    this.assertSpendWithinAllocation(campaign, spendMinor);
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      const placement = await tx.manualAdPlacement.create({
+        data: {
+          campaignId,
+          creativeId: input.creativeId,
+          assignedUserId: input.assignedUserId ?? scope.userId,
+          channel: normalizeManualPlacementChannel(input.channel ?? input.platform ?? input.provider),
+          provider: input.provider ?? input.platform ?? input.channel,
+          externalPlacementId: input.externalPlacementId ?? input.campaignExternalId,
+          destinationUrl: placementUrl,
+          status: input.status ?? "LAUNCHED",
+          budgetMinor: Number(input.budgetMinor ?? campaign.budgetMinor),
+          spendMinor,
+          currency: input.currency ?? campaign.currency ?? "NGN",
+          startsAt: launchDate,
+          impressions: Number(input.impressions ?? 0),
+          clicks: Number(input.clicks ?? 0),
+          conversions: Number(input.conversions ?? 0),
+          metadata: {
+            ...metadata,
+            adAccountId,
+            adSetId: input.adSetId ?? metadata.adSetId,
+            clientVisible: Boolean(input.clientVisible ?? metadata.clientVisible),
+            launchNotes: notes,
+            placementUrl
+          }
+        }
+      });
+
+      if (spendMinor > 0) {
+        const spendEntry = await tx.campaignSpendEntry.create({
+          data: {
+            campaignId,
+            placementId: placement.id,
+            actorUserId: scope.userId,
+            amountMinor: spendMinor,
+            currency: input.currency ?? campaign.currency ?? "NGN",
+            source: "AD_PLACEMENT",
+            notes,
+            recordedForDate: launchDate,
+            metadata: { adAccountId, placementUrl }
+          }
+        });
+        await this.createCampaignLedgerEntry(tx, scope, campaignId, {
+          amountMinor: spendMinor,
+          campaignSpendEntryId: spendEntry.id,
+          category: campaignLedgerCategory("AD_SPEND"),
+          currency: input.currency ?? campaign.currency ?? "NGN",
+          description: "Ad placement spend recorded",
+          direction: "DEBIT",
+          idempotencyKey: `campaign-ledger:placement:${placement.id}:spend`,
+          metadata: { adAccountId, placementUrl },
+          notes,
+          occurredAt: spendEntry.recordedForDate ?? launchDate,
+          sourceId: spendEntry.id,
+          sourceType: "CampaignSpendEntry",
+          type: "AD_SPEND"
+        });
       }
+
+      await this.audit(tx, scope, "campaign.manual_placement.created", "ManualAdPlacement", placement.id, {
+        adAccountId,
+        campaignId,
+        placementUrl,
+        spendMinor
+      });
+      return placement;
     });
-    return placement;
   }
 
   async addManualMetric(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
-    await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
-    const entry = await this.db.campaignSpendEntry.create({
-      data: {
-        campaignId,
-        placementId: input.placementId,
-        actorUserId: scope.userId,
-        amountMinor: Number(input.amountMinor ?? input.spendMinor ?? 0),
-        currency: input.currency ?? "NGN",
-        source: input.source ?? "MANUAL",
-        notes: input.notes,
-        recordedForDate: input.recordedForDate ? new Date(String(input.recordedForDate)) : now(),
-        metadata: {
-          impressions: Number(input.impressions ?? 0),
-          clicks: Number(input.clicks ?? 0),
-          conversions: Number(input.conversions ?? 0),
-          metricName: input.metricName,
-          value: input.value
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:manage"]);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    const amountMinor = parseSpendMinor(input);
+    this.assertSpendWithinAllocation(campaign, amountMinor);
+    const ledgerType = normalizeCampaignLedgerEntryType(input.category ?? input.type ?? "AD_SPEND");
+    return this.db.$transaction(async (tx: DbClient) => {
+      const entry = await tx.campaignSpendEntry.create({
+        data: {
+          campaignId,
+          placementId: input.placementId,
+          actorUserId: scope.userId,
+          amountMinor,
+          currency: input.currency ?? campaign.currency ?? "NGN",
+          source: input.source ?? "MANUAL",
+          notes: input.notes,
+          recordedForDate: input.recordedForDate ? new Date(String(input.recordedForDate)) : now(),
+          metadata: {
+            impressions: Number(input.impressions ?? 0),
+            clicks: Number(input.clicks ?? 0),
+            conversions: Number(input.conversions ?? 0),
+            metricName: input.metricName,
+            value: input.value
+          }
         }
+      });
+      await tx.analyticsMetric.create({
+        data: {
+          workspaceId: scope.workspaceId,
+          campaignId,
+          name: input.metricName ?? "manual_spend",
+          value: Number(input.value ?? input.spendMinor ?? input.amountMinor ?? 0),
+          dimensions: { source: "manual" }
+        }
+      });
+      if (amountMinor > 0) {
+        await this.createCampaignLedgerEntry(tx, scope, campaignId, {
+          amountMinor,
+          campaignSpendEntryId: entry.id,
+          category: campaignLedgerCategory(ledgerType),
+          currency: input.currency ?? campaign.currency ?? "NGN",
+          description: input.description ?? campaignLedgerCategory(ledgerType),
+          direction: "DEBIT",
+          idempotencyKey: `campaign-ledger:spend:${entry.id}:${ledgerType}`,
+          metadata: {
+            impressions: Number(input.impressions ?? 0),
+            clicks: Number(input.clicks ?? 0),
+            conversions: Number(input.conversions ?? 0),
+            metricName: input.metricName,
+            value: input.value
+          },
+          notes: input.notes,
+          occurredAt: entry.recordedForDate ?? now(),
+          sourceId: entry.id,
+          sourceType: "CampaignSpendEntry",
+          type: ledgerType
+        });
       }
+
+      return entry;
     });
-    await this.db.analyticsMetric.create({
-      data: {
-        workspaceId: scope.workspaceId,
-        campaignId,
-        name: input.metricName ?? "manual_spend",
-        value: Number(input.value ?? input.spendMinor ?? input.amountMinor ?? 0),
-        dimensions: { source: "manual" }
-      }
-    });
-    return entry;
   }
 
   async createReport(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
-    await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:manage"]);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    this.assertCampaignLaunchedForReporting(campaign);
+    const reportType = normalizeReportType(input.reportType ?? input.type);
     const periodEnd = input.periodEnd ? new Date(String(input.periodEnd)) : now();
-    const periodStart = input.periodStart ? new Date(String(input.periodStart)) : new Date(periodEnd.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const defaultPeriodDays = reportType === "daily_update" ? 1 : 7;
+    const periodStart = input.periodStart ? new Date(String(input.periodStart)) : new Date(periodEnd.getTime() - defaultPeriodDays * 24 * 60 * 60 * 1000);
 
     return this.db.campaignReport.create({
       data: {
@@ -1285,11 +2041,11 @@ export class ManagedAdsService {
         summary: input.summary,
         spendMinor: Number(input.spendMinor ?? 0),
         revenueMinor: input.revenueMinor === undefined ? undefined : Number(input.revenueMinor),
-        currency: input.currency ?? "NGN",
+        currency: input.currency ?? campaign.currency ?? "NGN",
         impressions: Number(input.impressions ?? 0),
         clicks: Number(input.clicks ?? 0),
         conversions: Number(input.conversions ?? 0),
-        metrics: normalizeJsonObject(input.metrics),
+        metrics: { ...normalizeJsonObject(input.metrics), reportType },
         screenshots:
           Array.isArray(input.assetIds) && input.assetIds.length > 0
             ? { create: input.assetIds.map((assetId: string) => ({ mediaAssetId: assetId })) }
@@ -1301,11 +2057,17 @@ export class ManagedAdsService {
 
   async publishReport(context: AuthenticatedRequestContext | undefined, reportId: string) {
     const scope = requireScope(context);
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:approve"]);
     const report = await this.db.campaignReport.findFirst({
-      where: { id: reportId, campaign: { workspaceId: scope.workspaceId } }
+      where: { id: reportId, campaign: { workspaceId: scope.workspaceId } },
+      include: { campaign: { include: campaignInclude } }
     });
     if (!report) {
       throw new NotFoundException("Campaign report was not found in the active workspace.");
+    }
+    this.assertCampaignLaunchedForReporting(report.campaign);
+    if (!report.summary || String(report.summary).trim().length === 0) {
+      throw new BadRequestException("Report summary is required before publishing.");
     }
 
     const published = await this.db.campaignReport.update({
@@ -1330,6 +2092,7 @@ export class ManagedAdsService {
 
   async bulkAdminAction(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
     const scope = requireScope(context);
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:manage"]);
     const campaignIds = Array.isArray(input.campaignIds) ? input.campaignIds.slice(0, 100) : [];
     const results = [];
 
@@ -1379,6 +2142,668 @@ export class ManagedAdsService {
     return { ok: true };
   }
 
+  private async assertCampaignPermission(tx: DbClient, scope: AuthenticatedRequestContext, permission: Permission) {
+    await this.assertCampaignPermissions(tx, scope, [permission]);
+  }
+
+  private async assertCampaignPermissions(tx: DbClient, scope: AuthenticatedRequestContext, permissions: Permission[]) {
+    const workspace = await tx.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null },
+      select: { organizationId: true }
+    });
+    if (!workspace) {
+      throw new ForbiddenException("Workspace membership could not be verified.");
+    }
+
+    const membership = await tx.teamMember.findFirst({
+      where: { userId: scope.userId, organizationId: workspace.organizationId, deletedAt: null },
+      select: { role: true, permissions: true }
+    });
+    const missingPermission = permissions.find((permission) => !membership || !hasPermission(membership, permission));
+    if (missingPermission) {
+      throw new ForbiddenException(`Missing required permission: ${missingPermission}.`);
+    }
+  }
+
+  private assertStatusAllowed(status: string, allowed: Set<string>, message: string) {
+    if (!allowed.has(status)) {
+      throw new BadRequestException(message);
+    }
+  }
+
+  private activeOperatorAssignment(campaign: any) {
+    return (campaign.assignments ?? []).find(
+      (assignment: any) => assignment.status === "ACTIVE" && assignment.role === "OPERATOR"
+    );
+  }
+
+  private assignedOperatorUserIds(campaign: any): string[] {
+    return Array.from(
+      new Set(
+        (campaign.assignments ?? [])
+          .filter((assignment: any) => assignment.status === "ACTIVE" && assignment.role === "OPERATOR")
+          .map((assignment: any) => assignment.assigneeUserId)
+          .filter((assigneeUserId: unknown): assigneeUserId is string => typeof assigneeUserId === "string")
+      )
+    );
+  }
+
+  private async applyClientStatusControl(
+    scope: AuthenticatedRequestContext,
+    campaign: any,
+    input: {
+      action: string;
+      auditAction: string;
+      eventName: string;
+      nextStatus: string;
+      notificationBody: string;
+      notificationTitle: string;
+      reason: string;
+    }
+  ) {
+    return this.db.$transaction(async (tx: DbClient) => {
+      const updated = await tx.campaign.update({
+        where: { id: campaign.id },
+        data: {
+          status: input.nextStatus,
+          cancelledAt: input.nextStatus === "CANCELLED" ? now() : undefined
+        },
+        include: campaignInclude
+      });
+      await tx.campaignStatusHistory.create({
+        data: {
+          campaignId: campaign.id,
+          fromStatus: campaign.status,
+          toStatus: input.nextStatus,
+          actorUserId: scope.userId,
+          actorType: "USER",
+          reason: input.reason,
+          metadata: {
+            clientControlAction: input.action,
+            previousValue: campaign.status,
+            newValue: input.nextStatus
+          }
+        }
+      });
+      if (input.action === "request_changes") {
+        await tx.campaignNote.create({
+          data: {
+            campaignId: campaign.id,
+            authorUserId: scope.userId,
+            visibility: "CLIENT_VISIBLE",
+            body: input.reason,
+            metadata: { source: "client_control", action: input.action }
+          }
+        });
+      }
+      await this.audit(tx, scope, input.auditAction, "Campaign", campaign.id, {
+        action: input.action,
+        previousStatus: campaign.status,
+        previousValue: campaign.status,
+        newStatus: input.nextStatus,
+        newValue: input.nextStatus,
+        reason: input.reason
+      });
+      await this.event(tx, scope.workspaceId, input.eventName, "Campaign", campaign.id, {
+        action: input.action,
+        actorUserId: scope.userId,
+        campaignId: campaign.id,
+        previousStatus: campaign.status,
+        newStatus: input.nextStatus
+      });
+      await this.notifyAssignedOperators(tx, scope.workspaceId, updated, input.notificationTitle, input.notificationBody, {
+        eventName: input.eventName,
+        idempotencyKey: `campaign-control:${campaign.id}:${input.action}:${campaign.status}:${input.nextStatus}:${updated.updatedAt?.getTime?.() ?? Date.now()}`,
+        metadata: {
+          action: input.action,
+          actorUserId: scope.userId,
+          previousStatus: campaign.status,
+          newStatus: input.nextStatus
+        },
+        priority: input.action === "stop" ? "urgent" : "high"
+      });
+
+      return this.toCampaign(updated);
+    });
+  }
+
+  private async applyClientBudgetControl(
+    scope: AuthenticatedRequestContext,
+    campaign: any,
+    action: "increase_budget" | "decrease_budget",
+    input: Record<string, any>
+  ) {
+    if (terminalCampaignStatuses.has(campaign.status)) {
+      throw new BadRequestException("Budget cannot be modified after a campaign reaches a terminal status.");
+    }
+
+    const previousBudgetMinor = Number(campaign.budgetMinor ?? 0);
+    const explicitNewBudget = input.newBudgetMinor ?? input.budgetMinor ?? input.totalMinor;
+    const deltaSource = input.deltaMinor ?? input.amountMinor ?? input.amount;
+    let newBudgetMinor: number;
+
+    if (explicitNewBudget !== undefined && explicitNewBudget !== null && explicitNewBudget !== "") {
+      newBudgetMinor = parseMinorAmount(explicitNewBudget, "Campaign budget must be a non-negative amount.");
+      if (action === "increase_budget" && newBudgetMinor <= previousBudgetMinor) {
+        throw new BadRequestException("Increased budget must be greater than the current budget.");
+      }
+      if (action === "decrease_budget" && newBudgetMinor >= previousBudgetMinor) {
+        throw new BadRequestException("Decreased budget must be less than the current budget.");
+      }
+    } else {
+      const deltaMinor = parseMinorAmount(deltaSource, "Budget change amount must be a non-negative amount.");
+      if (deltaMinor <= 0) {
+        throw new BadRequestException("Budget change amount must be greater than zero.");
+      }
+      newBudgetMinor = action === "increase_budget" ? previousBudgetMinor + deltaMinor : previousBudgetMinor - deltaMinor;
+    }
+
+    const recordedSpendMinor = this.totalRecordedSpendMinor(campaign);
+    if (newBudgetMinor <= 0) {
+      throw new BadRequestException("Campaign budget must remain greater than zero.");
+    }
+    if (action === "decrease_budget" && newBudgetMinor < recordedSpendMinor) {
+      throw new BadRequestException("Campaign budget cannot be reduced below recorded spend.");
+    }
+
+    const reason = String(input.reason ?? input.note ?? "Client modified campaign budget.");
+    const eventName = "CampaignBudgetModified";
+    const notificationTitle =
+      action === "increase_budget" ? "Campaign budget increased" : "Campaign budget decreased";
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      const updated = await tx.campaign.update({
+        where: { id: campaign.id },
+        data: { budgetMinor: newBudgetMinor },
+        include: campaignInclude
+      });
+      await this.audit(tx, scope, `campaign.client_control.${action}`, "Campaign", campaign.id, {
+        action,
+        previousBudgetMinor,
+        previousValue: previousBudgetMinor,
+        newBudgetMinor,
+        newValue: newBudgetMinor,
+        recordedSpendMinor,
+        reason
+      });
+      await this.event(tx, scope.workspaceId, eventName, "Campaign", campaign.id, {
+        action,
+        actorUserId: scope.userId,
+        campaignId: campaign.id,
+        previousBudgetMinor,
+        newBudgetMinor
+      });
+      await this.notifyAssignedOperators(
+        tx,
+        scope.workspaceId,
+        updated,
+        notificationTitle,
+        `${scope.userName ?? "A client"} changed ${campaign.name} from ${previousBudgetMinor} to ${newBudgetMinor} minor units.`,
+        {
+          eventName,
+          idempotencyKey: `campaign-control:${campaign.id}:${action}:${previousBudgetMinor}:${newBudgetMinor}`,
+          metadata: { action, actorUserId: scope.userId, previousBudgetMinor, newBudgetMinor },
+          priority: "high"
+        }
+      );
+
+      return this.toCampaign(updated);
+    });
+  }
+
+  private async notifyAssignedOperators(
+    tx: DbClient,
+    workspaceId: string,
+    campaign: any,
+    title: string,
+    body: string,
+    input: Record<string, any>
+  ) {
+    const operatorIds = this.assignedOperatorUserIds(campaign);
+    const recipients = operatorIds.length > 0 ? operatorIds : [undefined];
+    const notificationBaseKey = String(input.idempotencyKey ?? `campaign-control:${campaign.id}:${title}`);
+
+    for (const recipientUserId of recipients) {
+      await this.notify(tx, workspaceId, title, body, {
+        actionUrl: `/campaign-ops/detail?campaignId=${campaign.id}`,
+        category: "campaign_ops",
+        entityId: campaign.id,
+        entityType: "Campaign",
+        idempotencyKey: recipientUserId
+          ? `${notificationBaseKey}:operator:${recipientUserId}`
+          : `${notificationBaseKey}:operator-broadcast`,
+        metadata: input.metadata,
+        priority: input.priority ?? "normal",
+        recipientUserId
+      });
+    }
+  }
+
+  private async findCampaignFinancialRecord(workspaceId: string, campaignId: string) {
+    const campaign = await this.db.campaign.findFirst({
+      where: { id: campaignId, workspaceId, deletedAt: null },
+      include: {
+        ...campaignInclude,
+        ledgerEntries: {
+          where: { deletedAt: null },
+          include: { actor: true },
+          orderBy: { occurredAt: "desc" }
+        },
+        paymentIntents: { orderBy: { createdAt: "desc" } },
+        spendEntries: { orderBy: { recordedForDate: "desc" } }
+      }
+    });
+    if (!campaign) {
+      throw new NotFoundException("Campaign was not found in the active workspace.");
+    }
+
+    return campaign;
+  }
+
+  private toCampaignLedgerEntry(input: {
+    actorUserId?: string | null;
+    amountMinor: number;
+    campaignId: string;
+    category?: string;
+    createdAt?: Date | string | null;
+    currency?: string | null;
+    description: string;
+    direction?: unknown;
+    id: string;
+    metadata?: Record<string, any>;
+    occurredAt?: Date | string | null;
+    sourceId?: string | null;
+    sourceType?: string | null;
+    type: unknown;
+    updatedAt?: Date | string | null;
+    workspaceId: string;
+    walletId?: string | null;
+    walletLedgerEntryId?: string | null;
+    paymentIntentId?: string | null;
+    campaignInvoiceId?: string | null;
+    campaignBudgetHoldId?: string | null;
+    campaignSpendEntryId?: string | null;
+    campaignReportId?: string | null;
+  }): CampaignLedgerEntry {
+    const type = normalizeCampaignLedgerEntryType(input.type);
+    const direction = normalizeCampaignLedgerDirection(input.direction, type);
+    const occurredAt = iso(input.occurredAt) ?? new Date().toISOString();
+
+    return {
+      id: input.id,
+      workspaceId: input.workspaceId,
+      campaignId: input.campaignId,
+      type,
+      direction,
+      amount: money(input.amountMinor, input.currency ?? undefined),
+      category: input.category ?? campaignLedgerCategory(type),
+      description: input.description,
+      occurredAt,
+      ...(input.actorUserId === undefined ? {} : { actorUserId: input.actorUserId }),
+      ...(input.walletId === undefined ? {} : { walletId: input.walletId }),
+      ...(input.walletLedgerEntryId === undefined ? {} : { walletLedgerEntryId: input.walletLedgerEntryId }),
+      ...(input.paymentIntentId === undefined ? {} : { paymentIntentId: input.paymentIntentId }),
+      ...(input.campaignInvoiceId === undefined ? {} : { campaignInvoiceId: input.campaignInvoiceId }),
+      ...(input.campaignBudgetHoldId === undefined ? {} : { campaignBudgetHoldId: input.campaignBudgetHoldId }),
+      ...(input.campaignSpendEntryId === undefined ? {} : { campaignSpendEntryId: input.campaignSpendEntryId }),
+      ...(input.campaignReportId === undefined ? {} : { campaignReportId: input.campaignReportId }),
+      ...(input.sourceType === undefined ? {} : { sourceType: input.sourceType }),
+      ...(input.sourceId === undefined ? {} : { sourceId: input.sourceId }),
+      metadata: input.metadata ?? {},
+      createdAt: iso(input.createdAt) ?? occurredAt,
+      updatedAt: iso(input.updatedAt) ?? occurredAt
+    };
+  }
+
+  private buildCampaignLedger(campaign: any): CampaignLedgerEntry[] {
+    const entries: CampaignLedgerEntry[] = [];
+    const seen = new Set<string>();
+    const push = (entry: CampaignLedgerEntry) => {
+      const key = entrySourceKey(entry);
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      entries.push(entry);
+    };
+
+    for (const entry of campaign.ledgerEntries ?? []) {
+      push(
+        this.toCampaignLedgerEntry({
+          actorUserId: entry.actorUserId,
+          amountMinor: entry.amountMinor,
+          campaignBudgetHoldId: entry.campaignBudgetHoldId,
+          campaignId: entry.campaignId,
+          campaignInvoiceId: entry.campaignInvoiceId,
+          campaignReportId: entry.campaignReportId,
+          campaignSpendEntryId: entry.campaignSpendEntryId,
+          category: entry.category,
+          createdAt: entry.createdAt,
+          currency: entry.currency,
+          description: entry.description,
+          direction: entry.direction,
+          id: entry.id,
+          metadata: entry.metadata ?? {},
+          occurredAt: entry.occurredAt,
+          paymentIntentId: entry.paymentIntentId,
+          sourceId: entry.sourceId ?? entry.id,
+          sourceType: entry.sourceType ?? "CampaignLedgerEntry",
+          type: entry.type,
+          updatedAt: entry.updatedAt,
+          walletId: entry.walletId,
+          walletLedgerEntryId: entry.walletLedgerEntryId,
+          workspaceId: entry.workspaceId
+        })
+      );
+    }
+
+    for (const intent of campaign.paymentIntents ?? []) {
+      if (intent.status !== "COMPLETED" || !intent.creditedAt || !intent.campaignId) {
+        continue;
+      }
+      push(
+        this.toCampaignLedgerEntry({
+          amountMinor: intent.amountMinor,
+          campaignId: campaign.id,
+          createdAt: intent.createdAt,
+          currency: intent.currency ?? campaign.currency,
+          description: "Payment credited to wallet",
+          direction: "CREDIT",
+          id: `payment_${intent.id}_wallet_funding`,
+          occurredAt: intent.creditedAt ?? intent.completedAt ?? intent.updatedAt,
+          paymentIntentId: intent.id,
+          sourceId: intent.id,
+          sourceType: "PaymentIntent",
+          type: "WALLET_FUNDING",
+          updatedAt: intent.updatedAt,
+          walletId: intent.walletId,
+          workspaceId: campaign.workspaceId
+        })
+      );
+    }
+
+    for (const invoice of campaign.invoices ?? []) {
+      if (Number(invoice.amountPaidMinor ?? 0) <= 0) {
+        continue;
+      }
+      push(
+        this.toCampaignLedgerEntry({
+          amountMinor: invoice.amountPaidMinor,
+          campaignId: campaign.id,
+          campaignInvoiceId: invoice.id,
+          createdAt: invoice.paidAt ?? invoice.updatedAt,
+          currency: invoice.currency ?? campaign.currency,
+          description: `Invoice ${invoice.number ?? invoice.id} paid`,
+          direction: "DEBIT",
+          id: `invoice_${invoice.id}`,
+          occurredAt: invoice.paidAt ?? invoice.updatedAt,
+          sourceId: invoice.id,
+          sourceType: "CampaignInvoice",
+          type: "INVOICE_PAYMENT",
+          updatedAt: invoice.updatedAt,
+          workspaceId: campaign.workspaceId
+        })
+      );
+    }
+
+    for (const hold of campaign.budgetHolds ?? []) {
+      const released = ["RELEASED", "CANCELLED", "EXPIRED"].includes(hold.status);
+      push(
+        this.toCampaignLedgerEntry({
+          actorUserId: hold.createdByUserId,
+          amountMinor: hold.amountMinor,
+          campaignBudgetHoldId: hold.id,
+          campaignId: campaign.id,
+          createdAt: hold.createdAt,
+          currency: hold.currency ?? campaign.currency,
+          description: released ? "Campaign budget released" : "Campaign budget allocated",
+          direction: released ? "RELEASE" : "HOLD",
+          id: `hold_${hold.id}_${released ? "release" : "allocation"}`,
+          occurredAt: released ? hold.releasedAt ?? hold.updatedAt : hold.createdAt,
+          sourceId: hold.id,
+          sourceType: "CampaignBudgetHold",
+          type: released ? "REFUND" : "BUDGET_ALLOCATION",
+          updatedAt: hold.updatedAt,
+          walletId: hold.walletId,
+          walletLedgerEntryId: released ? hold.releaseLedgerEntryId : hold.holdLedgerEntryId,
+          workspaceId: campaign.workspaceId
+        })
+      );
+    }
+
+    for (const spend of campaign.spendEntries ?? []) {
+      const metadata = normalizeJsonObject(spend.metadata) as Record<string, any>;
+      const ledgerType = normalizeCampaignLedgerEntryType(metadata.category ?? metadata.type ?? "AD_SPEND");
+      push(
+        this.toCampaignLedgerEntry({
+          actorUserId: spend.actorUserId,
+          amountMinor: spend.amountMinor,
+          campaignId: campaign.id,
+          campaignSpendEntryId: spend.id,
+          createdAt: spend.createdAt,
+          currency: spend.currency ?? campaign.currency,
+          description: spend.notes ?? "Campaign spend recorded",
+          direction: "DEBIT",
+          id: `spend_${spend.id}`,
+          metadata,
+          occurredAt: spend.recordedForDate ?? spend.createdAt,
+          sourceId: spend.id,
+          sourceType: "CampaignSpendEntry",
+          type: ledgerType,
+          updatedAt: spend.updatedAt,
+          workspaceId: campaign.workspaceId
+        })
+      );
+    }
+
+    if ((campaign.spendEntries ?? []).length === 0) {
+      for (const report of campaign.reports ?? []) {
+        if (Number(report.spendMinor ?? 0) <= 0) {
+          continue;
+        }
+        push(
+          this.toCampaignLedgerEntry({
+            amountMinor: report.spendMinor,
+            campaignId: campaign.id,
+            campaignReportId: report.id,
+            createdAt: report.createdAt,
+            currency: report.currency ?? campaign.currency,
+            description: `${(normalizeJsonObject(report.metrics) as Record<string, any>).reportType ?? "Report"} spend`,
+            direction: "DEBIT",
+            id: `report_spend_${report.id}`,
+            occurredAt: report.periodEnd ?? report.createdAt,
+            sourceId: report.id,
+            sourceType: "CampaignReport",
+            type: "AD_SPEND",
+            updatedAt: report.updatedAt,
+            workspaceId: campaign.workspaceId
+          })
+        );
+      }
+    }
+
+    return entries.sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+  }
+
+  private sumLedger(
+    ledger: CampaignLedgerEntry[],
+    predicate: (entry: CampaignLedgerEntry) => boolean
+  ) {
+    return ledger.reduce((total, entry) => (predicate(entry) ? total + entry.amount.amountMinor : total), 0);
+  }
+
+  private buildCampaignBudgetSummary(campaign: any, ledger: CampaignLedgerEntry[]): CampaignBudgetSummary {
+    const currency = getCurrency(campaign.currency, "NGN");
+    const totalBudgetMinor = Math.max(0, Number(campaign.budgetMinor ?? 0));
+    const fundsUsedMinor = this.sumLedger(ledger, isDebitSpend);
+    const allocatedBudgetMinor = this.sumLedger(
+      ledger,
+      (entry) => entry.type === "BUDGET_ALLOCATION" && entry.direction === "HOLD"
+    );
+    const refundedMinor = this.sumLedger(
+      ledger,
+      (entry) => entry.type === "REFUND" && (entry.direction === "RELEASE" || entry.direction === "CREDIT")
+    );
+    const byType = (type: CampaignLedgerEntryType) =>
+      this.sumLedger(ledger, (entry) => entry.type === type && entry.direction === "DEBIT");
+
+    return {
+      campaignId: campaign.id,
+      currency,
+      totalBudget: money(totalBudgetMinor, currency),
+      invoicePaid: money(
+        this.sumLedger(ledger, (entry) => entry.type === "INVOICE_PAYMENT" && entry.direction === "DEBIT"),
+        currency
+      ),
+      allocatedBudget: money(allocatedBudgetMinor, currency),
+      fundsUsed: money(fundsUsedMinor, currency),
+      remainingBalance: money(Math.max(0, totalBudgetMinor - fundsUsedMinor - refundedMinor), currency),
+      pendingSpend: money(Math.max(0, allocatedBudgetMinor - fundsUsedMinor - refundedMinor), currency),
+      refunded: money(refundedMinor, currency),
+      adSpend: money(byType("AD_SPEND"), currency),
+      creativeCosts: money(byType("CREATIVE_COST"), currency),
+      agencyFees: money(byType("AGENCY_FEE"), currency),
+      adjustments: money(byType("ADJUSTMENT"), currency),
+      updatedAt: iso(campaign.updatedAt) ?? new Date().toISOString()
+    };
+  }
+
+  private buildCampaignSpendBreakdown(campaign: any, ledger: CampaignLedgerEntry[]): CampaignSpendBreakdown {
+    const currency = getCurrency(campaign.currency, "NGN");
+    const spendEntries = ledger.filter(isDebitSpend);
+    const totalSpendMinor = spendEntries.reduce((total, entry) => total + entry.amount.amountMinor, 0);
+    const categories = Array.from(campaignSpendTypes).map((type) => {
+      const amountMinor = spendEntries
+        .filter((entry) => entry.type === type)
+        .reduce((total, entry) => total + entry.amount.amountMinor, 0);
+
+      return {
+        type,
+        label: campaignLedgerCategory(type),
+        amount: money(amountMinor, currency),
+        percentageBps: totalSpendMinor > 0 ? Math.round((amountMinor / totalSpendMinor) * 10000) : 0
+      };
+    });
+
+    return {
+      campaignId: campaign.id,
+      currency,
+      totalSpend: money(totalSpendMinor, currency),
+      categories,
+      timeline: spendEntries
+        .slice()
+        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt))
+        .map((entry) => ({
+          date: entry.occurredAt,
+          label: entry.description,
+          type: entry.type,
+          amount: entry.amount
+        }))
+    };
+  }
+
+  private toAuditTrailItem(kind: "audit" | "status", item: any) {
+    if (kind === "status") {
+      const metadata = normalizeJsonObject(item.metadata) as Record<string, unknown>;
+
+      return {
+        id: item.id,
+        kind,
+        action: "campaign.status.updated",
+        actorUserId: item.actorUserId,
+        actorType: item.actorType,
+        timestamp: iso(item.createdAt),
+        previousValue: item.fromStatus ?? metadata.previousValue ?? null,
+        newValue: item.toStatus ?? metadata.newValue ?? null,
+        metadata: {
+          ...metadata,
+          reason: item.reason ?? null
+        }
+      };
+    }
+
+    const metadata = normalizeJsonObject(item.metadata) as Record<string, unknown>;
+
+    return {
+      id: item.id,
+      kind,
+      action: item.action,
+      actorUserId: item.actorUserId,
+      timestamp: iso(item.createdAt),
+      previousValue:
+        metadata.previousValue ?? metadata.previousStatus ?? metadata.previousBudgetMinor ?? null,
+      newValue: metadata.newValue ?? metadata.newStatus ?? metadata.newBudgetMinor ?? null,
+      metadata
+    };
+  }
+
+  private totalRecordedSpendMinor(campaign: any) {
+    const spendEntries = Array.isArray(campaign.spendEntries) ? campaign.spendEntries : [];
+    const spendEntryPlacementIds = new Set(
+      spendEntries
+        .map((entry: any) => entry.placementId)
+        .filter((placementId: unknown): placementId is string => typeof placementId === "string")
+    );
+    const ledgerSpendMinor = spendEntries.reduce(
+      (total: number, entry: any) => total + Math.max(0, Number(entry.amountMinor ?? 0)),
+      0
+    );
+    const legacyPlacementSpendMinor = (campaign.manualPlacements ?? []).reduce(
+      (total: number, placement: any) =>
+        placement.deletedAt || spendEntryPlacementIds.has(placement.id)
+          ? total
+          : total + Math.max(0, Number(placement.spendMinor ?? 0)),
+      0
+    );
+
+    return ledgerSpendMinor + legacyPlacementSpendMinor;
+  }
+
+  private assertSpendWithinAllocation(campaign: any, additionalSpendMinor: number) {
+    if (additionalSpendMinor <= 0) {
+      return;
+    }
+
+    const budgetMinor = Number(campaign.budgetMinor ?? 0);
+    const currentSpendMinor = this.totalRecordedSpendMinor(campaign);
+
+    if (budgetMinor > 0 && currentSpendMinor + additionalSpendMinor > budgetMinor) {
+      throw new BadRequestException("Recorded spend cannot exceed the campaign budget allocation.");
+    }
+  }
+
+  private hasLaunchedPlacement(campaign: any) {
+    return (campaign.manualPlacements ?? []).some(
+      (placement: any) => placement.status === "LAUNCHED" && !placement.deletedAt
+    );
+  }
+
+  private hasPublishedReport(campaign: any) {
+    return (campaign.reports ?? []).some(
+      (report: any) => report.status === "PUBLISHED" && !report.deletedAt
+    );
+  }
+
+  private assertCampaignLaunchedForReporting(campaign: any) {
+    if (launchedCampaignStatuses.has(campaign.status) || this.hasLaunchedPlacement(campaign)) {
+      return;
+    }
+
+    throw new BadRequestException("Reports cannot be created or published before campaign launch.");
+  }
+
+  private assertAdminStatusGuardrails(campaign: any, status: string) {
+    if ((status === "RUNNING" || status === "ACTIVE") && !this.hasLaunchedPlacement(campaign)) {
+      throw new BadRequestException(
+        "Campaigns cannot move into optimization until at least one launched placement is recorded."
+      );
+    }
+
+    if (status === "COMPLETED" && !this.hasPublishedReport(campaign)) {
+      throw new BadRequestException("Campaigns cannot be completed until a client report is published.");
+    }
+  }
+
   private async changeCampaignStatus(
     scope: AuthenticatedRequestContext,
     campaignId: string,
@@ -1387,6 +2812,10 @@ export class ManagedAdsService {
     admin = false
   ) {
     const existing = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    if (admin) {
+      this.assertAdminStatusGuardrails(existing, status);
+    }
+
     return this.db.$transaction(async (tx: DbClient) => {
       const campaign = await tx.campaign.update({
         where: { id: campaignId },
@@ -1428,8 +2857,60 @@ export class ManagedAdsService {
     });
   }
 
+  private async createCampaignLedgerEntry(
+    tx: DbClient,
+    scope: { workspaceId: string; userId?: string },
+    campaignId: string,
+    input: Record<string, any>
+  ) {
+    const type = normalizeCampaignLedgerEntryType(input.type);
+    const direction = normalizeCampaignLedgerDirection(input.direction, type);
+    const amountMinor = parseNonNegativeMinorAmount(
+      input.amountMinor ?? input.amount?.amountMinor ?? 0,
+      "Campaign ledger amount must be a non-negative minor-unit amount."
+    );
+    if (amountMinor <= 0) {
+      return undefined;
+    }
+    const sourceType = input.sourceType ?? input.entityType;
+    const sourceId = input.sourceId ?? input.entityId;
+    const idempotencyKey =
+      input.idempotencyKey ??
+      `campaign-ledger:${campaignId}:${sourceType ?? type}:${sourceId ?? input.walletLedgerEntryId ?? type}:${direction}`;
+
+    return tx.campaignLedgerEntry.upsert({
+      where: { idempotencyKey },
+      update: {},
+      create: {
+        workspaceId: scope.workspaceId,
+        campaignId,
+        walletId: input.walletId,
+        walletLedgerEntryId: input.walletLedgerEntryId,
+        paymentIntentId: input.paymentIntentId,
+        campaignInvoiceId: input.campaignInvoiceId,
+        campaignBudgetHoldId: input.campaignBudgetHoldId,
+        campaignSpendEntryId: input.campaignSpendEntryId,
+        campaignReportId: input.campaignReportId,
+        actorUserId: input.actorUserId ?? scope.userId,
+        type,
+        direction,
+        amountMinor,
+        currency: input.currency ?? "NGN",
+        category: input.category ?? campaignLedgerCategory(type),
+        description: input.description ?? campaignLedgerCategory(type),
+        notes: input.notes,
+        occurredAt: input.occurredAt ?? now(),
+        sourceType,
+        sourceId,
+        idempotencyKey,
+        metadata: normalizeJsonObject(input.metadata)
+      }
+    });
+  }
+
   private async completePaymentIntent(intentId: string, status: string, providerReference: string, scope?: AuthenticatedRequestContext) {
     return this.db.$transaction(async (tx: DbClient) => {
+      await this.lockPaymentIntent(tx, intentId);
       const intent = await tx.paymentIntent.findUnique({ where: { id: intentId } });
       if (!intent) {
         throw new NotFoundException("Payment intent was not found.");
@@ -1444,44 +2925,55 @@ export class ManagedAdsService {
       let creditedAt = intent.creditedAt;
       const completedAt = status === "COMPLETED" ? now() : intent.completedAt;
       if (status === "COMPLETED" && !intent.creditedAt) {
+        const paymentAmountMinor = parsePositiveMinorAmount(
+          intent.amountMinor,
+          "Payment intent amount must be positive before completion."
+        );
         const wallet = intent.walletId
           ? await tx.wallet.findUnique({ where: { id: intent.walletId } })
           : await this.getOrCreateWallet(tx, intent.workspaceId, getCurrency(intent.currency, "NGN"));
+        if (!wallet) {
+          throw new NotFoundException("Payment intent wallet was not found.");
+        }
         await this.lockWallet(tx, wallet.id);
-        await tx.ledgerEntry.create({
-          data: {
-            walletId: wallet.id,
-            kind: "CREDIT",
-            amountMinor: intent.amountMinor,
-            currency: intent.currency,
-            reference: providerReference,
-            description: "Payment credited to wallet",
-            idempotencyKey: `payment:${intent.id}:credit`,
-            sourceType: "PaymentIntent",
-            sourceId: intent.id
-          }
+        const creditLedger = await this.createWalletLedgerEntry(tx, {
+          walletId: wallet.id,
+          kind: "CREDIT",
+          amountMinor: paymentAmountMinor,
+          currency: intent.currency,
+          reference: providerReference,
+          description: "Payment credited to wallet",
+          idempotencyKey: `payment:${intent.id}:credit`,
+          sourceType: "PaymentIntent",
+          sourceId: intent.id
         });
         creditedAt = now();
+        let campaignIdForIntent = intent.campaignId;
 
         if (intent.campaignInvoiceId) {
-          const invoice = await tx.campaignInvoice.findUnique({ where: { id: intent.campaignInvoiceId } });
-          const amountDue = Math.max(0, invoice.totalMinor - invoice.amountPaidMinor);
-          const debitAmount = Math.min(intent.amountMinor, amountDue);
-          if (debitAmount > 0) {
-            await tx.ledgerEntry.create({
-              data: {
-                walletId: wallet.id,
-                kind: "DEBIT",
-                amountMinor: debitAmount,
-                currency: intent.currency,
-                reference: `invoice:${invoice.id}`,
-                description: "Campaign invoice paid from payment",
-                idempotencyKey: `payment:${intent.id}:invoice_debit`,
-                sourceType: "CampaignInvoice",
-                sourceId: invoice.id
-              }
+          const invoice = await tx.campaignInvoice.findFirst({
+            where: {
+              id: intent.campaignInvoiceId,
+              workspaceId: intent.workspaceId,
+              deletedAt: null
+            }
+          });
+          campaignIdForIntent = invoice?.campaignId ?? campaignIdForIntent;
+          const amountDue = invoice ? Math.max(0, invoice.totalMinor - invoice.amountPaidMinor) : 0;
+          const debitAmount = Math.min(paymentAmountMinor, amountDue);
+          if (invoice && debitAmount > 0) {
+            const invoiceDebit = await this.createWalletLedgerEntry(tx, {
+              walletId: wallet.id,
+              kind: "DEBIT",
+              amountMinor: debitAmount,
+              currency: intent.currency,
+              reference: `invoice:${invoice.id}`,
+              description: "Campaign invoice paid from payment",
+              idempotencyKey: `payment:${intent.id}:invoice_debit`,
+              sourceType: "CampaignInvoice",
+              sourceId: invoice.id
             });
-            await tx.campaignInvoice.update({
+            const paidInvoice = await tx.campaignInvoice.update({
               where: { id: invoice.id },
               data: {
                 amountPaidMinor: invoice.amountPaidMinor + debitAmount,
@@ -1489,8 +2981,42 @@ export class ManagedAdsService {
                 paidAt: invoice.amountPaidMinor + debitAmount >= invoice.totalMinor ? now() : undefined
               }
             });
+            await this.createCampaignLedgerEntry(tx, scope ?? { workspaceId: intent.workspaceId }, invoice.campaignId, {
+              amountMinor: debitAmount,
+              campaignInvoiceId: invoice.id,
+              category: campaignLedgerCategory("INVOICE_PAYMENT"),
+              currency: intent.currency,
+              description: "Campaign invoice paid from payment",
+              direction: "DEBIT",
+              idempotencyKey: `campaign-ledger:payment:${intent.id}:invoice-payment`,
+              occurredAt: paidInvoice.paidAt ?? completedAt,
+              paymentIntentId: intent.id,
+              sourceId: invoice.id,
+              sourceType: "CampaignInvoice",
+              type: "INVOICE_PAYMENT",
+              walletId: wallet.id,
+              walletLedgerEntryId: invoiceDebit.id
+            });
           }
         }
+        if (campaignIdForIntent) {
+          await this.createCampaignLedgerEntry(tx, scope ?? { workspaceId: intent.workspaceId }, campaignIdForIntent, {
+            amountMinor: paymentAmountMinor,
+            category: campaignLedgerCategory("WALLET_FUNDING"),
+            currency: intent.currency,
+            description: "Payment credited to wallet",
+            direction: "CREDIT",
+            idempotencyKey: `campaign-ledger:payment:${intent.id}:wallet-funding`,
+            occurredAt: creditedAt,
+            paymentIntentId: intent.id,
+            sourceId: intent.id,
+            sourceType: "PaymentIntent",
+            type: "WALLET_FUNDING",
+            walletId: wallet.id,
+            walletLedgerEntryId: creditLedger.id
+          });
+        }
+        await this.assertWalletConsistency(tx, wallet.id);
       }
 
       const updated = await tx.paymentIntent.update({
@@ -1526,10 +3052,55 @@ export class ManagedAdsService {
   }
 
   private async lockWallet(tx: DbClient, walletId: string) {
-    await tx.$queryRaw`SELECT id FROM "Wallet" WHERE id = ${walletId} FOR UPDATE`;
+    if (tx.$queryRaw) {
+      await tx.$queryRaw`SELECT id FROM "Wallet" WHERE id = ${walletId} FOR UPDATE`;
+    }
+  }
+
+  private async lockPaymentIntent(tx: DbClient, intentId: string) {
+    if (tx.$queryRaw) {
+      await tx.$queryRaw`SELECT id FROM "PaymentIntent" WHERE id = ${intentId} FOR UPDATE`;
+    }
+  }
+
+  private async createWalletLedgerEntry(tx: DbClient, data: Record<string, any>) {
+    const amountMinor = parsePositiveMinorAmount(
+      data.amountMinor,
+      "Wallet ledger entries must use a positive minor-unit amount."
+    );
+    const idempotencyKey = normalizeIdempotencyKey(data.idempotencyKey);
+    const create = { ...data, amountMinor, idempotencyKey };
+
+    if (idempotencyKey && tx.ledgerEntry.upsert) {
+      return tx.ledgerEntry.upsert({
+        where: { idempotencyKey },
+        update: {},
+        create
+      });
+    }
+
+    return tx.ledgerEntry.create({ data: create });
+  }
+
+  private async assertWalletConsistency(tx: DbClient, walletId: string) {
+    const entries = await tx.ledgerEntry.findMany({ where: { walletId } });
+    const mappedEntries: LedgerEntry[] = entries.map(mapLedgerEntry);
+    const negativeEntry = mappedEntries.find((entry) => entry.amount.amountMinor < 0);
+
+    if (negativeEntry) {
+      throw new BadRequestException("Wallet ledger contains a negative amount and cannot be mutated.");
+    }
+
+    const consistency = buildWalletConsistency(mappedEntries);
+    if (!consistency.consistent) {
+      throw new BadRequestException("Wallet ledger consistency check failed.");
+    }
+
+    return consistency;
   }
 
   private async assertWalletCanPay(tx: DbClient, walletId: string, amountMinor: number, currency: string) {
+    parsePositiveMinorAmount(amountMinor, "Wallet debit amount must be positive.");
     const entries = await tx.ledgerEntry.findMany({ where: { walletId } });
     const balance = calculateAvailableBalance(entries.map(mapLedgerEntry));
     if (balance.currency !== currency || balance.amountMinor < amountMinor) {
@@ -1572,13 +3143,17 @@ export class ManagedAdsService {
       update: {},
       create: {
         workspaceId,
+        recipientUserId: input.recipientUserId,
         channel: "IN_APP",
+        category: input.category ?? "campaign",
+        priority: input.priority ?? "normal",
         title,
         body,
         entityType: input.entityType,
         entityId: input.entityId,
         actionUrl: input.actionUrl,
         idempotencyKey,
+        metadata: input.metadata ?? {},
         status: "DELIVERED",
         deliveredAt: now()
       }
@@ -1644,6 +3219,9 @@ export class ManagedAdsService {
     const notes = (campaign.notes ?? []).filter((note: any) =>
       includeInternal ? true : note.visibility === "CLIENT_VISIBLE"
     );
+    const assignedOperator = this.activeOperatorAssignment(campaign);
+    const ledger = this.buildCampaignLedger(campaign);
+    const budgetSummary = this.buildCampaignBudgetSummary(campaign, ledger);
 
     return {
       id: campaign.id,
@@ -1654,6 +3232,15 @@ export class ManagedAdsService {
       objective: campaign.objective,
       status: campaign.status,
       budget: { amountMinor: campaign.budgetMinor, currency: getCurrency(campaign.currency, "NGN") },
+      budgetSummary,
+      remainingBudget: budgetSummary.remainingBalance,
+      assignedOperator: assignedOperator
+        ? {
+            userId: assignedOperator.assigneeUserId,
+            name: assignedOperator.assignee?.name ?? assignedOperator.assigneeUserId,
+            email: assignedOperator.assignee?.email
+          }
+        : null,
       destination: campaign.destination
         ? {
             kind: campaign.destination.kind,
@@ -1695,6 +3282,21 @@ export class ManagedAdsService {
       (assignment: any) => assignment.status === "ACTIVE"
     );
     const latestNote = campaign.notes?.[0];
+    const status = this.toAdminStatus(campaign);
+    const spendMinor = this.totalRecordedSpendMinor(campaign);
+    const budgetMinor = Number(campaign.budgetMinor ?? 0);
+    const launchedPlacementCount = (campaign.manualPlacements ?? []).filter(
+      (placement: any) => placement.status === "LAUNCHED" && !placement.deletedAt
+    ).length;
+    const publishedReportCount = (campaign.reports ?? []).filter(
+      (report: any) => report.status === "PUBLISHED" && !report.deletedAt
+    ).length;
+    const guardrails = [
+      latestAssignment ? undefined : "Needs operator assignment",
+      launchedPlacementCount > 0 ? undefined : "Needs launch placement",
+      budgetMinor > 0 && spendMinor >= budgetMinor * 0.85 ? "Budget allocation near limit" : undefined,
+      status === "reporting" && publishedReportCount === 0 ? "Needs published report" : undefined
+    ].filter(Boolean);
 
     return {
       id: campaign.id,
@@ -1704,7 +3306,17 @@ export class ManagedAdsService {
       channel: this.channelFromDestination(campaign.destination?.kind),
       objective: campaign.objective,
       budget: { amountMinor: campaign.budgetMinor, currency: getCurrency(campaign.currency, "NGN") },
-      status: this.toAdminStatus(campaign.status),
+      budgetMinor,
+      budgetUtilization: budgetMinor > 0 ? Math.round((spendMinor / budgetMinor) * 100) : 0,
+      guardrails,
+      launchedPlacementCount,
+      placementCount: (campaign.manualPlacements ?? []).filter((placement: any) => !placement.deletedAt).length,
+      publishedReportCount,
+      reportCount: (campaign.reports ?? []).filter((report: any) => !report.deletedAt).length,
+      spend: { amountMinor: spendMinor, currency: getCurrency(campaign.currency, "NGN") },
+      spendMinor,
+      status,
+      workflowStage: this.workflowStageForAdminStatus(status),
       priority: latestAssignment?.metadata?.priority ?? "normal",
       assignee: latestAssignment?.assigneeUserId ?? "Unassigned",
       submittedAt: iso(campaign.submittedAt ?? campaign.createdAt),
@@ -1715,24 +3327,35 @@ export class ManagedAdsService {
       destinationUrl: campaign.destination?.url,
       notes: latestNote?.body,
       sla: campaign.status === "PENDING_REVIEW" ? "Review due" : "On track",
-      risk: "Unscored",
-      progress: this.progressForStatus(campaign.status),
-      nextAction: this.nextActionForStatus(campaign.status),
+      risk: guardrails.length > 0 ? guardrails.join("; ") : "On track",
+      progress: this.progressForAdminStatus(status),
+      nextAction: this.nextActionForCampaign(campaign, status),
       tags: [campaign.objective, campaign.destination?.kind].filter(Boolean)
     };
   }
 
   private toAdminReport(report: any) {
+    const metrics = normalizeJsonObject(report.metrics) as Record<string, any>;
+    const reportType = String(metrics.reportType ?? "weekly_report");
+    const hasMetrics =
+      Number(report.impressions ?? 0) > 0 ||
+      Number(report.clicks ?? 0) > 0 ||
+      Number(report.conversions ?? 0) > 0 ||
+      Number(report.spendMinor ?? 0) > 0;
+
     return {
       id: report.id,
       title: report.campaign?.name ? `${report.campaign.name} report` : "Campaign report",
       period: `${iso(report.periodStart) ?? ""} - ${iso(report.periodEnd) ?? ""}`,
       generatedAt: iso(report.updatedAt),
+      reportType,
+      type: reportType,
       status:
-        report.status === "PUBLISHED" ? "ready" : report.status === "RETRACTED" ? "failed" : "generating",
+        report.status === "PUBLISHED" ? "published" : report.status === "RETRACTED" ? "failed" : hasMetrics ? "ready" : "generating",
       owner: report.generatedByUserId ?? "Ops",
       summary: report.summary,
       metrics: [
+        { label: "Spend", value: report.spendMinor },
         { label: "Impressions", value: report.impressions },
         { label: "Clicks", value: report.clicks },
         { label: "Conversions", value: report.conversions }
@@ -1753,18 +3376,30 @@ export class ManagedAdsService {
     };
   }
 
-  private toAdminStatus(status: string) {
-    switch (status) {
+  private toAdminStatus(campaign: any) {
+    const latestAssignment = campaign.assignments?.find(
+      (assignment: any) => assignment.status === "ACTIVE"
+    );
+    const hasDraftReport = (campaign.reports ?? []).some(
+      (report: any) => report.status === "DRAFT" && !report.deletedAt
+    );
+
+    switch (campaign.status) {
+      case "DRAFT":
+        return "submitted";
       case "PENDING_REVIEW":
-        return "reviewing";
+        return "review";
       case "APPROVED":
+        return latestAssignment ? "assigned" : "approved";
       case "CREATIVE_IN_PROGRESS":
+        return "creative_review";
       case "QUEUED":
-        return "scheduled";
+        return "platform_launch";
+      case "PAUSED":
+        return "paused";
       case "ACTIVE":
       case "RUNNING":
-      case "PAUSED":
-        return "running";
+        return hasDraftReport ? "reporting" : "optimization";
       case "CHANGES_REQUESTED":
       case "REJECTED":
         return "blocked";
@@ -1774,7 +3409,38 @@ export class ManagedAdsService {
       case "CANCELLED":
         return "failed";
       default:
-        return "queued";
+        return "submitted";
+    }
+  }
+
+  private workflowStageForAdminStatus(status: string) {
+    switch (status) {
+      case "submitted":
+        return "Campaign Submitted";
+      case "review":
+        return "Review";
+      case "approved":
+        return "Approved";
+      case "assigned":
+        return "Assigned";
+      case "creative_review":
+        return "Creative Review";
+      case "platform_launch":
+        return "Platform Launch";
+      case "optimization":
+        return "Optimization";
+      case "reporting":
+        return "Reporting";
+      case "paused":
+        return "Paused";
+      case "completed":
+        return "Completion";
+      case "blocked":
+        return "Blocked";
+      case "failed":
+        return "Failed";
+      default:
+        return "Campaign Submitted";
     }
   }
 
@@ -1797,39 +3463,60 @@ export class ManagedAdsService {
     return kind.replace(/_/g, " ");
   }
 
-  private progressForStatus(status: string) {
+  private progressForAdminStatus(status: string) {
     switch (status) {
-      case "DRAFT":
+      case "submitted":
         return 10;
-      case "PENDING_REVIEW":
-        return 25;
-      case "APPROVED":
-      case "CREATIVE_IN_PROGRESS":
+      case "review":
+        return 20;
+      case "approved":
+        return 30;
+      case "assigned":
         return 45;
-      case "RUNNING":
-      case "ACTIVE":
+      case "creative_review":
+        return 55;
+      case "platform_launch":
+        return 65;
+      case "optimization":
         return 70;
-      case "COMPLETED":
+      case "paused":
+        return 70;
+      case "reporting":
+        return 90;
+      case "completed":
         return 100;
       default:
         return 35;
     }
   }
 
-  private nextActionForStatus(status: string) {
+  private nextActionForCampaign(campaign: any, status: string) {
+    const hasAssignment = (campaign.assignments ?? []).some(
+      (assignment: any) => assignment.status === "ACTIVE"
+    );
+    const hasLaunch = this.hasLaunchedPlacement(campaign);
+    const hasReport = this.hasPublishedReport(campaign);
+
     switch (status) {
-      case "DRAFT":
-        return "Wait for client submission";
-      case "PENDING_REVIEW":
+      case "submitted":
+        return "Move submitted campaign into review";
+      case "review":
         return "Review campaign brief";
-      case "APPROVED":
-        return "Assign operator and issue invoice";
-      case "CREATIVE_IN_PROGRESS":
-        return "Upload approved creatives";
-      case "RUNNING":
-      case "ACTIVE":
-        return "Record proofs and metrics";
-      case "COMPLETED":
+      case "approved":
+        return hasAssignment ? "Confirm assigned operator" : "Assign operator";
+      case "assigned":
+        return "Run creative review";
+      case "creative_review":
+        return "Approve creative and prepare platform launch";
+      case "platform_launch":
+        return hasLaunch ? "Move into optimization" : "Record launch placement";
+      case "optimization":
+        return "Record optimization metrics and prepare report";
+      case "paused":
+        return "Review the client pause or change request";
+      case "reporting":
+        return hasReport ? "Review completion readiness" : "Publish client report";
+      case "completed":
         return "Review published report";
       default:
         return "Open campaign workspace";

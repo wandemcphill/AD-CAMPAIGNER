@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
+import { APP_GUARD } from "@nestjs/core";
 
 import {
   AdminController,
@@ -7,10 +8,12 @@ import {
   AuditController,
   AuthController,
   AdminCampaignOpsController,
+  AdminGrowthController,
   CampaignsController,
   ClientProfileController,
   CompanyProfilesController,
   DestinationsController,
+  GrowthController,
   HealthController,
   InvoicesController,
   LiveController,
@@ -30,6 +33,7 @@ import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { PrismaService } from "./prisma.service";
 import { AuthSessionService } from "./auth-session.service";
+import { AuthorizationGuard } from "./authorization.guard";
 import { RealtimeGateway } from "./realtime.gateway";
 import { OtpModule } from "./otp/otp.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
@@ -47,6 +51,7 @@ import { DigitalAccessModule } from "./digital-access/digital-access.module";
     DestinationsController,
     LiveController,
     SmmController,
+    GrowthController,
     PaymentsController,
     WebhooksController,
     WalletController,
@@ -58,9 +63,20 @@ import { DigitalAccessModule } from "./digital-access/digital-access.module";
     MediaController,
     SearchController,
     AdminController,
+    AdminGrowthController,
     AdminCampaignOpsController,
     AuditController
   ],
-  providers: [PrismaService, AuthSessionService, PlatformService, ManagedAdsService, RealtimeGateway]
+  providers: [
+    PrismaService,
+    AuthSessionService,
+    PlatformService,
+    ManagedAdsService,
+    RealtimeGateway,
+    {
+      provide: APP_GUARD,
+      useClass: AuthorizationGuard
+    }
+  ]
 })
 export class AppModule {}

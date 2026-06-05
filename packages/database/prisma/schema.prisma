@@ -79,6 +79,25 @@ enum LedgerEntryKind {
   REVERSAL
 }
 
+enum CampaignLedgerEntryType {
+  WALLET_FUNDING
+  INVOICE_PAYMENT
+  BUDGET_ALLOCATION
+  AD_SPEND
+  CREATIVE_COST
+  AGENCY_FEE
+  REFUND
+  ADJUSTMENT
+}
+
+enum CampaignLedgerEntryDirection {
+  CREDIT
+  DEBIT
+  HOLD
+  RELEASE
+  REVERSAL
+}
+
 enum PaymentStatus {
   PENDING
   REQUIRES_ACTION
@@ -292,6 +311,7 @@ model User {
   campaignAssignments   CampaignAssignment[]     @relation("CampaignAssignee")
   assignedCampaigns     CampaignAssignment[]     @relation("CampaignAssigner")
   campaignReports       CampaignReport[]         @relation("CampaignReportGenerator")
+  campaignLedgerEntries CampaignLedgerEntry[]     @relation("CampaignLedgerEntryActor")
   notifications         Notification[]           @relation("NotificationRecipient")
   notificationPrefs     NotificationPreference[]
 
@@ -335,6 +355,7 @@ model Workspace {
   companyProfiles            CompanyProfile[]
   mediaAssets                MediaAsset[]
   campaignInvoices           CampaignInvoice[]
+  campaignLedgerEntries      CampaignLedgerEntry[]
   eventOutbox                EventOutbox[]
   notifications              Notification[]
   notificationPrefs          NotificationPreference[]
@@ -420,6 +441,7 @@ model Campaign {
   invoices          CampaignInvoice[]
   spendEntries      CampaignSpendEntry[]
   paymentIntents    PaymentIntent[]
+  ledgerEntries     CampaignLedgerEntry[]
 
   @@index([workspaceId, status])
   @@index([companyProfileId, status])
@@ -471,6 +493,7 @@ model Wallet {
   digitalAccessCharges DigitalAccessWalletCharge[]
   campaignBudgetHolds  CampaignBudgetHold[]
   paymentIntents       PaymentIntent[]
+  campaignLedgerEntries CampaignLedgerEntry[]
 
   @@unique([workspaceId, currency])
 }
@@ -490,6 +513,7 @@ model LedgerEntry {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   wallet         Wallet          @relation(fields: [walletId], references: [id])
+  campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([walletId, createdAt])
   @@index([reference])
@@ -521,6 +545,7 @@ model PaymentIntent {
   wallet            Wallet?          @relation(fields: [walletId], references: [id])
   campaign          Campaign?        @relation(fields: [campaignId], references: [id])
   campaignInvoice   CampaignInvoice? @relation(fields: [campaignInvoiceId], references: [id])
+  campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([workspaceId, status])
   @@index([gateway, providerReference])
@@ -755,6 +780,7 @@ model CampaignReport {
   placement         ManualAdPlacement?         @relation(fields: [placementId], references: [id])
   generatedBy       User?                      @relation("CampaignReportGenerator", fields: [generatedByUserId], references: [id])
   screenshots       CampaignReportScreenshot[]
+  campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([campaignId, status, createdAt])
   @@index([placementId, createdAt])
@@ -805,6 +831,7 @@ model CampaignInvoice {
   companyProfile   CompanyProfile?       @relation(fields: [companyProfileId], references: [id])
   budgetHolds      CampaignBudgetHold[]
   paymentIntents   PaymentIntent[]
+  campaignLedgerEntries CampaignLedgerEntry[]
 
   @@unique([workspaceId, number])
   @@index([workspaceId, status, createdAt])
@@ -837,6 +864,7 @@ model CampaignBudgetHold {
   campaign                    Campaign                 @relation(fields: [campaignId], references: [id])
   wallet                      Wallet                   @relation(fields: [walletId], references: [id])
   invoice                     CampaignInvoice?         @relation(fields: [invoiceId], references: [id])
+  campaignLedgerEntries       CampaignLedgerEntry[]
 
   @@index([campaignId, status])
   @@index([walletId, status, createdAt])
@@ -858,10 +886,64 @@ model CampaignSpendEntry {
   updatedAt       DateTime            @updatedAt
   campaign        Campaign            @relation(fields: [campaignId], references: [id])
   placement       ManualAdPlacement?  @relation(fields: [placementId], references: [id])
+  campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([campaignId, recordedForDate])
   @@index([placementId, recordedForDate])
   @@index([actorUserId, createdAt])
+}
+
+model CampaignLedgerEntry {
+  id                   String                       @id @default(uuid())
+  workspaceId          String
+  campaignId           String
+  walletId             String?
+  walletLedgerEntryId  String?
+  paymentIntentId      String?
+  campaignInvoiceId    String?
+  campaignBudgetHoldId String?
+  campaignSpendEntryId String?
+  campaignReportId     String?
+  actorUserId          String?
+  type                 CampaignLedgerEntryType
+  direction            CampaignLedgerEntryDirection
+  amountMinor          Int
+  currency             String                       @default("NGN")
+  category             String
+  description          String
+  notes                String?
+  occurredAt           DateTime                     @default(now())
+  sourceType           String?
+  sourceId             String?
+  idempotencyKey       String                       @unique
+  metadata             Json                         @default("{}")
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  deletedAt            DateTime?
+  workspace            Workspace                    @relation(fields: [workspaceId], references: [id])
+  campaign             Campaign                     @relation(fields: [campaignId], references: [id])
+  wallet               Wallet?                      @relation(fields: [walletId], references: [id])
+  walletLedgerEntry    LedgerEntry?                 @relation(fields: [walletLedgerEntryId], references: [id])
+  paymentIntent        PaymentIntent?               @relation(fields: [paymentIntentId], references: [id])
+  campaignInvoice      CampaignInvoice?             @relation(fields: [campaignInvoiceId], references: [id])
+  campaignBudgetHold   CampaignBudgetHold?          @relation(fields: [campaignBudgetHoldId], references: [id])
+  campaignSpendEntry   CampaignSpendEntry?          @relation(fields: [campaignSpendEntryId], references: [id])
+  campaignReport       CampaignReport?              @relation(fields: [campaignReportId], references: [id])
+  actor                User?                        @relation("CampaignLedgerEntryActor", fields: [actorUserId], references: [id])
+
+  @@index([workspaceId, occurredAt])
+  @@index([campaignId, occurredAt])
+  @@index([campaignId, type])
+  @@index([sourceType, sourceId])
+  @@index([walletId, occurredAt])
+  @@index([walletLedgerEntryId])
+  @@index([paymentIntentId])
+  @@index([campaignInvoiceId])
+  @@index([campaignBudgetHoldId])
+  @@index([campaignSpendEntryId])
+  @@index([campaignReportId])
+  @@index([actorUserId, occurredAt])
+  @@index([deletedAt])
 }
 
 model EventOutbox {

@@ -7,7 +7,27 @@ import type { AuthenticatedRequestContext } from "./request-context";
 
 const workspace: AuthenticatedRequestContext = {
   workspaceId: "workspace_a",
-  userId: "user_a"
+  userId: "user_a",
+  permissions: [
+    "admin:access",
+    "audit:read",
+    "campaign:approve",
+    "campaign:create",
+    "campaign:manage",
+    "payment:manage"
+  ]
+};
+
+const defaultMembership = {
+  permissions: [
+    "admin:access",
+    "audit:read",
+    "campaign:approve",
+    "campaign:create",
+    "campaign:manage",
+    "payment:manage"
+  ],
+  role: "OWNER"
 };
 
 const uploadEnvKeys = [
@@ -42,6 +62,10 @@ type MediaAssetUpdateInput = {
 
 type PaymentIntentCreateInput = {
   data: {
+    amountMinor?: number;
+    campaignId?: string | null;
+    campaignInvoiceId?: string | null;
+    currency?: string;
     idempotencyKey?: string;
     workspaceId?: string;
     walletId?: string;
@@ -54,6 +78,90 @@ type CampaignFindFirstInput = {
     id?: string;
     workspaceId?: string;
   };
+};
+
+type MockCampaignSpendEntry = {
+  amountMinor: number;
+  createdAt?: Date;
+  currency?: string;
+  id?: string;
+  metadata?: Record<string, unknown>;
+  notes?: string;
+  recordedForDate?: Date;
+  updatedAt?: Date;
+};
+
+type MockCampaign = {
+  assignments: Array<{
+    assignee?: { email?: string | null; id?: string; name?: string | null } | null;
+    assigneeUserId: string;
+    role: string;
+    status: string;
+  }>;
+  budgetHolds: unknown[];
+  budgetMinor: number;
+  createdAt: Date;
+  creatives: unknown[];
+  creatorUserId: string;
+  currency: string;
+  id: string;
+  invoices: unknown[];
+  ledgerEntries: unknown[];
+  manualPlacements: unknown[];
+  name: string;
+  notes: unknown[];
+  reports: unknown[];
+  spendEntries: MockCampaignSpendEntry[];
+  status: string;
+  statusHistory: unknown[];
+  updatedAt: Date;
+  workspaceId: string;
+};
+
+type CampaignUpdateInput = {
+  data: Partial<MockCampaign> & {
+    cancelledAt?: Date | null;
+    completedAt?: Date | null;
+    pausedAt?: Date | null;
+  };
+  where?: {
+    id?: string;
+  };
+};
+
+type AuditLogCreateInput = {
+  data: {
+    action?: string;
+    actorUserId?: string | null;
+    metadata?: {
+      newStatus?: unknown;
+      previousStatus?: unknown;
+    } & Record<string, unknown>;
+  };
+};
+
+type CampaignLedgerEntryUpsertInput = {
+  create?: {
+    amountMinor?: number;
+    category?: string;
+    direction?: string;
+    type?: string;
+  } & Record<string, unknown>;
+};
+
+type CampaignSpendEntryCreateInput = {
+  data: {
+    amountMinor?: number;
+    notes?: string | null;
+    source?: string;
+  } & Record<string, unknown>;
+};
+
+type NotificationUpsertInput = {
+  create?: {
+    recipientUserId?: string | null;
+    title?: string;
+  } & Record<string, unknown>;
 };
 
 function snapshotUploadEnv() {
@@ -80,31 +188,128 @@ function clearCloudinarySigningEnv() {
   delete process.env.CLOUDINARY_API_SECRET;
 }
 
-function createService() {
-  const campaignFindFirst = vi.fn((input?: CampaignFindFirstInput) => {
+function createService(
+  options: {
+    membership?: { permissions: string[]; role: string } | null;
+    workspaceRecord?: { organizationId: string } | null;
+  } = {}
+) {
+  const membership = options.membership === undefined ? defaultMembership : options.membership;
+  const workspaceRecord =
+    options.workspaceRecord === undefined ? { organizationId: "organization_123" } : options.workspaceRecord;
+  const baseCampaign: MockCampaign = {
+    id: "campaign_123",
+    workspaceId: workspace.workspaceId,
+    creatorUserId: workspace.userId,
+    name: "Launch campaign",
+    status: "RUNNING",
+    currency: "NGN",
+    budgetMinor: 500000,
+    creatives: [],
+    notes: [],
+    statusHistory: [],
+    assignments: [
+      {
+        assigneeUserId: "operator_123",
+        role: "OPERATOR",
+        status: "ACTIVE"
+      }
+    ],
+    manualPlacements: [],
+    reports: [],
+    invoices: [],
+    budgetHolds: [],
+    spendEntries: [],
+    ledgerEntries: [],
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z")
+  };
+  const campaignFindFirst = vi.fn((input?: CampaignFindFirstInput): Promise<unknown> => {
     void input;
 
-    return Promise.resolve({
-      id: "campaign_123",
-      workspaceId: workspace.workspaceId,
-      currency: "NGN",
-      budgetMinor: 500000,
-      creatives: [],
-      notes: [],
-      statusHistory: [],
-      assignments: [],
-      manualPlacements: [],
-      reports: [],
-      invoices: [],
-      budgetHolds: []
-    });
+    return Promise.resolve(baseCampaign);
   });
-  const campaignBudgetHoldCreate = vi.fn();
+  const campaignUpdate = vi.fn((input: CampaignUpdateInput) =>
+    Promise.resolve({
+      ...baseCampaign,
+      ...input.data,
+      updatedAt: new Date("2026-01-01T01:00:00.000Z")
+    })
+  );
+  const campaignBudgetHoldCreate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({
+      id: "hold_123",
+      status: "ACTIVE",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      ...input.data
+    })
+  );
+  const activeHold = {
+    id: "hold_123",
+    campaignId: "campaign_123",
+    walletId: "wallet_123",
+    invoiceId: null,
+    amountMinor: 500000,
+    currency: "NGN",
+    status: "ACTIVE",
+    campaign: { workspaceId: workspace.workspaceId }
+  };
+  const campaignBudgetHoldFindFirst = vi.fn(
+    (): Promise<Record<string, unknown> | null> => Promise.resolve(activeHold)
+  );
   const campaignBudgetHoldFindUnique = vi.fn(
     (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
   );
+  const campaignBudgetHoldFindMany = vi.fn(() => Promise.resolve([]));
+  const campaignBudgetHoldUpdate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({ ...activeHold, ...input.data })
+  );
+  const auditLogCreate = vi.fn((input: AuditLogCreateInput) => Promise.resolve({ id: "audit_123", ...input.data }));
+  const campaignLedgerEntryUpsert = vi.fn((input: CampaignLedgerEntryUpsertInput) =>
+    Promise.resolve({ id: "campaign_ledger_123", ...input.create })
+  );
+  const campaignSpendEntryCreate = vi.fn((input: CampaignSpendEntryCreateInput) =>
+    Promise.resolve({
+      id: "spend_123",
+      amountMinor: input.data.amountMinor,
+      currency: input.data.currency,
+      metadata: input.data.metadata,
+      notes: input.data.notes,
+      recordedForDate: input.data.recordedForDate,
+      source: input.data.source,
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z")
+    })
+  );
+  const analyticsMetricCreate = vi.fn();
+  const eventOutboxFindUnique = vi.fn(() => Promise.resolve(null));
   const eventOutboxUpsert = vi.fn();
-  const ledgerEntryCreate = vi.fn();
+  const eventOutboxUpdate = vi.fn();
+  const walletLedgerEntries = [
+    {
+      id: "ledger_opening",
+      walletId: "wallet_123",
+      kind: "CREDIT",
+      amountMinor: 1000000,
+      currency: "NGN",
+      reference: "opening_balance",
+      description: "Opening balance",
+      idempotencyKey: "wallet:opening",
+      sourceType: null,
+      sourceId: null,
+      metadata: {},
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z")
+    }
+  ];
+  const ledgerEntryCreate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({ id: "ledger_123", ...input.data })
+  );
+  const ledgerEntryFindMany = vi.fn(() => Promise.resolve(walletLedgerEntries));
+  const ledgerEntryUpsert = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({ id: "ledger_123", ...input.create })
+  );
   const mediaAssetCreate = vi.fn((input: MediaAssetCreateInput) =>
     Promise.resolve({
       id: "asset_123",
@@ -113,6 +318,9 @@ function createService() {
   );
   const mediaAssetFindFirst = vi.fn((): Promise<Record<string, unknown> | null> => Promise.resolve(null));
   const mediaAssetUpdate = vi.fn((input: MediaAssetUpdateInput) => Promise.resolve(input.data));
+  const notificationUpsert = vi.fn((input: NotificationUpsertInput) =>
+    Promise.resolve({ id: "notification_123", ...input.create })
+  );
   const paymentIntentCreate = vi.fn((input: PaymentIntentCreateInput) =>
     Promise.resolve({
       id: "payment_123",
@@ -133,19 +341,63 @@ function createService() {
       updatedAt: new Date("2026-01-01T00:00:00.000Z")
     })
   );
-  const transaction = vi.fn((callback: (tx: Record<string, unknown>) => unknown) =>
-    callback({
-      auditLog: { create: vi.fn() },
-      campaignBudgetHold: {
-        create: campaignBudgetHoldCreate,
-        findUnique: campaignBudgetHoldFindUnique
-      },
-      eventOutbox: { upsert: eventOutboxUpsert },
-      ledgerEntry: { create: ledgerEntryCreate },
-      wallet: {
-        findUnique: vi.fn(() => Promise.resolve({ id: "wallet_123", workspaceId: workspace.workspaceId }))
-      }
+  const paymentIntentFindUnique = vi.fn(
+    (): Promise<Record<string, any> | null> => Promise.resolve(null)
+  );
+  const paymentIntentFindFirst = vi.fn(
+    (): Promise<Record<string, any> | null> => Promise.resolve(null)
+  );
+  const paymentIntentUpdate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({
+      id: input.where.id,
+      workspaceId: workspace.workspaceId,
+      walletId: "wallet_123",
+      gateway: "mock",
+      amountMinor: 1000,
+      currency: "NGN",
+      status: input.data.status,
+      providerReference: input.data.providerReference,
+      checkoutUrl: "https://payments.mock/checkout/mock_ref_123",
+      campaignId: null,
+      campaignInvoiceId: null,
+      completedAt: input.data.completedAt,
+      creditedAt: input.data.creditedAt,
+      metadata: {},
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z")
     })
+  );
+  const campaignInvoiceRecord = {
+    id: "invoice_123",
+    workspaceId: workspace.workspaceId,
+    campaignId: "campaign_123",
+    companyProfileId: null,
+    number: "INV-123",
+    status: "ISSUED",
+    subtotalMinor: 500000,
+    taxMinor: 0,
+    totalMinor: 500000,
+    amountPaidMinor: 0,
+    currency: "NGN",
+    lineItems: [],
+    issuedAt: new Date("2026-01-01T00:00:00.000Z"),
+    dueAt: null,
+    paidAt: null,
+    voidedAt: null,
+    metadata: {},
+    createdAt: new Date("2026-01-01T00:00:00.000Z"),
+    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+    deletedAt: null
+  };
+  const campaignInvoiceCreate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({ id: "invoice_123", amountPaidMinor: 0, ...input.data })
+  );
+  const campaignInvoiceFindFirst = vi.fn(
+    (): Promise<Record<string, any> | null> => Promise.resolve(campaignInvoiceRecord)
+  );
+  const campaignInvoiceFindMany = vi.fn(() => Promise.resolve([campaignInvoiceRecord]));
+  const campaignInvoiceUpdate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({ ...campaignInvoiceRecord, ...input.data })
   );
   const walletUpsert = vi.fn(() =>
     Promise.resolve({
@@ -154,21 +406,92 @@ function createService() {
       currency: "NGN"
     })
   );
+  const transaction = vi.fn((callback: (tx: Record<string, unknown>) => unknown) =>
+    callback({
+      $queryRaw: vi.fn(() => Promise.resolve()),
+      analyticsMetric: { create: analyticsMetricCreate },
+      auditLog: { create: auditLogCreate },
+      campaign: { findFirst: campaignFindFirst, update: campaignUpdate },
+      campaignBudgetHold: {
+        create: campaignBudgetHoldCreate,
+        findFirst: campaignBudgetHoldFindFirst,
+        findMany: campaignBudgetHoldFindMany,
+        findUnique: campaignBudgetHoldFindUnique,
+        update: campaignBudgetHoldUpdate
+      },
+      campaignNote: { create: vi.fn() },
+      campaignInvoice: {
+        create: campaignInvoiceCreate,
+        findFirst: campaignInvoiceFindFirst,
+        findMany: campaignInvoiceFindMany,
+        update: campaignInvoiceUpdate
+      },
+      campaignLedgerEntry: { upsert: campaignLedgerEntryUpsert },
+      campaignSpendEntry: { create: campaignSpendEntryCreate },
+      campaignStatusHistory: { create: vi.fn() },
+      eventOutbox: {
+        findUnique: eventOutboxFindUnique,
+        upsert: eventOutboxUpsert,
+        update: eventOutboxUpdate
+      },
+      ledgerEntry: {
+        create: ledgerEntryCreate,
+        findMany: ledgerEntryFindMany,
+        upsert: ledgerEntryUpsert
+      },
+      notification: { upsert: notificationUpsert },
+      paymentIntent: {
+        create: paymentIntentCreate,
+        findFirst: paymentIntentFindFirst,
+        findUnique: paymentIntentFindUnique,
+        update: paymentIntentUpdate
+      },
+      wallet: {
+        findUnique: vi.fn(() => Promise.resolve({ id: "wallet_123", workspaceId: workspace.workspaceId, currency: "NGN" })),
+        upsert: walletUpsert
+      }
+    })
+  );
+  const teamMemberFindFirst = vi.fn(() => Promise.resolve(membership));
+  const workspaceFindFirst = vi.fn(() => Promise.resolve(workspaceRecord));
   const service = new ManagedAdsService({
     client: {
       $transaction: transaction,
       campaign: {
-        findFirst: campaignFindFirst
+        findFirst: campaignFindFirst,
+        update: campaignUpdate
       },
       campaignBudgetHold: {
         create: campaignBudgetHoldCreate,
-        findUnique: campaignBudgetHoldFindUnique
+        findFirst: campaignBudgetHoldFindFirst,
+        findMany: campaignBudgetHoldFindMany,
+        findUnique: campaignBudgetHoldFindUnique,
+        update: campaignBudgetHoldUpdate
+      },
+      campaignInvoice: {
+        create: campaignInvoiceCreate,
+        findFirst: campaignInvoiceFindFirst,
+        findMany: campaignInvoiceFindMany,
+        update: campaignInvoiceUpdate
+      },
+      campaignLedgerEntry: {
+        upsert: campaignLedgerEntryUpsert
+      },
+      campaignSpendEntry: {
+        create: campaignSpendEntryCreate
+      },
+      analyticsMetric: {
+        create: analyticsMetricCreate
       },
       eventOutbox: {
-        upsert: eventOutboxUpsert
+        findUnique: eventOutboxFindUnique,
+        upsert: eventOutboxUpsert,
+        update: eventOutboxUpdate
       },
       ledgerEntry: {
-        create: ledgerEntryCreate
+        create: ledgerEntryCreate,
+        findMany: ledgerEntryFindMany,
+        upsert: ledgerEntryUpsert
       },
       mediaAsset: {
         create: mediaAssetCreate,
@@ -176,26 +499,59 @@ function createService() {
         update: mediaAssetUpdate
       },
       paymentIntent: {
-        create: paymentIntentCreate
+        create: paymentIntentCreate,
+        findFirst: paymentIntentFindFirst,
+        findUnique: paymentIntentFindUnique,
+        update: paymentIntentUpdate
+      },
+      teamMember: {
+        findFirst: teamMemberFindFirst
       },
       wallet: {
+        findUnique: vi.fn(() => Promise.resolve({ id: "wallet_123", workspaceId: workspace.workspaceId, currency: "NGN" })),
         upsert: walletUpsert
+      },
+      workspace: {
+        findFirst: workspaceFindFirst
       }
     }
   } as unknown as PrismaService);
 
   return {
+    analyticsMetricCreate,
+    auditLogCreate,
+    baseCampaign,
     campaignBudgetHoldCreate,
+    campaignBudgetHoldFindFirst,
+    campaignBudgetHoldFindMany,
     campaignBudgetHoldFindUnique,
+    campaignBudgetHoldUpdate,
     campaignFindFirst,
+    campaignInvoiceCreate,
+    campaignInvoiceFindFirst,
+    campaignInvoiceFindMany,
+    campaignInvoiceUpdate,
+    campaignUpdate,
+    campaignLedgerEntryUpsert,
+    campaignSpendEntryCreate,
+    eventOutboxFindUnique,
+    eventOutboxUpdate,
     ledgerEntryCreate,
+    ledgerEntryFindMany,
+    ledgerEntryUpsert,
     mediaAssetCreate,
     mediaAssetFindFirst,
     mediaAssetUpdate,
+    notificationUpsert,
     paymentIntentCreate,
+    paymentIntentFindFirst,
+    paymentIntentFindUnique,
+    paymentIntentUpdate,
     service,
+    teamMemberFindFirst,
     transaction,
-    walletUpsert
+    walletUpsert,
+    workspaceFindFirst
   };
 }
 
@@ -392,6 +748,176 @@ describe("ManagedAdsService production payment and media guards", () => {
     }
   });
 
+  it("rejects negative payment intent amounts before creating provider or database records", async () => {
+    const env = snapshotUploadEnv();
+    process.env.NODE_ENV = "test";
+    process.env.PAYMENT_PROVIDER = "mock";
+    const { paymentIntentCreate, paymentIntentFindUnique, service, walletUpsert } = createService();
+
+    try {
+      await expect(
+        service.createPaymentIntent(workspace, {
+          amountMinor: -1000,
+          currency: "NGN"
+        })
+      ).rejects.toThrow("Payment amount must be a positive minor-unit integer.");
+      expect(paymentIntentFindUnique).not.toHaveBeenCalled();
+      expect(paymentIntentCreate).not.toHaveBeenCalled();
+      expect(walletUpsert).not.toHaveBeenCalled();
+    } finally {
+      restoreUploadEnv(env);
+    }
+  });
+
+  it("returns an existing payment intent for a reused idempotency key", async () => {
+    const env = snapshotUploadEnv();
+    process.env.NODE_ENV = "test";
+    process.env.PAYMENT_PROVIDER = "mock";
+    const { paymentIntentCreate, paymentIntentFindUnique, service, walletUpsert } = createService();
+    paymentIntentFindUnique.mockResolvedValue({
+      id: "payment_existing",
+      workspaceId: workspace.workspaceId,
+      walletId: "wallet_123",
+      gateway: "mock",
+      amountMinor: 1000,
+      currency: "NGN",
+      status: "PENDING",
+      providerReference: "mock_existing",
+      checkoutUrl: "https://payments.mock/checkout/mock_existing",
+      campaignId: null,
+      campaignInvoiceId: null,
+      completedAt: null,
+      creditedAt: null,
+      metadata: {},
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z")
+    });
+
+    try {
+      await expect(
+        service.createPaymentIntent(workspace, {
+          amountMinor: 1000,
+          currency: "NGN",
+          idempotencyKey: "checkout:workspace_a:campaign_123"
+        })
+      ).resolves.toEqual(expect.objectContaining({ id: "payment_existing" }));
+      expect(paymentIntentFindUnique).toHaveBeenCalledWith({
+        where: { idempotencyKey: "checkout:workspace_a:campaign_123" }
+      });
+      expect(paymentIntentCreate).not.toHaveBeenCalled();
+      expect(walletUpsert).not.toHaveBeenCalled();
+    } finally {
+      restoreUploadEnv(env);
+    }
+  });
+
+  it("rejects payment idempotency keys that already belong to another workspace", async () => {
+    const env = snapshotUploadEnv();
+    process.env.NODE_ENV = "test";
+    process.env.PAYMENT_PROVIDER = "mock";
+    const { paymentIntentCreate, paymentIntentFindUnique, service } = createService();
+    paymentIntentFindUnique.mockResolvedValue({
+      id: "payment_foreign",
+      workspaceId: "workspace_foreign",
+      walletId: "wallet_foreign",
+      gateway: "mock",
+      amountMinor: 1000,
+      currency: "NGN",
+      status: "PENDING",
+      providerReference: "mock_foreign",
+      checkoutUrl: "https://payments.mock/checkout/mock_foreign",
+      campaignId: null,
+      campaignInvoiceId: null,
+      completedAt: null,
+      creditedAt: null,
+      metadata: {},
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z")
+    });
+
+    try {
+      await expect(
+        service.createPaymentIntent(workspace, {
+          amountMinor: 1000,
+          currency: "NGN",
+          idempotencyKey: "checkout:reused"
+        })
+      ).rejects.toThrow("Idempotency key was already used for another workspace.");
+      expect(paymentIntentCreate).not.toHaveBeenCalled();
+    } finally {
+      restoreUploadEnv(env);
+    }
+  });
+
+  it("rejects negative invoice totals before issuing campaign invoices", async () => {
+    const { campaignInvoiceCreate, service } = createService();
+
+    await expect(
+      service.createCampaignInvoice(workspace, "campaign_123", { totalMinor: -5000 })
+    ).rejects.toThrow("Invoice subtotal must be a positive minor-unit amount.");
+    expect(campaignInvoiceCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects negative manual spend entries before writing spend or ledger records", async () => {
+    const { campaignLedgerEntryUpsert, campaignSpendEntryCreate, service } = createService();
+
+    await expect(
+      service.addManualMetric(workspace, "campaign_123", {
+        amountMinor: -100,
+        metricName: "manual_spend"
+      })
+    ).rejects.toThrow("Spend must be recorded as a non-negative amount.");
+    expect(campaignSpendEntryCreate).not.toHaveBeenCalled();
+    expect(campaignLedgerEntryUpsert).not.toHaveBeenCalled();
+  });
+
+  it("prevents budget capture amounts from exceeding the active hold", async () => {
+    const {
+      campaignBudgetHoldUpdate,
+      campaignSpendEntryCreate,
+      ledgerEntryUpsert,
+      service
+    } = createService();
+
+    await expect(
+      service.captureBudgetHold(workspace, "campaign_123", "hold_123", { amountMinor: 600000 })
+    ).rejects.toThrow("Budget capture cannot exceed the active hold amount.");
+    expect(ledgerEntryUpsert).not.toHaveBeenCalled();
+    expect(campaignSpendEntryCreate).not.toHaveBeenCalled();
+    expect(campaignBudgetHoldUpdate).not.toHaveBeenCalled();
+  });
+
+  it("returns a locked paid invoice during concurrent wallet settlement without duplicate debits", async () => {
+    const paidInvoice = {
+      id: "invoice_123",
+      workspaceId: workspace.workspaceId,
+      campaignId: "campaign_123",
+      number: "INV-123",
+      status: "PAID",
+      subtotalMinor: 500000,
+      taxMinor: 0,
+      totalMinor: 500000,
+      amountPaidMinor: 500000,
+      currency: "NGN",
+      paidAt: new Date("2026-01-01T00:05:00.000Z"),
+      deletedAt: null
+    };
+    const { campaignInvoiceFindFirst, ledgerEntryUpsert, service } = createService();
+    campaignInvoiceFindFirst
+      .mockResolvedValueOnce({
+        ...paidInvoice,
+        status: "ISSUED",
+        amountPaidMinor: 0,
+        paidAt: null
+      })
+      .mockResolvedValueOnce(paidInvoice);
+
+    await expect(service.payInvoice(workspace, "invoice_123", { method: "wallet" })).resolves.toBe(
+      paidInvoice
+    );
+    expect(ledgerEntryUpsert).not.toHaveBeenCalled();
+  });
+
   it("returns an existing budget hold without duplicating ledger writes for the same idempotency key", async () => {
     const existingHold = {
       id: "hold_123",
@@ -427,5 +953,229 @@ describe("ManagedAdsService production payment and media guards", () => {
     });
     expect(ledgerEntryCreate).not.toHaveBeenCalled();
     expect(campaignBudgetHoldCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns wallet consistency using opening balance plus credits minus debits", async () => {
+    const { service } = createService();
+
+    await expect(service.getWallet(workspace)).resolves.toMatchObject({
+      availableBalance: { amountMinor: 1000000, currency: "NGN" },
+      consistency: {
+        openingBalance: { amountMinor: 1000000, currency: "NGN" },
+        credits: { amountMinor: 0, currency: "NGN" },
+        debits: { amountMinor: 0, currency: "NGN" },
+        currentBalance: { amountMinor: 1000000, currency: "NGN" },
+        consistent: true
+      }
+    });
+  });
+});
+
+describe("ManagedAdsService client campaign controls", () => {
+  it("pauses active campaigns with audit, event, and assigned-operator notification records", async () => {
+    const { auditLogCreate, campaignUpdate, notificationUpsert, service } = createService();
+
+    await expect(
+      service.pauseCampaign(workspace, "campaign_123", { reason: "Pause for product restock." })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        id: "campaign_123",
+        status: "PAUSED"
+      })
+    );
+
+    const updateInput = campaignUpdate.mock.calls.at(-1)?.[0];
+    expect(updateInput?.data.status).toBe("PAUSED");
+    expect(updateInput?.where).toEqual({ id: "campaign_123" });
+
+    const auditInput = auditLogCreate.mock.calls.at(-1)?.[0];
+    expect(auditInput?.data.action).toBe("campaign.client_control.paused");
+    expect(auditInput?.data.actorUserId).toBe(workspace.userId);
+    expect(auditInput?.data.metadata?.newStatus).toBe("PAUSED");
+    expect(auditInput?.data.metadata?.previousStatus).toBe("RUNNING");
+
+    const notificationInput = notificationUpsert.mock.calls.at(-1)?.[0];
+    expect(notificationInput?.create?.recipientUserId).toBe("operator_123");
+    expect(notificationInput?.create?.title).toBe("Campaign paused by client");
+  });
+
+  it("rejects budget decreases below recorded spend", async () => {
+    const { baseCampaign, campaignFindFirst, campaignUpdate, service } = createService();
+    campaignFindFirst.mockResolvedValueOnce({
+      ...baseCampaign,
+      spendEntries: [{ amountMinor: 400000 }]
+    });
+
+    await expect(
+      service.decreaseCampaignBudget(workspace, "campaign_123", { amountMinor: 200000 })
+    ).rejects.toThrow("Campaign budget cannot be reduced below recorded spend.");
+    expect(campaignUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("ManagedAdsService campaign financial ledger", () => {
+  it("derives a budget summary from historical invoices, holds, spends, and payments", async () => {
+    const { campaignFindFirst, service } = createService();
+    const baseDate = new Date("2026-02-01T10:00:00.000Z");
+    campaignFindFirst.mockResolvedValue({
+      id: "campaign_123",
+      workspaceId: workspace.workspaceId,
+      currency: "NGN",
+      budgetMinor: 500000,
+      updatedAt: baseDate,
+      ledgerEntries: [],
+      paymentIntents: [
+        {
+          id: "payment_123",
+          walletId: "wallet_123",
+          status: "COMPLETED",
+          creditedAt: baseDate,
+          completedAt: baseDate,
+          amountMinor: 500000,
+          currency: "NGN",
+          metadata: {},
+          createdAt: baseDate,
+          updatedAt: baseDate
+        }
+      ],
+      invoices: [
+        {
+          id: "invoice_123",
+          number: "INV-123",
+          amountPaidMinor: 500000,
+          currency: "NGN",
+          status: "PAID",
+          paidAt: baseDate,
+          createdAt: baseDate,
+          updatedAt: baseDate
+        }
+      ],
+      budgetHolds: [
+        {
+          id: "hold_123",
+          walletId: "wallet_123",
+          invoiceId: "invoice_123",
+          holdLedgerEntryId: "ledger_hold_123",
+          amountMinor: 300000,
+          currency: "NGN",
+          status: "ACTIVE",
+          reason: "Launch reserve",
+          createdAt: baseDate,
+          updatedAt: baseDate
+        }
+      ],
+      spendEntries: [
+        {
+          id: "spend_123",
+          amountMinor: 120000,
+          currency: "NGN",
+          metadata: { category: "AD_SPEND" },
+          notes: "Meta placement spend",
+          recordedForDate: baseDate,
+          createdAt: baseDate,
+          updatedAt: baseDate
+        },
+        {
+          id: "fee_123",
+          amountMinor: 50000,
+          currency: "NGN",
+          metadata: { category: "AGENCY_FEE" },
+          notes: "Management fee",
+          recordedForDate: baseDate,
+          createdAt: baseDate,
+          updatedAt: baseDate
+        }
+      ],
+      reports: []
+    });
+
+    await expect(service.getCampaignBudgetSummary(workspace, "campaign_123")).resolves.toMatchObject({
+      allocatedBudget: { amountMinor: 300000, currency: "NGN" },
+      fundsUsed: { amountMinor: 170000, currency: "NGN" },
+      invoicePaid: { amountMinor: 500000, currency: "NGN" },
+      pendingSpend: { amountMinor: 130000, currency: "NGN" },
+      remainingBalance: { amountMinor: 330000, currency: "NGN" }
+    });
+    const spendBreakdown = await service.getCampaignSpendBreakdown(workspace, "campaign_123");
+    expect(spendBreakdown.totalSpend).toEqual({ amountMinor: 170000, currency: "NGN" });
+    expect(spendBreakdown.categories).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "AD_SPEND", amount: { amountMinor: 120000, currency: "NGN" } }),
+        expect.objectContaining({ type: "AGENCY_FEE", amount: { amountMinor: 50000, currency: "NGN" } })
+      ])
+    );
+  });
+
+  it("writes a canonical campaign ledger entry when operators record manual spend", async () => {
+    const {
+      analyticsMetricCreate,
+      campaignLedgerEntryUpsert,
+      campaignSpendEntryCreate,
+      service
+    } = createService();
+
+    await expect(
+      service.addManualMetric(workspace, "campaign_123", {
+        amountMinor: 125000,
+        category: "CREATIVE_COST",
+        metricName: "creative_cost",
+        notes: "Short-form video edit"
+      })
+    ).resolves.toEqual(expect.objectContaining({ id: "spend_123", amountMinor: 125000 }));
+
+    const spendInput = campaignSpendEntryCreate.mock.calls.at(-1)?.[0];
+    expect(spendInput?.data.amountMinor).toBe(125000);
+    expect(spendInput?.data.notes).toBe("Short-form video edit");
+    expect(spendInput?.data.source).toBe("MANUAL");
+    expect(analyticsMetricCreate).toHaveBeenCalled();
+    const ledgerInput = campaignLedgerEntryUpsert.mock.calls.at(-1)?.[0];
+    expect(ledgerInput?.create?.amountMinor).toBe(125000);
+    expect(ledgerInput?.create?.category).toBe("Creative cost");
+    expect(ledgerInput?.create?.direction).toBe("DEBIT");
+    expect(ledgerInput?.create?.type).toBe("CREATIVE_COST");
+  });
+});
+
+describe("ManagedAdsService authorization gates", () => {
+  it("rejects payment actions for members without finance permissions", async () => {
+    const { campaignBudgetHoldCreate, campaignFindFirst, service } = createService({
+      membership: { permissions: [], role: "VIEWER" }
+    });
+
+    await expect(
+      service.createBudgetHold(workspace, "campaign_123", { amountMinor: 100000 })
+    ).rejects.toThrow("Missing required permission: payment:manage");
+    expect(campaignFindFirst).not.toHaveBeenCalled();
+    expect(campaignBudgetHoldCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects admin overview for authenticated non-admin members", async () => {
+    const { service } = createService({
+      membership: { permissions: [], role: "FINANCE" }
+    });
+
+    await expect(service.getAdminOverview(workspace)).rejects.toThrow(
+      "Missing required permission: admin:access"
+    );
+  });
+
+  it("rejects admin status changes without campaign approval permission", async () => {
+    const { campaignUpdate, service } = createService({
+      membership: { permissions: ["admin:access"], role: "MANAGER" }
+    });
+
+    await expect(
+      service.updateAdminStatus(workspace, "campaign_123", { status: "APPROVED" })
+    ).rejects.toThrow("Missing required permission: campaign:approve");
+    expect(campaignUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects privileged service calls when workspace membership cannot be verified", async () => {
+    const { service, teamMemberFindFirst } = createService({ workspaceRecord: null });
+
+    await expect(service.createCampaign(workspace, { name: "Launch" })).rejects.toThrow(
+      "Workspace membership could not be verified."
+    );
+    expect(teamMemberFindFirst).not.toHaveBeenCalled();
   });
 });

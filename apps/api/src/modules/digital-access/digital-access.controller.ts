@@ -5,6 +5,7 @@ import {
   workspaceContextFromRequest,
   type WorkspaceContextRequest
 } from "../request-context";
+import { Public, RequirePermissions } from "../authorization.decorators";
 import type {
   CreateDigitalAccessRequestDto,
   DigitalAccessAssignDto,
@@ -18,20 +19,24 @@ import type {
 import { DigitalAccessHubService } from "./digital-access.service";
 
 @Controller("digital-access")
+@RequirePermissions("analytics:read")
 export class DigitalAccessController {
   constructor(@Inject(DigitalAccessHubService) private readonly hub: DigitalAccessHubService) {}
 
   @Get("categories")
+  @Public()
   categories() {
     return this.hub.listCategories();
   }
 
   @Get("services")
+  @Public()
   services(@Query() query: DigitalAccessListQueryDto) {
     return this.hub.listServices(query);
   }
 
   @Get("services/:slug")
+  @Public()
   service(@Param("slug") slug: string) {
     return this.hub.getService(slug);
   }
@@ -47,6 +52,7 @@ export class DigitalAccessController {
   }
 
   @Post("requests")
+  @RequirePermissions("campaign:create")
   createRequest(
     @Body() body: CreateDigitalAccessRequestDto,
     @Req() request: WorkspaceContextRequest
@@ -59,6 +65,7 @@ export class DigitalAccessController {
 }
 
 @Controller("admin/digital-access")
+@RequirePermissions("admin:access")
 export class AdminDigitalAccessController {
   constructor(@Inject(DigitalAccessHubService) private readonly hub: DigitalAccessHubService) {}
 

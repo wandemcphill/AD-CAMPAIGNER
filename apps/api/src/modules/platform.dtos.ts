@@ -37,6 +37,31 @@ export interface CreateSmmOrderDto {
   destinationUrl?: string;
 }
 
+export interface CreateGrowthOrderDto {
+  serviceCode?: string;
+  quantity?: number;
+  destinationUrl?: string;
+  idempotencyKey?: string;
+}
+
+export interface UpdateGrowthServiceDto {
+  enabled?: boolean;
+  marginBps?: number;
+  preferredSupplier?: string;
+  maximumQuantity?: number;
+  expectedCompletion?: string;
+  adminNote?: string;
+}
+
+export interface UpdateGrowthOrderDto {
+  status?: "PENDING" | "SUBMITTED" | "IN_PROGRESS" | "COMPLETED" | "FAILED" | "REFUNDED";
+  quantityDelivered?: number;
+  supplierReference?: string;
+  supplierName?: string;
+  adminNote?: string;
+  failureReason?: string;
+}
+
 export interface SmmSupplierReferenceDto {
   supplierReference?: string;
 }

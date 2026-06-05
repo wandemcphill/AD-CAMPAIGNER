@@ -125,4 +125,20 @@ describe("OTP service domain", () => {
     expect(firstRefund.refund.status).toBe("REFUNDED");
     expect(secondRefund.idempotent).toBe(true);
   });
+
+  it("rejects negative wallet charges before mutating OTP wallet state", () => {
+    const state = { wallet, ledgerEntries: [openingCredit], charges: [] };
+
+    expect(() =>
+      chargeOtpWallet(state, {
+        otpOrderId: "otp_negative",
+        idempotencyKey: "idem_negative",
+        workspaceId: wallet.workspaceId,
+        walletId: wallet.id,
+        amount: { amountMinor: -100, currency: "NGN" }
+      })
+    ).toThrow("OTP wallet charge must be a positive minor-unit amount.");
+    expect(state.ledgerEntries).toHaveLength(1);
+    expect(state.charges).toHaveLength(0);
+  });
 });

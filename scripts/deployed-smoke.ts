@@ -99,6 +99,17 @@ const protectedManagedAdsRoutes: Array<{
   }
 ];
 
+const p1ProtectedAdminRoutes = [
+  { name: "P1 admin overview rejects unauthenticated", path: "/v1/admin/overview" },
+  { name: "P1 admin SMM health rejects unauthenticated", path: "/v1/admin/smm/health" },
+  { name: "P1 admin AI suggestions reject unauthenticated", path: "/v1/admin/ai/suggestions" }
+];
+
+const p1PublicGrowthRoutes = [
+  { name: "P1 growth catalog", path: "/v1/growth/catalog", shape: "record" },
+  { name: "P1 growth services", path: "/v1/growth/services", shape: "array" }
+] as const;
+
 const campaignStatuses = new Set([
   "DRAFT",
   "PENDING_REVIEW",
@@ -116,10 +127,15 @@ const campaignStatuses = new Set([
 ]);
 
 const adminCampaignStatuses = new Set([
-  "queued",
-  "reviewing",
-  "scheduled",
-  "running",
+  "submitted",
+  "review",
+  "approved",
+  "assigned",
+  "creative_review",
+  "platform_launch",
+  "optimization",
+  "paused",
+  "reporting",
   "blocked",
   "completed",
   "failed"
@@ -503,6 +519,25 @@ async function checkJsonArrayRoute(config: SmokeConfig, name: string, path: stri
       name,
       status: "PASS",
       detail: "Returned JSON array.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function checkJsonRecordRoute(config: SmokeConfig, name: string, path: string) {
+  const url = withPath(config.apiUrl, path);
+
+  return runCheck(name, url, async () => {
+    const { response, body } = await get(url, config);
+
+    expectSuccess(response, name);
+    expectJsonRecord(body, name);
+
+    return {
+      name,
+      status: "PASS",
+      detail: "Returned JSON object.",
       httpStatus: response.status,
       target: displayUrl(url)
     };
@@ -972,6 +1007,25 @@ async function checkAuthenticatedManagedAdsNotifications(config: SmokeConfig, he
   });
 }
 
+async function checkAuthenticatedGrowthOrders(config: SmokeConfig, headers: HeadersInit) {
+  const url = withPath(config.apiUrl, "/v1/growth/orders");
+
+  return runCheck("P1 authenticated growth orders", url, async () => {
+    const { response, body } = await get(url, config, headers);
+
+    expectSuccess(response, "P1 authenticated growth orders");
+    expectJsonArray(body, "P1 authenticated growth orders");
+
+    return {
+      name: "P1 authenticated growth orders",
+      status: "PASS",
+      detail: "Returned authenticated growth order list.",
+      httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
 async function checkAuthenticatedAdminDigitalAccess(config: SmokeConfig, headers: HeadersInit) {
   const url = withPath(config.apiUrl, "/v1/admin/digital-access/overview");
 
@@ -1275,6 +1329,13 @@ async function main() {
   }
   results.push(await checkJsonArrayRoute(config, "Destination catalog", "/v1/destinations/catalog"));
   results.push(await checkJsonArrayRoute(config, "SMM services catalog", "/v1/smm/services"));
+  for (const route of p1PublicGrowthRoutes) {
+    results.push(
+      route.shape === "array"
+        ? await checkJsonArrayRoute(config, route.name, route.path)
+        : await checkJsonRecordRoute(config, route.name, route.path)
+    );
+  }
   results.push(await checkProtectedRouteRejects(config, "Wallet rejects unauthenticated", "/v1/wallet"));
   results.push(await checkProtectedRouteRejects(config, "Session rejects unauthenticated", "/v1/auth/session"));
   results.push(
@@ -1294,6 +1355,9 @@ async function main() {
         route.payload
       )
     );
+  }
+  for (const route of p1ProtectedAdminRoutes) {
+    results.push(await checkProtectedRouteRejects(config, route.name, route.path));
   }
 
   const authHeaders = await resolveAuthHeaders(config, results);
@@ -1348,6 +1412,7 @@ async function main() {
     results.push(await checkAuthenticatedManagedAdsWallet(config, authHeaders));
     results.push(await checkAuthenticatedManagedAdsInvoices(config, authHeaders));
     results.push(await checkAuthenticatedManagedAdsNotifications(config, authHeaders));
+    results.push(await checkAuthenticatedGrowthOrders(config, authHeaders));
 
     if (config.adminAuthChecksEnabled) {
       results.push(await checkAuthenticatedAdminDigitalAccess(config, authHeaders));

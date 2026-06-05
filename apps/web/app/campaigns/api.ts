@@ -2,7 +2,11 @@
 
 import type {
   Campaign,
+  CampaignAuditTrailItem,
+  CampaignBudgetSummary,
+  CampaignLedgerEntry,
   CampaignObjective,
+  CampaignSpendBreakdown,
   CurrencyCode,
   DestinationKind,
   Money,
@@ -97,6 +101,16 @@ export type CreatePaymentIntentInput = {
   customerName?: string;
   redirectUrl?: string;
   webhookUrl?: string;
+};
+
+export type CampaignControlInput = {
+  amountMinor?: number;
+  budgetMinor?: number;
+  deltaMinor?: number;
+  message?: string;
+  newBudgetMinor?: number;
+  note?: string;
+  reason?: string;
 };
 
 export const defaultCampaignDashboardState: CampaignDashboardState = {
@@ -286,6 +300,69 @@ export function startCampaign(campaignId: string) {
   return apiRequest<Campaign>(`/campaigns/${encodeURIComponent(campaignId)}/start`, {
     method: "POST"
   });
+}
+
+function campaignAction(campaignId: string, action: string, input: CampaignControlInput = {}) {
+  return apiRequest<Campaign>(`/campaigns/${encodeURIComponent(campaignId)}/actions/${action}`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function pauseCampaign(campaignId: string, input?: CampaignControlInput) {
+  return campaignAction(campaignId, "pause", input);
+}
+
+export function resumeCampaign(campaignId: string, input?: CampaignControlInput) {
+  return campaignAction(campaignId, "resume", input);
+}
+
+export function requestCampaignChanges(campaignId: string, input?: CampaignControlInput) {
+  return campaignAction(campaignId, "request-changes", input);
+}
+
+export function increaseCampaignBudget(campaignId: string, input?: CampaignControlInput) {
+  return campaignAction(campaignId, "increase-budget", input);
+}
+
+export function decreaseCampaignBudget(campaignId: string, input?: CampaignControlInput) {
+  return campaignAction(campaignId, "decrease-budget", input);
+}
+
+export function stopCampaign(campaignId: string, input?: CampaignControlInput) {
+  return campaignAction(campaignId, "stop", input);
+}
+
+export function loadCampaignAuditTrail(campaignId: string) {
+  return apiRequest<{ campaignId: string; items: CampaignAuditTrailItem[] }>(
+    `/campaigns/${encodeURIComponent(campaignId)}/audit`
+  );
+}
+
+export function loadCampaignLedger(campaignId: string) {
+  return apiRequest<CampaignLedgerEntry[]>(`/campaigns/${encodeURIComponent(campaignId)}/ledger`);
+}
+
+export function loadCampaignBudgetSummary(campaignId: string) {
+  return apiRequest<CampaignBudgetSummary>(`/campaigns/${encodeURIComponent(campaignId)}/budget-summary`);
+}
+
+export function loadCampaignSpendBreakdown(campaignId: string) {
+  return apiRequest<CampaignSpendBreakdown>(`/campaigns/${encodeURIComponent(campaignId)}/spend-breakdown`);
+}
+
+export async function loadCampaignFinancialData(campaignId: string) {
+  const [ledger, budgetSummary, spendBreakdown] = await Promise.all([
+    loadCampaignLedger(campaignId),
+    loadCampaignBudgetSummary(campaignId),
+    loadCampaignSpendBreakdown(campaignId)
+  ]);
+
+  return {
+    budgetSummary,
+    ledger,
+    spendBreakdown
+  };
 }
 
 export function createPaymentIntent(input: CreatePaymentIntentInput) {

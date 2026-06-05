@@ -7,7 +7,7 @@ services:
     rootDir: .
     autoDeployTrigger: commit
     healthCheckPath: /v1/health
-    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 prisma:generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/api build
+    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/api build
     preDeployCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma migrate deploy
     startCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/api start
     envVars:
@@ -18,9 +18,9 @@ services:
       - key: APP_URL
         value: https://fliptrybe-ads-campaigner-web-g25g.onrender.com
       - key: ADMIN_URL
-        value: https://fliptrybe-ads-campaigner-admin.onrender.com
+        value: https://fliptrybe-ads-campaigner-admin-g25g.onrender.com
       - key: API_URL
-        value: https://ft-campaigner-api-fra.onrender.com
+        value: https://ft-campaigner-api-fra-g25g.onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: fliptrybe-ads-campaigner-postgres
@@ -42,12 +42,20 @@ services:
         value: "true"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
       - key: CLOUDINARY_UPLOAD_PRESET
         sync: false
       - key: CLOUDINARY_FOLDER
         value: fliptrybe-ads-campaigner
       - key: CLOUDINARY_SECURE_DISTRIBUTION
         sync: false
+      - key: MEDIA_UPLOAD_SIGNATURE_TTL_SECONDS
+        value: "900"
+      - key: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE
+        value: "false"
       - key: ADS_PROVIDER
         value: mock
       - key: PAYMENT_PROVIDER
@@ -188,7 +196,7 @@ services:
       - key: NODE_VERSION
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
-        value: https://ft-campaigner-api-fra.onrender.com
+        value: https://ft-campaigner-api-fra-g25g.onrender.com
       - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS
         value: "false"
 
@@ -207,7 +215,7 @@ services:
       - key: NODE_VERSION
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
-        value: https://ft-campaigner-api-fra.onrender.com
+        value: https://ft-campaigner-api-fra-g25g.onrender.com
       - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS_ADMIN
         value: "false"
 
@@ -218,7 +226,7 @@ services:
     plan: starter
     rootDir: .
     autoDeployTrigger: commit
-    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 prisma:generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/worker build
+    buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/worker build
     startCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/worker start
     maxShutdownDelaySeconds: 120
     envVars:

@@ -61,6 +61,27 @@ export type PaymentGatewayKind = (typeof paymentGatewayKinds)[number];
 export const ledgerEntryKinds = ["CREDIT", "DEBIT", "HOLD", "RELEASE", "REVERSAL"] as const;
 export type LedgerEntryKind = (typeof ledgerEntryKinds)[number];
 
+export const campaignLedgerEntryTypes = [
+  "WALLET_FUNDING",
+  "INVOICE_PAYMENT",
+  "BUDGET_ALLOCATION",
+  "AD_SPEND",
+  "CREATIVE_COST",
+  "AGENCY_FEE",
+  "REFUND",
+  "ADJUSTMENT"
+] as const;
+export type CampaignLedgerEntryType = (typeof campaignLedgerEntryTypes)[number];
+
+export const campaignLedgerEntryDirections = [
+  "CREDIT",
+  "DEBIT",
+  "HOLD",
+  "RELEASE",
+  "REVERSAL"
+] as const;
+export type CampaignLedgerEntryDirection = (typeof campaignLedgerEntryDirections)[number];
+
 export const smmServiceKinds = [
   "FOLLOWERS",
   "LIKES",
@@ -71,6 +92,28 @@ export const smmServiceKinds = [
   "CHANNEL_MEMBERS"
 ] as const;
 export type SmmServiceKind = (typeof smmServiceKinds)[number];
+
+export const growthServicePlatforms = [
+  "TIKTOK",
+  "INSTAGRAM",
+  "YOUTUBE",
+  "TELEGRAM",
+  "WEBSITE"
+] as const;
+export type GrowthServicePlatform = (typeof growthServicePlatforms)[number];
+
+export const growthOrderStatuses = [
+  "PENDING",
+  "SUBMITTED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "FAILED",
+  "REFUNDED"
+] as const;
+export type GrowthOrderStatus = (typeof growthOrderStatuses)[number];
+
+export const growthRiskLevels = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+export type GrowthRiskLevel = (typeof growthRiskLevels)[number];
 
 export const otpOrderStatuses = [
   "QUOTED",
@@ -191,6 +234,9 @@ export interface Campaign extends Timestamped {
   objective: CampaignObjective;
   status: CampaignStatus;
   budget: Money;
+  budgetSummary?: CampaignBudgetSummary;
+  remainingBudget?: Money;
+  assignedOperator?: CampaignAssignedOperator | null;
   destination: PromotionDestination;
   schedule: CampaignSchedule;
   provider: ProviderKind;
@@ -201,6 +247,8 @@ export interface Campaign extends Timestamped {
   submittedAt?: string | null;
   approvedAt?: string | null;
   cancelledAt?: string | null;
+  statusHistory?: CampaignStatusHistoryItem[];
+  notes?: Array<Record<string, unknown>>;
 }
 
 export interface LivePromotion extends Timestamped {
@@ -221,6 +269,82 @@ export interface SmmOrder extends Timestamped {
   quantity: number;
   status: "DRAFT" | "QUEUED" | "PROCESSING" | "COMPLETED" | "PARTIAL" | "FAILED" | "CANCELLED";
   supplierReference?: string;
+}
+
+export interface GrowthRiskAssessment {
+  platformPolicyRisk: GrowthRiskLevel;
+  accountRisk: GrowthRiskLevel;
+  refundRisk: GrowthRiskLevel;
+  reputationRisk: GrowthRiskLevel;
+  summary: string;
+  mitigations: string[];
+}
+
+export interface GrowthServiceRouting {
+  strategy: "LOWEST_COST" | "PREFERRED_FIRST" | "MANUAL_REVIEW";
+  preferredSupplier?: string;
+  fallbackSuppliers: string[];
+}
+
+export interface GrowthServiceCatalogItem {
+  code: string;
+  name: string;
+  platform: GrowthServicePlatform;
+  category: string;
+  serviceKind: SmmServiceKind;
+  destinationKind: DestinationKind;
+  description: string;
+  enabled: boolean;
+  pricingModel: "PER_1000";
+  baseRate: Money;
+  minimumQuantity: number;
+  maximumQuantity: number;
+  quantityStep: number;
+  estimatedDeliveryMinutes: number;
+  expectedCompletion: string;
+  marginBps: number;
+  supportsRefill: boolean;
+  supportsCancel: boolean;
+  supplierRouting: GrowthServiceRouting;
+  risk: GrowthRiskAssessment;
+}
+
+export interface GrowthOrder extends Timestamped {
+  id: string;
+  workspaceId: string;
+  serviceCode: string;
+  serviceName: string;
+  platform: GrowthServicePlatform;
+  serviceKind: SmmServiceKind;
+  destinationKind: DestinationKind;
+  destinationUrl: string;
+  quantityOrdered: number;
+  quantityDelivered: number;
+  status: GrowthOrderStatus;
+  amount: Money;
+  supplierCost: Money;
+  grossMargin: Money;
+  expectedCompletionAt: string;
+  idempotencyKey?: string;
+  paymentStatus?:
+    | "FUNDS_REQUIRED"
+    | "FUNDS_RESERVED"
+    | "FUNDS_CAPTURED"
+    | "FUNDS_RELEASED"
+    | "REFUNDED"
+    | "MANUAL_REVIEW";
+  reservationLedgerEntryId?: string;
+  captureLedgerEntryId?: string;
+  releaseLedgerEntryId?: string;
+  refundLedgerEntryId?: string;
+  refundEligibility?: "NONE" | "AUTOMATIC" | "MANUAL_REVIEW";
+  refundReviewStatus?: "NOT_REQUIRED" | "PENDING" | "APPROVED" | "REJECTED";
+  submittedAt?: string;
+  completedAt?: string;
+  supplierName?: string;
+  supplierReference?: string;
+  failureReason?: string;
+  adminNote?: string;
 }
 
 export interface OtpService extends Timestamped {
@@ -409,6 +533,95 @@ export interface LedgerEntry extends Timestamped {
   sourceType?: string;
   sourceId?: string;
   metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface CampaignLedgerEntry extends Timestamped {
+  id: string;
+  workspaceId: string;
+  campaignId: string;
+  type: CampaignLedgerEntryType;
+  direction: CampaignLedgerEntryDirection;
+  amount: Money;
+  category: string;
+  description: string;
+  occurredAt: string;
+  notes?: string | null;
+  operator?: string | null;
+  actorUserId?: string | null;
+  walletId?: string | null;
+  walletLedgerEntryId?: string | null;
+  paymentIntentId?: string | null;
+  campaignInvoiceId?: string | null;
+  campaignBudgetHoldId?: string | null;
+  campaignSpendEntryId?: string | null;
+  campaignReportId?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface CampaignBudgetSummary {
+  campaignId: string;
+  currency: CurrencyCode;
+  totalBudget: Money;
+  invoicePaid: Money;
+  allocatedBudget: Money;
+  fundsUsed: Money;
+  remainingBalance: Money;
+  pendingSpend: Money;
+  refunded: Money;
+  adSpend: Money;
+  creativeCosts: Money;
+  agencyFees: Money;
+  adjustments: Money;
+  updatedAt: string;
+}
+
+export interface CampaignSpendBreakdown {
+  campaignId: string;
+  currency: CurrencyCode;
+  totalSpend: Money;
+  categories: Array<{
+    type: CampaignLedgerEntryType;
+    label: string;
+    amount: Money;
+    percentageBps: number;
+  }>;
+  timeline: Array<{
+    date: string;
+    label: string;
+    type: CampaignLedgerEntryType;
+    amount: Money;
+  }>;
+}
+
+export interface CampaignAssignedOperator {
+  userId: string;
+  name: string;
+  email?: string | null;
+}
+
+export interface CampaignStatusHistoryItem extends Timestamped {
+  id: string;
+  campaignId: string;
+  fromStatus?: CampaignStatus | null;
+  toStatus: CampaignStatus;
+  actorUserId?: string | null;
+  actorType: string;
+  reason?: string | null;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
+export interface CampaignAuditTrailItem {
+  id: string;
+  kind: "audit" | "status";
+  action: string;
+  actorUserId?: string | null;
+  actorType?: string | null;
+  timestamp?: string | null;
+  previousValue?: string | number | boolean | null;
+  newValue?: string | number | boolean | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PaymentIntent extends Timestamped {

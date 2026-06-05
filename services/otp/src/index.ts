@@ -144,12 +144,36 @@ function now() {
   return new Date().toISOString();
 }
 
+function assertMoneyAmount(amount: Money, message: string, options: { positive?: boolean } = {}) {
+  const minimum = options.positive ? 1 : 0;
+
+  if (!Number.isInteger(amount.amountMinor) || amount.amountMinor < minimum) {
+    throw new Error(message);
+  }
+}
+
+function assertPricingRule(rule: OtpPricingRule) {
+  if (!Number.isInteger(rule.markupBps) || rule.markupBps < 0) {
+    throw new Error("OTP markup basis points must be a non-negative integer.");
+  }
+  if (!Number.isInteger(rule.minimumMarginMinor) || rule.minimumMarginMinor < 0) {
+    throw new Error("OTP minimum margin must be a non-negative minor-unit amount.");
+  }
+  if (!Number.isInteger(rule.platformFeeMinor) || rule.platformFeeMinor < 0) {
+    throw new Error("OTP platform fee must be a non-negative minor-unit amount.");
+  }
+  if (!Number.isFinite(rule.usdToNgnRate) || rule.usdToNgnRate <= 0) {
+    throw new Error("OTP USD/NGN exchange rate must be positive.");
+  }
+}
+
 function getPricingRule(tier: OtpProviderTier, rules: OtpPricingRule[]) {
   const rule = rules.find((item) => item.tier === tier);
 
   if (!rule) {
     throw new Error(`Missing OTP pricing rule for ${tier}.`);
   }
+  assertPricingRule(rule);
 
   return rule;
 }
@@ -218,6 +242,10 @@ export function calculateOtpPrice(input: {
   tier: OtpProviderTier;
   rules?: OtpPricingRule[];
 }): OtpPricingResult {
+  assertMoneyAmount(
+    input.supplierCost,
+    "OTP supplier cost must be a non-negative minor-unit amount."
+  );
   const rule = getPricingRule(input.tier, input.rules ?? defaultOtpPricingRules);
   const convertedSupplierCost = convertSupplierCostToCustomerCurrency({
     supplierCost: input.supplierCost,
@@ -408,6 +436,9 @@ export function assessOtpFraud(input: {
 }
 
 export function chargeOtpWallet(state: OtpWalletState, input: OtpChargeInput) {
+  assertMoneyAmount(input.amount, "OTP wallet charge must be a positive minor-unit amount.", {
+    positive: true
+  });
   const existingCharge = state.charges.find(
     (charge) =>
       charge.idempotencyKey === input.idempotencyKey || charge.otpOrderId === input.otpOrderId
@@ -495,6 +526,9 @@ export function refundOtpWallet(
   if (!charge) {
     throw new Error(`Cannot refund missing OTP charge for ${input.otpOrderId}.`);
   }
+  assertMoneyAmount(charge.amount, "OTP refund amount must be a positive minor-unit amount.", {
+    positive: true
+  });
   if (charge.status === "REFUNDED" && charge.refundLedgerEntryId) {
     return {
       state,
