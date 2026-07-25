@@ -120,6 +120,9 @@ importers:
       '@fliptrybe/providers':
         specifier: workspace:*
         version: link:../../packages/providers
+      '@fliptrybe/service-campaigns':
+        specifier: workspace:*
+        version: link:../../services/campaigns
       '@fliptrybe/service-digital-access':
         specifier: workspace:*
         version: link:../../services/digital-access

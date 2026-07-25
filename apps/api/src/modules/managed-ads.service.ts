@@ -14,6 +14,7 @@ import {
   createMockStorageProvider
 } from "@fliptrybe/providers";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
+import { assessCampaignRisk } from "@fliptrybe/service-campaigns";
 import {
   campaignLedgerEntryTypes,
   currencies,
@@ -797,7 +798,98 @@ export class ManagedAdsService {
       throw new BadRequestException("Only draft or changes-requested campaigns can be submitted.");
     }
 
+    const assessment = await this.assessCampaign(scope, campaignId);
+
+    // Risk-gated routing: BLOCK (red) is auto-rejected before any spend; ALLOW (green) and
+    // REVIEW (yellow) both enter the ops queue, differentiated by the persisted riskAction so
+    // green campaigns can be fast-tracked. Green auto-launch activates once the execution engine
+    // (Meta Marketing API) is live.
+    if (assessment.action === "BLOCK") {
+      const detail = assessment.categories.length
+        ? `: ${assessment.categories.join(", ")}`
+        : ".";
+
+      return this.changeCampaignStatus(
+        scope,
+        campaignId,
+        "REJECTED",
+        `Blocked by risk controls${detail}`
+      );
+    }
+
     return this.changeCampaignStatus(scope, campaignId, "PENDING_REVIEW", input.reason ?? "Submitted for review");
+  }
+
+  /**
+   * Runs the Campaign Risk Engine for a campaign, persists a `CampaignRiskAssessment` row, and
+   * denormalises the decision onto `Campaign.riskAction`/`riskScore` for ops-queue filtering.
+   */
+  private async assessCampaign(scope: AuthenticatedRequestContext, campaignId: string) {
+    const campaign = await this.db.campaign.findFirst({
+      where: { id: campaignId, workspaceId: scope.workspaceId },
+      include: { destination: true, adAccount: true }
+    });
+
+    if (!campaign) {
+      throw new NotFoundException("Campaign not found.");
+    }
+
+    const priorCampaigns = await this.db.campaign.count({
+      where: {
+        workspaceId: scope.workspaceId,
+        id: { not: campaignId },
+        status: { not: "DRAFT" }
+      }
+    });
+
+    const assessment = assessCampaignRisk({
+      accountType: campaign.adAccount?.type ?? "MANAGED",
+      budgetMinor: campaign.budgetMinor,
+      currency: campaign.currency,
+      destinationUrl: campaign.destination?.url,
+      destinationKind: campaign.destination?.kind,
+      contentText: [campaign.name, campaign.brief].filter(Boolean).join(" "),
+      advertiser: {
+        kycStatus: campaign.adAccount?.kycStatus ?? "UNVERIFIED",
+        priorCampaigns
+      }
+    });
+
+    const reasons = assessment.signals.map((signal) => signal.message);
+
+    await this.db.$transaction(async (tx: DbClient) => {
+      await tx.campaignRiskAssessment.upsert({
+        where: { campaignId },
+        create: {
+          campaignId,
+          score: assessment.score,
+          action: assessment.action,
+          tier: assessment.riskLevel,
+          categories: assessment.categories,
+          reasons,
+          autoLaunchEligible: assessment.autoLaunchEligible,
+          assessedByUserId: scope.userId,
+          metadata: { signals: assessment.signals }
+        },
+        update: {
+          score: assessment.score,
+          action: assessment.action,
+          tier: assessment.riskLevel,
+          categories: assessment.categories,
+          reasons,
+          autoLaunchEligible: assessment.autoLaunchEligible,
+          assessedByUserId: scope.userId,
+          assessedAt: now(),
+          metadata: { signals: assessment.signals }
+        }
+      });
+      await tx.campaign.update({
+        where: { id: campaignId },
+        data: { riskAction: assessment.action, riskScore: assessment.score }
+      });
+    });
+
+    return assessment;
   }
 
   async startCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string) {
