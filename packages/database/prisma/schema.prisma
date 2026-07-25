@@ -113,6 +113,51 @@ enum CompanyProfileStatus {
   ARCHIVED
 }
 
+enum AdAccountType {
+  CONNECTED
+  MANAGED
+  DEDICATED
+}
+
+enum AdAccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum AdPlatform {
+  META
+  TIKTOK
+  GOOGLE
+  MANUAL
+}
+
+enum KycTier {
+  LIGHT
+  STANDARD
+  ENHANCED
+}
+
+enum KycStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum CampaignRiskAction {
+  ALLOW
+  REVIEW
+  BLOCK
+}
+
+enum CampaignOutcomeSource {
+  CUSTOMER_PROMPT
+  PLATFORM_DERIVED
+  OPERATOR
+}
+
 enum CompanyVerificationStatus {
   UNVERIFIED
   PENDING
@@ -362,6 +407,7 @@ model Workspace {
   supportTickets             SupportTicket[]
   referralAccounts           ReferralAccount[]
   auditLogs                  AuditLog[]
+  adAccounts                 AdAccount[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -412,6 +458,9 @@ model Campaign {
   provider          String                  @default("MOCK")
   providerReference String?
   companyProfileId  String?
+  adAccountId       String?
+  riskAction        CampaignRiskAction?
+  riskScore         Int?
   brief             String?
   targetAudience    Json                    @default("{}")
   placementPlan     Json                    @default("{}")
@@ -442,8 +491,13 @@ model Campaign {
   spendEntries      CampaignSpendEntry[]
   paymentIntents    PaymentIntent[]
   ledgerEntries     CampaignLedgerEntry[]
+  adAccount         AdAccount?              @relation(fields: [adAccountId], references: [id])
+  riskAssessment    CampaignRiskAssessment?
+  outcome           CampaignOutcome?
 
   @@index([workspaceId, status])
+  @@index([adAccountId, status])
+  @@index([riskAction, status])
   @@index([companyProfileId, status])
   @@index([provider, providerReference])
   @@index([startsAt])
@@ -479,6 +533,76 @@ model LivePromotion {
   @@index([destinationKind, expectedStartAt])
 }
 
+model AdAccount {
+  id                 String          @id @default(uuid())
+  workspaceId        String
+  type               AdAccountType
+  platform           AdPlatform      @default(META)
+  status             AdAccountStatus @default(PENDING)
+  kycTier            KycTier         @default(LIGHT)
+  kycStatus          KycStatus       @default(UNVERIFIED)
+  riskTier           String          @default("STANDARD")
+  label              String
+  walletId           String?
+  connectedByUserId  String?
+  externalBusinessId String?
+  externalAccountId  String?
+  externalPageId     String?
+  dailySpendCapMinor Int?
+  metadata           Json            @default("{}")
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  deletedAt          DateTime?
+  workspace          Workspace       @relation(fields: [workspaceId], references: [id])
+  wallet             Wallet?         @relation(fields: [walletId], references: [id])
+  campaigns          Campaign[]
+
+  @@index([workspaceId, type, status])
+  @@index([platform, externalAccountId])
+  @@index([deletedAt])
+}
+
+model CampaignRiskAssessment {
+  id                 String             @id @default(uuid())
+  campaignId         String             @unique
+  score              Int                @default(0)
+  action             CampaignRiskAction @default(REVIEW)
+  tier               String?
+  categories         String[]           @default([])
+  reasons            String[]           @default([])
+  autoLaunchEligible Boolean            @default(false)
+  assessedByUserId   String?
+  assessedAt         DateTime           @default(now())
+  metadata           Json               @default("{}")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  campaign           Campaign           @relation(fields: [campaignId], references: [id])
+
+  @@index([action, score])
+}
+
+model CampaignOutcome {
+  id               String                @id @default(uuid())
+  campaignId       String                @unique
+  messagesCount    Int?
+  ordersCount      Int?
+  estRevenueMinor  Int?
+  currency         String                @default("NGN")
+  rating           Int?
+  wouldRunAgain    Boolean?
+  source           CampaignOutcomeSource @default(CUSTOMER_PROMPT)
+  capturedByUserId String?
+  capturedAt       DateTime?
+  notes            String?
+  metadata         Json                  @default("{}")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  campaign         Campaign              @relation(fields: [campaignId], references: [id])
+
+  @@index([wouldRunAgain])
+  @@index([source, capturedAt])
+}
+
 model Wallet {
   id                   String                      @id @default(uuid())
   workspaceId          String
@@ -494,6 +618,7 @@ model Wallet {
   campaignBudgetHolds  CampaignBudgetHold[]
   paymentIntents       PaymentIntent[]
   campaignLedgerEntries CampaignLedgerEntry[]
+  adAccounts           AdAccount[]
 
   @@unique([workspaceId, currency])
 }
