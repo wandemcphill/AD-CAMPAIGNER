@@ -11,13 +11,13 @@ import {
 import type { Server, Socket } from "socket.io";
 
 import { hasPermission } from "@fliptrybe/auth";
-import type { Permission, Role } from "@fliptrybe/types";
+import type { Permission } from "@fliptrybe/types";
 import { AuthSessionService } from "./auth-session.service";
 import { PlatformService } from "./platform.service";
 import { OtpMarketplaceService } from "./otp/otp.service";
 import { DigitalAccessHubService } from "./digital-access/digital-access.service";
 import { ManagedAdsService } from "./managed-ads.service";
-import type { AuthenticatedRequestContext, HeaderBag } from "./request-context";
+import type { AuthenticatedRequestContext } from "./request-context";
 
 @Injectable()
 @WebSocketGateway({
@@ -134,9 +134,7 @@ export class RealtimeGateway implements OnGatewayConnection {
 
   private async getSocketContext(client: Socket) {
     try {
-      return await this.authSession.getWorkspaceContext(
-        client.handshake.headers as HeaderBag
-      );
+      return await this.authSession.getWorkspaceContext(client.handshake.headers);
     } catch {
       return undefined;
     }
@@ -152,7 +150,7 @@ export class RealtimeGateway implements OnGatewayConnection {
 
     return hasPermission(
       {
-        role: workspaceContext.role as Role,
+        role: workspaceContext.role,
         permissions: workspaceContext.permissions ?? []
       },
       permission

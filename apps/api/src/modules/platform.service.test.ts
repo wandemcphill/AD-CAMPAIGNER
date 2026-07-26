@@ -25,40 +25,40 @@ function requireReference(value: string | undefined, label: string) {
 function createTestSupplier(overrides: Partial<SmmSupplierAdapter> = {}): SmmSupplierAdapter {
   return {
     name: "test-smm",
-    listServices: async () => [],
-    quoteService: async (input) => ({
+    listServices: () => Promise.resolve([]),
+    quoteService: (input) => Promise.resolve({
       amount: { amountMinor: input.quantity * 25, currency: "NGN" },
       estimatedDeliveryMinutes: 120,
       supplierName: "test-smm"
     }),
-    createOrder: async () => ({
+    createOrder: () => Promise.resolve({
       supplierReference: "test_supplier_order",
       status: "QUEUED"
     }),
-    getBalance: async () => ({
+    getBalance: () => Promise.resolve({
       supplierName: "test-smm",
       amount: { amountMinor: 100000000, currency: "NGN" }
     }),
-    getOrderStatus: async (supplierReference) => ({
+    getOrderStatus: (supplierReference) => Promise.resolve({
       supplierReference,
       status: "PROCESSING",
       remains: 50
     }),
-    getOrderStatuses: async (supplierReferences) =>
-      supplierReferences.map((supplierReference) => ({
+    getOrderStatuses: (supplierReferences) =>
+      Promise.resolve(supplierReferences.map((supplierReference) => ({
         supplierReference,
         status: "PROCESSING",
         remains: 50
-      })),
-    requestRefill: async (supplierReference) => ({
+      }))),
+    requestRefill: (supplierReference) => Promise.resolve({
       supplierReference,
       accepted: true
     }),
-    requestCancel: async (supplierReferences) =>
-      supplierReferences.map((supplierReference) => ({
+    requestCancel: (supplierReferences) =>
+      Promise.resolve(supplierReferences.map((supplierReference) => ({
         supplierReference,
         accepted: true
-      })),
+      }))),
     ...overrides
   };
 }
@@ -186,14 +186,14 @@ describe("PlatformService", () => {
 
   it("blocks Growth supplier execution when funds cannot be reserved", async () => {
     const service = new PlatformService();
-    const createOrder = vi.fn(async () => ({
+    const createOrder = vi.fn(() => Promise.resolve({
       supplierReference: "should_not_execute",
       status: "QUEUED" as const
     }));
     replaceSmmSupplier(
       service,
       createTestSupplier({
-        quoteService: async () => ({
+        quoteService: () => Promise.resolve({
           amount: { amountMinor: 1300000, currency: "NGN" },
           estimatedDeliveryMinutes: 120,
           supplierName: "test-smm"
@@ -269,9 +269,7 @@ describe("PlatformService", () => {
   it("releases reserved Growth funds when supplier submission fails", async () => {
     const service = new PlatformService();
     const walletBefore = service.getWallet(workspaceA);
-    const createOrder = vi.fn(async () => {
-      throw new Error("Supplier timeout");
-    });
+    const createOrder = vi.fn(() => Promise.reject(new Error("Supplier timeout")));
     replaceSmmSupplier(service, createTestSupplier({ createOrder }));
 
     const result = await service.createGrowthOrder(workspaceA, {

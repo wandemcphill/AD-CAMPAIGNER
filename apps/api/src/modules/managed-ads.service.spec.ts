@@ -60,6 +60,34 @@ type MediaAssetUpdateInput = {
   };
 };
 
+type MockDataInput = {
+  data: Record<string, unknown>;
+};
+
+type MockCreateInput = {
+  create: Record<string, unknown>;
+};
+
+type MockUpsertInput = MockCreateInput & {
+  update?: Record<string, unknown>;
+  where?: Record<string, unknown>;
+};
+
+type MockDestinationCreateInput = {
+  handle?: string | null;
+  kind?: string;
+  metadata?: Record<string, unknown>;
+  url?: string | null;
+};
+
+type CampaignCreateInput = {
+  data?: Record<string, unknown> & {
+    destination?: {
+      create?: MockDestinationCreateInput;
+    };
+  };
+};
+
 type PaymentIntentCreateInput = {
   data: {
     amountMinor?: number;
@@ -179,6 +207,42 @@ type NotificationUpsertInput = {
   } & Record<string, unknown>;
 };
 
+type MockPaymentIntent = {
+  amountMinor: number;
+  campaignId: string | null;
+  campaignInvoiceId: string | null;
+  checkoutUrl: string;
+  completedAt: Date | null;
+  createdAt: Date;
+  creditedAt: Date | null;
+  currency: string;
+  gateway: string;
+  id: string;
+  metadata: Record<string, unknown>;
+  providerReference: string | null;
+  status: string;
+  updatedAt: Date;
+  walletId: string | null;
+  workspaceId: string;
+};
+
+type PaymentIntentUpdateInput = {
+  data: {
+    completedAt?: Date | null;
+    creditedAt?: Date | null;
+    providerReference?: string | null;
+    status?: string;
+  };
+  where: {
+    id: string;
+  };
+};
+
+type MockCampaignInvoice = {
+  campaignId: string;
+  id: string;
+} & Record<string, unknown>;
+
 function snapshotUploadEnv() {
   return Object.fromEntries(uploadEnvKeys.map((key) => [key, process.env[key]])) as Record<
     UploadEnvKey,
@@ -251,7 +315,7 @@ function createService(
       updatedAt: new Date("2026-01-01T01:00:00.000Z")
     })
   );
-  const campaignCreate = vi.fn((input: Record<string, any>) => {
+  const campaignCreate = vi.fn((input: CampaignCreateInput) => {
     const data = input.data ?? {};
     const destinationCreate = data.destination?.create;
 
@@ -270,7 +334,7 @@ function createService(
       statusHistory: []
     });
   });
-  const campaignBudgetHoldCreate = vi.fn((input: Record<string, any>) =>
+  const campaignBudgetHoldCreate = vi.fn((input: MockDataInput) =>
     Promise.resolve({
       id: "hold_123",
       status: "ACTIVE",
@@ -296,14 +360,14 @@ function createService(
     (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
   );
   const campaignBudgetHoldFindMany = vi.fn(() => Promise.resolve([]));
-  const campaignBudgetHoldUpdate = vi.fn((input: Record<string, any>) =>
+  const campaignBudgetHoldUpdate = vi.fn((input: MockDataInput) =>
     Promise.resolve({ ...activeHold, ...input.data })
   );
   const auditLogCreate = vi.fn((input: AuditLogCreateInput) => Promise.resolve({ id: "audit_123", ...input.data }));
   const adAccountFindFirst = vi.fn(
     (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
   );
-  const adAccountCreate = vi.fn((input: Record<string, any>) =>
+  const adAccountCreate = vi.fn((input: MockDataInput) =>
     Promise.resolve({
       id: "ad_account_123",
       workspaceId: workspace.workspaceId,
@@ -314,10 +378,10 @@ function createService(
       ...input.data
     })
   );
-  const adAccountUpdate = vi.fn((input: Record<string, any>) =>
+  const adAccountUpdate = vi.fn((input: MockDataInput) =>
     Promise.resolve({ id: "ad_account_123", ...input.data })
   );
-  const campaignOutcomeUpsert = vi.fn((input: Record<string, any>) =>
+  const campaignOutcomeUpsert = vi.fn((input: MockUpsertInput) =>
     Promise.resolve({ id: "outcome_123", campaignId: "campaign_123", ...input.create, ...input.update })
   );
   const campaignOutcomeFindUnique = vi.fn(
@@ -343,8 +407,12 @@ function createService(
   const eventOutboxFindUnique = vi.fn(
     (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
   );
-  const eventOutboxUpsert = vi.fn();
-  const eventOutboxUpdate = vi.fn();
+  const eventOutboxUpsert = vi.fn((input: MockUpsertInput) =>
+    Promise.resolve({ id: "event_123", ...input.create })
+  );
+  const eventOutboxUpdate = vi.fn((input: MockDataInput) =>
+    Promise.resolve({ id: "event_123", ...input.data })
+  );
   const walletLedgerEntries = [
     {
       id: "ledger_opening",
@@ -362,11 +430,11 @@ function createService(
       updatedAt: new Date("2026-01-01T00:00:00.000Z")
     }
   ];
-  const ledgerEntryCreate = vi.fn((input: Record<string, any>) =>
+  const ledgerEntryCreate = vi.fn((input: MockDataInput) =>
     Promise.resolve({ id: "ledger_123", ...input.data })
   );
   const ledgerEntryFindMany = vi.fn(() => Promise.resolve(walletLedgerEntries));
-  const ledgerEntryUpsert = vi.fn((input: Record<string, any>) =>
+  const ledgerEntryUpsert = vi.fn((input: MockUpsertInput) =>
     Promise.resolve({ id: "ledger_123", ...input.create })
   );
   const mediaAssetCreate = vi.fn((input: MediaAssetCreateInput) =>
@@ -401,12 +469,12 @@ function createService(
     })
   );
   const paymentIntentFindUnique = vi.fn(
-    (): Promise<Record<string, any> | null> => Promise.resolve(null)
+    (): Promise<MockPaymentIntent | null> => Promise.resolve(null)
   );
   const paymentIntentFindFirst = vi.fn(
-    (): Promise<Record<string, any> | null> => Promise.resolve(null)
+    (): Promise<MockPaymentIntent | null> => Promise.resolve(null)
   );
-  const paymentIntentUpdate = vi.fn((input: Record<string, any>) =>
+  const paymentIntentUpdate = vi.fn((input: PaymentIntentUpdateInput) =>
     Promise.resolve({
       id: input.where.id,
       workspaceId: workspace.workspaceId,
@@ -448,14 +516,14 @@ function createService(
     updatedAt: new Date("2026-01-01T00:00:00.000Z"),
     deletedAt: null
   };
-  const campaignInvoiceCreate = vi.fn((input: Record<string, any>) =>
+  const campaignInvoiceCreate = vi.fn((input: MockDataInput) =>
     Promise.resolve({ id: "invoice_123", amountPaidMinor: 0, ...input.data })
   );
   const campaignInvoiceFindFirst = vi.fn(
-    (): Promise<Record<string, any> | null> => Promise.resolve(campaignInvoiceRecord)
+    (): Promise<MockCampaignInvoice | null> => Promise.resolve(campaignInvoiceRecord)
   );
   const campaignInvoiceFindMany = vi.fn(() => Promise.resolve([campaignInvoiceRecord]));
-  const campaignInvoiceUpdate = vi.fn((input: Record<string, any>) =>
+  const campaignInvoiceUpdate = vi.fn((input: MockDataInput) =>
     Promise.resolve({ ...campaignInvoiceRecord, ...input.data })
   );
   const walletUpsert = vi.fn(() =>
@@ -988,39 +1056,29 @@ describe("ManagedAdsService production payment and media guards", () => {
         status: "COMPLETED"
       });
 
-      expect(eventOutboxUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          create: expect.objectContaining({
-            name: "KorapayWebhookReceived",
-            entityId: "ft_pay_webhook_123"
-          })
-        })
-      );
-      expect(ledgerEntryUpsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { idempotencyKey: "payment:payment_123:credit" },
-          create: expect.objectContaining({
-            amountMinor: 1000,
-            kind: "CREDIT",
-            reference: "ft_pay_webhook_123",
-            sourceId: "payment_123"
-          })
-        })
-      );
-      expect(paymentIntentUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: "payment_123" },
-          data: expect.objectContaining({
-            status: "COMPLETED",
-            providerReference: "ft_pay_webhook_123"
-          })
-        })
-      );
-      expect(eventOutboxUpdate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ status: "PROCESSED" })
-        })
-      );
+      const eventUpsertInput = eventOutboxUpsert.mock.calls
+        .map(([input]) => input)
+        .find((input) => input.create.name === "KorapayWebhookReceived");
+      expect(eventUpsertInput?.create).toMatchObject({
+        name: "KorapayWebhookReceived",
+        entityId: "ft_pay_webhook_123"
+      });
+      const ledgerUpsertInput = ledgerEntryUpsert.mock.calls.at(-1)?.[0];
+      expect(ledgerUpsertInput?.where).toEqual({ idempotencyKey: "payment:payment_123:credit" });
+      expect(ledgerUpsertInput?.create).toMatchObject({
+        amountMinor: 1000,
+        kind: "CREDIT",
+        reference: "ft_pay_webhook_123",
+        sourceId: "payment_123"
+      });
+      const paymentUpdateInput = paymentIntentUpdate.mock.calls.at(-1)?.[0];
+      expect(paymentUpdateInput?.where).toEqual({ id: "payment_123" });
+      expect(paymentUpdateInput?.data).toMatchObject({
+        status: "COMPLETED",
+        providerReference: "ft_pay_webhook_123"
+      });
+      const eventUpdateInput = eventOutboxUpdate.mock.calls.at(-1)?.[0];
+      expect(eventUpdateInput?.data).toMatchObject({ status: "PROCESSED" });
       const ledgerWritesAfterFirstWebhook = ledgerEntryUpsert.mock.calls.length;
 
       await expect(service.handleKorapayWebhook(payload, signature)).resolves.toEqual({

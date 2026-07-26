@@ -16,7 +16,7 @@ import {
 } from "@nestjs/common";
 
 import { rolePermissions } from "@fliptrybe/auth";
-import type { Permission, Role } from "@fliptrybe/types";
+import type { Permission } from "@fliptrybe/types";
 import { PrismaService } from "./prisma.service";
 import {
   authenticatedContextFromHeaders,
@@ -327,7 +327,7 @@ export class AuthSessionService {
       ...(scope.sessionId === undefined ? {} : { sessionId: scope.sessionId }),
       userEmail: scope.user.email,
       userName: scope.user.name,
-      role: scope.membership.role as Role,
+      role: scope.membership.role,
       permissions: scope.membership.permissions as Permission[]
     };
   }
