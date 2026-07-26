@@ -14,7 +14,7 @@ import {
   createMockStorageProvider
 } from "@fliptrybe/providers";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
-import { assessCampaignRisk } from "@fliptrybe/service-campaigns";
+import { assessCampaignRisk, normalizeCampaignSpec } from "@fliptrybe/service-campaigns";
 import {
   campaignLedgerEntryTypes,
   currencies,
@@ -742,6 +742,54 @@ export class ManagedAdsService {
 
       return this.toCampaign(campaign);
     });
+  }
+
+  /**
+   * Studio wizard entry point: "what do you want more of -> paste link -> where -> budget".
+   * Normalizes plain-language wizard input into a platform-agnostic CampaignSpec (goal/objective
+   * mapping, destination inference, targeting defaults) and delegates to createCampaign, which
+   * remains the full-featured path used by the Pro/Company dashboards and admin tooling.
+   */
+  async createCampaignFromWizard(
+    context: AuthenticatedRequestContext | undefined,
+    input: Record<string, any>
+  ) {
+    const spec = normalizeCampaignSpec({
+      goal: String(input.goal ?? ""),
+      link: String(input.link ?? input.destinationUrl ?? ""),
+      budgetMinor: Number(input.budgetMinor ?? 0),
+      ...(input.currency === undefined ? {} : { currency: input.currency }),
+      ...(input.country === undefined ? {} : { country: input.country }),
+      ...(input.city === undefined ? {} : { city: input.city }),
+      ...(input.cities === undefined ? {} : { cities: input.cities }),
+      ...(input.ageMin === undefined ? {} : { ageMin: Number(input.ageMin) }),
+      ...(input.ageMax === undefined ? {} : { ageMax: Number(input.ageMax) }),
+      ...(input.gender === undefined ? {} : { gender: input.gender }),
+      ...(input.interests === undefined ? {} : { interests: input.interests })
+    });
+
+    const campaign = await this.createCampaign(context, {
+      companyProfileId: input.companyProfileId,
+      name: input.name ?? `${spec.goal.replace(/_/g, " ").toLowerCase()} campaign`,
+      objective: spec.objective,
+      budgetMinor: spec.budget.amountMinor,
+      currency: spec.budget.currency,
+      destinationUrl: spec.destination.url,
+      destinationKind: spec.destination.kind,
+      targetAudience: {
+        countries: spec.targeting.countries,
+        cities: spec.targeting.cities,
+        ageMin: spec.targeting.ageMin,
+        ageMax: spec.targeting.ageMax,
+        gender: spec.targeting.gender,
+        interests: spec.targeting.interests
+      },
+      metadata: { wizard: true, goal: spec.goal, warnings: spec.warnings },
+      startsAt: spec.schedule.startsAt,
+      endsAt: spec.schedule.endsAt
+    });
+
+    return { campaign, warnings: spec.warnings };
   }
 
   async updateCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {

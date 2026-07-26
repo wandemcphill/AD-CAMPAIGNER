@@ -189,6 +189,12 @@ export class CampaignsController {
     return this.managedAds.createCampaign(workspaceContextFromRequest(request), body);
   }
 
+  @Post("wizard")
+  @RequirePermissions("campaign:create")
+  createFromWizard(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.createCampaignFromWizard(workspaceContextFromRequest(request), body);
+  }
+
   @Patch(":id")
   @RequirePermissions("campaign:manage")
   update(

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 import { ManagedAdsService } from "./managed-ads.service";
 import type { PrismaService } from "./prisma.service";
@@ -283,7 +283,9 @@ function createService(
     })
   );
   const analyticsMetricCreate = vi.fn();
-  const eventOutboxFindUnique = vi.fn(() => Promise.resolve(null));
+  const eventOutboxFindUnique = vi.fn(
+    (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
+  );
   const eventOutboxUpsert = vi.fn();
   const eventOutboxUpdate = vi.fn();
   const walletLedgerEntries = [
@@ -535,6 +537,7 @@ function createService(
     campaignLedgerEntryUpsert,
     campaignSpendEntryCreate,
     eventOutboxFindUnique,
+    eventOutboxUpsert,
     eventOutboxUpdate,
     ledgerEntryCreate,
     ledgerEntryFindMany,
@@ -844,6 +847,168 @@ describe("ManagedAdsService production payment and media guards", () => {
         })
       ).rejects.toThrow("Idempotency key was already used for another workspace.");
       expect(paymentIntentCreate).not.toHaveBeenCalled();
+    } finally {
+      restoreUploadEnv(env);
+    }
+  });
+
+  it("credits the wallet once for a signed Korapay webhook and treats replay as duplicate", async () => {
+    const env = snapshotUploadEnv();
+    process.env.NODE_ENV = "test";
+    process.env.PAYMENT_PROVIDER = "live";
+    process.env.KORAPAY_SECRET_KEY = "korapay-test-secret";
+    process.env.KORAPAY_WEBHOOK_SECRET = "korapay-webhook-secret";
+    const {
+      eventOutboxFindUnique,
+      eventOutboxUpdate,
+      eventOutboxUpsert,
+      ledgerEntryUpsert,
+      paymentIntentFindFirst,
+      paymentIntentFindUnique,
+      paymentIntentUpdate,
+      service
+    } = createService();
+    const pendingIntent = {
+      id: "payment_123",
+      workspaceId: workspace.workspaceId,
+      walletId: "wallet_123",
+      gateway: "KORAPAY",
+      amountMinor: 1000,
+      currency: "NGN",
+      status: "PENDING",
+      providerReference: "ft_pay_webhook_123",
+      checkoutUrl: "https://checkout.korapay.com/ft_pay_webhook_123/pay",
+      campaignId: null,
+      campaignInvoiceId: null,
+      completedAt: null,
+      creditedAt: null,
+      metadata: {},
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z")
+    };
+    const data = {
+      amount: 10,
+      currency: "NGN",
+      reference: "ft_pay_webhook_123",
+      status: "success"
+    };
+    const payload = { event: "charge.success", data };
+    const signature = createHmac("sha256", "korapay-webhook-secret")
+      .update(JSON.stringify(data))
+      .digest("hex");
+    paymentIntentFindFirst.mockResolvedValue(pendingIntent);
+    paymentIntentFindUnique.mockResolvedValue(pendingIntent);
+    eventOutboxFindUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: "event_123",
+        idempotencyKey: "korapay:webhook:charge.success:hash",
+        processedAt: new Date("2026-01-01T00:00:00.000Z")
+      });
+
+    try {
+      await expect(service.handleKorapayWebhook(payload, signature)).resolves.toEqual({
+        accepted: true,
+        reference: "ft_pay_webhook_123",
+        status: "COMPLETED"
+      });
+
+      expect(eventOutboxUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          create: expect.objectContaining({
+            name: "KorapayWebhookReceived",
+            entityId: "ft_pay_webhook_123"
+          })
+        })
+      );
+      expect(ledgerEntryUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { idempotencyKey: "payment:payment_123:credit" },
+          create: expect.objectContaining({
+            amountMinor: 1000,
+            kind: "CREDIT",
+            reference: "ft_pay_webhook_123",
+            sourceId: "payment_123"
+          })
+        })
+      );
+      expect(paymentIntentUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "payment_123" },
+          data: expect.objectContaining({
+            status: "COMPLETED",
+            providerReference: "ft_pay_webhook_123"
+          })
+        })
+      );
+      expect(eventOutboxUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ status: "PROCESSED" })
+        })
+      );
+      const ledgerWritesAfterFirstWebhook = ledgerEntryUpsert.mock.calls.length;
+
+      await expect(service.handleKorapayWebhook(payload, signature)).resolves.toEqual({
+        accepted: true,
+        duplicate: true,
+        reference: "ft_pay_webhook_123",
+        status: "success"
+      });
+      expect(ledgerEntryUpsert).toHaveBeenCalledTimes(ledgerWritesAfterFirstWebhook);
+    } finally {
+      restoreUploadEnv(env);
+    }
+  });
+
+  it("does not credit the wallet again when a completed payment is verified twice", async () => {
+    const env = snapshotUploadEnv();
+    process.env.NODE_ENV = "test";
+    process.env.PAYMENT_PROVIDER = "mock";
+    const {
+      ledgerEntryUpsert,
+      paymentIntentFindFirst,
+      paymentIntentFindUnique,
+      paymentIntentUpdate,
+      service
+    } = createService();
+    const completedAt = new Date("2026-01-01T00:00:00.000Z");
+    const completedIntent = {
+      id: "payment_123",
+      workspaceId: workspace.workspaceId,
+      walletId: "wallet_123",
+      gateway: "KORAPAY",
+      amountMinor: 1000,
+      currency: "NGN",
+      status: "COMPLETED",
+      providerReference: "mock_ref_123",
+      checkoutUrl: "https://payments.mock/checkout/mock_ref_123",
+      campaignId: null,
+      campaignInvoiceId: null,
+      completedAt,
+      creditedAt: completedAt,
+      metadata: {},
+      createdAt: completedAt,
+      updatedAt: completedAt
+    };
+    paymentIntentFindFirst.mockResolvedValue(completedIntent);
+    paymentIntentFindUnique.mockResolvedValue(completedIntent);
+
+    try {
+      await expect(service.verifyPayment(workspace, "mock_ref_123")).resolves.toEqual(
+        expect.objectContaining({
+          id: "payment_123",
+          status: "COMPLETED"
+        })
+      );
+      await expect(service.verifyPayment(workspace, "mock_ref_123")).resolves.toEqual(
+        expect.objectContaining({
+          id: "payment_123",
+          status: "COMPLETED"
+        })
+      );
+
+      expect(ledgerEntryUpsert).not.toHaveBeenCalled();
+      expect(paymentIntentUpdate).not.toHaveBeenCalled();
     } finally {
       restoreUploadEnv(env);
     }
@@ -1177,5 +1342,62 @@ describe("ManagedAdsService authorization gates", () => {
       "Workspace membership could not be verified."
     );
     expect(teamMemberFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("ManagedAdsService.createCampaignFromWizard", () => {
+  it("normalizes wizard input into a CampaignSpec and delegates to createCampaign", async () => {
+    const { service } = createService();
+    const createCampaignSpy = vi
+      .spyOn(service, "createCampaign")
+      .mockResolvedValue({ id: "campaign_123", status: "DRAFT" } as never);
+
+    const result = await service.createCampaignFromWizard(workspace, {
+      goal: "Get more WhatsApp messages",
+      link: "https://wa.me/2348012345678",
+      budgetMinor: 2_500_000,
+      city: "Lagos"
+    });
+
+    expect(createCampaignSpy).toHaveBeenCalledTimes(1);
+    const [, createInput] = createCampaignSpy.mock.calls[0] as [unknown, Record<string, any>];
+    expect(createInput.objective).toBe("LEADS");
+    expect(createInput.destinationUrl).toBe("https://wa.me/2348012345678");
+    expect(createInput.destinationKind).toBe("WHATSAPP_CHANNEL");
+    expect(createInput.budgetMinor).toBe(2_500_000);
+    expect(createInput.currency).toBe("NGN");
+    expect(createInput.targetAudience.cities).toEqual(["Lagos"]);
+    expect(createInput.targetAudience.countries).toEqual(["NG"]);
+    expect(createInput.metadata).toEqual(
+      expect.objectContaining({ wizard: true, goal: "WHATSAPP_MESSAGES" })
+    );
+    expect(result).toEqual({ campaign: { id: "campaign_123", status: "DRAFT" }, warnings: [] });
+  });
+
+  it("surfaces a warning for goals that are not yet supported without blocking creation", async () => {
+    const { service } = createService();
+    vi.spyOn(service, "createCampaign").mockResolvedValue({ id: "campaign_456" } as never);
+
+    const result = await service.createCampaignFromWizard(workspace, {
+      goal: "LIVE_VIEWERS",
+      link: "https://www.tiktok.com/@seller/live",
+      budgetMinor: 2_500_000
+    });
+
+    expect(result.warnings.join(" ")).toMatch(/LIVE-promotion/i);
+  });
+
+  it("rejects an invalid destination link before calling createCampaign", async () => {
+    const { service } = createService();
+    const createCampaignSpy = vi.spyOn(service, "createCampaign");
+
+    await expect(
+      service.createCampaignFromWizard(workspace, {
+        goal: "WEBSITE_VISITS",
+        link: "not-a-url",
+        budgetMinor: 2_500_000
+      })
+    ).rejects.toThrow(/valid public/i);
+    expect(createCampaignSpy).not.toHaveBeenCalled();
   });
 });
