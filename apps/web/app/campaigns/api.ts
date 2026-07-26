@@ -309,6 +309,7 @@ export type CreateCampaignFromWizardInput = {
   link: string;
   budgetMinor: number;
   city?: string;
+  productDescription?: string;
 };
 
 export type CreateCampaignFromWizardResult = {

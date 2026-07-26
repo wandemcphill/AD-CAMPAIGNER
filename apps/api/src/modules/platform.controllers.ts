@@ -243,6 +243,12 @@ export class CampaignsController {
     return this.managedAds.getCampaignRecommendations(workspaceContextFromRequest(request), body);
   }
 
+  @Get("budget-optimization")
+  @RequirePermissions("payment:manage")
+  budgetOptimization(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getBudgetOptimizationRecommendations(workspaceContextFromRequest(request));
+  }
+
   @Patch(":id")
   @RequirePermissions("campaign:manage")
   update(

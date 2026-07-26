@@ -17,11 +17,17 @@ import { calculateAvailableBalance } from "@fliptrybe/payments";
 import {
   assessCampaignRisk,
   buildMetaLaunchSpec,
+  estimateOutcomeForGoal,
   normalizeCampaignSpec,
+  normalizeGoalSafe,
+  recommendBudgetOptimization,
   recommendCampaignTargeting,
   type CampaignGoal,
-  type CampaignSpec
+  type CampaignPerformanceInput,
+  type CampaignSpec,
+  type CampaignTargetingRecommendation
 } from "@fliptrybe/service-campaigns";
+import { AnthropicRecommendationClient } from "@fliptrybe/service-ai-engine";
 import {
   campaignLedgerEntryTypes,
   currencies,
@@ -721,6 +727,7 @@ function buildWalletConsistency(entries: LedgerEntry[]) {
 export class ManagedAdsService {
   private readonly paymentGateway = getPaymentGateway();
   private readonly mockStorageProvider = createMockStorageProvider();
+  private readonly aiRecommendationClient = AnthropicRecommendationClient.fromEnv();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -1063,12 +1070,23 @@ export class ManagedAdsService {
       ? targetAudience.searchKeywords
       : [];
     const optimizeAutomatically = targetAudience.optimizeAutomatically !== false;
+    const radius =
+      targetAudience.radius &&
+      Number.isFinite(Number(targetAudience.radius.latitude)) &&
+      Number.isFinite(Number(targetAudience.radius.longitude)) &&
+      Number.isFinite(Number(targetAudience.radius.radiusKm))
+        ? {
+            latitude: Number(targetAudience.radius.latitude),
+            longitude: Number(targetAudience.radius.longitude),
+            radiusKm: Number(targetAudience.radius.radiusKm)
+          }
+        : undefined;
 
     return {
       goal,
       objective,
       destination: {
-        url: campaign.destination?.url ?? "https://fliptrybe.com",
+        url: campaign.destination?.url ?? "https://fliptrybe.store",
         kind: (campaign.destination?.kind ?? "WEBSITE") as CampaignSpec["destination"]["kind"]
       },
       budget: { amountMinor: campaign.budgetMinor, currency: campaign.currency ?? "NGN" },
@@ -1077,6 +1095,7 @@ export class ManagedAdsService {
         states,
         cities,
         localGovernmentAreas,
+        ...(radius ? { radius } : {}),
         ageMin,
         ageMax,
         gender,
@@ -1101,7 +1120,7 @@ export class ManagedAdsService {
     const budgetMinor = Number(input.budgetMinor ?? input.budget?.amountMinor ?? input.budget ?? 250000);
     const objective = normalizeObjective(input.objective);
     const destinationKind = normalizeDestinationKind(input);
-    const destinationUrl = String(input.destinationUrl ?? input.productLink ?? input.websiteUrl ?? "https://fliptrybe.com");
+    const destinationUrl = String(input.destinationUrl ?? input.productLink ?? input.websiteUrl ?? "https://fliptrybe.store");
 
     if (!Number.isInteger(budgetMinor) || budgetMinor <= 0) {
       throw new BadRequestException("Campaign budget must be a positive minor-unit integer.");
@@ -1212,6 +1231,9 @@ export class ManagedAdsService {
       goal: String(input.goal ?? ""),
       link: String(input.link ?? input.destinationUrl ?? ""),
       budgetMinor: Number(input.budgetMinor ?? 0),
+      ...(input.productDescription === undefined
+        ? {}
+        : { productDescription: String(input.productDescription) }),
       ...(input.currency === undefined ? {} : { currency: input.currency }),
       ...(input.country === undefined ? {} : { country: input.country }),
       ...(input.countries === undefined ? {} : { countries: input.countries }),
@@ -1225,6 +1247,9 @@ export class ManagedAdsService {
       ...(input.localGovernmentAreas === undefined
         ? {}
         : { localGovernmentAreas: input.localGovernmentAreas }),
+      ...(input.latitude === undefined ? {} : { latitude: Number(input.latitude) }),
+      ...(input.longitude === undefined ? {} : { longitude: Number(input.longitude) }),
+      ...(input.radiusKm === undefined ? {} : { radiusKm: Number(input.radiusKm) }),
       ...(input.ageMin === undefined ? {} : { ageMin: Number(input.ageMin) }),
       ...(input.ageMax === undefined ? {} : { ageMax: Number(input.ageMax) }),
       ...(input.gender === undefined ? {} : { gender: input.gender }),
@@ -1254,6 +1279,7 @@ export class ManagedAdsService {
         states: spec.targeting.states,
         cities: spec.targeting.cities,
         localGovernmentAreas: spec.targeting.localGovernmentAreas,
+        ...(spec.targeting.radius ? { radius: spec.targeting.radius } : {}),
         ageMin: spec.targeting.ageMin,
         ageMax: spec.targeting.ageMax,
         gender: spec.targeting.gender,
@@ -1273,22 +1299,70 @@ export class ManagedAdsService {
   /**
    * Returns several targeting options (broad / focused / hyper-local), not one, with an
    * illustrative budget-to-outcome range for each -- helps a customer pick before they commit
-   * budget, rather than guessing at settings. See recommendCampaignTargeting's own doc comment for
-   * the honest scope note (rule-based category detection today; same seam a real AI provider
-   * plugs into later without changing this method's signature).
+   * budget, rather than guessing at settings.
+   *
+   * Tries the real AI provider first (AnthropicRecommendationClient, disabled unless
+   * ANTHROPIC_API_KEY + AI_PROVIDER=anthropic are set), and falls back to the rule-based
+   * recommendCampaignTargeting heuristic on disabled/timeout/parse failure -- same
+   * try-AI-then-heuristic-fallback shape already verified working in RUNNR's AI orchestrator
+   * (see the runnr-ai-orchestrator-reference memory). Every option is tagged with which path
+   * actually produced it so the caller/analytics can tell them apart.
    */
   async getCampaignRecommendations(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
     const scope = requireScope(context);
     await this.assertCampaignPermission(this.db, scope, "campaign:create");
 
+    const goal = String(input.goal ?? "");
+    const budgetMinor = Number(input.budgetMinor ?? 0);
+    const productDescription = input.productDescription === undefined ? undefined : String(input.productDescription);
+    const city = input.city === undefined ? undefined : String(input.city);
+    const localGovernmentArea =
+      input.localGovernmentArea === undefined ? undefined : String(input.localGovernmentArea);
+    const latitude = input.latitude === undefined ? undefined : Number(input.latitude);
+    const longitude = input.longitude === undefined ? undefined : Number(input.longitude);
+    const radiusKm = input.radiusKm === undefined ? undefined : Number(input.radiusKm);
+
+    if (this.aiRecommendationClient.enabled && productDescription) {
+      const aiResult = await this.aiRecommendationClient.suggestTargeting({
+        goal,
+        budgetMinor,
+        currency: "NGN",
+        productDescription,
+        ...(city === undefined ? {} : { city })
+      });
+
+      if (aiResult) {
+        const normalizedGoal = normalizeGoalSafe(goal);
+        const estimatedOutcome = estimateOutcomeForGoal(normalizedGoal, budgetMinor);
+
+        return aiResult.options.map(
+          (option): CampaignTargetingRecommendation => ({
+            label: option.label,
+            rationale: option.rationale,
+            targeting: {
+              ageMin: option.ageMin,
+              ageMax: option.ageMax,
+              gender: option.gender,
+              interests: option.interests,
+              behaviors: option.behaviors,
+              localGovernmentAreas: []
+            },
+            optimizeAutomatically: true,
+            estimatedOutcome
+          })
+        );
+      }
+    }
+
     return recommendCampaignTargeting({
-      goal: String(input.goal ?? ""),
-      budgetMinor: Number(input.budgetMinor ?? 0),
-      ...(input.productDescription === undefined ? {} : { productDescription: String(input.productDescription) }),
-      ...(input.city === undefined ? {} : { city: String(input.city) }),
-      ...(input.localGovernmentArea === undefined
-        ? {}
-        : { localGovernmentArea: String(input.localGovernmentArea) })
+      goal,
+      budgetMinor,
+      ...(productDescription === undefined ? {} : { productDescription }),
+      ...(city === undefined ? {} : { city }),
+      ...(localGovernmentArea === undefined ? {} : { localGovernmentArea }),
+      ...(latitude === undefined ? {} : { latitude }),
+      ...(longitude === undefined ? {} : { longitude }),
+      ...(radiusKm === undefined ? {} : { radiusKm })
     });
   }
 
@@ -1310,7 +1384,7 @@ export class ManagedAdsService {
           create: {
             campaignId,
             kind: normalizeDestinationKind(input),
-            url: String(input.destinationUrl ?? input.productLink ?? "https://fliptrybe.com"),
+            url: String(input.destinationUrl ?? input.productLink ?? "https://fliptrybe.store"),
             handle: input.handle,
             metadata: normalizeJsonObject(input.destinationMetadata)
           }
@@ -1711,6 +1785,54 @@ export class ManagedAdsService {
 
       return { from: this.toCampaign(updatedFrom), to: this.toCampaign(updatedTo) };
     });
+  }
+
+  /**
+   * Compares cost-per-outcome across the workspace's own live campaigns and recommends moving
+   * unspent budget from an underperformer to a better performer -- see recommendBudgetOptimization
+   * in @fliptrybe/service-campaigns for the honest scope note (this is NOT cross-platform
+   * auto-optimization). Pure recommendation: nothing moves until the caller separately confirms via
+   * transferCampaignBudget, same "don't silently move money" discipline as budget increase/decrease.
+   */
+  async getBudgetOptimizationRecommendations(context: AuthenticatedRequestContext | undefined) {
+    const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
+
+    const campaigns = await this.db.campaign.findMany({
+      where: {
+        workspaceId: scope.workspaceId,
+        deletedAt: null,
+        status: { in: [...launchedCampaignStatuses] }
+      },
+      include: { spendEntries: true, manualPlacements: true, outcome: true }
+    });
+
+    const performanceInputs: CampaignPerformanceInput[] = campaigns.map((campaign: any) => {
+      const storedGoal = campaign.metadata?.goal;
+      const goal: CampaignGoal = isCampaignGoal(storedGoal)
+        ? storedGoal
+        : goalFromObjective(String(campaign.objective), undefined);
+
+      return {
+        campaignId: campaign.id,
+        name: campaign.name,
+        currency: campaign.currency ?? "NGN",
+        budgetMinor: campaign.budgetMinor,
+        spentMinor: this.totalRecordedSpendMinor(campaign),
+        goal,
+        ...(campaign.outcome
+          ? {
+              outcome: {
+                messagesCount: campaign.outcome.messagesCount ?? undefined,
+                ordersCount: campaign.outcome.ordersCount ?? undefined,
+                estRevenueMinor: campaign.outcome.estRevenueMinor ?? undefined
+              }
+            }
+          : {})
+      };
+    });
+
+    return recommendBudgetOptimization(performanceInputs);
   }
 
   async listCampaignAuditTrail(context: AuthenticatedRequestContext | undefined, campaignId: string) {

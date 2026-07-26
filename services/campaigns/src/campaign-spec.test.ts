@@ -118,4 +118,74 @@ describe("normalizeCampaignSpec", () => {
     expect(spec.targeting.cities).toEqual(["Lagos", "Abuja"]);
     expect(spec.targeting.interests).toEqual(["thrift", "fashion"]);
   });
+
+  it("rejects a shortlet campaign that links off-platform instead of to a FlipTrybe listing", () => {
+    expect(() =>
+      normalizeCampaignSpec(
+        baseInput({
+          link: "https://wa.me/2348012345678",
+          productDescription: "2 bedroom shortlet apartment in Lekki"
+        })
+      )
+    ).toThrow(/FlipTrybe listing/i);
+  });
+
+  it("allows a shortlet campaign once the link points at a FlipTrybe listing", () => {
+    const spec = normalizeCampaignSpec(
+      baseInput({
+        link: "https://fliptrybe.store/listings/shortlet-lekki-42",
+        productDescription: "2 bedroom shortlet apartment in Lekki"
+      })
+    );
+
+    expect(spec.destination.kind).toBe("FLIPTRYBE_STORE");
+  });
+
+  it("rejects a TradeHub-style wholesale campaign that links off-platform", () => {
+    expect(() =>
+      normalizeCampaignSpec(
+        baseInput({
+          link: "https://wa.me/2348012345678",
+          productDescription: "CAC registered distributor, wholesale bulk supply of rice"
+        })
+      )
+    ).toThrow(/FlipTrybe listing/i);
+  });
+
+  it("allows a TradeHub campaign once the link points at a FlipTrybe listing", () => {
+    const spec = normalizeCampaignSpec(
+      baseInput({
+        link: "https://fliptrybe.store/sell?lane=tradehub",
+        productDescription: "CAC registered distributor, wholesale bulk supply of rice"
+      })
+    );
+
+    expect(spec.destination.kind).toBe("FLIPTRYBE_STORE");
+  });
+
+  it("does not gate categories outside the marketplace-lane list", () => {
+    const spec = normalizeCampaignSpec(
+      baseInput({ link: "https://instagram.com/myshop", productDescription: "I sell wigs in Lagos" })
+    );
+
+    expect(spec.destination.kind).toBe("INSTAGRAM_PROFILE");
+  });
+
+  it("applies radius targeting when latitude/longitude/radiusKm are all valid", () => {
+    const spec = normalizeCampaignSpec(baseInput({ latitude: 6.5244, longitude: 3.3792, radiusKm: 10 }));
+
+    expect(spec.targeting.radius).toEqual({ latitude: 6.5244, longitude: 3.3792, radiusKm: 10 });
+  });
+
+  it("omits radius targeting when only some of latitude/longitude/radiusKm are given", () => {
+    const spec = normalizeCampaignSpec(baseInput({ latitude: 6.5244, radiusKm: 10 }));
+
+    expect(spec.targeting.radius).toBeUndefined();
+  });
+
+  it("omits radius targeting when coordinates are out of bounds", () => {
+    const spec = normalizeCampaignSpec(baseInput({ latitude: 200, longitude: 3.3792, radiusKm: 10 }));
+
+    expect(spec.targeting.radius).toBeUndefined();
+  });
 });

@@ -46,6 +46,15 @@ type ApiCampaign = {
   channel?: string;
   objective?: string;
   budget?: ApiMoney | string | number;
+  budgetMinor?: number;
+  budgetUtilization?: number;
+  guardrails?: string[];
+  launchedPlacementCount?: number;
+  placementCount?: number;
+  publishedReportCount?: number;
+  reportCount?: number;
+  spend?: ApiMoney | string | number;
+  spendMinor?: number;
   status?: string;
   priority?: string;
   assignee?: string | ApiAssignee;
@@ -63,6 +72,7 @@ type ApiCampaign = {
   progress?: number;
   nextAction?: string;
   tags?: string[];
+  workflowStage?: string;
 };
 
 type ApiReport = {
@@ -72,6 +82,8 @@ type ApiReport = {
   generatedAt?: string;
   createdAt?: string;
   status?: string;
+  type?: string;
+  reportType?: string;
   owner?: string | ApiAssignee;
   summary?: string;
   metrics?: Array<{ label?: string; value?: string | number }>;
@@ -207,7 +219,7 @@ function normalizeChoice<T extends string>(value: unknown, allowed: T[], fallbac
 }
 
 function normalizeStatus(value: unknown): CampaignOpsStatus {
-  return normalizeChoice(value, campaignOpsStatuses, "queued");
+  return normalizeChoice(value, campaignOpsStatuses, "submitted");
 }
 
 function normalizePriority(value: unknown): CampaignOpsPriority {
@@ -216,6 +228,18 @@ function normalizePriority(value: unknown): CampaignOpsPriority {
 
 function normalizeReportStatus(value: unknown): CampaignOpsReportStatus {
   return normalizeChoice(value, campaignOpsReportStatuses, "generating");
+}
+
+function normalizeReportType(value: unknown): CampaignOpsReport["type"] {
+  if (typeof value !== "string") {
+    return "weekly_report";
+  }
+
+  const normalized = value.toLowerCase().replaceAll("-", "_");
+
+  return normalized === "daily_update" || normalized === "weekly_report" || normalized === "final_report"
+    ? normalized
+    : "weekly_report";
 }
 
 function normalizeSeverity(value: unknown): CampaignOpsActivitySeverity {
@@ -300,6 +324,17 @@ function mapCampaign(campaign: ApiCampaign, index = 0): CampaignOpsCampaign {
     channel: stringValue(campaign.channel, "Needs Action: choose channel"),
     objective: stringValue(campaign.objective, "Needs Action: capture campaign objective"),
     budget: formatBudget(campaign.budget),
+    budgetMinor: numberValue(campaign.budgetMinor),
+    budgetUtilization: Math.min(999, Math.max(0, numberValue(campaign.budgetUtilization))),
+    guardrails: Array.isArray(campaign.guardrails)
+      ? campaign.guardrails.filter((guardrail) => typeof guardrail === "string")
+      : [],
+    launchedPlacementCount: numberValue(campaign.launchedPlacementCount),
+    placementCount: numberValue(campaign.placementCount),
+    publishedReportCount: numberValue(campaign.publishedReportCount),
+    reportCount: numberValue(campaign.reportCount),
+    spend: formatBudget(campaign.spend),
+    spendMinor: numberValue(campaign.spendMinor),
     status: normalizeStatus(campaign.status),
     priority: normalizePriority(campaign.priority),
     assignee: actorName(campaign.assignee ?? campaign.assignedTo, "Unassigned"),
@@ -312,7 +347,8 @@ function mapCampaign(campaign: ApiCampaign, index = 0): CampaignOpsCampaign {
     risk: stringValue(campaign.risk, "Needs Action: risk unscored"),
     progress: Math.min(100, Math.max(0, numberValue(campaign.progress, 0))),
     nextAction: stringValue(campaign.nextAction, "Needs Action: review campaign details"),
-    tags: Array.isArray(campaign.tags) ? campaign.tags.filter((tag) => typeof tag === "string") : []
+    tags: Array.isArray(campaign.tags) ? campaign.tags.filter((tag) => typeof tag === "string") : [],
+    workflowStage: stringValue(campaign.workflowStage, "Campaign Submitted")
   };
 }
 
@@ -331,34 +367,34 @@ function buildMetrics(overview: ApiOverview): CampaignOpsMetric[] {
   }
 
   const totals = overview.totals ?? {};
-  const queued = numberValue(totals.queued);
-  const reviewing = numberValue(totals.reviewing);
+  const pendingReviews = numberValue(totals.pendingReviews ?? totals.queued);
+  const launchPreparation = numberValue(totals.launchPreparation ?? totals.reviewing);
   const blocked = numberValue(totals.blocked);
   const urgent = numberValue(totals.urgent);
 
   return [
     {
-      label: "Needs action",
-      value: String(queued + reviewing + blocked),
-      detail: "Queued, reviewing, and blocked",
+      label: "Pending reviews",
+      value: String(pendingReviews + blocked),
+      detail: "Submitted, review, and blocked",
       tone: "info"
     },
     {
-      label: "Running",
-      value: String(numberValue(totals.running)),
-      detail: "Live campaigns under watch",
-      tone: "success"
-    },
-    {
-      label: "Escalations",
-      value: String(blocked + urgent),
-      detail: "Blocked or urgent campaigns",
+      label: "Launch prep",
+      value: String(launchPreparation),
+      detail: "Approved through platform launch",
       tone: "warning"
     },
     {
-      label: "Operators",
-      value: String(numberValue(overview.activeOperators)),
-      detail: "Assigned campaign ops users"
+      label: "Budget alerts",
+      value: String(blocked + urgent),
+      detail: "Blocked, urgent, or allocation-sensitive",
+      tone: "warning"
+    },
+    {
+      label: "Reporting queue",
+      value: String(numberValue(totals.reporting)),
+      detail: "Daily, weekly, and final reports"
     }
   ];
 }
@@ -370,6 +406,7 @@ function mapReport(report: ApiReport, index = 0): CampaignOpsReport {
     period: stringValue(report.period, "Current period"),
     generatedAt: formatDateTime(report.generatedAt ?? report.createdAt),
     status: normalizeReportStatus(report.status),
+    type: normalizeReportType(report.type ?? report.reportType),
     owner: actorName(report.owner, "Ops"),
     summary: stringValue(report.summary, "Needs Action: add a client-ready report summary before publishing."),
     metrics: Array.isArray(report.metrics)
@@ -469,13 +506,18 @@ export async function loadAdminCampaignOpsActivity() {
 }
 
 const adminStatusToApiStatus: Record<CampaignOpsStatus, string> = {
+  approved: "APPROVED",
+  assigned: "APPROVED",
   blocked: "CHANGES_REQUESTED",
   completed: "COMPLETED",
+  creative_review: "CREATIVE_IN_PROGRESS",
   failed: "FAILED",
-  queued: "PENDING_REVIEW",
-  reviewing: "PENDING_REVIEW",
-  running: "RUNNING",
-  scheduled: "APPROVED"
+  optimization: "RUNNING",
+  paused: "PAUSED",
+  platform_launch: "QUEUED",
+  reporting: "RUNNING",
+  review: "PENDING_REVIEW",
+  submitted: "PENDING_REVIEW"
 };
 type AdminCampaignStatusMutation =
   | CampaignOpsStatus
@@ -484,6 +526,7 @@ type AdminCampaignStatusMutation =
   | "CHANGES_REQUESTED"
   | "COMPLETED"
   | "FAILED"
+  | "PAUSED"
   | "PENDING_REVIEW"
   | "REJECTED"
   | "RUNNING";
@@ -536,6 +579,16 @@ export async function addAdminCampaignPlacement(
   input: Record<string, string | number | boolean | null | undefined | Record<string, unknown>>
 ) {
   return apiRequest(`/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/ad-urls`, {
+    body: JSON.stringify(input),
+    method: "POST"
+  });
+}
+
+export async function createAdminCampaignReport(
+  campaignId: string,
+  input: Record<string, string | number | null | undefined | Record<string, unknown>>
+) {
+  return apiRequest(`/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/reports`, {
     body: JSON.stringify(input),
     method: "POST"
   });

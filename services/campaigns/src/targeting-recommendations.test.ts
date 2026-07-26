@@ -100,4 +100,42 @@ describe("recommendCampaignTargeting", () => {
       expect(rec.estimatedOutcome.highEstimate).toBeGreaterThanOrEqual(0);
     }
   });
+
+  it("narrows the hyper-local option to an exact radius when latitude/longitude/radiusKm are given", () => {
+    const recs = recommendCampaignTargeting({
+      goal: "SALES",
+      budgetMinor: 2_500_000,
+      productDescription: "used TV for sale in Abuja",
+      latitude: 9.0765,
+      longitude: 7.3986,
+      radiusKm: 5
+    });
+
+    const hyperLocal = recs[2];
+    expect(hyperLocal?.label).toContain("5km");
+    expect(hyperLocal?.targeting.radius).toEqual({ latitude: 9.0765, longitude: 7.3986, radiusKm: 5 });
+  });
+
+  it("ignores a partial/invalid radius rather than throwing", () => {
+    const recs = recommendCampaignTargeting({
+      goal: "SALES",
+      budgetMinor: 2_500_000,
+      latitude: 9.0765
+      // longitude/radiusKm missing -- should be treated as no radius, not an error
+    });
+
+    expect(recs[2]?.targeting.radius).toBeUndefined();
+  });
+
+  it("clamps an out-of-range radius into the 1-50km bound", () => {
+    const recs = recommendCampaignTargeting({
+      goal: "SALES",
+      budgetMinor: 2_500_000,
+      latitude: 6.5244,
+      longitude: 3.3792,
+      radiusKm: 500
+    });
+
+    expect(recs[2]?.targeting.radius?.radiusKm).toBe(50);
+  });
 });

@@ -76,7 +76,7 @@ describe("PlatformService", () => {
       name: "Test campaign",
       objective: "TRAFFIC",
       destinationKind: "WEBSITE",
-      destinationUrl: "https://fliptrybe.com",
+      destinationUrl: "https://fliptrybe.store",
       budgetMinor: 100000
     });
 

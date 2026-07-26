@@ -16,13 +16,16 @@ import {
 } from "../components";
 import {
   campaignOpsReportStatuses,
+  campaignOpsReportTypes,
   type CampaignOpsReport,
-  type CampaignOpsReportStatus
+  type CampaignOpsReportStatus,
+  type CampaignOpsReportType
 } from "../data";
 import { publishAdminCampaignReport } from "../api";
 import { useAdminCampaignOpsReportsData } from "../use-admin-campaign-ops-data";
 
 type ReportFilter = CampaignOpsReportStatus | "all";
+type ReportTypeFilter = CampaignOpsReportType | "all";
 
 function canPublishReport(report: CampaignOpsReport) {
   return report.status === "ready" && report.metrics.length > 0;
@@ -33,10 +36,22 @@ function labelReportStatus(status: ReportFilter) {
     all: "All report states",
     failed: "Needs retry",
     generating: "Building",
+    published: "Published",
     ready: "Needs publish"
   };
 
   return labels[status];
+}
+
+function labelReportType(type: ReportTypeFilter) {
+  const labels: Record<ReportTypeFilter, string> = {
+    all: "All report types",
+    daily_update: "Daily Updates",
+    final_report: "Final Reports",
+    weekly_report: "Weekly Reports"
+  };
+
+  return labels[type];
 }
 
 function PublishReportDialog({
@@ -210,6 +225,7 @@ function ReportDraftWorkspace({
 export default function AdminCampaignOpsReportsPage() {
   const { error, items, loading, refresh, source } = useAdminCampaignOpsReportsData();
   const [status, setStatus] = useState<ReportFilter>("all");
+  const [reportType, setReportType] = useState<ReportTypeFilter>("all");
   const [expandedReportId, setExpandedReportId] = useState<string | null>(null);
   const [publishReportId, setPublishReportId] = useState<string | null>(null);
   const [publishingReportId, setPublishingReportId] = useState<string | null>(null);
@@ -217,19 +233,26 @@ export default function AdminCampaignOpsReportsPage() {
   const [actionMessage, setActionMessage] = useState<string>();
 
   const filteredReports = useMemo(
-    () => items.filter((report) => status === "all" || report.status === status),
-    [items, status]
+    () =>
+      items.filter(
+        (report) =>
+          (status === "all" || report.status === status) &&
+          (reportType === "all" || report.type === reportType)
+      ),
+    [items, reportType, status]
   );
 
   const readyCount = items.filter((report) => report.status === "ready").length;
   const generatingCount = items.filter((report) => report.status === "generating").length;
   const failedCount = items.filter((report) => report.status === "failed").length;
+  const publishedCount = items.filter((report) => report.status === "published").length;
   const publishReport = items.find((report) => report.id === publishReportId) ?? null;
 
   const stats = [
     { detail: "Total client report jobs", label: "Report jobs", value: items.length },
     { detail: "Ready for client publish", label: "Needs publish", value: readyCount },
     { detail: "Metrics or copy still building", label: "Building", value: generatingCount },
+    { detail: "Already client-visible", label: "Published", value: publishedCount },
     { detail: "Needs operator retry", label: "Needs retry", value: failedCount }
   ];
   const statStripItems = stats.map((item) => ({
@@ -312,6 +335,21 @@ export default function AdminCampaignOpsReportsPage() {
             ))}
           </select>
         </label>
+        <label className="flex h-10 min-w-56 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-secondary)]">
+          <PenSquare className="size-4 stroke-[1.5]" />
+          <select
+            className="w-full bg-transparent text-[var(--ft-text-primary)] outline-none"
+            onChange={(event) => setReportType(event.target.value as ReportTypeFilter)}
+            value={reportType}
+          >
+            <option value="all">All report types</option>
+            {campaignOpsReportTypes.map((item) => (
+              <option key={item} value={item}>
+                {labelReportType(item)}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
           Metrics complete / last updated / client-visible state
         </div>
@@ -351,6 +389,7 @@ export default function AdminCampaignOpsReportsPage() {
                         <div className="grid gap-2">
                           <div className="flex flex-wrap items-center gap-2">
                             <ReportStatusBadge status={report.status} />
+                            <Badge tone="neutral">{labelReportType(report.type)}</Badge>
                             <span className="font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                               Updated {report.generatedAt}
                             </span>
@@ -451,14 +490,17 @@ export default function AdminCampaignOpsReportsPage() {
                               {report.title}
                             </div>
                             <div className="mt-1 truncate text-sm text-[var(--ft-text-muted)]">
-                              {report.period}
+                              {labelReportType(report.type)} / {report.period}
                             </div>
                           </td>
                           <td className="truncate px-4 py-3 text-[var(--ft-text-secondary)]">
                             {report.owner}
                           </td>
                           <td className="px-4 py-3">
-                            <ReportStatusBadge status={report.status} />
+                            <div className="flex flex-wrap gap-2">
+                              <ReportStatusBadge status={report.status} />
+                              <Badge tone="neutral">{labelReportType(report.type)}</Badge>
+                            </div>
                           </td>
                           <td className="px-4 py-3 font-mono text-[12px] text-[var(--ft-text-primary)]">
                             {report.metrics.length > 0

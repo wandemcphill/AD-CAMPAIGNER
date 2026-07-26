@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   MessageCircle,
   Globe,
@@ -10,7 +10,10 @@ import {
   ShoppingBag,
   ArrowRight,
   CheckCircle2,
-  Rocket
+  Rocket,
+  ShieldCheck,
+  ExternalLink,
+  Link2
 } from "lucide-react";
 
 import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
@@ -44,6 +47,60 @@ const goalOptions: GoalOption[] = [
 
 const budgetPresetsMinor = [500000, 1000000, 2500000, 5000000];
 
+// Presentation-only hint, mirroring the authoritative MARKETPLACE_LANE_RULES keyword lists in
+// services/campaigns/src/index.ts (detectMarketplaceLane). The server always re-checks and
+// enforces this on submit -- this is just an early, friendlier nudge before that happens.
+//
+// laneParam/route verified directly against FlipTrybe's real code
+// (Fliptrybe/website/app/sell/page.tsx + components/web-flows.tsx): the /sell page's <select>
+// only has three option values -- "declutter" | "tradehub" | "primeslots" -- short-lets, hotels,
+// real estate, and vehicles all live under PrimeSlots. There is no separate hotel or logistics
+// listing lane. Only `?lane=` is read from the URL on that page; title/city are plain form state,
+// not query-param-driven, so we don't fabricate params the destination doesn't consume.
+const MARKETPLACE_LANE_HINTS: Array<{ laneParam: string; label: string; noun: string; keywords: string[] }> = [
+  {
+    laneParam: "primeslots",
+    label: "Real estate, short-let, hotel, or vehicle",
+    noun: "a PrimeSlots listing (real estate, short-let, hotel, or vehicle)",
+    keywords: [
+      "shortlet", "short let", "sublet", "airbnb", "vacation rental", "apartment for rent", "flat for rent",
+      "hotel", "guest house", "guesthouse", "serviced apartment", "lodge",
+      "house for sale", "land for sale", "property", "real estate",
+      "car for sale", "vehicle for sale", "automobile"
+    ]
+  },
+  {
+    laneParam: "tradehub",
+    label: "Registered-merchant / wholesale trade",
+    noun: "a TradeHub listing (registered-merchant / wholesale trade)",
+    keywords: [
+      "cac registered", "registered merchant", "wholesale", "distributor", "manufacturer",
+      "bulk order", "bulk supply", "b2b", "trailer load", "trailer-load", "farm produce wholesale"
+    ]
+  },
+  {
+    laneParam: "declutter",
+    label: "Used item resale",
+    noun: "a Declutter listing (used item resale)",
+    keywords: ["declutter", "used ", "fairly used", "second hand", "second-hand", "thrift item", "pre-owned"]
+  }
+];
+
+type MarketplaceLaneHint = (typeof MARKETPLACE_LANE_HINTS)[number];
+
+function detectMarketplaceLaneHint(productDescription: string): MarketplaceLaneHint | undefined {
+  const text = productDescription.trim().toLowerCase();
+  if (!text) {
+    return undefined;
+  }
+
+  return MARKETPLACE_LANE_HINTS.find((rule) => rule.keywords.some((keyword) => text.includes(keyword)));
+}
+
+function buildFliptrybeListingCreateUrl(lane: MarketplaceLaneHint) {
+  return `https://fliptrybe.store/sell?lane=${encodeURIComponent(lane.laneParam)}`;
+}
+
 function formatPresetLabel(amountMinor: number) {
   return `NGN ${(amountMinor / 100).toLocaleString()}`;
 }
@@ -52,6 +109,7 @@ export default function StudioPage() {
   const { loading: sessionLoading } = useApiSession();
   const [goal, setGoal] = useState<StudioGoal>();
   const [link, setLink] = useState("");
+  const [productDescription, setProductDescription] = useState("");
   const [city, setCity] = useState("");
   const [budgetPresetMinor, setBudgetPresetMinor] = useState<number>();
   const [customBudget, setCustomBudget] = useState("");
@@ -59,8 +117,20 @@ export default function StudioPage() {
   const [formError, setFormError] = useState<string>();
   const [result, setResult] = useState<CreateCampaignFromWizardResult>();
 
+  const [listingChoice, setListingChoice] = useState<"have" | "need">();
+
   const budgetMinor = customBudget ? amountToMinor(customBudget) : (budgetPresetMinor ?? 0);
   const canSubmit = Boolean(goal) && link.trim().length > 0 && budgetMinor > 0;
+  const detectedMarketplaceLane = useMemo(
+    () => detectMarketplaceLaneHint(productDescription),
+    [productDescription]
+  );
+
+  useEffect(() => {
+    if (!detectedMarketplaceLane) {
+      setListingChoice(undefined);
+    }
+  }, [detectedMarketplaceLane]);
 
   function handleBudgetPreset(amount: number) {
     setBudgetPresetMinor(amount);
@@ -95,7 +165,8 @@ export default function StudioPage() {
         goal,
         link: link.trim(),
         budgetMinor,
-        ...(city.trim() ? { city: city.trim() } : {})
+        ...(city.trim() ? { city: city.trim() } : {}),
+        ...(productDescription.trim() ? { productDescription: productDescription.trim() } : {})
       });
       setResult(response);
     } catch (caught) {
@@ -113,10 +184,12 @@ export default function StudioPage() {
     setResult(undefined);
     setGoal(undefined);
     setLink("");
+    setProductDescription("");
     setCity("");
     setBudgetPresetMinor(undefined);
     setCustomBudget("");
     setFormError(undefined);
+    setListingChoice(undefined);
   }
 
   if (result) {
@@ -198,17 +271,92 @@ export default function StudioPage() {
         </Panel>
 
         <Panel className="p-5">
-          <label className="text-sm font-medium text-[var(--ft-text-primary)]" htmlFor="studio-link">
-            Paste your link
+          <label className="text-sm font-medium text-[var(--ft-text-primary)]" htmlFor="studio-product">
+            What are you promoting? <span className="text-[var(--ft-text-muted)]">(optional)</span>
           </label>
           <p className="mt-1 text-xs text-[var(--ft-text-secondary)]">
-            Your TikTok video, Instagram Reel, WhatsApp number, or website — wherever you want customers to go.
+            A short description helps us pick the right audience — and for short-lets, hotels, logistics, and used
+            items, tells us to route the ad to your FlipTrybe listing so the customer's payment stays protected.
+          </p>
+          <input
+            className="mt-3 h-11 w-full rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm text-[var(--ft-text-primary)] outline-none focus:border-[var(--ft-accent)]"
+            id="studio-product"
+            onChange={(event) => setProductDescription(event.target.value)}
+            placeholder="e.g. shortlet apartment in Lekki, fairly used TV, hotel rooms in Abuja..."
+            type="text"
+            value={productDescription}
+          />
+          {detectedMarketplaceLane ? (
+            <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/40 bg-[var(--ft-yellow-subtle)] p-4">
+              <div className="flex gap-2 text-xs leading-5 text-[var(--ft-yellow)]">
+                <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  This sounds like <strong>{detectedMarketplaceLane.label.toLowerCase()}</strong> — to keep your
+                  customer&apos;s payment protected, this ad has to link to a FlipTrybe listing instead of an
+                  external link.
+                </span>
+              </div>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <button
+                  className={cn(
+                    "flex items-center gap-2 rounded-[var(--radius-sm)] border p-3 text-left text-xs transition",
+                    listingChoice === "have"
+                      ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)]"
+                      : "border-[var(--ft-border)] bg-[var(--ft-bg-surface)] hover:border-[var(--ft-accent)]"
+                  )}
+                  onClick={() => setListingChoice("have")}
+                  type="button"
+                >
+                  <Link2 className="size-4 shrink-0 text-[var(--ft-accent)]" />
+                  <span>
+                    <span className="block font-semibold text-[var(--ft-text-primary)]">I already have a listing</span>
+                    <span className="text-[var(--ft-text-secondary)]">Paste its FlipTrybe link below</span>
+                  </span>
+                </button>
+                <a
+                  className={cn(
+                    "flex items-center gap-2 rounded-[var(--radius-sm)] border p-3 text-left text-xs transition",
+                    listingChoice === "need"
+                      ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)]"
+                      : "border-[var(--ft-border)] bg-[var(--ft-bg-surface)] hover:border-[var(--ft-accent)]"
+                  )}
+                  href={buildFliptrybeListingCreateUrl(detectedMarketplaceLane)}
+                  onClick={() => setListingChoice("need")}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink className="size-4 shrink-0 text-[var(--ft-accent)]" />
+                  <span>
+                    <span className="block font-semibold text-[var(--ft-text-primary)]">I don&apos;t have one yet</span>
+                    <span className="text-[var(--ft-text-secondary)]">Create one on FlipTrybe (short signup)</span>
+                  </span>
+                </a>
+              </div>
+              {listingChoice === "need" ? (
+                <p className="mt-3 text-xs text-[var(--ft-text-secondary)]">
+                  Once your listing is live, come back and paste its link below to finish this campaign.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </Panel>
+
+        <Panel className="p-5">
+          <label className="text-sm font-medium text-[var(--ft-text-primary)]" htmlFor="studio-link">
+            {detectedMarketplaceLane ? "Paste your FlipTrybe listing link" : "Paste your link"}
+          </label>
+          <p className="mt-1 text-xs text-[var(--ft-text-secondary)]">
+            {detectedMarketplaceLane
+              ? "e.g. https://fliptrybe.store/listings/... — this is where the ad sends customers to book and pay, protected by FlipTrybe."
+              : "Your TikTok video, Instagram Reel, WhatsApp number, or website — wherever you want customers to go."}
           </p>
           <input
             className="mt-3 h-11 w-full rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm text-[var(--ft-text-primary)] outline-none focus:border-[var(--ft-accent)]"
             id="studio-link"
             onChange={(event) => setLink(event.target.value)}
-            placeholder="https://wa.me/234... or https://instagram.com/..."
+            placeholder={
+              detectedMarketplaceLane ? "https://fliptrybe.store/listings/..." : "https://wa.me/234... or https://instagram.com/..."
+            }
             type="url"
             value={link}
           />

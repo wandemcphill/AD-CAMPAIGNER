@@ -402,7 +402,85 @@ export type CampaignDestinationKind =
   | "WHATSAPP_CHANNEL"
   | "YOUTUBE_CHANNEL"
   | "WEBSITE"
-  | "ECOMMERCE_STORE";
+  | "ECOMMERCE_STORE"
+  | "FLIPTRYBE_STORE";
+
+/**
+ * Categories where the ad's destination MUST be a FlipTrybe-hosted listing rather than an
+ * arbitrary external link. These are high-stakes, remote, stranger-to-stranger transactions
+ * (accommodation/property/vehicles, wholesale merchant trade, resale of used goods) where
+ * FlipTrybe's own KYC/escrow/review machinery (verified real and built, see the
+ * fliptrybe-marketplace-routing-verified memory) is the only thing standing between a customer
+ * and a "pay to secure your booking" scam. The ad-campaign engine drives discovery/traffic; the
+ * transaction itself happens on FlipTrybe.
+ *
+ * These three values are FlipTrybe's real, verified lanes (`Fliptrybe/website/app/sell/page.tsx`,
+ * option values "declutter" | "tradehub" | "primeslots") -- short-lets, hotels, real estate, and
+ * automobiles all live under PrimeSlots (there is no separate hotel or logistics listing lane;
+ * logistics is a delivery/dispatch service, not something a customer lists for sale).
+ */
+export type MarketplaceLane = "PRIMESLOTS" | "TRADEHUB" | "DECLUTTER";
+
+interface MarketplaceLaneRule {
+  lane: MarketplaceLane;
+  /** The exact `?lane=` value FlipTrybe's /sell page expects. */
+  laneParam: string;
+  label: string;
+  keywords: string[];
+}
+
+const MARKETPLACE_LANE_RULES: MarketplaceLaneRule[] = [
+  {
+    lane: "PRIMESLOTS",
+    laneParam: "primeslots",
+    label: "Real estate, short-let, hotel, or vehicle",
+    keywords: [
+      "shortlet", "short let", "sublet", "airbnb", "vacation rental", "apartment for rent", "flat for rent",
+      "hotel", "guest house", "guesthouse", "serviced apartment", "lodge",
+      "house for sale", "land for sale", "property", "real estate",
+      "car for sale", "vehicle for sale", "automobile"
+    ]
+  },
+  {
+    lane: "TRADEHUB",
+    laneParam: "tradehub",
+    label: "Registered-merchant / wholesale trade",
+    keywords: [
+      "cac registered", "registered merchant", "wholesale", "distributor", "manufacturer",
+      "bulk order", "bulk supply", "b2b", "trailer load", "trailer-load", "farm produce wholesale"
+    ]
+  },
+  {
+    lane: "DECLUTTER",
+    laneParam: "declutter",
+    label: "Used item resale",
+    keywords: ["declutter", "used ", "fairly used", "second hand", "second-hand", "thrift item", "pre-owned"]
+  }
+];
+
+/**
+ * Detects whether a campaign's product falls into a category that must route through a
+ * FlipTrybe listing instead of running as a normal ad. Same keyword-matching approach as
+ * `detectCategoryProfile` -- rule-based today, same seam a real classifier plugs into later.
+ */
+export function detectMarketplaceLane(productDescription?: string): MarketplaceLane | undefined {
+  if (!productDescription) {
+    return undefined;
+  }
+
+  const text = productDescription.toLowerCase();
+  const match = MARKETPLACE_LANE_RULES.find((rule) => rule.keywords.some((keyword) => text.includes(keyword)));
+
+  return match?.lane;
+}
+
+export function isFliptrybeListingUrl(link: string): boolean {
+  try {
+    return new URL(link).hostname.toLowerCase().includes("fliptrybe");
+  } catch {
+    return false;
+  }
+}
 
 export type CampaignGender = "MALE" | "FEMALE" | "ALL";
 
@@ -412,11 +490,26 @@ export type CampaignGender = "MALE" | "FEMALE" | "ALL";
  * the primary market, but every level is free-text and works for any country's equivalent
  * subdivision -- a state field holds "Lagos" as easily as "California" or "Ontario".
  */
+/**
+ * Radius targeting around an exact point -- "5km from this address" -- distinct from the named-place
+ * hierarchy above. Real Meta/Google targeting supports this and the named hierarchy alone can't
+ * express it (a whole LGA is far coarser than a delivery-constrained seller needs). Primarily for
+ * hyperlocal/declutter/local-service use cases, see the vertical-aware-targeting-and-routing memory.
+ */
+export interface CampaignRadiusTargeting {
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+}
+
 export interface CampaignSpecTargeting {
   countries: string[];
   states: string[];
   cities: string[];
   localGovernmentAreas: string[];
+  /** Set only when the caller supplied a valid latitude/longitude/radius -- narrows delivery to an
+   *  exact radius around a point, layered on top of (not replacing) the named-place hierarchy. */
+  radius?: CampaignRadiusTargeting;
   ageMin: number;
   ageMax: number;
   gender: CampaignGender;
@@ -451,6 +544,10 @@ export interface CampaignSpecInput {
   link: string;
   budgetMinor: number;
   currency?: string;
+  /** Free text describing the product/business -- used to detect categories (real estate/short-let/
+   *  hotel/vehicle, wholesale merchant trade, used-item resale) that must route through a FlipTrybe
+   *  listing, see `detectMarketplaceLane`. Same field name/shape as RecommendTargetingInput's. */
+  productDescription?: string;
   country?: string;
   countries?: string[];
   state?: string;
@@ -459,6 +556,11 @@ export interface CampaignSpecInput {
   cities?: string[];
   localGovernmentArea?: string;
   localGovernmentAreas?: string[];
+  /** Optional exact-point radius targeting, see CampaignRadiusTargeting. All three must be present
+   *  and valid (latitude -90..90, longitude -180..180, radiusKm 1..50) or none is applied. */
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
   ageMin?: number;
   ageMax?: number;
   gender?: string;
@@ -543,6 +645,9 @@ function deriveDestinationKind(link: string, goal: CampaignGoal): CampaignDestin
 
   const isLive = path.includes("/live");
 
+  if (host.includes("fliptrybe")) {
+    return "FLIPTRYBE_STORE";
+  }
   if (host.includes("wa.me") || host.includes("whatsapp")) {
     return "WHATSAPP_CHANNEL";
   }
@@ -567,6 +672,38 @@ function deriveDestinationKind(link: string, goal: CampaignGoal): CampaignDestin
   }
 
   return "WEBSITE";
+}
+
+/** All three of latitude/longitude/radiusKm must be present and pass basic sanity bounds, or no
+ *  radius targeting is applied -- a partial/malformed radius is treated as absent, not an error,
+ *  since it's an optional refinement layered on the named-place hierarchy. */
+function normalizeRadius(
+  latitude: unknown,
+  longitude: unknown,
+  radiusKm: unknown
+): CampaignRadiusTargeting | undefined {
+  if (latitude === undefined && longitude === undefined && radiusKm === undefined) {
+    return undefined;
+  }
+
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  const radius = Number(radiusKm);
+
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    !Number.isFinite(radius) ||
+    lat < -90 ||
+    lat > 90 ||
+    lng < -180 ||
+    lng > 180 ||
+    radius <= 0
+  ) {
+    return undefined;
+  }
+
+  return { latitude: lat, longitude: lng, radiusKm: clamp(radius, 1, 50) };
 }
 
 function normalizeGender(raw?: string): CampaignGender {
@@ -605,6 +742,17 @@ export function normalizeCampaignSpec(input: CampaignSpecInput): CampaignSpec {
     throw new Error("A valid public destination link (http/https) is required.");
   }
 
+  const marketplaceLane = detectMarketplaceLane(input.productDescription);
+
+  if (marketplaceLane && !isFliptrybeListingUrl(link)) {
+    const rule = MARKETPLACE_LANE_RULES.find((candidate) => candidate.lane === marketplaceLane);
+    throw new Error(
+      `${rule?.label ?? "This category"} must link to a FlipTrybe listing, not an external link -- ` +
+        "it keeps your customer's payment protected by FlipTrybe's escrow instead of unprotected off-platform. " +
+        "Paste your FlipTrybe listing URL, or create one first on FlipTrybe if you don't have one yet."
+    );
+  }
+
   const budgetMinor = Math.trunc(Number(input.budgetMinor));
 
   if (!Number.isFinite(budgetMinor) || budgetMinor <= 0) {
@@ -617,6 +765,8 @@ export function normalizeCampaignSpec(input: CampaignSpecInput): CampaignSpec {
   const ageMin = clampAge(input.ageMin ?? 18);
   const ageMax = clampAge(input.ageMax ?? 65);
 
+  const radius = normalizeRadius(input.latitude, input.longitude, input.radiusKm);
+
   const targeting: CampaignSpecTargeting = {
     countries: dedupeStrings(input.countries ?? (input.country ? [input.country] : ["NG"])),
     states: dedupeStrings(input.states ?? (input.state ? [input.state] : [])),
@@ -624,6 +774,7 @@ export function normalizeCampaignSpec(input: CampaignSpecInput): CampaignSpec {
     localGovernmentAreas: dedupeStrings(
       input.localGovernmentAreas ?? (input.localGovernmentArea ? [input.localGovernmentArea] : [])
     ),
+    ...(radius ? { radius } : {}),
     ageMin: Math.min(ageMin, ageMax),
     ageMax: Math.max(ageMin, ageMax),
     gender: normalizeGender(input.gender),
@@ -675,6 +826,7 @@ export interface CampaignLaunchAdSet {
     states: string[];
     cities: string[];
     localGovernmentAreas: string[];
+    radius?: CampaignRadiusTargeting;
     ageMin: number;
     ageMax: number;
     genders: string[];
@@ -758,6 +910,11 @@ export function buildMetaLaunchSpec(spec: CampaignSpec, advertiserName: string):
     `Name the campaign "${label}".`,
     `Create one ad set with a daily budget of ${(spec.budget.amountMinor / 100).toLocaleString()} ${spec.budget.currency}, optimizing for "${optimizationGoal}" (billed on ${billingEvent}).`,
     `Set location targeting to ${locationParts.join(", ") || "Nigeria"}, ages ${spec.targeting.ageMin}-${spec.targeting.ageMax}, gender: ${genders.join("/")}.`,
+    ...(spec.targeting.radius
+      ? [
+          `Narrow delivery to a ${spec.targeting.radius.radiusKm}km radius around ${spec.targeting.radius.latitude.toFixed(5)}, ${spec.targeting.radius.longitude.toFixed(5)} using Ads Manager's pin-drop radius targeting -- this is tighter than the named-place targeting above, use it for local-delivery-constrained sellers.`
+        ]
+      : []),
     spec.targeting.interests.length
       ? `Add interest targeting: ${spec.targeting.interests.join(", ")}.`
       : "No specific interest targeting requested — leave broad.",
@@ -786,6 +943,7 @@ export function buildMetaLaunchSpec(spec: CampaignSpec, advertiserName: string):
         states: spec.targeting.states,
         cities: spec.targeting.cities,
         localGovernmentAreas: spec.targeting.localGovernmentAreas,
+        ...(spec.targeting.radius ? { radius: spec.targeting.radius } : {}),
         ageMin: spec.targeting.ageMin,
         ageMax: spec.targeting.ageMax,
         genders,
@@ -829,6 +987,7 @@ export interface CampaignTargetingRecommendation {
     interests: string[];
     behaviors: string[];
     localGovernmentAreas: string[];
+    radius?: CampaignRadiusTargeting;
   };
   optimizeAutomatically: boolean;
   estimatedOutcome: {
@@ -847,6 +1006,12 @@ export interface RecommendTargetingInput {
   productDescription?: string;
   city?: string;
   localGovernmentArea?: string;
+  /** Optional exact-point radius, e.g. for a local-service/declutter seller who only wants buyers
+   *  within a few km. When all three are present and valid, the hyper-local option narrows to this
+   *  radius instead of just the named LGA/city. */
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
 }
 
 interface CategoryProfile {
@@ -938,7 +1103,10 @@ const NAIRA_CPC_HIGH_MINOR = 30_000; // ₦300
 const NAIRA_CPM_LOW_MINOR = 100_000; // ₦1,000 per 1,000 impressions
 const NAIRA_CPM_HIGH_MINOR = 500_000; // ₦5,000 per 1,000 impressions
 
-function estimateOutcomeForGoal(goal: CampaignGoal, budgetMinor: number): CampaignTargetingRecommendation["estimatedOutcome"] {
+/** Exported so the API layer can attach the same illustrative outcome estimate to AI-generated
+ *  targeting options (AnthropicRecommendationClient) as it does to the rule-based ones below --
+ *  one estimation basis, whichever provider actually produced the audience parameters. */
+export function estimateOutcomeForGoal(goal: CampaignGoal, budgetMinor: number): CampaignTargetingRecommendation["estimatedOutcome"] {
   const clicksLow = Math.floor(budgetMinor / NAIRA_CPC_HIGH_MINOR);
   const clicksHigh = Math.floor(budgetMinor / NAIRA_CPC_LOW_MINOR);
   const basisClicks = "Nigeria 2026 Meta/Instagram CPC benchmark range ₦50-₦300; actual cost varies by audience, creative, and season.";
@@ -1001,6 +1169,7 @@ export function recommendCampaignTargeting(
   const profile = detectCategoryProfile(input.productDescription);
   const estimatedOutcome = estimateOutcomeForGoal(goal, input.budgetMinor);
   const localGovernmentAreas = input.localGovernmentArea ? [input.localGovernmentArea] : [];
+  const hyperLocalRadius = normalizeRadius(input.latitude, input.longitude, input.radiusKm);
 
   const recommendations: CampaignTargetingRecommendation[] = [
     {
@@ -1029,17 +1198,20 @@ export function recommendCampaignTargeting(
       estimatedOutcome
     },
     {
-      label: "Hyper-local",
-      rationale: input.city
-        ? `Narrows delivery to ${input.city}${input.localGovernmentArea ? `, ${input.localGovernmentArea}` : ""} specifically -- best if you only deliver/serve locally. Smaller audience than the other two options, so double-check it isn't too narrow to deliver reliably (Meta recommends 1,000+ people in the targeted audience).`
-        : "Narrows to your specified location -- best if you only deliver/serve locally. Add a city for this option to actually narrow anything.",
+      label: hyperLocalRadius ? `Hyper-local (${hyperLocalRadius.radiusKm}km radius)` : "Hyper-local",
+      rationale: hyperLocalRadius
+        ? `Narrows delivery to an exact ${hyperLocalRadius.radiusKm}km radius around your pinned location -- the tightest option, best for delivery-constrained sellers (declutter/local services) where a whole LGA is still too broad. Double-check it isn't too narrow to deliver reliably (Meta recommends 1,000+ people in the targeted audience).`
+        : input.city
+          ? `Narrows delivery to ${input.city}${input.localGovernmentArea ? `, ${input.localGovernmentArea}` : ""} specifically -- best if you only deliver/serve locally. Smaller audience than the other two options, so double-check it isn't too narrow to deliver reliably (Meta recommends 1,000+ people in the targeted audience).`
+          : "Narrows to your specified location -- best if you only deliver/serve locally. Add a city (or an exact radius) for this option to actually narrow anything.",
       targeting: {
         ageMin: profile.ageMin,
         ageMax: profile.ageMax,
         gender: profile.gender,
         interests: profile.interests,
         behaviors: profile.behaviors,
-        localGovernmentAreas
+        localGovernmentAreas,
+        ...(hyperLocalRadius ? { radius: hyperLocalRadius } : {})
       },
       optimizeAutomatically: true,
       estimatedOutcome
@@ -1049,10 +1221,155 @@ export function recommendCampaignTargeting(
   return recommendations;
 }
 
-function normalizeGoalSafe(raw: string): CampaignGoal {
+/** Exported for the same reason as estimateOutcomeForGoal -- the API layer's AI-provider path
+ *  needs to normalize a raw wizard goal string the same way this heuristic path already does. */
+export function normalizeGoalSafe(raw: string): CampaignGoal {
   try {
     return normalizeGoal(raw);
   } catch {
     return "WEBSITE_VISITS";
   }
+}
+
+// ---------------------------------------------------------------------------
+// Budget Optimization Engine.
+//
+// Honest scope note: this is NOT cross-PLATFORM auto-optimization ("move ₦10,000 from Google to
+// Meta automatically"). That requires simultaneous spend AND reporting API access on 2+ platforms,
+// which doesn't exist yet -- see the ad-platform-mechanics-reference memory's explanation of why
+// that's a compounding partner-approval problem, not just an engineering layer. What's genuinely
+// buildable today: FlipTrybe already captures real per-campaign spend (CampaignLedgerEntry) and
+// real outcome data (CampaignOutcome, self-reported or platform-derived) across a workspace's own
+// campaigns, whatever platform each runs on. This engine compares cost-per-outcome across a
+// customer's own live campaigns and RECOMMENDS moving unspent budget from an underperforming one
+// to an overperforming one -- reusing the existing transferCampaignBudget execution path rather
+// than duplicating it. It never executes a transfer itself; recommendation and execution stay
+// separate, matching the "don't silently move real money" principle used everywhere else in this
+// codebase (budget increases/decreases already require an explicit client action, not automation).
+// ---------------------------------------------------------------------------
+
+export interface CampaignPerformanceInput {
+  campaignId: string;
+  name: string;
+  currency: string;
+  budgetMinor: number;
+  spentMinor: number;
+  goal: CampaignGoal;
+  outcome?: {
+    messagesCount?: number;
+    ordersCount?: number;
+    estRevenueMinor?: number;
+  };
+}
+
+export interface BudgetOptimizationRecommendation {
+  fromCampaignId: string;
+  fromName: string;
+  toCampaignId: string;
+  toName: string;
+  amountMinor: number;
+  currency: string;
+  reason: string;
+}
+
+export interface BudgetOptimizationScore {
+  campaignId: string;
+  name: string;
+  /** Cost per primary outcome (order, or message if no order data), in minor units. Null when
+   *  there isn't enough spend+outcome data yet to score this campaign -- excluded from
+   *  recommendations, never treated as "performing badly". */
+  costPerOutcomeMinor: number | null;
+  outcomeCount: number;
+  unspentMinor: number;
+}
+
+export interface BudgetOptimizationResult {
+  scored: BudgetOptimizationScore[];
+  recommendations: BudgetOptimizationRecommendation[];
+  note: string;
+}
+
+const OPTIMIZATION_NOTE =
+  "Recommendations compare cost-per-outcome across your own live campaigns using real spend and " +
+  "reported outcomes -- not cross-platform auto-optimization (that needs simultaneous ad-spend and " +
+  "reporting API access on 2+ networks, which isn't available yet). Nothing moves automatically; " +
+  "confirm a recommendation to execute it as a budget transfer.";
+
+function primaryOutcomeCount(outcome: CampaignPerformanceInput["outcome"]): number {
+  if (!outcome) {
+    return 0;
+  }
+  if (outcome.ordersCount && outcome.ordersCount > 0) {
+    return outcome.ordersCount;
+  }
+  return outcome.messagesCount ?? 0;
+}
+
+/**
+ * Compares cost-per-outcome across a workspace's own live campaigns (grouped by currency, since
+ * transferCampaignBudget already requires matching currencies) and recommends moving unspent
+ * budget from the worst-performing scorable campaign to the best-performing one, when the gap is
+ * large enough (>=1.5x cost-per-outcome) to be worth acting on. Conservative by design: moves at
+ * most half of the underperformer's unspent budget in one recommendation, never all of it, so a
+ * still-running campaign isn't starved by a single automated suggestion.
+ */
+export function recommendBudgetOptimization(
+  campaigns: CampaignPerformanceInput[]
+): BudgetOptimizationResult {
+  const scored: BudgetOptimizationScore[] = campaigns.map((campaign) => {
+    const outcomeCount = primaryOutcomeCount(campaign.outcome);
+    const unspentMinor = Math.max(0, campaign.budgetMinor - campaign.spentMinor);
+    const costPerOutcomeMinor =
+      outcomeCount > 0 && campaign.spentMinor > 0 ? campaign.spentMinor / outcomeCount : null;
+
+    return { campaignId: campaign.campaignId, name: campaign.name, costPerOutcomeMinor, outcomeCount, unspentMinor };
+  });
+
+  const byCurrency = new Map<string, CampaignPerformanceInput[]>();
+  for (const campaign of campaigns) {
+    const group = byCurrency.get(campaign.currency) ?? [];
+    group.push(campaign);
+    byCurrency.set(campaign.currency, group);
+  }
+
+  const recommendations: BudgetOptimizationRecommendation[] = [];
+
+  for (const [currency, group] of byCurrency) {
+    const scorable = group
+      .map((campaign) => ({
+        campaign,
+        score: scored.find((entry) => entry.campaignId === campaign.campaignId)!
+      }))
+      .filter((entry) => entry.score.costPerOutcomeMinor !== null)
+      .sort((a, b) => a.score.costPerOutcomeMinor! - b.score.costPerOutcomeMinor!);
+
+    if (scorable.length < 2) {
+      continue;
+    }
+
+    const best = scorable[0]!;
+    const worst = scorable[scorable.length - 1]!;
+    const costRatio = worst.score.costPerOutcomeMinor! / best.score.costPerOutcomeMinor!;
+
+    if (costRatio >= 1.5 && worst.score.unspentMinor > 0 && best.campaign.campaignId !== worst.campaign.campaignId) {
+      const amountMinor = Math.floor(worst.score.unspentMinor / 2);
+
+      if (amountMinor > 0) {
+        recommendations.push({
+          fromCampaignId: worst.campaign.campaignId,
+          fromName: worst.campaign.name,
+          toCampaignId: best.campaign.campaignId,
+          toName: best.campaign.name,
+          amountMinor,
+          currency,
+          reason:
+            `"${worst.campaign.name}" costs ${Math.round(worst.score.costPerOutcomeMinor! / 100).toLocaleString()} ${currency} per outcome vs ` +
+            `${Math.round(best.score.costPerOutcomeMinor! / 100).toLocaleString()} ${currency} for "${best.campaign.name}" (${costRatio.toFixed(1)}x). ` +
+            `Moving half of its unspent budget to the better performer.`
+        });
+      }
+    }
+  }
+
+  return { scored, recommendations, note: OPTIMIZATION_NOTE };
 }
