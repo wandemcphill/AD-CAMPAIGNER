@@ -1345,6 +1345,56 @@ describe("ManagedAdsService authorization gates", () => {
   });
 });
 
+describe("ManagedAdsService.getCampaignLaunchSpec", () => {
+  it("builds a Meta launch spec from a wizard-created campaign's stored goal and targeting", async () => {
+    const { campaignFindFirst, service } = createService();
+    campaignFindFirst.mockResolvedValueOnce({
+      id: "campaign_123",
+      name: "Amaka's Thrift Store",
+      objective: "LEADS",
+      budgetMinor: 2_500_000,
+      currency: "NGN",
+      startsAt: new Date("2026-01-01T00:00:00.000Z"),
+      destination: { url: "https://wa.me/2348012345678", kind: "WHATSAPP_CHANNEL" },
+      companyProfile: null,
+      targetAudience: { countries: ["NG"], cities: ["Lagos"], ageMin: 18, ageMax: 45, gender: "ALL", interests: ["thrift"] },
+      metadata: { wizard: true, goal: "WHATSAPP_MESSAGES", warnings: [] }
+    });
+
+    const launchSpec = await service.getCampaignLaunchSpec(workspace, "campaign_123");
+
+    expect(launchSpec.platform).toBe("META");
+    expect(launchSpec.campaign.objective).toBe("OUTCOME_LEADS");
+    expect(launchSpec.campaign.name).toContain("Amaka's Thrift Store");
+    expect(launchSpec.adSet.dailyBudgetMinor).toBe(2_500_000);
+    expect(launchSpec.adSet.targeting.cities).toEqual(["Lagos"]);
+    expect(launchSpec.ad.destinationUrl).toBe("https://wa.me/2348012345678");
+    expect(launchSpec.ad.callToAction).toBe("SEND_WHATSAPP_MESSAGE");
+  });
+
+  it("falls back to a goal inferred from objective for non-wizard campaigns", async () => {
+    const { campaignFindFirst, service } = createService();
+    campaignFindFirst.mockResolvedValueOnce({
+      id: "campaign_456",
+      name: "Company Q1 Push",
+      objective: "TRAFFIC",
+      budgetMinor: 5_000_000,
+      currency: "NGN",
+      destination: { url: "https://mysite.example.com", kind: "WEBSITE" },
+      companyProfile: { name: "Acme Ltd" },
+      targetAudience: { country: "NG", city: "Abuja" },
+      metadata: {}
+    });
+
+    const launchSpec = await service.getCampaignLaunchSpec(workspace, "campaign_456");
+
+    expect(launchSpec.campaign.objective).toBe("OUTCOME_TRAFFIC");
+    expect(launchSpec.campaign.name).toContain("Acme Ltd");
+    expect(launchSpec.adSet.targeting.cities).toEqual(["Abuja"]);
+    expect(launchSpec.ad.callToAction).toBe("LEARN_MORE");
+  });
+});
+
 describe("ManagedAdsService.createCampaignFromWizard", () => {
   it("normalizes wizard input into a CampaignSpec and delegates to createCampaign", async () => {
     const { service } = createService();

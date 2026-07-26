@@ -607,3 +607,139 @@ export function normalizeCampaignSpec(input: CampaignSpecInput): CampaignSpec {
     warnings
   };
 }
+
+// ---------------------------------------------------------------------------
+// Execution Engine (manual-first).
+//
+// A CampaignSpec is platform-agnostic; a launch spec translates it into the
+// exact settings an operator copies into a given ad network's Ads Manager.
+// This is the concierge "spec sheet": it turns queue review from open-ended
+// judgment into a two-minute copy job, and it is the same mapping the future
+// automated connector (createMetaAdsProvider) will use once Marketing API
+// access is approved — only the destination (human vs. API call) changes.
+//
+// The field names below are FlipTrybe's advisory mapping, not a literal
+// Meta Marketing API payload — an operator should still confirm against
+// Meta's current Ads Manager UI before launching.
+// ---------------------------------------------------------------------------
+
+export type LaunchSpecPlatform = "META";
+
+export interface CampaignLaunchAdSet {
+  name: string;
+  dailyBudgetMinor: number;
+  currency: string;
+  billingEvent: string;
+  optimizationGoal: string;
+  targeting: {
+    countries: string[];
+    cities: string[];
+    ageMin: number;
+    ageMax: number;
+    genders: string[];
+    interests: string[];
+  };
+}
+
+export interface CampaignLaunchSpec {
+  platform: LaunchSpecPlatform;
+  campaign: { name: string; objective: string; buyingType: string };
+  adSet: CampaignLaunchAdSet;
+  ad: { name: string; destinationUrl: string; callToAction: string };
+  copyInstructions: string[];
+  warnings: string[];
+}
+
+// FlipTrybe CampaignObjective -> Meta Ads Manager objective (advisory; Meta's naming evolves).
+const META_OBJECTIVE_MAP: Record<CampaignObjective, string> = {
+  AWARENESS: "OUTCOME_AWARENESS",
+  ENGAGEMENT: "OUTCOME_ENGAGEMENT",
+  TRAFFIC: "OUTCOME_TRAFFIC",
+  LEADS: "OUTCOME_LEADS",
+  SALES: "OUTCOME_SALES",
+  APP_INSTALLS: "OUTCOME_APP_PROMOTION",
+  FOLLOWERS: "OUTCOME_ENGAGEMENT",
+  LIVE_VIEWERS: "OUTCOME_ENGAGEMENT"
+};
+
+const META_OPTIMIZATION_MAP: Record<CampaignObjective, { billingEvent: string; optimizationGoal: string }> = {
+  AWARENESS: { billingEvent: "IMPRESSIONS", optimizationGoal: "REACH" },
+  ENGAGEMENT: { billingEvent: "IMPRESSIONS", optimizationGoal: "POST_ENGAGEMENT" },
+  TRAFFIC: { billingEvent: "IMPRESSIONS", optimizationGoal: "LINK_CLICKS" },
+  LEADS: { billingEvent: "IMPRESSIONS", optimizationGoal: "CONVERSATIONS" },
+  SALES: { billingEvent: "IMPRESSIONS", optimizationGoal: "OFFSITE_CONVERSIONS" },
+  APP_INSTALLS: { billingEvent: "IMPRESSIONS", optimizationGoal: "APP_INSTALLS" },
+  FOLLOWERS: { billingEvent: "IMPRESSIONS", optimizationGoal: "POST_ENGAGEMENT" },
+  LIVE_VIEWERS: { billingEvent: "IMPRESSIONS", optimizationGoal: "POST_ENGAGEMENT" }
+};
+
+const CALL_TO_ACTION_MAP: Record<CampaignGoal, string> = {
+  WHATSAPP_MESSAGES: "SEND_WHATSAPP_MESSAGE",
+  WEBSITE_VISITS: "LEARN_MORE",
+  VIDEO_VIEWS: "WATCH_MORE",
+  PHONE_CALLS: "CALL_NOW",
+  MORE_FOLLOWERS: "LEARN_MORE",
+  SALES: "SHOP_NOW",
+  STORE_VISITS: "GET_DIRECTIONS",
+  LIVE_VIEWERS: "WATCH_MORE"
+};
+
+function titleCaseGoal(goal: CampaignGoal) {
+  return goal
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
+ * Builds the Meta launch spec sheet for a given CampaignSpec. `advertiserName` labels the
+ * campaign/ad-set names so an operator managing many concurrent placements can tell them apart
+ * in Ads Manager at a glance.
+ */
+export function buildMetaLaunchSpec(spec: CampaignSpec, advertiserName: string): CampaignLaunchSpec {
+  const objective = META_OBJECTIVE_MAP[spec.objective];
+  const { billingEvent, optimizationGoal } = META_OPTIMIZATION_MAP[spec.objective];
+  const label = `${advertiserName} - ${titleCaseGoal(spec.goal)}`;
+  const genders =
+    spec.targeting.gender === "ALL" ? ["MALE", "FEMALE"] : [spec.targeting.gender];
+
+  const copyInstructions = [
+    `Create a new campaign in Ads Manager with objective "${objective}".`,
+    `Name the campaign "${label}".`,
+    `Create one ad set with a daily budget of ${(spec.budget.amountMinor / 100).toLocaleString()} ${spec.budget.currency}, optimizing for "${optimizationGoal}" (billed on ${billingEvent}).`,
+    `Set location targeting to ${[...spec.targeting.cities, ...spec.targeting.countries].join(", ") || "Nigeria"}, ages ${spec.targeting.ageMin}-${spec.targeting.ageMax}, gender: ${genders.join("/")}.`,
+    spec.targeting.interests.length
+      ? `Add interest targeting: ${spec.targeting.interests.join(", ")}.`
+      : "No specific interest targeting requested — leave broad.",
+    `Create one ad pointing to ${spec.destination.url} with call-to-action "${CALL_TO_ACTION_MAP[spec.goal]}".`,
+    "Submit for Meta's ad review, then mark this placement launched in FlipTrybe once approved."
+  ];
+
+  return {
+    platform: "META",
+    campaign: { name: label, objective, buyingType: "AUCTION" },
+    adSet: {
+      name: `${label} - Ad Set`,
+      dailyBudgetMinor: spec.budget.amountMinor,
+      currency: spec.budget.currency,
+      billingEvent,
+      optimizationGoal,
+      targeting: {
+        countries: spec.targeting.countries,
+        cities: spec.targeting.cities,
+        ageMin: spec.targeting.ageMin,
+        ageMax: spec.targeting.ageMax,
+        genders,
+        interests: spec.targeting.interests
+      }
+    },
+    ad: {
+      name: `${label} - Ad`,
+      destinationUrl: spec.destination.url,
+      callToAction: CALL_TO_ACTION_MAP[spec.goal]
+    },
+    copyInstructions,
+    warnings: spec.warnings
+  };
+}

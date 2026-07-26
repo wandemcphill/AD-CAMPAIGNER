@@ -868,6 +868,11 @@ export class AdminCampaignOpsController {
     return this.managedAds.addCampaignNote(workspaceContextFromRequest(request), id, body, true);
   }
 
+  @Get("campaigns/:id/launch-spec")
+  launchSpec(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaignLaunchSpec(workspaceContextFromRequest(request), id);
+  }
+
   @Post("campaigns/:id/ad-urls")
   addPlacement(
     @Param("id") id: string,

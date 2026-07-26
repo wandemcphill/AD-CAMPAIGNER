@@ -14,7 +14,13 @@ import {
   createMockStorageProvider
 } from "@fliptrybe/providers";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
-import { assessCampaignRisk, normalizeCampaignSpec } from "@fliptrybe/service-campaigns";
+import {
+  assessCampaignRisk,
+  buildMetaLaunchSpec,
+  normalizeCampaignSpec,
+  type CampaignGoal,
+  type CampaignSpec
+} from "@fliptrybe/service-campaigns";
 import {
   campaignLedgerEntryTypes,
   currencies,
@@ -299,6 +305,57 @@ function normalizeCampaignStatus(value: unknown) {
 
 function normalizeJsonObject(value: unknown) {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+}
+
+const campaignGoals = new Set<CampaignGoal>([
+  "WHATSAPP_MESSAGES",
+  "WEBSITE_VISITS",
+  "VIDEO_VIEWS",
+  "PHONE_CALLS",
+  "MORE_FOLLOWERS",
+  "SALES",
+  "STORE_VISITS",
+  "LIVE_VIEWERS"
+]);
+
+function isCampaignGoal(value: unknown): value is CampaignGoal {
+  return typeof value === "string" && campaignGoals.has(value as CampaignGoal);
+}
+
+/**
+ * Best-effort reverse mapping from the coarser CampaignObjective to a CampaignGoal label, used
+ * only for campaigns created outside the wizard (which don't persist an explicit goal). This is
+ * advisory labelling for the launch-spec copy instructions -- it never affects budget, targeting,
+ * or the destination link, which always come straight from stored campaign data.
+ */
+function goalFromObjective(objective: string, destinationKind?: string): CampaignGoal {
+  switch (objective) {
+    case "TRAFFIC":
+      return "WEBSITE_VISITS";
+    case "LEADS":
+      return destinationKind === "WHATSAPP_CHANNEL" ? "WHATSAPP_MESSAGES" : "PHONE_CALLS";
+    case "ENGAGEMENT":
+      return "VIDEO_VIEWS";
+    case "SALES":
+      return "SALES";
+    case "FOLLOWERS":
+      return "MORE_FOLLOWERS";
+    case "LIVE_VIEWERS":
+      return "LIVE_VIEWERS";
+    default:
+      return "WEBSITE_VISITS";
+  }
+}
+
+function arrayOrSingle(list: unknown, single: unknown): string[] | undefined {
+  if (Array.isArray(list) && list.length > 0) {
+    return list.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  }
+  if (typeof single === "string" && single.trim().length > 0) {
+    return [single.trim()];
+  }
+
+  return undefined;
 }
 
 function requiredString(value: unknown, message: string) {
@@ -671,6 +728,56 @@ export class ManagedAdsService {
     return this.toCampaign(campaign, { includeInternal: true });
   }
 
+  /**
+   * The concierge "spec sheet": translates a stored campaign's objective, destination, budget,
+   * and targeting into a copyable Meta Ads Manager launch spec for the operator reviewing the
+   * queue. Works for campaigns created via the wizard (goal recovered from metadata) or via the
+   * full createCampaign path (goal inferred from objective as a best-effort label — targeting
+   * and budget, the fields that actually matter for spend, always come from stored data).
+   */
+  async getCampaignLaunchSpec(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "admin:access");
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    const spec = this.campaignToSpec(campaign);
+    const advertiserName = campaign.companyProfile?.name ?? campaign.name;
+
+    return buildMetaLaunchSpec(spec, advertiserName);
+  }
+
+  private campaignToSpec(campaign: any): CampaignSpec {
+    const targetAudience = (campaign.targetAudience ?? {}) as Record<string, any>;
+    const objective = String(campaign.objective) as CampaignSpec["objective"];
+    const storedGoal = campaign.metadata?.goal;
+    const goal: CampaignGoal = isCampaignGoal(storedGoal)
+      ? storedGoal
+      : goalFromObjective(objective, campaign.destination?.kind);
+    const countries = arrayOrSingle(targetAudience.countries, targetAudience.country) ?? ["NG"];
+    const cities = arrayOrSingle(targetAudience.cities, targetAudience.city) ?? [];
+    const ageMin = Number.isFinite(Number(targetAudience.ageMin)) ? Number(targetAudience.ageMin) : 18;
+    const ageMax = Number.isFinite(Number(targetAudience.ageMax)) ? Number(targetAudience.ageMax) : 65;
+    const gender = ["MALE", "FEMALE", "ALL"].includes(targetAudience.gender)
+      ? targetAudience.gender
+      : "ALL";
+    const interests = Array.isArray(targetAudience.interests) ? targetAudience.interests : [];
+
+    return {
+      goal,
+      objective,
+      destination: {
+        url: campaign.destination?.url ?? "https://fliptrybe.com",
+        kind: (campaign.destination?.kind ?? "WEBSITE") as CampaignSpec["destination"]["kind"]
+      },
+      budget: { amountMinor: campaign.budgetMinor, currency: campaign.currency ?? "NGN" },
+      targeting: { countries, cities, ageMin, ageMax, gender, interests },
+      schedule: {
+        ...(campaign.startsAt ? { startsAt: new Date(campaign.startsAt).toISOString() } : {}),
+        ...(campaign.endsAt ? { endsAt: new Date(campaign.endsAt).toISOString() } : {})
+      },
+      warnings: Array.isArray(campaign.metadata?.warnings) ? campaign.metadata.warnings : []
+    };
+  }
+
   async createCampaign(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
     const scope = requireScope(context);
     await this.assertCampaignPermission(this.db, scope, "campaign:create");
@@ -701,15 +808,21 @@ export class ManagedAdsService {
           endsAt: input.endsAt ? new Date(String(input.endsAt)) : undefined,
           timezone: input.timezone ?? "Africa/Lagos",
           brief: input.brief ?? input.description ?? input.productDetails,
-          targetAudience: {
-            country: input.targetCountry ?? input.country,
-            city: input.targetCity ?? input.city,
-            countries: input.countries ?? undefined,
-            cities: input.cities ?? undefined,
-            platform: input.platform,
-            platforms: input.platforms,
-            notes: input.targetingNotes
-          },
+          // A fully structured targetAudience (e.g. from the wizard's CampaignSpec.targeting, or
+          // a Pro/Company dashboard setting age/gender/interests directly) wins outright; the
+          // flat fields below remain for backward-compatible ad-hoc callers.
+          targetAudience:
+            input.targetAudience && typeof input.targetAudience === "object" && !Array.isArray(input.targetAudience)
+              ? normalizeJsonObject(input.targetAudience)
+              : {
+                  country: input.targetCountry ?? input.country,
+                  city: input.targetCity ?? input.city,
+                  countries: input.countries ?? undefined,
+                  cities: input.cities ?? undefined,
+                  platform: input.platform,
+                  platforms: input.platforms,
+                  notes: input.targetingNotes
+                },
           placementPlan: normalizeJsonObject(input.placementPlan),
           metadata: normalizeJsonObject(input.metadata),
           destination: {
