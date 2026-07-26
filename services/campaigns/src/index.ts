@@ -354,3 +354,256 @@ export function assessCampaignRisk(input: CampaignRiskInput): CampaignRiskAssess
     signals
   };
 }
+
+// ---------------------------------------------------------------------------
+// Campaign Engine.
+//
+// Turns the one-screen wizard's plain-language answers (what do you want more
+// of / paste link / where / budget) into a normalized, platform-agnostic
+// CampaignSpec. The Execution Engine later maps a CampaignSpec to each ad
+// network's own campaign objects, so the wizard and this normalizer stay the
+// same as new platforms are added.
+// ---------------------------------------------------------------------------
+
+export type CampaignGoal =
+  | "WHATSAPP_MESSAGES"
+  | "WEBSITE_VISITS"
+  | "VIDEO_VIEWS"
+  | "PHONE_CALLS"
+  | "MORE_FOLLOWERS"
+  | "SALES"
+  | "STORE_VISITS"
+  | "LIVE_VIEWERS";
+
+// Mirrors the CampaignObjective enum in the Prisma schema / @fliptrybe/types.
+export type CampaignObjective =
+  | "AWARENESS"
+  | "ENGAGEMENT"
+  | "TRAFFIC"
+  | "LEADS"
+  | "SALES"
+  | "APP_INSTALLS"
+  | "FOLLOWERS"
+  | "LIVE_VIEWERS";
+
+// Subset of DestinationKind the wizard infers from the pasted link in v1.
+export type CampaignDestinationKind =
+  | "TIKTOK_PROFILE"
+  | "TIKTOK_LIVE"
+  | "INSTAGRAM_PROFILE"
+  | "INSTAGRAM_REEL"
+  | "INSTAGRAM_LIVE"
+  | "FACEBOOK_PAGE"
+  | "FACEBOOK_LIVE"
+  | "WHATSAPP_CHANNEL"
+  | "YOUTUBE_CHANNEL"
+  | "WEBSITE"
+  | "ECOMMERCE_STORE";
+
+export type CampaignGender = "MALE" | "FEMALE" | "ALL";
+
+export interface CampaignSpecTargeting {
+  countries: string[];
+  cities: string[];
+  ageMin: number;
+  ageMax: number;
+  gender: CampaignGender;
+  interests: string[];
+}
+
+export interface CampaignSpec {
+  goal: CampaignGoal;
+  objective: CampaignObjective;
+  destination: { url: string; kind: CampaignDestinationKind };
+  budget: { amountMinor: number; currency: string };
+  targeting: CampaignSpecTargeting;
+  schedule: { startsAt?: string; endsAt?: string };
+  warnings: string[];
+}
+
+export interface CampaignSpecInput {
+  goal: string;
+  link: string;
+  budgetMinor: number;
+  currency?: string;
+  country?: string;
+  countries?: string[];
+  city?: string;
+  cities?: string[];
+  ageMin?: number;
+  ageMax?: number;
+  gender?: string;
+  interests?: string[];
+  startsAt?: string;
+  endsAt?: string;
+}
+
+const GOAL_CONFIG: Record<
+  CampaignGoal,
+  { objective: CampaignObjective; supported: boolean; note?: string }
+> = {
+  WHATSAPP_MESSAGES: { objective: "LEADS", supported: true },
+  WEBSITE_VISITS: { objective: "TRAFFIC", supported: true },
+  VIDEO_VIEWS: { objective: "ENGAGEMENT", supported: true },
+  PHONE_CALLS: { objective: "LEADS", supported: true },
+  MORE_FOLLOWERS: { objective: "FOLLOWERS", supported: true },
+  SALES: { objective: "SALES", supported: true },
+  STORE_VISITS: {
+    objective: "AWARENESS",
+    supported: false,
+    note: "Store-visit campaigns are not available yet; running as an awareness campaign."
+  },
+  LIVE_VIEWERS: {
+    objective: "LIVE_VIEWERS",
+    supported: false,
+    note: "Live-viewer ad campaigns depend on platform LIVE-promotion access and require review."
+  }
+};
+
+function normalizeGoal(raw: string): CampaignGoal {
+  const value = (raw ?? "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+
+  if (value in GOAL_CONFIG) {
+    return value as CampaignGoal;
+  }
+  if (value === "FOLLOWERS") {
+    return "MORE_FOLLOWERS";
+  }
+  if (value.includes("WHATSAPP") || value.includes("MESSAGE")) {
+    return "WHATSAPP_MESSAGES";
+  }
+  if (value.includes("STORE")) {
+    return "STORE_VISITS";
+  }
+  if (value.includes("LIVE")) {
+    return "LIVE_VIEWERS";
+  }
+  if (value.includes("CALL")) {
+    return "PHONE_CALLS";
+  }
+  if (value.includes("FOLLOW")) {
+    return "MORE_FOLLOWERS";
+  }
+  if (value.includes("SALE") || value.includes("PURCHASE") || value.includes("ORDER")) {
+    return "SALES";
+  }
+  if (value.includes("VIDEO") || value.includes("VIEW")) {
+    return "VIDEO_VIEWS";
+  }
+  if (value.includes("WEBSITE") || value.includes("VISIT") || value.includes("TRAFFIC")) {
+    return "WEBSITE_VISITS";
+  }
+
+  throw new Error(`Unrecognised campaign goal: "${raw}".`);
+}
+
+function deriveDestinationKind(link: string, goal: CampaignGoal): CampaignDestinationKind {
+  let host = "";
+  let path = "";
+
+  try {
+    const url = new URL(link);
+    host = url.hostname.toLowerCase();
+    path = url.pathname.toLowerCase();
+  } catch {
+    // link is validated by the caller before this point.
+  }
+
+  const isLive = path.includes("/live");
+
+  if (host.includes("wa.me") || host.includes("whatsapp")) {
+    return "WHATSAPP_CHANNEL";
+  }
+  if (host.includes("tiktok")) {
+    return isLive ? "TIKTOK_LIVE" : "TIKTOK_PROFILE";
+  }
+  if (host.includes("instagram")) {
+    if (path.includes("/reel")) {
+      return "INSTAGRAM_REEL";
+    }
+
+    return isLive ? "INSTAGRAM_LIVE" : "INSTAGRAM_PROFILE";
+  }
+  if (host.includes("facebook") || host.includes("fb.com") || host.includes("fb.watch")) {
+    return isLive ? "FACEBOOK_LIVE" : "FACEBOOK_PAGE";
+  }
+  if (host.includes("youtube") || host.includes("youtu.be")) {
+    return "YOUTUBE_CHANNEL";
+  }
+  if (goal === "SALES") {
+    return "ECOMMERCE_STORE";
+  }
+
+  return "WEBSITE";
+}
+
+function normalizeGender(raw?: string): CampaignGender {
+  const value = (raw ?? "").trim().toUpperCase();
+
+  if (value === "MALE" || value === "M" || value === "MEN") {
+    return "MALE";
+  }
+  if (value === "FEMALE" || value === "F" || value === "WOMEN") {
+    return "FEMALE";
+  }
+
+  return "ALL";
+}
+
+function clampAge(value: number) {
+  return clamp(Math.trunc(value), 13, 65);
+}
+
+function dedupeStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+export function normalizeCampaignSpec(input: CampaignSpecInput): CampaignSpec {
+  const warnings: string[] = [];
+  const goal = normalizeGoal(input.goal);
+  const config = GOAL_CONFIG[goal];
+
+  if (!config.supported && config.note) {
+    warnings.push(config.note);
+  }
+
+  const link = input.link?.trim();
+
+  if (!link || !isPublicUrl(link)) {
+    throw new Error("A valid public destination link (http/https) is required.");
+  }
+
+  const budgetMinor = Math.trunc(Number(input.budgetMinor));
+
+  if (!Number.isFinite(budgetMinor) || budgetMinor <= 0) {
+    throw new Error("Budget must be a positive amount.");
+  }
+  if (budgetMinor < DEFAULT_MIN_BUDGET_MINOR) {
+    warnings.push("Budget is below the recommended minimum for effective delivery.");
+  }
+
+  const ageMin = clampAge(input.ageMin ?? 18);
+  const ageMax = clampAge(input.ageMax ?? 65);
+
+  const targeting: CampaignSpecTargeting = {
+    countries: dedupeStrings(input.countries ?? (input.country ? [input.country] : ["NG"])),
+    cities: dedupeStrings(input.cities ?? (input.city ? [input.city] : [])),
+    ageMin: Math.min(ageMin, ageMax),
+    ageMax: Math.max(ageMin, ageMax),
+    gender: normalizeGender(input.gender),
+    interests: dedupeStrings(input.interests ?? [])
+  };
+
+  return {
+    goal,
+    objective: config.objective,
+    destination: { url: link, kind: deriveDestinationKind(link, goal) },
+    budget: { amountMinor: budgetMinor, currency: (input.currency ?? "NGN").toUpperCase() },
+    targeting,
+    schedule: {
+      ...(input.startsAt ? { startsAt: input.startsAt } : {}),
+      ...(input.endsAt ? { endsAt: input.endsAt } : {})
+    },
+    warnings
+  };
+}
