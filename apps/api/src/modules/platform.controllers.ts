@@ -150,6 +150,48 @@ export class CompanyProfilesController {
   }
 }
 
+@Controller("ad-accounts")
+@RequirePermissions("analytics:read")
+export class AdAccountsController {
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
+
+  @Get()
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listAdAccounts(workspaceContextFromRequest(request));
+  }
+
+  @Get(":id")
+  get(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getAdAccount(workspaceContextFromRequest(request), id);
+  }
+
+  @Post()
+  @RequirePermissions("campaign:create")
+  create(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.createAdAccount(workspaceContextFromRequest(request), body);
+  }
+
+  @Patch(":id")
+  @RequirePermissions("campaign:manage")
+  update(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.updateAdAccount(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Patch(":id/kyc")
+  @RequirePermissions("admin:access", "campaign:approve")
+  reviewKyc(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.reviewAdAccountKyc(workspaceContextFromRequest(request), id, body);
+  }
+}
+
 @Controller("campaigns")
 @RequirePermissions("analytics:read")
 export class CampaignsController {

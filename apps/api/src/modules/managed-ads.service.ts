@@ -365,6 +365,78 @@ function parseNonNegativeInt(value: unknown, field: string) {
   return parsed;
 }
 
+const adAccountTypes = new Set(["CONNECTED", "MANAGED", "DEDICATED"]);
+const adPlatforms = new Set(["META", "TIKTOK", "GOOGLE", "MANUAL"]);
+const kycStatuses = new Set(["UNVERIFIED", "PENDING", "VERIFIED", "REJECTED"]);
+const kycTiers = new Set(["LIGHT", "STANDARD", "ENHANCED"]);
+
+function normalizeKycTier(value: unknown) {
+  const normalized = String(value ?? "").toUpperCase();
+
+  if (!kycTiers.has(normalized)) {
+    throw new BadRequestException(`Unsupported KYC tier: ${String(value)}.`);
+  }
+
+  return normalized;
+}
+
+function normalizeAdAccountType(value: unknown) {
+  const normalized = String(value ?? "MANAGED").toUpperCase();
+
+  if (!adAccountTypes.has(normalized)) {
+    throw new BadRequestException(`Unsupported ad account type: ${String(value)}.`);
+  }
+
+  return normalized;
+}
+
+function normalizeAdPlatform(value: unknown) {
+  const normalized = String(value ?? "META").toUpperCase();
+
+  return adPlatforms.has(normalized) ? normalized : "META";
+}
+
+function normalizeKycStatus(value: unknown) {
+  const normalized = String(value ?? "").toUpperCase();
+
+  if (!kycStatuses.has(normalized)) {
+    throw new BadRequestException(`Unsupported KYC status: ${String(value)}.`);
+  }
+
+  return normalized;
+}
+
+/**
+ * KYC scales with risk, not customer type (per the account-tier design): Connected advertisers
+ * spend from their own platform account so a light identity check suffices; Managed pool
+ * advertisers are funded by FlipTrybe so they need standard business verification; Dedicated
+ * accounts are high-spend/high-risk and require enhanced KYB before any spend.
+ */
+function defaultKycTierForAccountType(type: string) {
+  if (type === "DEDICATED") {
+    return "ENHANCED";
+  }
+  if (type === "CONNECTED") {
+    return "LIGHT";
+  }
+
+  return "STANDARD";
+}
+
+function platformFromDestinationKind(destinationKind?: string) {
+  if (!destinationKind) {
+    return "META";
+  }
+  if (destinationKind.startsWith("TIKTOK")) {
+    return "TIKTOK";
+  }
+  if (destinationKind === "WEBSITE" || destinationKind === "ECOMMERCE_STORE" || destinationKind === "APP") {
+    return "GOOGLE";
+  }
+
+  return "META";
+}
+
 function arrayOrSingle(list: unknown, single: unknown): string[] | undefined {
   if (Array.isArray(list) && list.length > 0) {
     return list.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
@@ -720,6 +792,210 @@ export class ManagedAdsService {
     });
   }
 
+  async listAdAccounts(context?: AuthenticatedRequestContext) {
+    const scope = requireScope(context);
+
+    return this.db.adAccount.findMany({
+      where: { workspaceId: scope.workspaceId, deletedAt: null },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  async getAdAccount(context: AuthenticatedRequestContext | undefined, adAccountId: string) {
+    const scope = requireScope(context);
+    const adAccount = await this.findAdAccountOrThrow(this.db, scope.workspaceId, adAccountId);
+
+    return adAccount;
+  }
+
+  /**
+   * Explicit ad-account creation is for the two paths a customer or operator deliberately sets
+   * up: a Connected account (the advertiser's own platform account) or a Dedicated account
+   * (provisioned for a high-spend/high-risk company, isolated from the shared Managed pool). A
+   * Studio customer on the Managed pool never calls this -- see getOrCreateDefaultManagedAdAccount.
+   */
+  async createAdAccount(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
+    const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "campaign:create");
+
+    const type = normalizeAdAccountType(input.type);
+    const platform = normalizeAdPlatform(input.platform);
+    const label = requiredString(input.label ?? input.name, "label is required to create an ad account.");
+    const externalAccountId = input.externalAccountId ?? input.externalId;
+
+    if (type === "CONNECTED" && !externalAccountId) {
+      throw new BadRequestException(
+        "A connected ad account must include the advertiser's existing externalAccountId."
+      );
+    }
+
+    const kycTier = input.kycTier ? normalizeKycTier(input.kycTier) : defaultKycTierForAccountType(type);
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      // Only FlipTrybe-funded accounts (Managed/Dedicated) need a wallet; a Connected account is
+      // funded by the advertiser's own card/billing on the platform itself.
+      const wallet =
+        type === "CONNECTED"
+          ? undefined
+          : await this.getOrCreateWallet(tx, scope.workspaceId, getCurrency(input.currency, "NGN"));
+
+      const adAccount = await tx.adAccount.create({
+        data: {
+          workspaceId: scope.workspaceId,
+          type,
+          platform,
+          status: "PENDING",
+          kycTier,
+          kycStatus: "UNVERIFIED",
+          label,
+          walletId: wallet?.id,
+          connectedByUserId: scope.userId,
+          externalBusinessId: input.externalBusinessId,
+          externalAccountId,
+          externalPageId: input.externalPageId,
+          dailySpendCapMinor:
+            input.dailySpendCapMinor === undefined
+              ? undefined
+              : parseNonNegativeInt(input.dailySpendCapMinor, "dailySpendCapMinor"),
+          metadata: normalizeJsonObject(input.metadata)
+        }
+      });
+
+      await this.audit(tx, scope, "ad_account.created", "AdAccount", adAccount.id, { type, platform });
+      await this.event(tx, scope.workspaceId, "AdAccountCreated", "AdAccount", adAccount.id, {
+        adAccountId: adAccount.id,
+        type,
+        platform
+      });
+
+      return adAccount;
+    });
+  }
+
+  async updateAdAccount(
+    context: AuthenticatedRequestContext | undefined,
+    adAccountId: string,
+    input: Record<string, any>
+  ) {
+    const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
+    await this.findAdAccountOrThrow(this.db, scope.workspaceId, adAccountId);
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      const adAccount = await tx.adAccount.update({
+        where: { id: adAccountId },
+        data: {
+          label: input.label === undefined ? undefined : requiredString(input.label, "label cannot be empty."),
+          externalBusinessId: input.externalBusinessId,
+          externalAccountId: input.externalAccountId,
+          externalPageId: input.externalPageId,
+          dailySpendCapMinor:
+            input.dailySpendCapMinor === undefined
+              ? undefined
+              : parseNonNegativeInt(input.dailySpendCapMinor, "dailySpendCapMinor"),
+          metadata: input.metadata === undefined ? undefined : normalizeJsonObject(input.metadata)
+        }
+      });
+
+      await this.audit(tx, scope, "ad_account.updated", "AdAccount", adAccount.id, {});
+
+      return adAccount;
+    });
+  }
+
+  /**
+   * Admin-gated KYC/KYB decision -- mirrors updateAdminStatus's approval permission tier. VERIFIED
+   * activates the account for spend; REJECTED suspends it so it can't be used until resolved.
+   */
+  async reviewAdAccountKyc(
+    context: AuthenticatedRequestContext | undefined,
+    adAccountId: string,
+    input: Record<string, any>
+  ) {
+    const scope = requireScope(context);
+    await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:approve"]);
+    const existing = await this.findAdAccountOrThrow(this.db, scope.workspaceId, adAccountId);
+    const kycStatus = normalizeKycStatus(input.kycStatus);
+    const nextStatus =
+      kycStatus === "VERIFIED" ? "ACTIVE" : kycStatus === "REJECTED" ? "SUSPENDED" : existing.status;
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      const adAccount = await tx.adAccount.update({
+        where: { id: adAccountId },
+        data: {
+          kycStatus,
+          status: nextStatus,
+          kycTier: input.kycTier ? normalizeKycTier(input.kycTier) : undefined
+        }
+      });
+
+      await this.audit(tx, scope, "ad_account.kyc_reviewed", "AdAccount", adAccount.id, {
+        kycStatus,
+        status: nextStatus,
+        reason: input.reason ?? null
+      });
+      await this.event(tx, scope.workspaceId, "AdAccountKycReviewed", "AdAccount", adAccount.id, {
+        adAccountId: adAccount.id,
+        kycStatus
+      });
+
+      return adAccount;
+    });
+  }
+
+  private async findAdAccountOrThrow(tx: DbClient, workspaceId: string, adAccountId: string) {
+    const adAccount = await tx.adAccount.findFirst({
+      where: { id: adAccountId, workspaceId, deletedAt: null }
+    });
+
+    if (!adAccount) {
+      throw new NotFoundException("Ad account was not found in the active workspace.");
+    }
+
+    return adAccount;
+  }
+
+  /**
+   * The invisible-infrastructure path: a Studio (Managed pool) customer never creates or sees an
+   * ad account. The first campaign on a given platform silently provisions (or reuses) one shared
+   * MANAGED account per workspace+platform, funded by the workspace's wallet. KYC starts
+   * UNVERIFIED/PENDING -- the Risk Engine already treats an unverified funded advertiser as a
+   * review signal, so this doesn't bypass scrutiny, it just removes it from the customer's view.
+   */
+  private async getOrCreateDefaultManagedAdAccount(
+    tx: DbClient,
+    scope: AuthenticatedRequestContext,
+    platform: string
+  ) {
+    const existing = await tx.adAccount.findFirst({
+      where: { workspaceId: scope.workspaceId, type: "MANAGED", platform, deletedAt: null },
+      orderBy: { createdAt: "asc" }
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    const wallet = await this.getOrCreateWallet(tx, scope.workspaceId, "NGN");
+    const adAccount = await tx.adAccount.create({
+      data: {
+        workspaceId: scope.workspaceId,
+        type: "MANAGED",
+        platform,
+        status: "PENDING",
+        kycTier: defaultKycTierForAccountType("MANAGED"),
+        kycStatus: "UNVERIFIED",
+        label: `Shared pool - ${platform}`,
+        walletId: wallet.id,
+        connectedByUserId: scope.userId
+      }
+    });
+
+    await this.audit(tx, scope, "ad_account.auto_provisioned", "AdAccount", adAccount.id, { platform });
+
+    return adAccount;
+  }
+
   async listCampaigns(context?: AuthenticatedRequestContext) {
     const scope = requireScope(context);
     const campaigns = await this.db.campaign.findMany({
@@ -811,11 +1087,26 @@ export class ManagedAdsService {
     }
 
     return this.db.$transaction(async (tx: DbClient) => {
+      // Every campaign spends from an AdAccount. Studio customers never manage one explicitly, so
+      // when the caller doesn't pass adAccountId, transparently reuse (or provision) the
+      // workspace's shared-pool MANAGED account for the relevant platform. Pro/Company callers
+      // that explicitly connect their own account (Type 1) or hold a dedicated one (Type 3) pass
+      // adAccountId directly and skip this entirely.
+      const adAccountId = input.adAccountId
+        ? String(input.adAccountId)
+        : (
+            await this.getOrCreateDefaultManagedAdAccount(
+              tx,
+              scope,
+              platformFromDestinationKind(destinationKind)
+            )
+          ).id;
       const campaign = await tx.campaign.create({
         data: {
           workspaceId: scope.workspaceId,
           creatorUserId: scope.userId,
           companyProfileId: input.companyProfileId,
+          adAccountId,
           name: String(input.name ?? input.title ?? "Managed ads campaign"),
           objective,
           status: "DRAFT",

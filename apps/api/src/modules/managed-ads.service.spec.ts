@@ -157,6 +157,21 @@ type CampaignSpendEntryCreateInput = {
   } & Record<string, unknown>;
 };
 
+/** Shapes for asserting on a Prisma-style mock call's arguments in tests. */
+type DataCallArgs = { data: Record<string, unknown> };
+type CreateCallArgs = { create: Record<string, unknown> };
+
+/** The plain input object createCampaignFromWizard passes to createCampaign (no {data} wrapper). */
+interface WizardCreateCampaignInput {
+  objective: string;
+  destinationUrl: string;
+  destinationKind: string;
+  budgetMinor: number;
+  currency: string;
+  targetAudience: { cities: string[]; countries: string[] };
+  metadata: Record<string, unknown>;
+}
+
 type NotificationUpsertInput = {
   create?: {
     recipientUserId?: string | null;
@@ -236,6 +251,25 @@ function createService(
       updatedAt: new Date("2026-01-01T01:00:00.000Z")
     })
   );
+  const campaignCreate = vi.fn((input: Record<string, any>) => {
+    const data = input.data ?? {};
+    const destinationCreate = data.destination?.create;
+
+    return Promise.resolve({
+      ...baseCampaign,
+      ...data,
+      id: "campaign_123",
+      destination: destinationCreate
+        ? {
+            url: destinationCreate.url,
+            kind: destinationCreate.kind,
+            handle: destinationCreate.handle,
+            metadata: destinationCreate.metadata ?? {}
+          }
+        : undefined,
+      statusHistory: []
+    });
+  });
   const campaignBudgetHoldCreate = vi.fn((input: Record<string, any>) =>
     Promise.resolve({
       id: "hold_123",
@@ -266,6 +300,23 @@ function createService(
     Promise.resolve({ ...activeHold, ...input.data })
   );
   const auditLogCreate = vi.fn((input: AuditLogCreateInput) => Promise.resolve({ id: "audit_123", ...input.data }));
+  const adAccountFindFirst = vi.fn(
+    (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
+  );
+  const adAccountCreate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({
+      id: "ad_account_123",
+      workspaceId: workspace.workspaceId,
+      status: "PENDING",
+      kycStatus: "UNVERIFIED",
+      createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      ...input.data
+    })
+  );
+  const adAccountUpdate = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({ id: "ad_account_123", ...input.data })
+  );
   const campaignOutcomeUpsert = vi.fn((input: Record<string, any>) =>
     Promise.resolve({ id: "outcome_123", campaignId: "campaign_123", ...input.create, ...input.update })
   );
@@ -419,7 +470,7 @@ function createService(
       $queryRaw: vi.fn(() => Promise.resolve()),
       analyticsMetric: { create: analyticsMetricCreate },
       auditLog: { create: auditLogCreate },
-      campaign: { findFirst: campaignFindFirst, update: campaignUpdate },
+      campaign: { findFirst: campaignFindFirst, update: campaignUpdate, create: campaignCreate },
       campaignBudgetHold: {
         create: campaignBudgetHoldCreate,
         findFirst: campaignBudgetHoldFindFirst,
@@ -434,6 +485,7 @@ function createService(
         findMany: campaignInvoiceFindMany,
         update: campaignInvoiceUpdate
       },
+      adAccount: { findFirst: adAccountFindFirst, create: adAccountCreate, update: adAccountUpdate },
       campaignLedgerEntry: { upsert: campaignLedgerEntryUpsert },
       campaignOutcome: { upsert: campaignOutcomeUpsert, findUnique: campaignOutcomeFindUnique },
       campaignSpendEntry: { create: campaignSpendEntryCreate },
@@ -482,6 +534,12 @@ function createService(
         findFirst: campaignInvoiceFindFirst,
         findMany: campaignInvoiceFindMany,
         update: campaignInvoiceUpdate
+      },
+      adAccount: {
+        findFirst: adAccountFindFirst,
+        findMany: vi.fn(() => Promise.resolve([])),
+        create: adAccountCreate,
+        update: adAccountUpdate
       },
       campaignLedgerEntry: {
         upsert: campaignLedgerEntryUpsert
@@ -539,7 +597,11 @@ function createService(
     campaignBudgetHoldFindMany,
     campaignBudgetHoldFindUnique,
     campaignBudgetHoldUpdate,
+    adAccountFindFirst,
+    adAccountCreate,
+    adAccountUpdate,
     campaignFindFirst,
+    campaignCreate,
     campaignInvoiceCreate,
     campaignInvoiceFindFirst,
     campaignInvoiceFindMany,
@@ -1358,16 +1420,177 @@ describe("ManagedAdsService authorization gates", () => {
   });
 });
 
+describe("ManagedAdsService AdAccount management", () => {
+  it("rejects a CONNECTED account without an externalAccountId", async () => {
+    const { adAccountCreate, service } = createService();
+
+    await expect(
+      service.createAdAccount(workspace, { type: "CONNECTED", label: "My Meta Account" })
+    ).rejects.toThrow(/externalAccountId/i);
+    expect(adAccountCreate).not.toHaveBeenCalled();
+  });
+
+  it("creates a CONNECTED account without provisioning a wallet, kycTier defaults LIGHT", async () => {
+    const { adAccountCreate, walletUpsert, service } = createService();
+
+    await service.createAdAccount(workspace, {
+      type: "CONNECTED",
+      label: "My Meta Account",
+      externalAccountId: "act_123"
+    });
+
+    const [call] = adAccountCreate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.type).toBe("CONNECTED");
+    expect(call.data.kycTier).toBe("LIGHT");
+    expect(call.data.walletId).toBeUndefined();
+    expect(walletUpsert).not.toHaveBeenCalled();
+  });
+
+  it("creates a MANAGED account with a wallet, kycTier defaults STANDARD", async () => {
+    const { adAccountCreate, walletUpsert, service } = createService();
+
+    await service.createAdAccount(workspace, { type: "MANAGED", label: "Shared pool" });
+
+    const [call] = adAccountCreate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.kycTier).toBe("STANDARD");
+    expect(call.data.walletId).toBe("wallet_123");
+    expect(walletUpsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("creates a DEDICATED account with kycTier defaulting to ENHANCED", async () => {
+    const { adAccountCreate, service } = createService();
+
+    await service.createAdAccount(workspace, { type: "DEDICATED", label: "Acme Ltd" });
+
+    const [call] = adAccountCreate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.kycTier).toBe("ENHANCED");
+    expect(call.data.status).toBe("PENDING");
+  });
+
+  it("updates an ad account's label", async () => {
+    const { adAccountFindFirst, adAccountUpdate, service } = createService();
+    adAccountFindFirst.mockResolvedValueOnce({ id: "ad_account_123", workspaceId: workspace.workspaceId });
+
+    await service.updateAdAccount(workspace, "ad_account_123", { label: "New Label" });
+
+    const [call] = adAccountUpdate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.label).toBe("New Label");
+  });
+
+  it("rejects updating an ad account that doesn't exist in the workspace", async () => {
+    const { adAccountFindFirst, service } = createService();
+    adAccountFindFirst.mockResolvedValueOnce(null);
+
+    await expect(service.updateAdAccount(workspace, "missing", { label: "X" })).rejects.toThrow(
+      /not found/i
+    );
+  });
+
+  it("activates an account on VERIFIED KYC review", async () => {
+    const { adAccountFindFirst, adAccountUpdate, service } = createService();
+    adAccountFindFirst.mockResolvedValueOnce({
+      id: "ad_account_123",
+      workspaceId: workspace.workspaceId,
+      status: "PENDING"
+    });
+
+    await service.reviewAdAccountKyc(workspace, "ad_account_123", { kycStatus: "verified" });
+
+    const [call] = adAccountUpdate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.kycStatus).toBe("VERIFIED");
+    expect(call.data.status).toBe("ACTIVE");
+  });
+
+  it("suspends an account on REJECTED KYC review", async () => {
+    const { adAccountFindFirst, adAccountUpdate, service } = createService();
+    adAccountFindFirst.mockResolvedValueOnce({
+      id: "ad_account_123",
+      workspaceId: workspace.workspaceId,
+      status: "PENDING"
+    });
+
+    await service.reviewAdAccountKyc(workspace, "ad_account_123", { kycStatus: "rejected" });
+
+    const [call] = adAccountUpdate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.kycStatus).toBe("REJECTED");
+    expect(call.data.status).toBe("SUSPENDED");
+  });
+
+  it("requires admin+approval permissions to review KYC", async () => {
+    const { service } = createService({ membership: { permissions: ["campaign:manage"], role: "MANAGER" } });
+
+    await expect(
+      service.reviewAdAccountKyc(workspace, "ad_account_123", { kycStatus: "verified" })
+    ).rejects.toThrow(/Missing required permission/i);
+  });
+});
+
+describe("ManagedAdsService.createCampaign ad-account auto-provisioning", () => {
+  it("auto-provisions a shared MANAGED ad account when none exists and none was passed", async () => {
+    const { adAccountFindFirst, adAccountCreate, transaction, service } = createService();
+    void transaction;
+
+    const campaign = (await service.createCampaign(workspace, {
+      name: "Launch",
+      destinationUrl: "https://instagram.com/reel/abc",
+      platform: "instagram"
+    })) as { id: string };
+
+    expect(adAccountFindFirst).toHaveBeenCalledTimes(1);
+    expect(adAccountCreate).toHaveBeenCalledTimes(1);
+    const [call] = adAccountCreate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.type).toBe("MANAGED");
+    expect(call.data.platform).toBe("META");
+    expect(campaign.id).toBe("campaign_123");
+  });
+
+  it("reuses an existing shared MANAGED ad account instead of creating a duplicate", async () => {
+    const { adAccountFindFirst, adAccountCreate, service } = createService();
+    adAccountFindFirst.mockResolvedValueOnce({ id: "ad_account_existing", type: "MANAGED", platform: "META" });
+
+    await service.createCampaign(workspace, { name: "Launch", destinationUrl: "https://instagram.com/x" });
+
+    expect(adAccountCreate).not.toHaveBeenCalled();
+  });
+
+  it("uses an explicitly provided adAccountId without touching auto-provisioning", async () => {
+    const { adAccountFindFirst, adAccountCreate, campaignUpdate: _unused, service } = createService();
+    void _unused;
+
+    await service.createCampaign(workspace, {
+      name: "Launch",
+      destinationUrl: "https://instagram.com/x",
+      adAccountId: "ad_account_explicit"
+    });
+
+    expect(adAccountFindFirst).not.toHaveBeenCalled();
+    expect(adAccountCreate).not.toHaveBeenCalled();
+  });
+
+  it("resolves platform TIKTOK for a TikTok destination", async () => {
+    const { adAccountCreate, service } = createService();
+
+    await service.createCampaign(workspace, {
+      name: "Launch",
+      destinationUrl: "https://www.tiktok.com/@seller/video/123",
+      destinationKind: "TIKTOK_PROFILE"
+    });
+
+    const [call] = adAccountCreate.mock.calls[0] as [DataCallArgs];
+    expect(call.data.platform).toBe("TIKTOK");
+  });
+});
+
 describe("ManagedAdsService campaign outcome (Layer 3)", () => {
   it("records a one-tap outcome with just wouldRunAgain", async () => {
     const { campaignOutcomeUpsert, service } = createService();
 
-    const outcome = await service.recordCampaignOutcome(workspace, "campaign_123", {
+    const outcome = (await service.recordCampaignOutcome(workspace, "campaign_123", {
       wouldRunAgain: true
-    });
+    })) as { campaignId: string };
 
     expect(campaignOutcomeUpsert).toHaveBeenCalledTimes(1);
-    const [call] = campaignOutcomeUpsert.mock.calls[0] as [Record<string, any>];
+    const [call] = campaignOutcomeUpsert.mock.calls[0] as [CreateCallArgs];
     expect(call.create.wouldRunAgain).toBe(true);
     expect(call.create.source).toBe("CUSTOMER_PROMPT");
     expect(call.create.capturedByUserId).toBe(workspace.userId);
@@ -1387,7 +1610,7 @@ describe("ManagedAdsService campaign outcome (Layer 3)", () => {
       notes: "Great response over the weekend."
     });
 
-    const [call] = campaignOutcomeUpsert.mock.calls[0] as [Record<string, any>];
+    const [call] = campaignOutcomeUpsert.mock.calls[0] as [CreateCallArgs];
     expect(call.create).toEqual(
       expect.objectContaining({
         messagesCount: 42,
@@ -1439,7 +1662,7 @@ describe("ManagedAdsService campaign outcome (Layer 3)", () => {
       messagesCount: 10
     });
 
-    const outcome = await service.getCampaignOutcome(workspace, "campaign_123");
+    const outcome: unknown = await service.getCampaignOutcome(workspace, "campaign_123");
 
     expect(outcome).toEqual({ campaignId: "campaign_123", wouldRunAgain: true, messagesCount: 10 });
   });
@@ -1500,7 +1723,7 @@ describe("ManagedAdsService.createCampaignFromWizard", () => {
     const { service } = createService();
     const createCampaignSpy = vi
       .spyOn(service, "createCampaign")
-      .mockResolvedValue({ id: "campaign_123", status: "DRAFT" } as never);
+      .mockResolvedValue({ id: "campaign_123", status: "DRAFT" });
 
     const result = await service.createCampaignFromWizard(workspace, {
       goal: "Get more WhatsApp messages",
@@ -1510,7 +1733,7 @@ describe("ManagedAdsService.createCampaignFromWizard", () => {
     });
 
     expect(createCampaignSpy).toHaveBeenCalledTimes(1);
-    const [, createInput] = createCampaignSpy.mock.calls[0] as [unknown, Record<string, any>];
+    const [, createInput] = createCampaignSpy.mock.calls[0] as [unknown, WizardCreateCampaignInput];
     expect(createInput.objective).toBe("LEADS");
     expect(createInput.destinationUrl).toBe("https://wa.me/2348012345678");
     expect(createInput.destinationKind).toBe("WHATSAPP_CHANNEL");
@@ -1526,7 +1749,7 @@ describe("ManagedAdsService.createCampaignFromWizard", () => {
 
   it("surfaces a warning for goals that are not yet supported without blocking creation", async () => {
     const { service } = createService();
-    vi.spyOn(service, "createCampaign").mockResolvedValue({ id: "campaign_456" } as never);
+    vi.spyOn(service, "createCampaign").mockResolvedValue({ id: "campaign_456" });
 
     const result = await service.createCampaignFromWizard(workspace, {
       goal: "LIVE_VIEWERS",
