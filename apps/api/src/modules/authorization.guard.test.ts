@@ -1,4 +1,5 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import { ForbiddenException, UnauthorizedException } from "@nestjs/common";
+import type { ExecutionContext } from "@nestjs/common";
 import type { Reflector } from "@nestjs/core";
 import { describe, expect, it, vi } from "vitest";
 
@@ -6,7 +7,10 @@ import type { AuthSessionService } from "./auth-session.service";
 import { authorizationPermissionsKey, authorizationPublicKey } from "./authorization.decorators";
 import { AuthorizationGuard } from "./authorization.guard";
 
-function createContext(request: Record<string, any> = { headers: {} }, type = "http") {
+function createContext(
+  request: { headers: Record<string, string> } = { headers: {} },
+  type = "http"
+) {
   return {
     getClass: () => class TestController {},
     getHandler: () => function testHandler() {},

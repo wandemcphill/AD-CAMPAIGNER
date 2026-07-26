@@ -2081,7 +2081,7 @@ export class ManagedAdsService {
         : typeof input.campaignInvoiceId === "string"
           ? input.campaignInvoiceId
           : undefined;
-    let invoice: any | null = null;
+    let invoice: { campaignId: string } | null = null;
 
     if (campaignId) {
       await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
