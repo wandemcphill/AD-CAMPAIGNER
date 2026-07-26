@@ -1525,6 +1525,164 @@ describe("ManagedAdsService AdAccount management", () => {
   });
 });
 
+describe("ManagedAdsService.transferCampaignBudget", () => {
+  it("moves unspent budget from one campaign to another and records both ledger entries", async () => {
+    const { campaignFindFirst, campaignUpdate, campaignLedgerEntryUpsert, service } = createService();
+    campaignFindFirst
+      .mockResolvedValueOnce({
+        id: "campaign_from",
+        workspaceId: workspace.workspaceId,
+        name: "Slow campaign",
+        currency: "NGN",
+        budgetMinor: 500_000,
+        spendEntries: [],
+        manualPlacements: []
+      })
+      .mockResolvedValueOnce({
+        id: "campaign_to",
+        workspaceId: workspace.workspaceId,
+        name: "Winning campaign",
+        currency: "NGN",
+        budgetMinor: 200_000,
+        spendEntries: [],
+        manualPlacements: []
+      });
+
+    const result = (await service.transferCampaignBudget(workspace, "campaign_from", {
+      toCampaignId: "campaign_to",
+      amountMinor: 150_000
+    })) as { from: { budget: { amountMinor: number } }; to: { budget: { amountMinor: number } } };
+
+    expect(result.from.budget.amountMinor).toBe(350_000);
+    expect(result.to.budget.amountMinor).toBe(350_000);
+    expect(campaignUpdate).toHaveBeenCalledTimes(2);
+    expect(campaignLedgerEntryUpsert).toHaveBeenCalledTimes(2);
+    const [debitCall, creditCall] = campaignLedgerEntryUpsert.mock.calls as [
+      [CampaignLedgerEntryUpsertInput],
+      [CampaignLedgerEntryUpsertInput]
+    ];
+    expect(debitCall[0].create?.direction).toBe("DEBIT");
+    expect(creditCall[0].create?.direction).toBe("CREDIT");
+  });
+
+  it("rejects transferring more than the unspent (available) amount", async () => {
+    const { campaignFindFirst, service } = createService();
+    campaignFindFirst
+      .mockResolvedValueOnce({
+        id: "campaign_from",
+        workspaceId: workspace.workspaceId,
+        name: "Spent campaign",
+        currency: "NGN",
+        budgetMinor: 500_000,
+        spendEntries: [{ amountMinor: 450_000 }],
+        manualPlacements: []
+      })
+      .mockResolvedValueOnce({
+        id: "campaign_to",
+        workspaceId: workspace.workspaceId,
+        name: "Target",
+        currency: "NGN",
+        budgetMinor: 200_000,
+        spendEntries: [],
+        manualPlacements: []
+      });
+
+    await expect(
+      service.transferCampaignBudget(workspace, "campaign_from", {
+        toCampaignId: "campaign_to",
+        amountMinor: 100_000
+      })
+    ).rejects.toThrow(/unspent/i);
+  });
+
+  it("rejects transferring a campaign's budget to itself", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.transferCampaignBudget(workspace, "campaign_123", {
+        toCampaignId: "campaign_123",
+        amountMinor: 1000
+      })
+    ).rejects.toThrow(/itself/i);
+  });
+
+  it("rejects a non-positive transfer amount", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.transferCampaignBudget(workspace, "campaign_from", {
+        toCampaignId: "campaign_to",
+        amountMinor: 0
+      })
+    ).rejects.toThrow(/positive/i);
+  });
+
+  it("rejects transfers between campaigns in different currencies", async () => {
+    const { campaignFindFirst, service } = createService();
+    campaignFindFirst
+      .mockResolvedValueOnce({
+        id: "campaign_from",
+        workspaceId: workspace.workspaceId,
+        name: "NGN campaign",
+        currency: "NGN",
+        budgetMinor: 500_000,
+        spendEntries: [],
+        manualPlacements: []
+      })
+      .mockResolvedValueOnce({
+        id: "campaign_to",
+        workspaceId: workspace.workspaceId,
+        name: "USD campaign",
+        currency: "USD",
+        budgetMinor: 200_000,
+        spendEntries: [],
+        manualPlacements: []
+      });
+
+    await expect(
+      service.transferCampaignBudget(workspace, "campaign_from", {
+        toCampaignId: "campaign_to",
+        amountMinor: 1000
+      })
+    ).rejects.toThrow(/different currencies/i);
+  });
+
+  it("requires payment:manage permission", async () => {
+    const { service } = createService({ membership: { permissions: ["campaign:manage"], role: "MANAGER" } });
+
+    await expect(
+      service.transferCampaignBudget(workspace, "campaign_from", {
+        toCampaignId: "campaign_to",
+        amountMinor: 1000
+      })
+    ).rejects.toThrow(/Missing required permission/i);
+  });
+});
+
+describe("ManagedAdsService.getCampaignRecommendations", () => {
+  it("delegates to recommendCampaignTargeting and returns multiple options", async () => {
+    const { service } = createService();
+
+    const recs = await service.getCampaignRecommendations(workspace, {
+      goal: "WHATSAPP_MESSAGES",
+      budgetMinor: 2_500_000,
+      productDescription: "I sell wigs in Lagos",
+      city: "Lagos"
+    });
+
+    expect(Array.isArray(recs)).toBe(true);
+    expect(recs.length).toBeGreaterThan(1);
+  });
+
+  it("requires campaign:create permission", async () => {
+    const { service } = createService({ membership: { permissions: [], role: "VIEWER" } });
+
+    await expect(
+      service.getCampaignRecommendations(workspace, { goal: "SALES", budgetMinor: 100_000 })
+    ).rejects.toThrow(/Missing required permission/i);
+  });
+});
+
 describe("ManagedAdsService.createCampaign ad-account auto-provisioning", () => {
   it("auto-provisions a shared MANAGED ad account when none exists and none was passed", async () => {
     const { adAccountFindFirst, adAccountCreate, transaction, service } = createService();

@@ -18,6 +18,7 @@ import {
   assessCampaignRisk,
   buildMetaLaunchSpec,
   normalizeCampaignSpec,
+  recommendCampaignTargeting,
   type CampaignGoal,
   type CampaignSpec
 } from "@fliptrybe/service-campaigns";
@@ -1047,13 +1048,21 @@ export class ManagedAdsService {
       ? storedGoal
       : goalFromObjective(objective, campaign.destination?.kind);
     const countries = arrayOrSingle(targetAudience.countries, targetAudience.country) ?? ["NG"];
+    const states = arrayOrSingle(targetAudience.states, targetAudience.state) ?? [];
     const cities = arrayOrSingle(targetAudience.cities, targetAudience.city) ?? [];
+    const localGovernmentAreas =
+      arrayOrSingle(targetAudience.localGovernmentAreas, targetAudience.localGovernmentArea) ?? [];
     const ageMin = Number.isFinite(Number(targetAudience.ageMin)) ? Number(targetAudience.ageMin) : 18;
     const ageMax = Number.isFinite(Number(targetAudience.ageMax)) ? Number(targetAudience.ageMax) : 65;
     const gender = ["MALE", "FEMALE", "ALL"].includes(targetAudience.gender)
       ? targetAudience.gender
       : "ALL";
     const interests = Array.isArray(targetAudience.interests) ? targetAudience.interests : [];
+    const behaviors = Array.isArray(targetAudience.behaviors) ? targetAudience.behaviors : [];
+    const searchKeywords = Array.isArray(targetAudience.searchKeywords)
+      ? targetAudience.searchKeywords
+      : [];
+    const optimizeAutomatically = targetAudience.optimizeAutomatically !== false;
 
     return {
       goal,
@@ -1063,7 +1072,19 @@ export class ManagedAdsService {
         kind: (campaign.destination?.kind ?? "WEBSITE") as CampaignSpec["destination"]["kind"]
       },
       budget: { amountMinor: campaign.budgetMinor, currency: campaign.currency ?? "NGN" },
-      targeting: { countries, cities, ageMin, ageMax, gender, interests },
+      targeting: {
+        countries,
+        states,
+        cities,
+        localGovernmentAreas,
+        ageMin,
+        ageMax,
+        gender,
+        interests,
+        behaviors,
+        searchKeywords,
+        optimizeAutomatically
+      },
       schedule: {
         ...(campaign.startsAt ? { startsAt: new Date(campaign.startsAt).toISOString() } : {}),
         ...(campaign.endsAt ? { endsAt: new Date(campaign.endsAt).toISOString() } : {})
@@ -1086,21 +1107,28 @@ export class ManagedAdsService {
       throw new BadRequestException("Campaign budget must be a positive minor-unit integer.");
     }
 
+    // Cross-platform advertising: the platform an ad RUNS on and the platform its destination
+    // lives on are independent -- "advertise on Meta, send clicks into a TikTok LIVE" is a normal,
+    // supported case. An explicit executionPlatform/adPlatform always wins; only when the caller
+    // doesn't say where to run it do we fall back to guessing from the destination (e.g. a bare
+    // TikTok link with no explicit platform assumes TikTok). Destination URLs are the platforms'
+    // own share links (tiktok.com/@x/live, instagram.com/x, youtube.com/x), which already behave
+    // as OS-level deep links on mobile -- clicking opens the installed app directly to that
+    // content; FlipTrybe doesn't need to build separate deep-link infrastructure for this.
+    const executionPlatform =
+      input.executionPlatform ?? input.adPlatform
+        ? normalizeAdPlatform(input.executionPlatform ?? input.adPlatform)
+        : platformFromDestinationKind(destinationKind);
+
     return this.db.$transaction(async (tx: DbClient) => {
       // Every campaign spends from an AdAccount. Studio customers never manage one explicitly, so
       // when the caller doesn't pass adAccountId, transparently reuse (or provision) the
-      // workspace's shared-pool MANAGED account for the relevant platform. Pro/Company callers
-      // that explicitly connect their own account (Type 1) or hold a dedicated one (Type 3) pass
-      // adAccountId directly and skip this entirely.
+      // workspace's shared-pool MANAGED account for the resolved execution platform. Pro/Company
+      // callers that explicitly connect their own account (Type 1) or hold a dedicated one (Type 3)
+      // pass adAccountId directly and skip this entirely.
       const adAccountId = input.adAccountId
         ? String(input.adAccountId)
-        : (
-            await this.getOrCreateDefaultManagedAdAccount(
-              tx,
-              scope,
-              platformFromDestinationKind(destinationKind)
-            )
-          ).id;
+        : (await this.getOrCreateDefaultManagedAdAccount(tx, scope, executionPlatform)).id;
       const campaign = await tx.campaign.create({
         data: {
           workspaceId: scope.workspaceId,
@@ -1111,6 +1139,10 @@ export class ManagedAdsService {
           objective,
           status: "DRAFT",
           budgetMinor,
+          dailySpendCapMinor:
+            input.dailySpendCapMinor === undefined
+              ? undefined
+              : parseNonNegativeInt(input.dailySpendCapMinor, "dailySpendCapMinor"),
           currency,
           provider: "MANUAL",
           startsAt,
@@ -1182,12 +1214,26 @@ export class ManagedAdsService {
       budgetMinor: Number(input.budgetMinor ?? 0),
       ...(input.currency === undefined ? {} : { currency: input.currency }),
       ...(input.country === undefined ? {} : { country: input.country }),
+      ...(input.countries === undefined ? {} : { countries: input.countries }),
+      ...(input.state === undefined ? {} : { state: input.state }),
+      ...(input.states === undefined ? {} : { states: input.states }),
       ...(input.city === undefined ? {} : { city: input.city }),
       ...(input.cities === undefined ? {} : { cities: input.cities }),
+      ...(input.localGovernmentArea === undefined
+        ? {}
+        : { localGovernmentArea: input.localGovernmentArea }),
+      ...(input.localGovernmentAreas === undefined
+        ? {}
+        : { localGovernmentAreas: input.localGovernmentAreas }),
       ...(input.ageMin === undefined ? {} : { ageMin: Number(input.ageMin) }),
       ...(input.ageMax === undefined ? {} : { ageMax: Number(input.ageMax) }),
       ...(input.gender === undefined ? {} : { gender: input.gender }),
-      ...(input.interests === undefined ? {} : { interests: input.interests })
+      ...(input.interests === undefined ? {} : { interests: input.interests }),
+      ...(input.behaviors === undefined ? {} : { behaviors: input.behaviors }),
+      ...(input.searchKeywords === undefined ? {} : { searchKeywords: input.searchKeywords }),
+      ...(input.optimizeAutomatically === undefined
+        ? {}
+        : { optimizeAutomatically: Boolean(input.optimizeAutomatically) })
     });
 
     const campaign = await this.createCampaign(context, {
@@ -1195,16 +1241,26 @@ export class ManagedAdsService {
       name: input.name ?? `${spec.goal.replace(/_/g, " ").toLowerCase()} campaign`,
       objective: spec.objective,
       budgetMinor: spec.budget.amountMinor,
+      dailySpendCapMinor: input.dailySpendCapMinor,
       currency: spec.budget.currency,
       destinationUrl: spec.destination.url,
       destinationKind: spec.destination.kind,
+      // Where to run the ad (Meta/TikTok/Google), independent of where the destination link
+      // lives -- e.g. "boost my TikTok LIVE" via ads running on Meta. Falls back to inferring
+      // from the destination when not given.
+      executionPlatform: input.executionPlatform ?? input.platform,
       targetAudience: {
         countries: spec.targeting.countries,
+        states: spec.targeting.states,
         cities: spec.targeting.cities,
+        localGovernmentAreas: spec.targeting.localGovernmentAreas,
         ageMin: spec.targeting.ageMin,
         ageMax: spec.targeting.ageMax,
         gender: spec.targeting.gender,
-        interests: spec.targeting.interests
+        interests: spec.targeting.interests,
+        behaviors: spec.targeting.behaviors,
+        searchKeywords: spec.targeting.searchKeywords,
+        optimizeAutomatically: spec.targeting.optimizeAutomatically
       },
       metadata: { wizard: true, goal: spec.goal, warnings: spec.warnings },
       startsAt: spec.schedule.startsAt,
@@ -1212,6 +1268,28 @@ export class ManagedAdsService {
     });
 
     return { campaign, warnings: spec.warnings };
+  }
+
+  /**
+   * Returns several targeting options (broad / focused / hyper-local), not one, with an
+   * illustrative budget-to-outcome range for each -- helps a customer pick before they commit
+   * budget, rather than guessing at settings. See recommendCampaignTargeting's own doc comment for
+   * the honest scope note (rule-based category detection today; same seam a real AI provider
+   * plugs into later without changing this method's signature).
+   */
+  async getCampaignRecommendations(context: AuthenticatedRequestContext | undefined, input: Record<string, any>) {
+    const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "campaign:create");
+
+    return recommendCampaignTargeting({
+      goal: String(input.goal ?? ""),
+      budgetMinor: Number(input.budgetMinor ?? 0),
+      ...(input.productDescription === undefined ? {} : { productDescription: String(input.productDescription) }),
+      ...(input.city === undefined ? {} : { city: String(input.city) }),
+      ...(input.localGovernmentArea === undefined
+        ? {}
+        : { localGovernmentArea: String(input.localGovernmentArea) })
+    });
   }
 
   async updateCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
@@ -1246,6 +1324,10 @@ export class ManagedAdsService {
           name: input.name,
           objective: input.objective === undefined ? undefined : normalizeObjective(input.objective),
           budgetMinor: input.budgetMinor === undefined ? undefined : Number(input.budgetMinor),
+          dailySpendCapMinor:
+            input.dailySpendCapMinor === undefined
+              ? undefined
+              : parseNonNegativeInt(input.dailySpendCapMinor, "dailySpendCapMinor"),
           currency: input.currency === undefined ? undefined : getCurrency(input.currency, "NGN"),
           brief: input.brief ?? input.description ?? input.productDetails,
           targetAudience: input.targetAudience === undefined ? undefined : normalizeJsonObject(input.targetAudience),
@@ -1540,6 +1622,95 @@ export class ManagedAdsService {
     await this.assertCampaignPermission(this.db, scope, "payment:manage");
 
     return this.applyClientBudgetControl(scope, campaign, "decrease_budget", input);
+  }
+
+  /**
+   * Redirects unspent budget from one of the customer's campaigns to another -- e.g. pausing a
+   * slow-performing product's ad and putting the remaining budget behind a different one, without
+   * a refund/re-fund round trip. Both campaigns must belong to the caller's workspace; only the
+   * UNSPENT portion of the source campaign can move (spend already recorded is untouchable).
+   */
+  async transferCampaignBudget(
+    context: AuthenticatedRequestContext | undefined,
+    fromCampaignId: string,
+    input: Record<string, any>
+  ) {
+    const scope = requireScope(context);
+    await this.assertCampaignPermission(this.db, scope, "payment:manage");
+
+    const toCampaignId = requiredString(input.toCampaignId, "toCampaignId is required.");
+    if (toCampaignId === fromCampaignId) {
+      throw new BadRequestException("Cannot transfer a campaign's budget to itself.");
+    }
+
+    const amountMinor = parseNonNegativeInt(input.amountMinor, "amountMinor");
+    if (amountMinor <= 0) {
+      throw new BadRequestException("Transfer amount must be a positive minor-unit integer.");
+    }
+
+    const [fromCampaign, toCampaign] = await Promise.all([
+      this.findCampaignOrThrow(this.db, scope.workspaceId, fromCampaignId),
+      this.findCampaignOrThrow(this.db, scope.workspaceId, toCampaignId)
+    ]);
+
+    if (fromCampaign.currency !== toCampaign.currency) {
+      throw new BadRequestException("Cannot transfer budget between campaigns in different currencies.");
+    }
+
+    const spentMinor = this.totalRecordedSpendMinor(fromCampaign);
+    const availableMinor = fromCampaign.budgetMinor - spentMinor;
+    if (amountMinor > availableMinor) {
+      throw new BadRequestException(
+        `Only ${availableMinor} minor units are unspent and available to transfer from this campaign.`
+      );
+    }
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      const updatedFrom = await tx.campaign.update({
+        where: { id: fromCampaignId },
+        data: { budgetMinor: fromCampaign.budgetMinor - amountMinor },
+        include: campaignInclude
+      });
+      const updatedTo = await tx.campaign.update({
+        where: { id: toCampaignId },
+        data: { budgetMinor: toCampaign.budgetMinor + amountMinor },
+        include: campaignInclude
+      });
+
+      const reason = input.reason ?? `Budget redirected to campaign "${toCampaign.name}"`;
+      await this.createCampaignLedgerEntry(tx, scope, fromCampaignId, {
+        type: "ADJUSTMENT",
+        direction: "DEBIT",
+        amountMinor,
+        currency: fromCampaign.currency,
+        description: reason,
+        sourceType: "Campaign",
+        sourceId: toCampaignId,
+        idempotencyKey: `campaign-transfer:${fromCampaignId}:${toCampaignId}:${randomUUID()}`
+      });
+      await this.createCampaignLedgerEntry(tx, scope, toCampaignId, {
+        type: "ADJUSTMENT",
+        direction: "CREDIT",
+        amountMinor,
+        currency: toCampaign.currency,
+        description: `Budget received from campaign "${fromCampaign.name}"`,
+        sourceType: "Campaign",
+        sourceId: fromCampaignId,
+        idempotencyKey: `campaign-transfer:${toCampaignId}:${fromCampaignId}:${randomUUID()}`
+      });
+
+      await this.audit(tx, scope, "campaign.budget_transferred", "Campaign", fromCampaignId, {
+        toCampaignId,
+        amountMinor
+      });
+      await this.event(tx, scope.workspaceId, "CampaignBudgetTransferred", "Campaign", fromCampaignId, {
+        fromCampaignId,
+        toCampaignId,
+        amountMinor
+      });
+
+      return { from: this.toCampaign(updatedFrom), to: this.toCampaign(updatedTo) };
+    });
   }
 
   async listCampaignAuditTrail(context: AuthenticatedRequestContext | undefined, campaignId: string) {

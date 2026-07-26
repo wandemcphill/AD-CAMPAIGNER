@@ -150,7 +150,11 @@ const RESTRICTED_CONTENT: ContentRule[] = [
   }
 ];
 
-const DEFAULT_MIN_BUDGET_MINOR = 100_000; // ₦1,000
+// Meta's own stated minimum is ~$5-15/day per ad set (2026 guidance); below that, delivery is
+// unreliable regardless of targeting quality. ~₦8,000 approximates the $5 floor at a ~1600 NGN/USD
+// rate (same approximation the OTP pricing already uses) -- this should track a live FX rate
+// rather than stay hardcoded once a real rate feed exists, but a rough, honest floor beats none.
+const DEFAULT_MIN_BUDGET_MINOR = 800_000; // ~₦8,000 (~$5)
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -402,13 +406,34 @@ export type CampaignDestinationKind =
 
 export type CampaignGender = "MALE" | "FEMALE" | "ALL";
 
+/**
+ * Geographic targeting hierarchy: country -> state/region/province -> city -> local government
+ * area/district/county. Named for Nigeria's administrative structure (state, LGA) since that's
+ * the primary market, but every level is free-text and works for any country's equivalent
+ * subdivision -- a state field holds "Lagos" as easily as "California" or "Ontario".
+ */
 export interface CampaignSpecTargeting {
   countries: string[];
+  states: string[];
   cities: string[];
+  localGovernmentAreas: string[];
   ageMin: number;
   ageMax: number;
   gender: CampaignGender;
+  /** Topic/interest categories (e.g. "thrift fashion", "football"). */
   interests: string[];
+  /** Consumer/purchase-behavior classifications (e.g. "engaged shoppers", "frequent travelers") --
+   *  Meta's "Behaviors" detailed-targeting category; platform-adapter maps these per network. */
+  behaviors: string[];
+  /** Search-intent keywords -- what someone actually searched for. Primarily consumed by
+   *  search-ad platforms (Google); ignored by social platforms like Meta that don't target on
+   *  search queries. Kept here so the same CampaignSpec works once a Google adapter exists. */
+  searchKeywords: string[];
+  /** When true (the default), let the target platform's own algorithm find the best audience
+   *  (e.g. Meta's Advantage+ Audience) using interests/behaviors as optional signals rather than
+   *  a hard filter -- matches "we decide how" for Studio's simple flow. Pro/Company callers can
+   *  set this false to manually restrict delivery to exactly the specified audience. */
+  optimizeAutomatically: boolean;
 }
 
 export interface CampaignSpec {
@@ -428,12 +453,19 @@ export interface CampaignSpecInput {
   currency?: string;
   country?: string;
   countries?: string[];
+  state?: string;
+  states?: string[];
   city?: string;
   cities?: string[];
+  localGovernmentArea?: string;
+  localGovernmentAreas?: string[];
   ageMin?: number;
   ageMax?: number;
   gender?: string;
   interests?: string[];
+  behaviors?: string[];
+  searchKeywords?: string[];
+  optimizeAutomatically?: boolean;
   startsAt?: string;
   endsAt?: string;
 }
@@ -587,11 +619,18 @@ export function normalizeCampaignSpec(input: CampaignSpecInput): CampaignSpec {
 
   const targeting: CampaignSpecTargeting = {
     countries: dedupeStrings(input.countries ?? (input.country ? [input.country] : ["NG"])),
+    states: dedupeStrings(input.states ?? (input.state ? [input.state] : [])),
     cities: dedupeStrings(input.cities ?? (input.city ? [input.city] : [])),
+    localGovernmentAreas: dedupeStrings(
+      input.localGovernmentAreas ?? (input.localGovernmentArea ? [input.localGovernmentArea] : [])
+    ),
     ageMin: Math.min(ageMin, ageMax),
     ageMax: Math.max(ageMin, ageMax),
     gender: normalizeGender(input.gender),
-    interests: dedupeStrings(input.interests ?? [])
+    interests: dedupeStrings(input.interests ?? []),
+    behaviors: dedupeStrings(input.behaviors ?? []),
+    searchKeywords: dedupeStrings(input.searchKeywords ?? []),
+    optimizeAutomatically: input.optimizeAutomatically ?? true
   };
 
   return {
@@ -633,11 +672,15 @@ export interface CampaignLaunchAdSet {
   optimizationGoal: string;
   targeting: {
     countries: string[];
+    states: string[];
     cities: string[];
+    localGovernmentAreas: string[];
     ageMin: number;
     ageMax: number;
     genders: string[];
     interests: string[];
+    behaviors: string[];
+    optimizeAutomatically: boolean;
   };
 }
 
@@ -704,14 +747,27 @@ export function buildMetaLaunchSpec(spec: CampaignSpec, advertiserName: string):
   const genders =
     spec.targeting.gender === "ALL" ? ["MALE", "FEMALE"] : [spec.targeting.gender];
 
+  const locationParts = [
+    ...spec.targeting.localGovernmentAreas,
+    ...spec.targeting.cities,
+    ...spec.targeting.states,
+    ...spec.targeting.countries
+  ];
   const copyInstructions = [
     `Create a new campaign in Ads Manager with objective "${objective}".`,
     `Name the campaign "${label}".`,
     `Create one ad set with a daily budget of ${(spec.budget.amountMinor / 100).toLocaleString()} ${spec.budget.currency}, optimizing for "${optimizationGoal}" (billed on ${billingEvent}).`,
-    `Set location targeting to ${[...spec.targeting.cities, ...spec.targeting.countries].join(", ") || "Nigeria"}, ages ${spec.targeting.ageMin}-${spec.targeting.ageMax}, gender: ${genders.join("/")}.`,
+    `Set location targeting to ${locationParts.join(", ") || "Nigeria"}, ages ${spec.targeting.ageMin}-${spec.targeting.ageMax}, gender: ${genders.join("/")}.`,
     spec.targeting.interests.length
       ? `Add interest targeting: ${spec.targeting.interests.join(", ")}.`
       : "No specific interest targeting requested — leave broad.",
+    spec.targeting.behaviors.length
+      ? `Add behavior targeting: ${spec.targeting.behaviors.join(", ")}.`
+      : "No specific behavior targeting requested.",
+    spec.targeting.optimizeAutomatically
+      ? "Enable Advantage+ Audience (or equivalent broad/algorithmic targeting) so Meta's delivery system finds the best-performing people beyond the specified interests/behaviors, rather than restricting strictly to them."
+      : "Restrict delivery strictly to the specified interests/behaviors — do not enable Advantage+ Audience expansion.",
+    "Use Advantage+ Placements (automatic placements across Feed, Stories, Reels, etc.) rather than manually selecting placements — Meta's 2026 data shows meaningfully better cost efficiency and fewer failed campaigns with automatic placements for conversion-focused objectives; only override manually once real performance data justifies excluding a specific placement.",
     `Create one ad pointing to ${spec.destination.url} with call-to-action "${CALL_TO_ACTION_MAP[spec.goal]}".`,
     "Submit for Meta's ad review, then mark this placement launched in FlipTrybe once approved."
   ];
@@ -727,11 +783,15 @@ export function buildMetaLaunchSpec(spec: CampaignSpec, advertiserName: string):
       optimizationGoal,
       targeting: {
         countries: spec.targeting.countries,
+        states: spec.targeting.states,
         cities: spec.targeting.cities,
+        localGovernmentAreas: spec.targeting.localGovernmentAreas,
         ageMin: spec.targeting.ageMin,
         ageMax: spec.targeting.ageMax,
         genders,
-        interests: spec.targeting.interests
+        interests: spec.targeting.interests,
+        behaviors: spec.targeting.behaviors,
+        optimizeAutomatically: spec.targeting.optimizeAutomatically
       }
     },
     ad: {
@@ -742,4 +802,257 @@ export function buildMetaLaunchSpec(spec: CampaignSpec, advertiserName: string):
     copyInstructions,
     warnings: spec.warnings
   };
+}
+
+// ---------------------------------------------------------------------------
+// Targeting Recommendations.
+//
+// Suggests SEVERAL audience/budget options (not one) based on the goal, budget, and a free-text
+// product/business description -- e.g. "I sell wigs in Lagos" -> fashion-skewed audience presets.
+//
+// HONEST SCOPE NOTE: category detection here is keyword matching against a small dictionary, not
+// language understanding -- there is no LLM wired into this codebase yet (AI_PROVIDER=mock
+// throughout). This is deliberately built as a swappable function: today it's a solid rule-based
+// baseline that works correctly for the common categories; once a real AI provider exists, this is
+// the exact seam a smarter, freeform-text-understanding version plugs into without changing any
+// caller. Budget-to-outcome estimates use published Nigerian CPC/CPM ranges (2026) and are
+// explicitly ranges, not guarantees -- actual results vary by creative, season, and competition.
+// ---------------------------------------------------------------------------
+
+export interface CampaignTargetingRecommendation {
+  label: string;
+  rationale: string;
+  targeting: {
+    ageMin: number;
+    ageMax: number;
+    gender: CampaignGender;
+    interests: string[];
+    behaviors: string[];
+    localGovernmentAreas: string[];
+  };
+  optimizeAutomatically: boolean;
+  estimatedOutcome: {
+    metric: string;
+    lowEstimate: number;
+    highEstimate: number;
+    basis: string;
+  };
+}
+
+export interface RecommendTargetingInput {
+  goal: string;
+  budgetMinor: number;
+  /** Free text describing the product/business, e.g. "I sell wigs in Lagos" -- keyword-matched
+   *  against a category dictionary, see the honest scope note above. */
+  productDescription?: string;
+  city?: string;
+  localGovernmentArea?: string;
+}
+
+interface CategoryProfile {
+  category: string;
+  keywords: string[];
+  ageMin: number;
+  ageMax: number;
+  gender: CampaignGender;
+  interests: string[];
+  behaviors: string[];
+}
+
+const CATEGORY_PROFILES: CategoryProfile[] = [
+  {
+    category: "Fashion & Beauty",
+    keywords: ["wig", "hair", "dress", "cloth", "shoe", "bag", "jewelry", "makeup", "beauty", "cosmetic", "fashion"],
+    ageMin: 18,
+    ageMax: 40,
+    gender: "FEMALE",
+    interests: ["fashion", "beauty", "online shopping"],
+    behaviors: ["engaged shoppers"]
+  },
+  {
+    category: "Food & Restaurant",
+    keywords: ["food", "restaurant", "catering", "snack", "drink", "meal", "kitchen", "chef", "bakery"],
+    ageMin: 18,
+    ageMax: 55,
+    gender: "ALL",
+    interests: ["food delivery", "restaurants"],
+    behaviors: ["frequent restaurant visitors"]
+  },
+  {
+    category: "Electronics & Gadgets",
+    keywords: ["phone", "gadget", "laptop", "electronics", "accessory", "charger", "earpiece", "tech"],
+    ageMin: 18,
+    ageMax: 45,
+    gender: "ALL",
+    interests: ["technology", "online shopping"],
+    behaviors: ["engaged shoppers", "early technology adopters"]
+  },
+  {
+    category: "Real Estate & Property",
+    keywords: ["property", "real estate", "house", "apartment", "land", "shortlet", "rent"],
+    ageMin: 25,
+    ageMax: 55,
+    gender: "ALL",
+    interests: ["real estate", "home improvement"],
+    behaviors: []
+  },
+  {
+    category: "Events & Services",
+    keywords: ["event", "wedding", "party", "photography", "makeup artist", "planner", "decor"],
+    ageMin: 20,
+    ageMax: 45,
+    gender: "ALL",
+    interests: ["event planning"],
+    behaviors: []
+  }
+];
+
+const GENERAL_PROFILE: CategoryProfile = {
+  category: "General",
+  keywords: [],
+  ageMin: 18,
+  ageMax: 65,
+  gender: "ALL",
+  interests: [],
+  behaviors: []
+};
+
+function detectCategoryProfile(productDescription?: string): CategoryProfile {
+  if (!productDescription) {
+    return GENERAL_PROFILE;
+  }
+
+  const text = productDescription.toLowerCase();
+  const match = CATEGORY_PROFILES.find((profile) =>
+    profile.keywords.some((keyword) => text.includes(keyword))
+  );
+
+  return match ?? GENERAL_PROFILE;
+}
+
+// Published 2026 Nigerian benchmark ranges (Meta/Instagram) -- wide because actual cost varies a
+// lot by audience, creative, and season. Used only to produce an illustrative range, never a
+// point estimate, and always labeled with its basis so it can't be mistaken for a guarantee.
+const NAIRA_CPC_LOW_MINOR = 5_000; // ₦50
+const NAIRA_CPC_HIGH_MINOR = 30_000; // ₦300
+const NAIRA_CPM_LOW_MINOR = 100_000; // ₦1,000 per 1,000 impressions
+const NAIRA_CPM_HIGH_MINOR = 500_000; // ₦5,000 per 1,000 impressions
+
+function estimateOutcomeForGoal(goal: CampaignGoal, budgetMinor: number): CampaignTargetingRecommendation["estimatedOutcome"] {
+  const clicksLow = Math.floor(budgetMinor / NAIRA_CPC_HIGH_MINOR);
+  const clicksHigh = Math.floor(budgetMinor / NAIRA_CPC_LOW_MINOR);
+  const basisClicks = "Nigeria 2026 Meta/Instagram CPC benchmark range ₦50-₦300; actual cost varies by audience, creative, and season.";
+
+  switch (goal) {
+    case "WHATSAPP_MESSAGES":
+    case "PHONE_CALLS":
+      // Rough click-to-contact rate for click-to-WhatsApp/call ads, illustrative only.
+      return {
+        metric: goal === "WHATSAPP_MESSAGES" ? "estimated WhatsApp messages" : "estimated phone calls",
+        lowEstimate: Math.round(clicksLow * 0.15),
+        highEstimate: Math.round(clicksHigh * 0.3),
+        basis: `${basisClicks} Assumes roughly 15-30% of clicks convert to a message/call -- a rough industry range, not measured for this specific campaign.`
+      };
+    case "WEBSITE_VISITS":
+      return {
+        metric: "estimated website clicks",
+        lowEstimate: clicksLow,
+        highEstimate: clicksHigh,
+        basis: basisClicks
+      };
+    case "SALES":
+      return {
+        metric: "estimated orders",
+        lowEstimate: Math.round(clicksLow * 0.01),
+        highEstimate: Math.round(clicksHigh * 0.03),
+        basis: `${basisClicks} Assumes a rough 1-3% click-to-purchase rate -- typical e-commerce range, highly dependent on product/offer/checkout experience.`
+      };
+    case "MORE_FOLLOWERS":
+      return {
+        metric: "estimated new followers",
+        lowEstimate: Math.round(clicksLow * 0.4),
+        highEstimate: Math.round(clicksHigh * 0.7),
+        basis: `${basisClicks} Assumes a rough 40-70% follow rate among engaged clickers.`
+      };
+    default: {
+      const impressionsLow = Math.floor((budgetMinor / NAIRA_CPM_HIGH_MINOR) * 1000);
+      const impressionsHigh = Math.floor((budgetMinor / NAIRA_CPM_LOW_MINOR) * 1000);
+
+      return {
+        metric: "estimated views/impressions",
+        lowEstimate: impressionsLow,
+        highEstimate: impressionsHigh,
+        basis: "Nigeria 2026 Meta/Instagram CPM benchmark range ₦1,000-₦5,000 per 1,000 impressions."
+      };
+    }
+  }
+}
+
+/**
+ * Returns MULTIPLE targeting recommendations (not one), from broadest (Advantage+-style, matches
+ * 2026 Meta best practice of letting the algorithm find buyers) to narrowest (hyper-local, best
+ * for delivery-constrained sellers). The customer/operator picks one, or a Pro/Company caller can
+ * present all three.
+ */
+export function recommendCampaignTargeting(
+  input: RecommendTargetingInput
+): CampaignTargetingRecommendation[] {
+  const goal = normalizeGoalSafe(input.goal);
+  const profile = detectCategoryProfile(input.productDescription);
+  const estimatedOutcome = estimateOutcomeForGoal(goal, input.budgetMinor);
+  const localGovernmentAreas = input.localGovernmentArea ? [input.localGovernmentArea] : [];
+
+  const recommendations: CampaignTargetingRecommendation[] = [
+    {
+      label: "Broad reach (recommended)",
+      rationale:
+        "Meta's own 2026 guidance: broad targeting with Advantage+ Audience typically outperforms manual narrowing, because the delivery algorithm finds buyers you wouldn't have manually targeted. Best default for most first campaigns.",
+      targeting: { ageMin: 18, ageMax: 65, gender: "ALL", interests: [], behaviors: [], localGovernmentAreas: [] },
+      optimizeAutomatically: true,
+      estimatedOutcome
+    },
+    {
+      label: profile === GENERAL_PROFILE ? "Focused audience" : `Focused on ${profile.category.toLowerCase()} buyers`,
+      rationale:
+        profile === GENERAL_PROFILE
+          ? "A moderately narrowed starting audience, still algorithm-expanded -- a middle ground between broad and hyper-local."
+          : `Detected "${profile.category}" from your description. Starts the algorithm with relevant interests/behaviors as hints -- Meta still expands beyond these when it finds better-performing people.`,
+      targeting: {
+        ageMin: profile.ageMin,
+        ageMax: profile.ageMax,
+        gender: profile.gender,
+        interests: profile.interests,
+        behaviors: profile.behaviors,
+        localGovernmentAreas: []
+      },
+      optimizeAutomatically: true,
+      estimatedOutcome
+    },
+    {
+      label: "Hyper-local",
+      rationale: input.city
+        ? `Narrows delivery to ${input.city}${input.localGovernmentArea ? `, ${input.localGovernmentArea}` : ""} specifically -- best if you only deliver/serve locally. Smaller audience than the other two options, so double-check it isn't too narrow to deliver reliably (Meta recommends 1,000+ people in the targeted audience).`
+        : "Narrows to your specified location -- best if you only deliver/serve locally. Add a city for this option to actually narrow anything.",
+      targeting: {
+        ageMin: profile.ageMin,
+        ageMax: profile.ageMax,
+        gender: profile.gender,
+        interests: profile.interests,
+        behaviors: profile.behaviors,
+        localGovernmentAreas
+      },
+      optimizeAutomatically: true,
+      estimatedOutcome
+    }
+  ];
+
+  return recommendations;
+}
+
+function normalizeGoalSafe(raw: string): CampaignGoal {
+  try {
+    return normalizeGoal(raw);
+  } catch {
+    return "WEBSITE_VISITS";
+  }
 }

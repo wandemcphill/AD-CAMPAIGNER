@@ -454,6 +454,7 @@ model Campaign {
   objective         CampaignObjective
   status            CampaignStatus          @default(DRAFT)
   budgetMinor       Int
+  dailySpendCapMinor Int?
   currency          String                  @default("NGN")
   provider          String                  @default("MOCK")
   providerReference String?

@@ -237,6 +237,12 @@ export class CampaignsController {
     return this.managedAds.createCampaignFromWizard(workspaceContextFromRequest(request), body);
   }
 
+  @Post("recommendations")
+  @RequirePermissions("campaign:create")
+  recommendations(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaignRecommendations(workspaceContextFromRequest(request), body);
+  }
+
   @Patch(":id")
   @RequirePermissions("campaign:manage")
   update(
@@ -339,6 +345,16 @@ export class CampaignsController {
     @Req() request: WorkspaceContextRequest
   ) {
     return this.managedAds.decreaseCampaignBudget(workspaceContextFromRequest(request), id, body);
+  }
+
+  @Post(":id/actions/transfer-budget")
+  @RequirePermissions("payment:manage")
+  transferBudget(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.transferCampaignBudget(workspaceContextFromRequest(request), id, body);
   }
 
   @Post(":id/actions/stop")
