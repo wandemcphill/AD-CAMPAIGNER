@@ -22,9 +22,7 @@ services:
       - key: API_URL
         value: https://ft-campaigner-api-fra-g25g.onrender.com
       - key: DATABASE_URL
-        fromDatabase:
-          name: fliptrybe-ads-campaigner-postgres
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -237,9 +235,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: fliptrybe-ads-campaigner-postgres
-          property: connectionString
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue
@@ -362,11 +358,3 @@ services:
     plan: starter
     maxmemoryPolicy: noeviction
     ipAllowList: []
-
-databases:
-  - name: fliptrybe-ads-campaigner-postgres
-    region: frankfurt
-    plan: basic-256mb
-    databaseName: fliptrybe_ads
-    user: fliptrybe
-    postgresMajorVersion: "18"
