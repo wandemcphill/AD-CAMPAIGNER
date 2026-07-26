@@ -296,6 +296,39 @@ export function createCampaign(input: CreateCampaignInput) {
   });
 }
 
+export type StudioGoal =
+  | "WHATSAPP_MESSAGES"
+  | "WEBSITE_VISITS"
+  | "VIDEO_VIEWS"
+  | "PHONE_CALLS"
+  | "MORE_FOLLOWERS"
+  | "SALES";
+
+export type CreateCampaignFromWizardInput = {
+  goal: StudioGoal;
+  link: string;
+  budgetMinor: number;
+  city?: string;
+};
+
+export type CreateCampaignFromWizardResult = {
+  campaign: Campaign;
+  warnings: string[];
+};
+
+/**
+ * The Studio one-screen flow: "what do you want more of -> paste link -> where -> budget".
+ * Hits the wizard-specific endpoint, which normalizes this into a full campaign and transparently
+ * resolves (or provisions) the workspace's shared ad account -- the customer never sees or
+ * manages one.
+ */
+export function createCampaignFromWizard(input: CreateCampaignFromWizardInput) {
+  return apiRequest<CreateCampaignFromWizardResult>("/campaigns/wizard", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
 export function startCampaign(campaignId: string) {
   return apiRequest<Campaign>(`/campaigns/${encodeURIComponent(campaignId)}/start`, {
     method: "POST"
