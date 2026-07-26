@@ -266,6 +266,12 @@ function createService(
     Promise.resolve({ ...activeHold, ...input.data })
   );
   const auditLogCreate = vi.fn((input: AuditLogCreateInput) => Promise.resolve({ id: "audit_123", ...input.data }));
+  const campaignOutcomeUpsert = vi.fn((input: Record<string, any>) =>
+    Promise.resolve({ id: "outcome_123", campaignId: "campaign_123", ...input.create, ...input.update })
+  );
+  const campaignOutcomeFindUnique = vi.fn(
+    (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
+  );
   const campaignLedgerEntryUpsert = vi.fn((input: CampaignLedgerEntryUpsertInput) =>
     Promise.resolve({ id: "campaign_ledger_123", ...input.create })
   );
@@ -429,6 +435,7 @@ function createService(
         update: campaignInvoiceUpdate
       },
       campaignLedgerEntry: { upsert: campaignLedgerEntryUpsert },
+      campaignOutcome: { upsert: campaignOutcomeUpsert, findUnique: campaignOutcomeFindUnique },
       campaignSpendEntry: { create: campaignSpendEntryCreate },
       campaignStatusHistory: { create: vi.fn() },
       eventOutbox: {
@@ -478,6 +485,10 @@ function createService(
       },
       campaignLedgerEntry: {
         upsert: campaignLedgerEntryUpsert
+      },
+      campaignOutcome: {
+        upsert: campaignOutcomeUpsert,
+        findUnique: campaignOutcomeFindUnique
       },
       campaignSpendEntry: {
         create: campaignSpendEntryCreate
@@ -535,6 +546,8 @@ function createService(
     campaignInvoiceUpdate,
     campaignUpdate,
     campaignLedgerEntryUpsert,
+    campaignOutcomeUpsert,
+    campaignOutcomeFindUnique,
     campaignSpendEntryCreate,
     eventOutboxFindUnique,
     eventOutboxUpsert,
@@ -1342,6 +1355,93 @@ describe("ManagedAdsService authorization gates", () => {
       "Workspace membership could not be verified."
     );
     expect(teamMemberFindFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("ManagedAdsService campaign outcome (Layer 3)", () => {
+  it("records a one-tap outcome with just wouldRunAgain", async () => {
+    const { campaignOutcomeUpsert, service } = createService();
+
+    const outcome = await service.recordCampaignOutcome(workspace, "campaign_123", {
+      wouldRunAgain: true
+    });
+
+    expect(campaignOutcomeUpsert).toHaveBeenCalledTimes(1);
+    const [call] = campaignOutcomeUpsert.mock.calls[0] as [Record<string, any>];
+    expect(call.create.wouldRunAgain).toBe(true);
+    expect(call.create.source).toBe("CUSTOMER_PROMPT");
+    expect(call.create.capturedByUserId).toBe(workspace.userId);
+    expect(outcome.campaignId).toBe("campaign_123");
+  });
+
+  it("records full outcome detail from ops with an OPERATOR source", async () => {
+    const { campaignOutcomeUpsert, service } = createService();
+
+    await service.recordCampaignOutcome(workspace, "campaign_123", {
+      messagesCount: 42,
+      ordersCount: 5,
+      estRevenueMinor: 15_000_00,
+      rating: 5,
+      wouldRunAgain: true,
+      source: "operator",
+      notes: "Great response over the weekend."
+    });
+
+    const [call] = campaignOutcomeUpsert.mock.calls[0] as [Record<string, any>];
+    expect(call.create).toEqual(
+      expect.objectContaining({
+        messagesCount: 42,
+        ordersCount: 5,
+        estRevenueMinor: 1_500_000,
+        rating: 5,
+        source: "OPERATOR"
+      })
+    );
+  });
+
+  it("rejects a request with no outcome signal at all", async () => {
+    const { campaignOutcomeUpsert, service } = createService();
+
+    await expect(service.recordCampaignOutcome(workspace, "campaign_123", {})).rejects.toThrow(
+      /at least one outcome signal/i
+    );
+    expect(campaignOutcomeUpsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a rating outside 1-5", async () => {
+    const { service } = createService();
+
+    await expect(
+      service.recordCampaignOutcome(workspace, "campaign_123", { rating: 9 })
+    ).rejects.toThrow(/between 1 and 5/i);
+  });
+
+  it("rejects recording an outcome before the campaign has launched", async () => {
+    const { campaignFindFirst, campaignOutcomeUpsert, service } = createService();
+    campaignFindFirst.mockResolvedValueOnce({
+      id: "campaign_draft",
+      workspaceId: workspace.workspaceId,
+      status: "DRAFT",
+      manualPlacements: []
+    });
+
+    await expect(
+      service.recordCampaignOutcome(workspace, "campaign_draft", { wouldRunAgain: true })
+    ).rejects.toThrow(/before campaign launch/i);
+    expect(campaignOutcomeUpsert).not.toHaveBeenCalled();
+  });
+
+  it("reads back a recorded outcome", async () => {
+    const { campaignOutcomeFindUnique, service } = createService();
+    campaignOutcomeFindUnique.mockResolvedValueOnce({
+      campaignId: "campaign_123",
+      wouldRunAgain: true,
+      messagesCount: 10
+    });
+
+    const outcome = await service.getCampaignOutcome(workspace, "campaign_123");
+
+    expect(outcome).toEqual({ campaignId: "campaign_123", wouldRunAgain: true, messagesCount: 10 });
   });
 });
 

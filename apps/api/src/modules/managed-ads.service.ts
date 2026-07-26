@@ -347,6 +347,24 @@ function goalFromObjective(objective: string, destinationKind?: string): Campaig
   }
 }
 
+const campaignOutcomeSources = new Set(["CUSTOMER_PROMPT", "PLATFORM_DERIVED", "OPERATOR"]);
+
+function normalizeCampaignOutcomeSource(value: unknown) {
+  const normalized = String(value ?? "CUSTOMER_PROMPT").toUpperCase();
+
+  return campaignOutcomeSources.has(normalized) ? normalized : "CUSTOMER_PROMPT";
+}
+
+function parseNonNegativeInt(value: unknown, field: string) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 0) {
+    throw new BadRequestException(`${field} must be a non-negative integer.`);
+  }
+
+  return parsed;
+}
+
 function arrayOrSingle(list: unknown, single: unknown): string[] | undefined {
   if (Array.isArray(list) && list.length > 0) {
     return list.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
@@ -1091,6 +1109,90 @@ export class ManagedAdsService {
       notificationTitle: "Campaign resumed by client",
       reason: String(input.reason ?? input.note ?? "Client resumed campaign.")
     });
+  }
+
+  /**
+   * Layer-3 business-outcome capture (the "data exhaust" the optimization engine will eventually
+   * be built from): did the campaign actually help the business, not just what the platform
+   * reported. Deliberately a one-tap surface, not a form -- every field is optional except that
+   * at least one signal must be present, so a customer can respond to "How'd it go? Run it
+   * again?" with a single boolean and nothing else.
+   */
+  async recordCampaignOutcome(
+    context: AuthenticatedRequestContext | undefined,
+    campaignId: string,
+    input: Record<string, any> = {}
+  ) {
+    const scope = requireScope(context);
+    const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+    await this.assertCampaignPermission(this.db, scope, "campaign:manage");
+    this.assertCampaignLaunchedForReporting(campaign);
+
+    const hasSignal = [
+      input.wouldRunAgain,
+      input.rating,
+      input.messagesCount,
+      input.ordersCount,
+      input.estRevenueMinor
+    ].some((value) => value !== undefined && value !== null);
+
+    if (!hasSignal) {
+      throw new BadRequestException(
+        "At least one outcome signal (wouldRunAgain, rating, messagesCount, ordersCount, or estRevenueMinor) is required."
+      );
+    }
+
+    const rating = input.rating === undefined ? undefined : parseNonNegativeInt(input.rating, "rating");
+    if (rating !== undefined && (rating < 1 || rating > 5)) {
+      throw new BadRequestException("rating must be between 1 and 5.");
+    }
+
+    const source = normalizeCampaignOutcomeSource(input.source);
+    const data = {
+      messagesCount:
+        input.messagesCount === undefined ? undefined : parseNonNegativeInt(input.messagesCount, "messagesCount"),
+      ordersCount:
+        input.ordersCount === undefined ? undefined : parseNonNegativeInt(input.ordersCount, "ordersCount"),
+      estRevenueMinor:
+        input.estRevenueMinor === undefined
+          ? undefined
+          : parseNonNegativeInt(input.estRevenueMinor, "estRevenueMinor"),
+      currency: getCurrency(input.currency, getCurrency(campaign.currency, "NGN")),
+      rating,
+      wouldRunAgain: input.wouldRunAgain === undefined ? undefined : Boolean(input.wouldRunAgain),
+      source,
+      capturedByUserId: scope.userId,
+      capturedAt: now(),
+      notes: input.notes === undefined ? undefined : String(input.notes)
+    };
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      const outcome = await tx.campaignOutcome.upsert({
+        where: { campaignId },
+        create: { campaignId, ...data },
+        update: data
+      });
+
+      await this.audit(tx, scope, "campaign.outcome.recorded", "CampaignOutcome", outcome.id, {
+        campaignId,
+        source,
+        wouldRunAgain: data.wouldRunAgain ?? null
+      });
+      await this.event(tx, scope.workspaceId, "CampaignOutcomeRecorded", "Campaign", campaignId, {
+        campaignId,
+        outcomeId: outcome.id,
+        source
+      });
+
+      return outcome;
+    });
+  }
+
+  async getCampaignOutcome(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    const scope = requireScope(context);
+    await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
+
+    return this.db.campaignOutcome.findUnique({ where: { campaignId } });
   }
 
   async requestCampaignChanges(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any> = {}) {

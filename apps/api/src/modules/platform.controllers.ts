@@ -205,6 +205,21 @@ export class CampaignsController {
     return this.managedAds.updateCampaign(workspaceContextFromRequest(request), id, body);
   }
 
+  @Get(":id/outcome")
+  getOutcome(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getCampaignOutcome(workspaceContextFromRequest(request), id);
+  }
+
+  @Post(":id/outcome")
+  @RequirePermissions("campaign:manage")
+  recordOutcome(
+    @Param("id") id: string,
+    @Body() body: Record<string, unknown>,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.recordCampaignOutcome(workspaceContextFromRequest(request), id, body);
+  }
+
   @Post("quote")
   @RequirePermissions("campaign:create")
   quote(@Body() body: QuoteCampaignDto, @Req() request: WorkspaceContextRequest) {
