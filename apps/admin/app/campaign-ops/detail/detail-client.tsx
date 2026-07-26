@@ -34,6 +34,7 @@ import {
   addAdminCampaignPlacement,
   addAdminCampaignMetrics,
   addAdminCampaignNote,
+  createAdminCampaignReport,
   updateAdminCampaignStatus
 } from "../api";
 import {
@@ -49,7 +50,7 @@ import {
   PlatformChip,
   StatusBadge
 } from "../components";
-import { type CampaignOpsStatus } from "../data";
+import { type CampaignOpsReportType, type CampaignOpsStatus } from "../data";
 import { useAdminCampaignOpsCampaign } from "../use-admin-campaign-ops-data";
 
 type WorkspaceTab = "brief" | "assets" | "metrics" | "proof" | "activity";
@@ -67,6 +68,15 @@ type PlacementDraft = {
   adUrl: string;
   campaignExternalId: string;
   clientVisible: boolean;
+  launchDate: string;
+  notes: string;
+  spend: string;
+};
+type ReportDraft = {
+  periodEnd: string;
+  periodStart: string;
+  reportType: CampaignOpsReportType;
+  summary: string;
 };
 
 const workspaceTabs: Array<{ id: WorkspaceTab; label: string; icon: typeof FileText }> = [
@@ -78,13 +88,18 @@ const workspaceTabs: Array<{ id: WorkspaceTab; label: string; icon: typeof FileT
 ];
 
 const transitionOptions: Partial<Record<CampaignOpsStatus, CampaignOpsStatus[]>> = {
-  blocked: ["reviewing", "failed"],
+  approved: ["creative_review", "blocked", "failed"],
+  assigned: ["creative_review", "blocked", "failed"],
+  blocked: ["review", "failed"],
   completed: [],
+  creative_review: ["platform_launch", "blocked", "failed"],
   failed: [],
-  queued: ["reviewing", "blocked"],
-  reviewing: ["scheduled", "blocked", "failed"],
-  running: ["completed", "blocked", "failed"],
-  scheduled: ["running", "blocked"]
+  optimization: ["reporting", "blocked", "failed"],
+  paused: ["optimization", "reporting", "blocked", "failed"],
+  platform_launch: ["optimization", "blocked", "failed"],
+  reporting: ["completed", "blocked", "failed"],
+  review: ["approved", "blocked", "failed"],
+  submitted: ["review", "blocked"]
 };
 
 const metricFields: Array<{
@@ -100,13 +115,18 @@ const metricFields: Array<{
 ];
 const placementFields: Array<{
   key: keyof Omit<PlacementDraft, "clientVisible">;
+  inputMode?: "decimal" | "numeric" | "text";
   label: string;
   placeholder: string;
+  type?: string;
 }> = [
-  { key: "adAccountId", label: "Ad account ID", placeholder: "act_..." },
+  { key: "adAccountId", label: "Ad account", placeholder: "act_..." },
   { key: "campaignExternalId", label: "Campaign ID", placeholder: "External campaign ID" },
   { key: "adSetId", label: "Ad set ID", placeholder: "Ad set / ad group ID" },
-  { key: "adUrl", label: "Ad URL", placeholder: "https://..." }
+  { key: "adUrl", label: "Placement URL", placeholder: "https://..." },
+  { key: "launchDate", label: "Launch date", placeholder: "YYYY-MM-DD", type: "date" },
+  { inputMode: "decimal", key: "spend", label: "Spend (NGN)", placeholder: "0" },
+  { key: "notes", label: "Notes", placeholder: "Launch notes" }
 ];
 
 function emptyMetricsDraft(): MetricsDraft {
@@ -126,7 +146,19 @@ function emptyPlacementDraft(destinationUrl = ""): PlacementDraft {
     adSetId: "",
     adUrl: destinationUrl,
     campaignExternalId: "",
-    clientVisible: false
+    clientVisible: false,
+    launchDate: new Date().toISOString().slice(0, 10),
+    notes: "",
+    spend: "0"
+  };
+}
+
+function emptyReportDraft(): ReportDraft {
+  return {
+    periodEnd: "",
+    periodStart: "",
+    reportType: "weekly_report",
+    summary: ""
   };
 }
 
@@ -139,16 +171,31 @@ function numericDraftValue(value: string) {
 
 function labelStatus(status: CampaignOpsStatus) {
   const labels: Record<CampaignOpsStatus, string> = {
+    approved: "Approved",
+    assigned: "Assigned",
     blocked: "Blocked",
     completed: "Completed",
+    creative_review: "Creative Review",
     failed: "Failed",
-    queued: "Needs Action",
-    reviewing: "Ops Review",
-    running: "Live",
-    scheduled: "Launch Ready"
+    optimization: "Optimization",
+    paused: "Paused",
+    platform_launch: "Platform Launch",
+    reporting: "Reporting",
+    review: "Review",
+    submitted: "Submitted"
   };
 
   return labels[status];
+}
+
+function labelReportType(type: CampaignOpsReportType) {
+  const labels: Record<CampaignOpsReportType, string> = {
+    daily_update: "Daily Update",
+    final_report: "Final Report",
+    weekly_report: "Weekly Report"
+  };
+
+  return labels[type];
 }
 
 function hasReadyValue(value: string) {
@@ -258,6 +305,8 @@ export function AdminCampaignOpsDetailClient() {
   const [metricsSaving, setMetricsSaving] = useState(false);
   const [placementDrafts, setPlacementDrafts] = useState<Record<string, PlacementDraft>>({});
   const [placementSaving, setPlacementSaving] = useState(false);
+  const [reportDraft, setReportDraft] = useState<ReportDraft>(() => emptyReportDraft());
+  const [reportSaving, setReportSaving] = useState(false);
 
   useEffect(() => {
     if (!campaign) {
@@ -286,16 +335,35 @@ export function AdminCampaignOpsDetailClient() {
 
   const destinationHref =
     campaign?.destinationUrl.startsWith("http") === true ? campaign.destinationUrl : undefined;
-  const currentStatusIndex =
-    campaign?.status === "completed"
-      ? 4
-      : campaign?.status === "running"
-        ? 3
-        : campaign?.status === "scheduled"
-          ? 2
-          : campaign?.status === "reviewing"
-            ? 1
-            : 0;
+  const workflowOrder: CampaignOpsStatus[] = [
+    "submitted",
+    "review",
+    "approved",
+    "assigned",
+    "creative_review",
+    "platform_launch",
+    "optimization",
+    "paused",
+    "reporting",
+    "completed"
+  ];
+  const currentStatusIndex = campaign
+    ? campaign.status === "paused"
+      ? workflowOrder.indexOf("optimization")
+      : Math.min(8, Math.max(0, workflowOrder.indexOf(campaign.status)))
+    : 0;
+  const canCreateReport =
+    campaign !== null &&
+    (campaign.launchedPlacementCount > 0 ||
+      campaign.status === "optimization" ||
+      campaign.status === "reporting" ||
+      campaign.status === "completed");
+  const transitionGuardMessage =
+    campaign && selectedTransition === "optimization" && campaign.launchedPlacementCount === 0
+      ? "Record a launched placement before optimization."
+      : campaign && selectedTransition === "completed" && campaign.publishedReportCount === 0
+        ? "Publish a client report before completion."
+        : undefined;
   const opsChecklistItems = campaign
     ? [
         {
@@ -315,8 +383,20 @@ export function AdminCampaignOpsDetailClient() {
           label: "Campaign has a named ops owner"
         },
         {
+          done: campaign.launchedPlacementCount > 0,
+          label: "Platform launch placement recorded"
+        },
+        {
+          done: campaign.publishedReportCount > 0 || campaign.status !== "completed",
+          label: "Client report published before completion"
+        },
+        {
+          done: campaign.budgetUtilization <= 100,
+          label: "Spend stays within campaign allocation"
+        },
+        {
           done: campaign.progress >= 50,
-          label: "Launch proof and client-visible report path prepared"
+          label: "Launch proof and reporting path prepared"
         }
       ]
     : [];
@@ -456,6 +536,50 @@ export function AdminCampaignOpsDetailClient() {
     }
   }
 
+  async function createReportDraft() {
+    if (!campaign) {
+      return;
+    }
+    if (!canCreateReport) {
+      setActionError("Reports cannot be created before launch.");
+      return;
+    }
+
+    const summary = reportDraft.summary.trim();
+    if (!summary) {
+      setActionError("Add a report summary before creating a report draft.");
+      return;
+    }
+
+    setActionError(undefined);
+    setActionMessage(undefined);
+    setReportSaving(true);
+    try {
+      const spendMinor = Math.round(numericDraftValue(metricsDraft.spend) * 100);
+      await createAdminCampaignReport(campaign.id, {
+        clicks: numericDraftValue(metricsDraft.clicks),
+        conversions: numericDraftValue(metricsDraft.conversions),
+        impressions: numericDraftValue(metricsDraft.impressions),
+        metrics: {
+          notes: metricsDraft.notes.trim() || undefined,
+          reportType: reportDraft.reportType
+        },
+        periodEnd: reportDraft.periodEnd || undefined,
+        periodStart: reportDraft.periodStart || undefined,
+        reportType: reportDraft.reportType,
+        spendMinor,
+        summary
+      });
+      setReportDraft(emptyReportDraft());
+      setActionMessage(`${labelReportType(reportDraft.reportType)} draft created for reporting queue.`);
+      await refresh();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Could not create report draft.");
+    } finally {
+      setReportSaving(false);
+    }
+  }
+
   function updatePlacementDraft<K extends keyof PlacementDraft>(
     platform: string,
     key: K,
@@ -481,7 +605,15 @@ export function AdminCampaignOpsDetailClient() {
         draft: placementDrafts[platform] ?? emptyPlacementDraft(campaign.destinationUrl)
       }))
       .filter(({ draft }) =>
-        [draft.adAccountId, draft.adSetId, draft.adUrl, draft.campaignExternalId].some(
+        [
+          draft.adAccountId,
+          draft.adSetId,
+          draft.adUrl,
+          draft.campaignExternalId,
+          draft.launchDate,
+          draft.notes,
+          draft.spend
+        ].some(
           (value) => value.trim().length > 0
         )
       );
@@ -498,16 +630,24 @@ export function AdminCampaignOpsDetailClient() {
       await Promise.all(
         drafts.map(({ draft, platform }) =>
           addAdminCampaignPlacement(campaign.id, {
+            adAccountId: draft.adAccountId.trim(),
+            adSetId: draft.adSetId.trim() || undefined,
             channel: platform,
             destinationUrl: draft.adUrl.trim() || campaign.destinationUrl,
             externalPlacementId: draft.campaignExternalId.trim() || undefined,
+            launchDate: draft.launchDate,
             metadata: {
               adAccountId: draft.adAccountId.trim() || undefined,
               adSetId: draft.adSetId.trim() || undefined,
               clientVisible: draft.clientVisible,
-              platform
+              notes: draft.notes.trim(),
+              platform,
+              spend: draft.spend.trim()
             },
-            provider: platform.toUpperCase()
+            notes: draft.notes.trim(),
+            placementUrl: draft.adUrl.trim() || campaign.destinationUrl,
+            provider: platform.toUpperCase(),
+            spendMinor: Math.round(numericDraftValue(draft.spend) * 100)
           })
         )
       );
@@ -608,18 +748,25 @@ export function AdminCampaignOpsDetailClient() {
                 <PlatformChip platform={campaign.channel} />
               )}
             </div>
-            <div className="mt-5 grid gap-4 md:grid-cols-5">
+            <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-9">
               {[
-                { detail: campaign.submittedAt, label: "Brief QA" },
-                { detail: campaign.updatedAt, label: "Setup Review" },
-                { detail: campaign.runWindow, label: "Launch Window" },
+                { detail: campaign.submittedAt, label: "Submitted" },
+                { detail: campaign.updatedAt, label: "Review" },
+                { detail: campaign.updatedAt, label: "Approved" },
+                { detail: campaign.assignee, label: "Assigned" },
+                { detail: campaign.workflowStage, label: "Creative" },
+                { detail: `${campaign.launchedPlacementCount} launched`, label: "Launch" },
                 {
-                  detail: campaign.progress >= 50 ? "Live monitoring" : "Needs launch",
-                  label: "Live Watch"
+                  detail: `${campaign.budgetUtilization}% allocation`,
+                  label: "Optimize"
                 },
                 {
-                  detail: campaign.progress === 100 ? "Closed" : "Needs report",
-                  label: "Client Report"
+                  detail: `${campaign.reportCount} report${campaign.reportCount === 1 ? "" : "s"}`,
+                  label: "Reporting"
+                },
+                {
+                  detail: campaign.progress === 100 ? "Closed" : "Open",
+                  label: "Complete"
                 }
               ].map((step, index) => {
                 const active = index === currentStatusIndex;
@@ -638,7 +785,7 @@ export function AdminCampaignOpsDetailClient() {
                               : "border-[var(--ft-border-strong)] bg-transparent"
                         )}
                       />
-                      {index < 4 ? (
+                      {index < 8 ? (
                         <span className="hidden h-px flex-1 bg-[var(--ft-border)] md:block" />
                       ) : null}
                     </div>
@@ -841,6 +988,106 @@ export function AdminCampaignOpsDetailClient() {
                         {metricsSaving ? "Saving metrics" : "Save performance metrics"}
                       </Button>
                     </div>
+                    <div className="grid gap-3 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-base font-medium text-[var(--ft-text-primary)]">
+                            Reporting
+                          </h3>
+                          <div className="mt-1 font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                            Daily / weekly / final
+                          </div>
+                        </div>
+                        <Badge tone={canCreateReport ? "success" : "warning"}>
+                          {canCreateReport ? "Launch verified" : "Launch required"}
+                        </Badge>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <label className="grid gap-1">
+                          <span className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                            Report type
+                          </span>
+                          <select
+                            className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-3 text-sm text-[var(--ft-text-primary)] outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
+                            onChange={(event) =>
+                              setReportDraft((current) => ({
+                                ...current,
+                                reportType: event.target.value as CampaignOpsReportType
+                              }))
+                            }
+                            value={reportDraft.reportType}
+                          >
+                            {(["daily_update", "weekly_report", "final_report"] as const).map(
+                              (type) => (
+                                <option key={type} value={type}>
+                                  {labelReportType(type)}
+                                </option>
+                              )
+                            )}
+                          </select>
+                        </label>
+                        <label className="grid gap-1">
+                          <span className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                            Period start
+                          </span>
+                          <input
+                            className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
+                            onChange={(event) =>
+                              setReportDraft((current) => ({
+                                ...current,
+                                periodStart: event.target.value
+                              }))
+                            }
+                            type="date"
+                            value={reportDraft.periodStart}
+                          />
+                        </label>
+                        <label className="grid gap-1">
+                          <span className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                            Period end
+                          </span>
+                          <input
+                            className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
+                            onChange={(event) =>
+                              setReportDraft((current) => ({
+                                ...current,
+                                periodEnd: event.target.value
+                              }))
+                            }
+                            type="date"
+                            value={reportDraft.periodEnd}
+                          />
+                        </label>
+                      </div>
+                      <label className="grid gap-1">
+                        <span className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                          Report summary
+                        </span>
+                        <textarea
+                          className="min-h-24 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-base)] p-3 text-sm text-[var(--ft-text-primary)] outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
+                          onChange={(event) =>
+                            setReportDraft((current) => ({
+                              ...current,
+                              summary: event.target.value
+                            }))
+                          }
+                          value={reportDraft.summary}
+                        />
+                      </label>
+                      <div>
+                        <Button
+                          disabled={
+                            reportSaving || !canCreateReport || reportDraft.summary.trim().length === 0
+                          }
+                          onClick={() => void createReportDraft()}
+                          type="button"
+                          variant="secondary"
+                        >
+                          <FileText className="size-4 stroke-[1.5]" />
+                          {reportSaving ? "Creating report" : "Create report draft"}
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 ) : null}
 
@@ -986,9 +1233,14 @@ export function AdminCampaignOpsDetailClient() {
                     </div>
                   </div>
                 </div>
+                {transitionGuardMessage ? (
+                  <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--ft-red)]/35 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
+                    {transitionGuardMessage}
+                  </div>
+                ) : null}
                 <Button
                   className="mt-4 w-full"
-                  disabled={!selectedTransition}
+                  disabled={!selectedTransition || Boolean(transitionGuardMessage)}
                   onClick={() => setTransitionConfirmOpen(true)}
                   type="button"
                 >
@@ -1055,10 +1307,12 @@ export function AdminCampaignOpsDetailClient() {
                           </span>
                           <input
                             className="h-9 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 font-mono text-[12px] text-[var(--ft-text-primary)] outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
+                            inputMode={field.inputMode}
                             onChange={(event) =>
                               updatePlacementDraft(platform, field.key, event.target.value)
                             }
                             placeholder={field.placeholder}
+                            type={field.type ?? "text"}
                             value={
                               placementDrafts[platform]?.[field.key] ??
                               emptyPlacementDraft(campaign.destinationUrl)[field.key]

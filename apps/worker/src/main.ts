@@ -44,4 +44,8 @@ process.on("SIGINT", () => {
   void shutdown();
 });
 
+process.on("SIGTERM", () => {
+  void shutdown();
+});
+
 console.log("FlipTrybe worker listening", { queues: enabledQueues, disabledQueues });

@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PrismaService } from "../prisma.service";
 import { DigitalAccessHubService } from "./digital-access.service";
@@ -49,5 +49,44 @@ describe("DigitalAccessHubService", () => {
         idempotencyKey: "da-idem-1"
       })
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("rejects negative admin plan prices before creating catalog rows", async () => {
+    const digitalAccessPlanCreate = vi.fn();
+    const service = new DigitalAccessHubService({
+      client: {
+        workspace: {
+          findFirst: vi.fn(() =>
+            Promise.resolve({
+              id: "workspace_test",
+              defaultCurrency: "NGN",
+              organization: {
+                id: "organization_test",
+                members: [{ role: "OWNER", permissions: ["digital_access:manage"] }]
+              }
+            })
+          )
+        },
+        digitalAccessService: {
+          findFirst: vi.fn(() => Promise.resolve({ id: "service_test", deletedAt: null }))
+        },
+        digitalAccessPlan: {
+          create: digitalAccessPlanCreate
+        }
+      }
+    } as unknown as PrismaService);
+
+    await expect(
+      service.createPlan(
+        {
+          serviceId: "service_test",
+          planName: "Starter",
+          duration: "7 days",
+          priceMinor: -100
+        },
+        { userId: "user_test", workspaceId: "workspace_test" }
+      )
+    ).rejects.toThrow("Digital Access plan price must be a non-negative minor-unit amount.");
+    expect(digitalAccessPlanCreate).not.toHaveBeenCalled();
   });
 });

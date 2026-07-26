@@ -76,13 +76,18 @@ const pillToneClasses: Record<PillTone, { bg: string; dot: string; text: string;
   };
 
 const campaignStatusMeta: Record<CampaignOpsStatus, { label: string; tone: PillTone }> = {
+  approved: { label: "Approved", tone: "info" },
+  assigned: { label: "Assigned", tone: "info" },
   blocked: { label: "Blocked", tone: "danger" },
   completed: { label: "Completed", tone: "success" },
+  creative_review: { label: "Creative Review", tone: "warning" },
   failed: { label: "Failed", tone: "danger" },
-  queued: { label: "Needs Action", tone: "warning" },
-  reviewing: { label: "Ops Review", tone: "warning" },
-  running: { label: "Live", tone: "success" },
-  scheduled: { label: "Launch Ready", tone: "info" }
+  optimization: { label: "Optimization", tone: "success" },
+  paused: { label: "Paused", tone: "warning" },
+  platform_launch: { label: "Platform Launch", tone: "info" },
+  reporting: { label: "Reporting", tone: "warning" },
+  review: { label: "Review", tone: "warning" },
+  submitted: { label: "Submitted", tone: "info" }
 };
 
 const priorityMeta: Record<CampaignOpsPriority, { label: string; tone: PillTone }> = {
@@ -95,7 +100,8 @@ const priorityMeta: Record<CampaignOpsPriority, { label: string; tone: PillTone 
 const reportStatusMeta: Record<CampaignOpsReportStatus, { label: string; tone: PillTone }> = {
   failed: { label: "Failed", tone: "danger" },
   generating: { label: "Building", tone: "info" },
-  ready: { label: "Needs Publish", tone: "success" }
+  published: { label: "Published", tone: "success" },
+  ready: { label: "Needs Publish", tone: "warning" }
 };
 
 const activitySeverityMeta: Record<CampaignOpsActivitySeverity, { label: string; tone: PillTone }> =
@@ -349,7 +355,7 @@ export function ActionLink({
 export function StatusBadge({ status }: { status: CampaignOpsStatus }) {
   const meta = campaignStatusMeta[status];
 
-  return <StatusPill glow={status === "running"} label={meta.label} tone={meta.tone} />;
+  return <StatusPill glow={status === "optimization"} label={meta.label} tone={meta.tone} />;
 }
 
 export function PriorityBadge({ priority }: { priority: CampaignOpsPriority }) {

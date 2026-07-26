@@ -12,16 +12,22 @@ import {
 import type { Route } from "next";
 
 export type CampaignOpsStatus =
-  | "queued"
-  | "reviewing"
-  | "scheduled"
-  | "running"
+  | "submitted"
+  | "review"
+  | "approved"
+  | "assigned"
+  | "creative_review"
+  | "platform_launch"
+  | "optimization"
+  | "paused"
+  | "reporting"
   | "blocked"
   | "completed"
   | "failed";
 
 export type CampaignOpsPriority = "low" | "normal" | "high" | "urgent";
-export type CampaignOpsReportStatus = "ready" | "generating" | "failed";
+export type CampaignOpsReportStatus = "ready" | "generating" | "published" | "failed";
+export type CampaignOpsReportType = "daily_update" | "weekly_report" | "final_report";
 export type CampaignOpsActivitySeverity = "info" | "success" | "warning" | "danger";
 
 export type CampaignOpsMetric = {
@@ -39,6 +45,15 @@ export type CampaignOpsCampaign = {
   channel: string;
   objective: string;
   budget: string;
+  budgetMinor: number;
+  budgetUtilization: number;
+  guardrails: string[];
+  launchedPlacementCount: number;
+  placementCount: number;
+  publishedReportCount: number;
+  reportCount: number;
+  spend: string;
+  spendMinor: number;
   status: CampaignOpsStatus;
   priority: CampaignOpsPriority;
   assignee: string;
@@ -52,6 +67,7 @@ export type CampaignOpsCampaign = {
   progress: number;
   nextAction: string;
   tags: string[];
+  workflowStage: string;
 };
 
 export type CampaignOpsReport = {
@@ -60,6 +76,7 @@ export type CampaignOpsReport = {
   period: string;
   generatedAt: string;
   status: CampaignOpsReportStatus;
+  type: CampaignOpsReportType;
   owner: string;
   summary: string;
   metrics: Array<{ label: string; value: string }>;
@@ -81,10 +98,15 @@ export const campaignOpsEnabled =
   process.env.NEXT_PUBLIC_ENABLE_CAMPAIGN_OPS_ADMIN !== "false";
 
 export const campaignOpsStatuses: CampaignOpsStatus[] = [
-  "queued",
-  "reviewing",
-  "scheduled",
-  "running",
+  "submitted",
+  "review",
+  "approved",
+  "assigned",
+  "creative_review",
+  "platform_launch",
+  "optimization",
+  "paused",
+  "reporting",
   "blocked",
   "completed",
   "failed"
@@ -94,7 +116,13 @@ export const campaignOpsPriorities: CampaignOpsPriority[] = ["low", "normal", "h
 export const campaignOpsReportStatuses: CampaignOpsReportStatus[] = [
   "ready",
   "generating",
+  "published",
   "failed"
+];
+export const campaignOpsReportTypes: CampaignOpsReportType[] = [
+  "daily_update",
+  "weekly_report",
+  "final_report"
 ];
 export const campaignOpsActivitySeverities: CampaignOpsActivitySeverity[] = [
   "info",
@@ -119,13 +147,18 @@ export const campaignOpsApiRoutes = [
 ];
 
 export const statusTone = {
-  queued: "info",
-  reviewing: "warning",
-  scheduled: "info",
-  running: "success",
+  approved: "info",
+  assigned: "info",
   blocked: "danger",
   completed: "success",
-  failed: "danger"
+  creative_review: "warning",
+  failed: "danger",
+  optimization: "success",
+  paused: "warning",
+  platform_launch: "info",
+  reporting: "warning",
+  review: "warning",
+  submitted: "info"
 } as const;
 
 export const priorityTone = {
@@ -136,9 +169,10 @@ export const priorityTone = {
 } as const;
 
 export const reportStatusTone = {
-  ready: "success",
+  failed: "danger",
   generating: "info",
-  failed: "danger"
+  published: "success",
+  ready: "warning"
 } as const;
 
 export const activitySeverityTone = {
@@ -151,29 +185,29 @@ export const activitySeverityTone = {
 export const operationStages = [
   {
     icon: ClipboardList,
-    label: "Brief QA",
-    value: "Creative, targeting, budget, and destination readiness checks"
+    label: "Submitted to Review",
+    value: "Brief, budget, destination, and audience readiness checks"
   },
   {
     icon: ShieldAlert,
-    label: "Risk gate",
-    value: "Policy, fraud, payment, and workspace trust signals"
+    label: "Approved to Assigned",
+    value: "Named operator ownership, SLA, and handoff accountability"
   },
   {
     icon: Radio,
-    label: "Launch control",
-    value: "Owner handoff, provider tracking, and live monitoring"
+    label: "Creative to Launch",
+    value: "Creative review, platform setup, ad account, placement URL, and launch proof"
   },
   {
     icon: FileText,
-    label: "Client reporting",
-    value: "Client-ready summaries, proof links, and publish status"
+    label: "Optimize to Complete",
+    value: "Spend-safe optimization, daily updates, weekly reports, final report, and closure"
   }
 ];
 
 export const emptyCampaignOpsMetrics: CampaignOpsMetric[] = [
-  { label: "Needs action", value: "0", detail: "Queued, reviewing, and blocked", tone: "info" },
-  { label: "Running", value: "0", detail: "Live campaigns under watch", tone: "success" },
-  { label: "Escalations", value: "0", detail: "Blocked or urgent campaigns", tone: "warning" },
-  { label: "Operators", value: "0", detail: "Assigned campaign ops users" }
+  { label: "Pending reviews", value: "0", detail: "Submitted campaigns in review", tone: "info" },
+  { label: "Launch prep", value: "0", detail: "Approved through platform launch", tone: "warning" },
+  { label: "Budget alerts", value: "0", detail: "Campaigns near spend allocation", tone: "warning" },
+  { label: "Reporting queue", value: "0", detail: "Daily, weekly, and final reports" }
 ];

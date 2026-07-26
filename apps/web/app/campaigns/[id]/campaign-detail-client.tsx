@@ -8,12 +8,19 @@ import {
   Clock,
   FileText,
   LinkIcon,
+  MessageSquare,
+  Minus,
+  Pause,
   Play,
+  Plus,
   RefreshCw,
+  ReceiptText,
+  Square,
   UploadCloud,
   WalletCards,
   type LucideIcon
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import {
   Badge,
@@ -25,9 +32,21 @@ import {
   TimelineEvent,
   campaignStatusMeta
 } from "@fliptrybe/ui";
-import type { Campaign } from "@fliptrybe/types";
+import type { Campaign, CampaignBudgetSummary, CampaignLedgerEntry, CampaignSpendBreakdown } from "@fliptrybe/types";
 
-import { formatCampaignMoney, formatCompact, formatDateTime } from "../api";
+import {
+  amountToMinor,
+  decreaseCampaignBudget,
+  formatCampaignMoney,
+  formatCompact,
+  formatDateTime,
+  increaseCampaignBudget,
+  loadCampaignFinancialData,
+  pauseCampaign,
+  requestCampaignChanges,
+  resumeCampaign,
+  stopCampaign
+} from "../api";
 import {
   CampaignShell,
   EmptyState,
@@ -114,6 +133,21 @@ type ActivityEvent = {
   time?: string | null;
   title: string;
   type: "system" | "admin" | "client";
+};
+
+type CampaignFinancialState = {
+  budgetSummary: CampaignBudgetSummary | null;
+  error?: string;
+  ledger: CampaignLedgerEntry[];
+  loading: boolean;
+  spendBreakdown: CampaignSpendBreakdown | null;
+};
+
+const defaultFinancialState: CampaignFinancialState = {
+  budgetSummary: null,
+  ledger: [],
+  loading: false,
+  spendBreakdown: null
 };
 
 function platformFromDestination(kind: string) {
@@ -256,6 +290,385 @@ function campaignMetrics(campaign: Campaign, analytics: CampaignAnalyticsOvervie
   ];
 }
 
+function fallbackBudgetSummary(campaign: Campaign): CampaignBudgetSummary {
+  const zero = { amountMinor: 0, currency: campaign.budget.currency };
+
+  return {
+    adSpend: zero,
+    adjustments: zero,
+    agencyFees: zero,
+    allocatedBudget: zero,
+    campaignId: campaign.id,
+    creativeCosts: zero,
+    currency: campaign.budget.currency,
+    fundsUsed: zero,
+    invoicePaid: zero,
+    pendingSpend: zero,
+    refunded: zero,
+    remainingBalance: campaign.budget,
+    totalBudget: campaign.budget,
+    updatedAt: campaign.updatedAt
+  };
+}
+
+function budgetProgress(summary: CampaignBudgetSummary) {
+  if (summary.totalBudget.amountMinor <= 0) {
+    return 0;
+  }
+
+  return Math.min(100, Math.round((summary.fundsUsed.amountMinor / summary.totalBudget.amountMinor) * 100));
+}
+
+function CampaignBudgetTransparency({
+  campaign,
+  financial
+}: {
+  campaign: Campaign;
+  financial: CampaignFinancialState;
+}) {
+  const summary = financial.budgetSummary ?? fallbackBudgetSummary(campaign);
+  const timeline = financial.spendBreakdown?.timeline.slice(-4).reverse() ?? [];
+  const cards = [
+    { label: "Total Budget", value: formatCampaignMoney(summary.totalBudget), detail: "Approved campaign budget" },
+    { label: "Funds Used", value: formatCampaignMoney(summary.fundsUsed), detail: "Recorded spend and fees" },
+    { label: "Remaining Balance", value: formatCampaignMoney(summary.remainingBalance), detail: "Budget not used or refunded" },
+    { label: "Pending Spend", value: formatCampaignMoney(summary.pendingSpend), detail: "Held for campaign delivery" }
+  ];
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="border-b border-[var(--ft-border)] p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              Budget
+            </div>
+            <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Campaign spend transparency</h2>
+            <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
+              {financial.loading
+                ? "Loading campaign financials..."
+                : financial.error ?? `Updated ${formatDateTime(summary.updatedAt)}`}
+            </p>
+          </div>
+          <a className={secondaryLinkButtonClass} href={`/campaigns/${campaign.id}/financial-history`}>
+            <ReceiptText className="size-4" />
+            Financial History
+          </a>
+        </div>
+        <div className="mt-5 h-2 rounded-sm bg-[var(--ft-bg-muted)]">
+          <div className="h-2 rounded-sm bg-[var(--ft-accent)]" style={{ width: `${budgetProgress(summary)}%` }} />
+        </div>
+      </div>
+      <div className="grid gap-px bg-[var(--ft-border)] md:grid-cols-2 xl:grid-cols-4">
+        {cards.map((item) => (
+          <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
+            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              {item.label}
+            </div>
+            <div className="mt-2 font-mono text-2xl font-medium text-[var(--ft-text-primary)]">{item.value}</div>
+            <div className="mt-2 text-xs leading-5 text-[var(--ft-text-secondary)]">{item.detail}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div>
+          <h3 className="text-sm font-medium text-[var(--ft-text-primary)]">Spend breakdown</h3>
+          <div className="mt-3 grid gap-3">
+            {(financial.spendBreakdown?.categories ?? []).length > 0 ? (
+              financial.spendBreakdown?.categories.map((category) => (
+                <div key={category.type}>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-[var(--ft-text-secondary)]">{category.label}</span>
+                    <span className="font-mono text-[var(--ft-text-primary)]">{formatCampaignMoney(category.amount)}</span>
+                  </div>
+                  <div className="mt-2 h-1.5 rounded-sm bg-[var(--ft-bg-muted)]">
+                    <div
+                      className="h-1.5 rounded-sm bg-[var(--ft-accent)]"
+                      style={{ width: `${Math.min(100, Math.round(category.percentageBps / 100))}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm leading-6 text-[var(--ft-text-secondary)]">
+                No spend has been recorded for this campaign yet.
+              </p>
+            )}
+          </div>
+        </div>
+        <div>
+          <h3 className="text-sm font-medium text-[var(--ft-text-primary)]">Spend timeline</h3>
+          <div className="mt-3 grid gap-3">
+            {timeline.length > 0 ? (
+              timeline.map((item) => (
+                <div
+                  className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3"
+                  key={`${item.date}-${item.type}-${item.amount.amountMinor}`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-[var(--ft-text-primary)]">{item.label}</span>
+                    <span className="font-mono text-sm text-[var(--ft-text-primary)]">{formatCampaignMoney(item.amount)}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-[var(--ft-text-secondary)]">{formatDateTime(item.date)}</div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm leading-6 text-[var(--ft-text-secondary)]">
+                Spend entries will appear here as operators record delivery.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function canPauseCampaign(status: string) {
+  return status === "ACTIVE" || status === "RUNNING";
+}
+
+function canResumeCampaign(status: string) {
+  return status === "PAUSED";
+}
+
+function canStopCampaign(status: string) {
+  return !["COMPLETED", "CANCELLED", "FAILED", "REJECTED"].includes(status);
+}
+
+function canRequestCampaignChanges(status: string) {
+  return [
+    "PENDING_REVIEW",
+    "APPROVED",
+    "CHANGES_REQUESTED",
+    "CREATIVE_IN_PROGRESS",
+    "QUEUED",
+    "ACTIVE",
+    "RUNNING",
+    "PAUSED"
+  ].includes(status);
+}
+
+function ClientCampaignControls({
+  campaign,
+  financial,
+  onUpdated
+}: {
+  campaign: Campaign;
+  financial: CampaignFinancialState;
+  onUpdated: () => Promise<void>;
+}) {
+  const [budgetDelta, setBudgetDelta] = useState("");
+  const [controlNote, setControlNote] = useState("");
+  const [pendingAction, setPendingAction] = useState<string>();
+  const [message, setMessage] = useState<string>();
+  const [actionError, setActionError] = useState<string>();
+  const summary = financial.budgetSummary ?? campaign.budgetSummary ?? fallbackBudgetSummary(campaign);
+  const remainingBudget = campaign.remainingBudget ?? summary.remainingBalance;
+  const assignedOperator = campaign.assignedOperator?.name ?? "Unassigned";
+  const note = controlNote.trim();
+  const budgetDeltaMinor = amountToMinor(budgetDelta);
+
+  async function runAction(action: string, command: () => Promise<Campaign>, successMessage: string) {
+    setPendingAction(action);
+    setActionError(undefined);
+    setMessage(undefined);
+    try {
+      await command();
+      setControlNote("");
+      setBudgetDelta("");
+      setMessage(successMessage);
+      await onUpdated();
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "Could not update campaign.");
+    } finally {
+      setPendingAction(undefined);
+    }
+  }
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="border-b border-[var(--ft-border)] p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              Controls
+            </div>
+            <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Campaign controls</h2>
+          </div>
+          <StatusBadge status={campaign.status} />
+        </div>
+      </div>
+
+      <div className="grid gap-px bg-[var(--ft-border)] md:grid-cols-3">
+        {[
+          { label: "Current Status", value: campaignStatusMeta(campaign.status).label },
+          { label: "Assigned Operator", value: assignedOperator },
+          { label: "Remaining Budget", value: formatCampaignMoney(remainingBudget) }
+        ].map((item) => (
+          <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
+            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              {item.label}
+            </div>
+            <div className="mt-2 break-words text-sm font-semibold text-[var(--ft-text-primary)]">{item.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="grid gap-3">
+          <label className="grid gap-1">
+            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              Action Note
+            </span>
+            <textarea
+              className="min-h-24 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)] focus:ring-2 focus:ring-[var(--ft-accent)]"
+              onChange={(event) => setControlNote(event.target.value)}
+              placeholder="Add context for the ads desk"
+              value={controlNote}
+            />
+          </label>
+
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <Button
+              className="h-auto min-h-10 px-3 py-2 text-xs leading-5 sm:text-sm"
+              disabled={!canPauseCampaign(campaign.status) || pendingAction !== undefined}
+              onClick={() =>
+                void runAction(
+                  "pause",
+                  () => pauseCampaign(campaign.id, { reason: note || "Client paused campaign." }),
+                  "Campaign pause request sent."
+                )
+              }
+              type="button"
+              variant="secondary"
+            >
+              <Pause className="size-4" />
+              Pause
+            </Button>
+            <Button
+              className="h-auto min-h-10 px-3 py-2 text-xs leading-5 sm:text-sm"
+              disabled={!canResumeCampaign(campaign.status) || pendingAction !== undefined}
+              onClick={() =>
+                void runAction(
+                  "resume",
+                  () => resumeCampaign(campaign.id, { reason: note || "Client resumed campaign." }),
+                  "Campaign resume request sent."
+                )
+              }
+              type="button"
+              variant="secondary"
+            >
+              <Play className="size-4" />
+              Resume
+            </Button>
+            <Button
+              className="h-auto min-h-10 px-3 py-2 text-xs leading-5 sm:text-sm"
+              disabled={!canRequestCampaignChanges(campaign.status) || pendingAction !== undefined || note.length === 0}
+              onClick={() =>
+                void runAction(
+                  "request_changes",
+                  () => requestCampaignChanges(campaign.id, { message: note }),
+                  "Change request sent to the ads desk."
+                )
+              }
+              type="button"
+              variant="secondary"
+            >
+              <MessageSquare className="size-4" />
+              Request Changes
+            </Button>
+            <Button
+              className="h-auto min-h-10 px-3 py-2 text-xs leading-5 sm:text-sm"
+              disabled={!canStopCampaign(campaign.status) || pendingAction !== undefined}
+              onClick={() =>
+                void runAction(
+                  "stop",
+                  () => stopCampaign(campaign.id, { reason: note || "Client stopped campaign." }),
+                  "Campaign stop request sent."
+                )
+              }
+              type="button"
+              variant="danger"
+            >
+              <Square className="size-4" />
+              Stop
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid content-start gap-3">
+          <label className="grid gap-1">
+            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              Budget Change
+            </span>
+            <input
+              className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)] focus:ring-2 focus:ring-[var(--ft-accent)]"
+              inputMode="decimal"
+              onChange={(event) => setBudgetDelta(event.target.value)}
+              placeholder="NGN amount"
+              value={budgetDelta}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              className="h-auto min-h-10 px-3 py-2 text-xs leading-5 sm:text-sm"
+              disabled={budgetDeltaMinor <= 0 || pendingAction !== undefined}
+              onClick={() =>
+                void runAction(
+                  "increase_budget",
+                  () =>
+                    increaseCampaignBudget(campaign.id, {
+                      amountMinor: budgetDeltaMinor,
+                      reason: note || "Client increased campaign budget."
+                    }),
+                  "Budget increase sent."
+                )
+              }
+              type="button"
+              variant="secondary"
+            >
+              <Plus className="size-4" />
+              Increase
+            </Button>
+            <Button
+              className="h-auto min-h-10 px-3 py-2 text-xs leading-5 sm:text-sm"
+              disabled={budgetDeltaMinor <= 0 || pendingAction !== undefined}
+              onClick={() =>
+                void runAction(
+                  "decrease_budget",
+                  () =>
+                    decreaseCampaignBudget(campaign.id, {
+                      amountMinor: budgetDeltaMinor,
+                      reason: note || "Client decreased campaign budget."
+                    }),
+                  "Budget decrease sent."
+                )
+              }
+              type="button"
+              variant="secondary"
+            >
+              <Minus className="size-4" />
+              Decrease
+            </Button>
+          </div>
+          {pendingAction ? (
+            <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]">
+              Sending {pendingAction.replaceAll("_", " ")}...
+            </div>
+          ) : null}
+          {message ? (
+            <div className="rounded-[var(--radius-sm)] border border-[var(--ft-green)]/35 bg-[var(--ft-green-subtle)] p-3 text-sm text-[var(--ft-green)]">
+              {message}
+            </div>
+          ) : null}
+          {actionError ? <ErrorNotice message={actionError} /> : null}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 function creativeFormatLabel(campaign: Campaign) {
   const destination = campaign.destination.kind;
 
@@ -277,6 +690,20 @@ function buildActivityEvents(campaign: Campaign): ActivityEvent[] {
       type: "client"
     }
   ];
+
+  for (const item of (campaign.statusHistory ?? []).slice(-6)) {
+    if (!item.fromStatus || item.toStatus === "DRAFT") {
+      continue;
+    }
+    events.push({
+      detail: item.reason ?? `Status moved from ${item.fromStatus} to ${item.toStatus}.`,
+      icon: Clock,
+      id: `status-${item.id}`,
+      time: item.createdAt,
+      title: `Status changed to ${campaignStatusMeta(item.toStatus).label}`,
+      type: item.actorType === "USER" ? "client" : "admin"
+    });
+  }
 
   if (campaign.status === "CHANGES_REQUESTED") {
     events.push({
@@ -452,6 +879,56 @@ function ActivityTimeline({ campaign }: { campaign: Campaign }) {
 export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
   const { analytics, campaigns, error, loading, refresh, source } = useCampaignDashboardData();
   const campaign = campaigns.find((item) => item.id === campaignId);
+  const [financial, setFinancial] = useState<CampaignFinancialState>(defaultFinancialState);
+  const [financialRefreshKey, setFinancialRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    if (source !== "api") {
+      setFinancial(defaultFinancialState);
+      return () => {
+        active = false;
+      };
+    }
+
+    setFinancial((current) => ({
+      budgetSummary: current.budgetSummary,
+      ledger: current.ledger,
+      loading: true,
+      spendBreakdown: current.spendBreakdown
+    }));
+    void loadCampaignFinancialData(campaignId)
+      .then((data) => {
+        if (!active) {
+          return;
+        }
+        setFinancial({
+          budgetSummary: data.budgetSummary,
+          ledger: data.ledger,
+          loading: false,
+          spendBreakdown: data.spendBreakdown
+        });
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setFinancial((current) => ({
+          ...current,
+          error: "Financial details are unavailable right now.",
+          loading: false
+        }));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [campaignId, financialRefreshKey, source]);
+
+  async function refreshAfterControl() {
+    await refresh();
+    setFinancialRefreshKey((current) => current + 1);
+  }
 
   function renderPrimaryAction(current: Campaign) {
     const status = current.status;
@@ -613,6 +1090,14 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
             </Panel>
 
             <ProcessTimeline campaign={campaign} />
+
+            <ClientCampaignControls
+              campaign={campaign}
+              financial={financial}
+              onUpdated={refreshAfterControl}
+            />
+
+            <CampaignBudgetTransparency campaign={campaign} financial={financial} />
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
               <Panel className="p-5">

@@ -1,6 +1,7 @@
 import { UnauthorizedException } from "@nestjs/common";
 import { Buffer } from "node:buffer";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { Permission, Role } from "@fliptrybe/types";
 
 export type HeaderBag = Record<string, string | string[] | undefined>;
 
@@ -11,6 +12,8 @@ export interface AuthenticatedRequestContext {
   sessionId?: string;
   userEmail?: string;
   userName?: string;
+  role?: Role;
+  permissions?: Permission[];
 }
 
 export interface RequestMetadataContext {
@@ -69,7 +72,9 @@ function requireScopedIdentity(context: Partial<AuthenticatedRequestContext>) {
     ...(context.organizationId === undefined ? {} : { organizationId: context.organizationId }),
     ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
     ...(context.userEmail === undefined ? {} : { userEmail: context.userEmail }),
-    ...(context.userName === undefined ? {} : { userName: context.userName })
+    ...(context.userName === undefined ? {} : { userName: context.userName }),
+    ...(context.role === undefined ? {} : { role: context.role }),
+    ...(context.permissions === undefined ? {} : { permissions: context.permissions })
   };
 }
 

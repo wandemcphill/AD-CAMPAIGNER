@@ -82,4 +82,12 @@ describe("OtpMarketplaceService", () => {
     expect(firstRefund.refund.status).toBe("REFUNDED");
     expect(secondRefund.refund.status).toBe("SKIPPED");
   });
+
+  it("rejects negative OTP pricing rule values", () => {
+    const service = new OtpMarketplaceService();
+
+    expect(() => service.setPricingRule({ tier: "BUDGET", platformFeeMinor: -1 })).toThrow(
+      "OTP platform fee must be a non-negative minor-unit amount."
+    );
+  });
 });

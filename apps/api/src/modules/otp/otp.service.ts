@@ -71,6 +71,18 @@ function getUsdToNgnRate() {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 1600;
 }
 
+function assertOptionalNonNegativeInteger(value: number | undefined, message: string) {
+  if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+    throw new BadRequestException(message);
+  }
+}
+
+function assertOptionalPositiveNumber(value: number | undefined, message: string) {
+  if (value !== undefined && (!Number.isFinite(value) || value <= 0)) {
+    throw new BadRequestException(message);
+  }
+}
+
 function getPricingRules(): OtpPricingRule[] {
   const usdToNgnRate = getUsdToNgnRate();
 
@@ -457,6 +469,22 @@ export class OtpMarketplaceService {
 
   setPricingRule(input: OtpPricingRuleDto) {
     this.ensureAdminEnabled();
+    assertOptionalNonNegativeInteger(
+      input.markupBps,
+      "OTP markup basis points must be a non-negative integer."
+    );
+    assertOptionalNonNegativeInteger(
+      input.minimumMarginMinor,
+      "OTP minimum margin must be a non-negative minor-unit amount."
+    );
+    assertOptionalNonNegativeInteger(
+      input.platformFeeMinor,
+      "OTP platform fee must be a non-negative minor-unit amount."
+    );
+    assertOptionalPositiveNumber(
+      input.usdToNgnRate,
+      "OTP USD/NGN exchange rate must be positive."
+    );
     const tier = input.tier ?? "BUDGET";
     const existing = this.pricingRules.find((rule) => rule.tier === tier);
     const next: OtpPricingRule = {

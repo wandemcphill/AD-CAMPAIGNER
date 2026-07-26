@@ -83,6 +83,7 @@ export type PlatformHealth = {
 };
 
 export const campaignNavItems = [
+  { label: "Studio", href: "/studio", icon: Rocket },
   { label: "My Campaigns", href: "/campaigns", icon: Gauge },
   { label: "Start a Campaign", href: "/campaigns/new", icon: Sparkles },
   { label: "Campaign Reports", href: "/reports", icon: BarChart3 },

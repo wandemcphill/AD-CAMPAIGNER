@@ -7,9 +7,11 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
+  CheckCircle2,
   ListChecks,
   RefreshCw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  UserCheck
 } from "lucide-react";
 
 import { Badge, Button, MobileAdminCard, Panel, SummaryStatStrip, cn } from "@fliptrybe/ui";
@@ -49,10 +51,22 @@ function needsImmediateAction(campaign: { assignee: string; priority: string; st
   return (
     campaign.status === "blocked" ||
     campaign.status === "failed" ||
-    campaign.status === "queued" ||
-    campaign.status === "reviewing" ||
+    campaign.status === "submitted" ||
+    campaign.status === "review" ||
+    campaign.status === "paused" ||
+    campaign.status === "platform_launch" ||
+    campaign.status === "reporting" ||
     campaign.priority === "urgent" ||
     isAssigneeUnassigned(campaign.assignee)
+  );
+}
+
+function isLaunchPreparationStatus(status: string) {
+  return (
+    status === "approved" ||
+    status === "assigned" ||
+    status === "creative_review" ||
+    status === "platform_launch"
   );
 }
 
@@ -61,22 +75,88 @@ export default function AdminCampaignOpsPage() {
     useAdminCampaignOpsOverviewData();
 
   const attentionCount = queue.filter(needsImmediateAction).length;
+  const assignedCampaigns = queue.filter(
+    (campaign) =>
+      !isAssigneeUnassigned(campaign.assignee) &&
+      campaign.status !== "completed" &&
+      campaign.status !== "failed"
+  );
+  const pendingReviews = queue.filter(
+    (campaign) => campaign.status === "submitted" || campaign.status === "review"
+  );
+  const budgetAlerts = queue.filter(
+    (campaign) =>
+      campaign.budgetUtilization >= 85 ||
+      campaign.guardrails.some((guardrail) => /budget|allocation|spend/i.test(guardrail))
+  );
+  const healthyCampaigns = queue.filter(
+    (campaign) =>
+      campaign.status === "optimization" ||
+      campaign.status === "paused" ||
+      campaign.status === "reporting" ||
+      campaign.status === "completed"
+  );
+  const reportingQueue = reports.filter(
+    (report) => report.status === "ready" || report.status === "generating"
+  );
+  const dashboardWidgets = [
+    {
+      action: "/campaign-ops/queue" as Route,
+      detail: "Named owners carrying active operations work",
+      icon: UserCheck,
+      label: "Assigned Campaigns",
+      tone: "info",
+      value: assignedCampaigns.length
+    },
+    {
+      action: "/campaign-ops/queue" as Route,
+      detail: "Submitted briefs awaiting review decision",
+      icon: ListChecks,
+      label: "Pending Reviews",
+      tone: pendingReviews.length > 0 ? "warning" : "success",
+      value: pendingReviews.length
+    },
+    {
+      action: "/campaign-ops/queue" as Route,
+      detail: "Spend at or above 85% of allocation",
+      icon: AlertTriangle,
+      label: "Budget Alerts",
+      tone: budgetAlerts.length > 0 ? "danger" : "success",
+      value: budgetAlerts.length
+    },
+    {
+      action: "/campaign-ops/queue" as Route,
+      detail: "Optimizing, reporting, or completed campaigns",
+      icon: CheckCircle2,
+      label: "Campaign Health",
+      tone: "success",
+      value: healthyCampaigns.length
+    },
+    {
+      action: "/campaign-ops/reports" as Route,
+      detail: "Daily updates, weekly reports, and final reports",
+      icon: BarChart3,
+      label: "Reporting Queue",
+      tone: reportingQueue.length > 0 ? "warning" : "info",
+      value: reportingQueue.length
+    }
+  ];
   const opsHealth = [
     {
       detail: "Briefs awaiting operator QA",
       label: "Needs Action",
       urgent: queue.some(
-        (campaign) => campaign.status === "queued" || campaign.status === "reviewing"
+        (campaign) => campaign.status === "submitted" || campaign.status === "review"
       ),
       value: queue.filter(
-        (campaign) => campaign.status === "queued" || campaign.status === "reviewing"
+        (campaign) => campaign.status === "submitted" || campaign.status === "review"
       ).length
     },
     {
       detail: "Approved work ready for platform setup",
       label: "Launch Action",
-      urgent: queue.some((campaign) => campaign.status === "scheduled"),
-      value: queue.filter((campaign) => campaign.status === "scheduled").length
+      urgent: queue.some((campaign) => isLaunchPreparationStatus(campaign.status)),
+      value: queue.filter((campaign) => isLaunchPreparationStatus(campaign.status)).length
     },
     {
       detail: "Client reports awaiting publish",
@@ -94,7 +174,12 @@ export default function AdminCampaignOpsPage() {
       detail: "Live campaigns under watch",
       label: "Live Now",
       urgent: false,
-      value: queue.filter((campaign) => campaign.status === "running").length
+      value: queue.filter(
+        (campaign) =>
+          campaign.status === "optimization" ||
+          campaign.status === "paused" ||
+          campaign.status === "reporting"
+      ).length
     }
   ];
   const opsHealthSummary = opsHealth.map((metric) => ({
@@ -175,6 +260,41 @@ export default function AdminCampaignOpsPage() {
       ) : null}
 
       <SummaryStatStrip className="mt-6" items={opsHealthSummary} />
+
+      <section className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {dashboardWidgets.map((widget) => (
+          <Panel className="p-4" key={widget.label}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="grid size-9 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-accent)]">
+                <widget.icon className="size-4 stroke-[1.5]" />
+              </div>
+              <Badge
+                tone={
+                  widget.tone === "danger"
+                    ? "danger"
+                    : widget.tone === "warning"
+                      ? "warning"
+                      : widget.tone === "success"
+                        ? "success"
+                        : "info"
+                }
+              >
+                {loading ? "..." : widget.value}
+              </Badge>
+            </div>
+            <div className="mt-4 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+              {widget.label}
+            </div>
+            <div className="mt-2 text-sm leading-5 text-[var(--ft-text-secondary)]">
+              {widget.detail}
+            </div>
+            <ActionLink href={widget.action} variant="ghost">
+              Open
+              <ArrowRight className="size-4 stroke-[1.5]" />
+            </ActionLink>
+          </Panel>
+        ))}
+      </section>
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.65fr)]">
         <Panel className="overflow-hidden">

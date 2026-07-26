@@ -177,6 +177,10 @@ export default function CampaignsPage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
+            <a className={secondaryLinkButtonClass} href="/studio">
+              <Sparkles className="size-4 stroke-[1.5]" />
+              Try Studio
+            </a>
             <a className={linkButtonClass} href="/campaigns/new">
               <Plus className="size-4 stroke-[1.5]" />
               Start a Campaign

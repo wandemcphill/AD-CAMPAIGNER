@@ -46,6 +46,15 @@ const catalogCurrency: CurrencyCode = "NGN";
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 const toCurrencyCode = (currency: string): CurrencyCode =>
   currencies.includes(currency as CurrencyCode) ? (currency as CurrencyCode) : catalogCurrency;
+const parseNonNegativeMinorAmount = (value: number | undefined, fallback: number, message: string) => {
+  const amountMinor = value ?? fallback;
+
+  if (!Number.isInteger(amountMinor) || amountMinor < 0) {
+    throw new BadRequestException(message);
+  }
+
+  return amountMinor;
+};
 
 type DbClient = DatabaseClient | Prisma.TransactionClient;
 type DbDigitalAccessStatus = "PENDING" | "PROCESSING" | "FULFILLED" | "CANCELLED" | "FAILED";
@@ -757,7 +766,11 @@ export class DigitalAccessHubService {
         serviceId: input.serviceId,
         planName: input.planName.trim(),
         duration: input.duration.trim(),
-        priceMinor: input.priceMinor ?? 0,
+        priceMinor: parseNonNegativeMinorAmount(
+          input.priceMinor,
+          0,
+          "Digital Access plan price must be a non-negative minor-unit amount."
+        ),
         currency: catalogCurrency,
         description: input.description?.trim() ?? "Owner-managed access plan.",
         isActive: input.isActive ?? false
@@ -792,7 +805,11 @@ export class DigitalAccessHubService {
       data: {
         ...(input.planName?.trim() ? { planName: input.planName.trim() } : {}),
         ...(input.duration?.trim() ? { duration: input.duration.trim() } : {}),
-        priceMinor: input.priceMinor ?? plan.priceMinor,
+        priceMinor: parseNonNegativeMinorAmount(
+          input.priceMinor,
+          plan.priceMinor,
+          "Digital Access plan price must be a non-negative minor-unit amount."
+        ),
         ...(input.description?.trim() ? { description: input.description.trim() } : {}),
         isActive: input.isActive ?? plan.isActive
       }
@@ -1323,6 +1340,11 @@ export class DigitalAccessHubService {
     walletId: string,
     amount: { amountMinor: number; currency: string }
   ) {
+    if (!Number.isInteger(amount.amountMinor) || amount.amountMinor <= 0) {
+      throw new BadRequestException(
+        "Digital Access wallet charge must be a positive minor-unit amount."
+      );
+    }
     const entries = await tx.ledgerEntry.findMany({
       where: { walletId },
       orderBy: { createdAt: "asc" }

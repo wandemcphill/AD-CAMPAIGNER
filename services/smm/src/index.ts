@@ -2,6 +2,11 @@ import type { SmmSupplierAdapter, SmmSupplierQuote } from "@fliptrybe/providers"
 import type {
   CurrencyCode,
   DestinationKind,
+  GrowthOrder,
+  GrowthOrderStatus,
+  GrowthRiskAssessment,
+  GrowthServiceCatalogItem,
+  GrowthServiceRouting,
   Money,
   PromotionDestination,
   SmmOrder,
@@ -85,6 +90,34 @@ export interface SmmServiceHealthMonitor {
   checkAll(): Promise<SmmSupplierHealth[]>;
 }
 
+export interface SmmSupplierAuditProvider {
+  name: string;
+  mode: "mock" | "perfect-panel";
+  configured: boolean;
+  apiHost?: string;
+  supportedCategories: SmmServiceKind[];
+  pricingModel: "per-1000-rate-card";
+  routingRole: "primary" | "fallback" | "disabled";
+  serviceMapCoverage: SmmServiceKind[];
+}
+
+export interface SmmSupplierAudit {
+  supportedProviders: SmmSupplierAuditProvider[];
+  serviceCategories: Array<{
+    serviceKind: SmmServiceKind;
+    label: string;
+    compatibleDestinations: DestinationKind[];
+  }>;
+  pricingModels: Array<{
+    name: string;
+    description: string;
+    marginBps: number;
+    minimumMarginMinor: number;
+    platformFeeMinor: number;
+  }>;
+  reliability: SmmSupplierHealth[];
+}
+
 export const smmService = {
   name: "smm",
   responsibilities: [
@@ -157,6 +190,351 @@ export const defaultSmmRetryPolicy: SmmRetryPolicy = {
   maxDelayMs: 900_000,
   jitterRatio: 0.2
 };
+
+const sharedHighRiskMitigations = [
+  "Require public destinations and reject private, restricted, or misleading links.",
+  "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+  "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+];
+
+export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
+  {
+    code: "tiktok-views",
+    name: "TikTok Views",
+    platform: "TIKTOK",
+    category: "TikTok",
+    serviceKind: "VIEWS",
+    destinationKind: "TIKTOK_PROFILE",
+    description: "View delivery for public TikTok videos and profile-linked posts.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 180000, currency: "NGN" },
+    minimumQuantity: 100,
+    maximumQuantity: 100_000,
+    quantityStep: 100,
+    estimatedDeliveryMinutes: 240,
+    expectedCompletion: "4-24 hours",
+    marginBps: 3500,
+    supportsRefill: false,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "LOWEST_COST",
+      fallbackSuppliers: ["smdpanel", "justanotherpanel", "peakerr"]
+    },
+    risk: {
+      platformPolicyRisk: "HIGH",
+      accountRisk: "MEDIUM",
+      refundRisk: "MEDIUM",
+      reputationRisk: "HIGH",
+      summary: "Artificial view delivery can conflict with platform authenticity expectations.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "tiktok-likes",
+    name: "TikTok Likes",
+    platform: "TIKTOK",
+    category: "TikTok",
+    serviceKind: "LIKES",
+    destinationKind: "TIKTOK_PROFILE",
+    description: "Like delivery for public TikTok posts.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 320000, currency: "NGN" },
+    minimumQuantity: 50,
+    maximumQuantity: 50_000,
+    quantityStep: 50,
+    estimatedDeliveryMinutes: 360,
+    expectedCompletion: "6-36 hours",
+    marginBps: 4000,
+    supportsRefill: true,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "LOWEST_COST",
+      fallbackSuppliers: ["smdpanel", "smmraja", "justanotherpanel"]
+    },
+    risk: {
+      platformPolicyRisk: "HIGH",
+      accountRisk: "HIGH",
+      refundRisk: "MEDIUM",
+      reputationRisk: "HIGH",
+      summary: "Artificial likes can be removed by platform integrity systems or trigger review.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "tiktok-followers",
+    name: "TikTok Followers",
+    platform: "TIKTOK",
+    category: "TikTok",
+    serviceKind: "FOLLOWERS",
+    destinationKind: "TIKTOK_PROFILE",
+    description: "Follower delivery for public TikTok profiles.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 620000, currency: "NGN" },
+    minimumQuantity: 100,
+    maximumQuantity: 25_000,
+    quantityStep: 100,
+    estimatedDeliveryMinutes: 720,
+    expectedCompletion: "12-72 hours",
+    marginBps: 4500,
+    supportsRefill: true,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "PREFERRED_FIRST",
+      preferredSupplier: "smdpanel",
+      fallbackSuppliers: ["justanotherpanel", "peakerr"]
+    },
+    risk: {
+      platformPolicyRisk: "CRITICAL",
+      accountRisk: "HIGH",
+      refundRisk: "HIGH",
+      reputationRisk: "HIGH",
+      summary:
+        "Follower growth services carry the highest integrity, drop, and customer dispute risk.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "instagram-followers",
+    name: "Instagram Followers",
+    platform: "INSTAGRAM",
+    category: "Instagram",
+    serviceKind: "FOLLOWERS",
+    destinationKind: "INSTAGRAM_PROFILE",
+    description: "Follower delivery for public Instagram profiles.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 650000, currency: "NGN" },
+    minimumQuantity: 100,
+    maximumQuantity: 25_000,
+    quantityStep: 100,
+    estimatedDeliveryMinutes: 720,
+    expectedCompletion: "12-72 hours",
+    marginBps: 4500,
+    supportsRefill: true,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "PREFERRED_FIRST",
+      preferredSupplier: "justanotherpanel",
+      fallbackSuppliers: ["smdpanel", "peakerr"]
+    },
+    risk: {
+      platformPolicyRisk: "CRITICAL",
+      accountRisk: "HIGH",
+      refundRisk: "HIGH",
+      reputationRisk: "HIGH",
+      summary:
+        "Artificial follower delivery can be removed and can expose accounts to integrity review.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "instagram-likes",
+    name: "Instagram Likes",
+    platform: "INSTAGRAM",
+    category: "Instagram",
+    serviceKind: "LIKES",
+    destinationKind: "INSTAGRAM_PROFILE",
+    description: "Like delivery for public Instagram posts or reels.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 300000, currency: "NGN" },
+    minimumQuantity: 50,
+    maximumQuantity: 50_000,
+    quantityStep: 50,
+    estimatedDeliveryMinutes: 360,
+    expectedCompletion: "6-36 hours",
+    marginBps: 4000,
+    supportsRefill: true,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "LOWEST_COST",
+      fallbackSuppliers: ["smdpanel", "smmraja", "justanotherpanel"]
+    },
+    risk: {
+      platformPolicyRisk: "HIGH",
+      accountRisk: "HIGH",
+      refundRisk: "MEDIUM",
+      reputationRisk: "HIGH",
+      summary: "Artificial likes can conflict with authenticity rules and may drop after delivery.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "youtube-views",
+    name: "YouTube Views",
+    platform: "YOUTUBE",
+    category: "YouTube",
+    serviceKind: "VIEWS",
+    destinationKind: "YOUTUBE_CHANNEL",
+    description: "View delivery for public YouTube videos.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 450000, currency: "NGN" },
+    minimumQuantity: 100,
+    maximumQuantity: 100_000,
+    quantityStep: 100,
+    estimatedDeliveryMinutes: 1440,
+    expectedCompletion: "1-5 days",
+    marginBps: 3500,
+    supportsRefill: false,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "LOWEST_COST",
+      fallbackSuppliers: ["smdpanel", "justanotherpanel", "peakerr"]
+    },
+    risk: {
+      platformPolicyRisk: "CRITICAL",
+      accountRisk: "HIGH",
+      refundRisk: "HIGH",
+      reputationRisk: "HIGH",
+      summary: "Invalid or incentivized views can be filtered and may affect channel standing.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "youtube-subscribers",
+    name: "YouTube Subscribers",
+    platform: "YOUTUBE",
+    category: "YouTube",
+    serviceKind: "CHANNEL_MEMBERS",
+    destinationKind: "YOUTUBE_CHANNEL",
+    description: "Subscriber delivery for public YouTube channels.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 900000, currency: "NGN" },
+    minimumQuantity: 50,
+    maximumQuantity: 10_000,
+    quantityStep: 50,
+    estimatedDeliveryMinutes: 2880,
+    expectedCompletion: "2-7 days",
+    marginBps: 5000,
+    supportsRefill: true,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "MANUAL_REVIEW",
+      fallbackSuppliers: ["smdpanel", "justanotherpanel"]
+    },
+    risk: {
+      platformPolicyRisk: "CRITICAL",
+      accountRisk: "HIGH",
+      refundRisk: "HIGH",
+      reputationRisk: "HIGH",
+      summary:
+        "Subscriber services are highly exposed to platform spam and fake engagement enforcement.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "telegram-members",
+    name: "Telegram Members",
+    platform: "TELEGRAM",
+    category: "Telegram",
+    serviceKind: "CHANNEL_MEMBERS",
+    destinationKind: "TELEGRAM_CHANNEL",
+    description: "Member delivery for public Telegram channels or groups.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 420000, currency: "NGN" },
+    minimumQuantity: 100,
+    maximumQuantity: 50_000,
+    quantityStep: 100,
+    estimatedDeliveryMinutes: 1440,
+    expectedCompletion: "1-5 days",
+    marginBps: 5000,
+    supportsRefill: true,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "PREFERRED_FIRST",
+      preferredSupplier: "peakerr",
+      fallbackSuppliers: ["smdpanel", "justanotherpanel"]
+    },
+    risk: {
+      platformPolicyRisk: "HIGH",
+      accountRisk: "MEDIUM",
+      refundRisk: "MEDIUM",
+      reputationRisk: "HIGH",
+      summary:
+        "Member adds can create spam complaints and drop-off when groups moderate aggressively.",
+      mitigations: sharedHighRiskMitigations
+    }
+  },
+  {
+    code: "website-traffic",
+    name: "Website Traffic",
+    platform: "WEBSITE",
+    category: "Traffic",
+    serviceKind: "VIEWS",
+    destinationKind: "WEBSITE",
+    description: "Traffic delivery for public websites and landing pages.",
+    enabled: false,
+    pricingModel: "PER_1000",
+    baseRate: { amountMinor: 250000, currency: "NGN" },
+    minimumQuantity: 500,
+    maximumQuantity: 250_000,
+    quantityStep: 500,
+    estimatedDeliveryMinutes: 2880,
+    expectedCompletion: "2-7 days",
+    marginBps: 3500,
+    supportsRefill: false,
+    supportsCancel: true,
+    supplierRouting: {
+      strategy: "MANUAL_REVIEW",
+      fallbackSuppliers: ["smdpanel", "peakerr"]
+    },
+    risk: {
+      platformPolicyRisk: "HIGH",
+      accountRisk: "MEDIUM",
+      refundRisk: "HIGH",
+      reputationRisk: "HIGH",
+      summary: "Low-quality traffic can affect analytics, ads attribution, and customer trust.",
+      mitigations: [
+        ...sharedHighRiskMitigations,
+        "Disable by default until traffic source quality, bot filtering, and analytics exclusions are approved."
+      ]
+    }
+  }
+];
+
+export const defaultSmmServiceCategories: SmmSupplierAudit["serviceCategories"] = [
+  {
+    serviceKind: "FOLLOWERS",
+    label: "Followers",
+    compatibleDestinations: ["TIKTOK_PROFILE", "INSTAGRAM_PROFILE"]
+  },
+  {
+    serviceKind: "LIKES",
+    label: "Likes",
+    compatibleDestinations: ["TIKTOK_PROFILE", "INSTAGRAM_PROFILE"]
+  },
+  {
+    serviceKind: "VIEWS",
+    label: "Views and traffic",
+    compatibleDestinations: ["TIKTOK_PROFILE", "YOUTUBE_CHANNEL", "WEBSITE"]
+  },
+  {
+    serviceKind: "COMMENTS",
+    label: "Comments",
+    compatibleDestinations: ["TIKTOK_PROFILE", "INSTAGRAM_PROFILE", "YOUTUBE_CHANNEL"]
+  },
+  {
+    serviceKind: "SHARES",
+    label: "Shares",
+    compatibleDestinations: ["TIKTOK_PROFILE", "INSTAGRAM_PROFILE"]
+  },
+  {
+    serviceKind: "LIVE_VIEWERS",
+    label: "Live viewers",
+    compatibleDestinations: ["TIKTOK_LIVE", "INSTAGRAM_LIVE", "FACEBOOK_LIVE"]
+  },
+  {
+    serviceKind: "CHANNEL_MEMBERS",
+    label: "Channel members and subscribers",
+    compatibleDestinations: ["TELEGRAM_CHANNEL", "TELEGRAM_GROUP", "YOUTUBE_CHANNEL"]
+  }
+];
 
 const sampleDestination: PromotionDestination = {
   kind: "INSTAGRAM_PROFILE",
@@ -528,6 +906,126 @@ export function summarizeSmmSupplierHealth(results: SmmSupplierHealth[]) {
   }
 
   return "healthy" as const;
+}
+
+export function mapSmmOrderStatusToGrowthStatus(status: SmmOrder["status"]): GrowthOrderStatus {
+  switch (status) {
+    case "DRAFT":
+      return "PENDING";
+    case "QUEUED":
+      return "SUBMITTED";
+    case "PROCESSING":
+    case "PARTIAL":
+      return "IN_PROGRESS";
+    case "COMPLETED":
+      return "COMPLETED";
+    case "CANCELLED":
+      return "REFUNDED";
+    case "FAILED":
+    default:
+      return "FAILED";
+  }
+}
+
+export function calculateGrowthDeliveredQuantity(input: {
+  quantityOrdered: number;
+  status: GrowthOrderStatus;
+  remains?: number;
+}) {
+  if (input.status === "COMPLETED") {
+    return input.quantityOrdered;
+  }
+  if (input.status === "FAILED" || input.status === "REFUNDED" || input.status === "PENDING") {
+    return 0;
+  }
+  if (typeof input.remains === "number") {
+    return clamp(input.quantityOrdered - input.remains, 0, input.quantityOrdered);
+  }
+
+  return 0;
+}
+
+export function getGrowthExpectedCompletionAt(input: {
+  estimatedDeliveryMinutes: number;
+  now?: string;
+}) {
+  const startedAt = new Date(input.now ?? new Date().toISOString());
+
+  return new Date(startedAt.getTime() + input.estimatedDeliveryMinutes * 60_000).toISOString();
+}
+
+export function getGrowthServiceRiskReport(catalog = defaultGrowthServicesCatalog) {
+  return catalog.map((service) => ({
+    serviceCode: service.code,
+    serviceName: service.name,
+    platform: service.platform,
+    category: service.category,
+    risk: service.risk
+  }));
+}
+
+export function applyGrowthServiceAdminControls(
+  service: GrowthServiceCatalogItem,
+  input: {
+    enabled?: boolean;
+    marginBps?: number;
+    preferredSupplier?: string;
+    maximumQuantity?: number;
+    expectedCompletion?: string;
+    adminNote?: string;
+  }
+): GrowthServiceCatalogItem {
+  const routingWithoutPreferred: GrowthServiceRouting = {
+    strategy: service.supplierRouting.strategy,
+    fallbackSuppliers: [...service.supplierRouting.fallbackSuppliers]
+  };
+  const nextRouting: GrowthServiceRouting =
+    input.preferredSupplier === undefined
+      ? service.supplierRouting
+      : input.preferredSupplier
+        ? {
+            ...routingWithoutPreferred,
+            preferredSupplier: input.preferredSupplier,
+            strategy: "PREFERRED_FIRST" as const
+          }
+        : routingWithoutPreferred;
+
+  return {
+    ...service,
+    enabled: input.enabled ?? service.enabled,
+    marginBps:
+      typeof input.marginBps === "number"
+        ? clamp(Math.round(input.marginBps), 0, 20_000)
+        : service.marginBps,
+    maximumQuantity:
+      typeof input.maximumQuantity === "number"
+        ? Math.max(service.minimumQuantity, Math.round(input.maximumQuantity))
+        : service.maximumQuantity,
+    expectedCompletion: input.expectedCompletion ?? service.expectedCompletion,
+    supplierRouting: nextRouting
+  };
+}
+
+export function createSmmSupplierAudit(input: {
+  providers: SmmSupplierAuditProvider[];
+  reliability: SmmSupplierHealth[];
+  pricingRules?: SmmPricingRule[];
+}): SmmSupplierAudit {
+  const rules = input.pricingRules ?? defaultSmmPricingRules;
+
+  return {
+    supportedProviders: input.providers,
+    serviceCategories: defaultSmmServiceCategories,
+    pricingModels: rules.map((rule) => ({
+      name: `${rule.serviceKind.toLowerCase()} per-quantity markup`,
+      description:
+        "Supplier rate is quoted per order, then customer price applies markup, platform fee, and a minimum margin floor.",
+      marginBps: rule.markupBps,
+      minimumMarginMinor: rule.minimumMarginMinor,
+      platformFeeMinor: rule.platformFeeMinor
+    })),
+    reliability: input.reliability
+  };
 }
 
 export function getCurrencyExposure(amounts: Money[]): Partial<Record<CurrencyCode, number>> {

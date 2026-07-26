@@ -17,8 +17,8 @@
     "test": "turbo test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prisma:validate": "pnpm --filter @fliptrybe/database prisma validate",
-    "prisma:generate": "pnpm --filter @fliptrybe/database prisma generate",
+    "prisma:validate": "corepack pnpm --filter @fliptrybe/database prisma validate",
+    "prisma:generate": "corepack pnpm --filter @fliptrybe/database prisma generate",
     "verify": "pnpm typecheck && pnpm lint && pnpm test && pnpm prisma:validate && pnpm ui:audit",
     "ops:evidence": "node scripts/managed-ads-evidence.ts",
     "ops:phases": "node scripts/managed-ads-phases.ts",
@@ -27,6 +27,11 @@
     "smoke": "tsx scripts/smoke.ts",
     "smoke:deployed": "tsx scripts/deployed-smoke.ts",
     "ui:audit": "tsx scripts/ui-audit.ts"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@swc/core"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

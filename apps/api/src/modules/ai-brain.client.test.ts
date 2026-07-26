@@ -13,7 +13,7 @@ const campaign: Campaign = {
   objective: "TRAFFIC",
   status: "QUEUED",
   budget: { amountMinor: 120000, currency: "NGN" },
-  destination: { kind: "WEBSITE", url: "https://fliptrybe.com" },
+  destination: { kind: "WEBSITE", url: "https://fliptrybe.store" },
   schedule: { startsAt: "2026-05-22T12:00:00.000Z", timezone: "Africa/Lagos" },
   provider: "MOCK",
   providerReference: "mock_ads_test",

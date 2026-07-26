@@ -38,33 +38,36 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen">
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[260px_1fr]">
-        <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-4 xl:border-b-0 xl:border-r">
+        <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-4 xl:border-r xl:border-b-0">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-md bg-[var(--ft-accent)] text-sm font-semibold text-[var(--ft-text-inverse)]">
               FA
             </div>
             <div>
-              <div className="text-sm font-semibold text-[var(--ft-text-primary)]">FlipTrybe Admin</div>
+              <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                FlipTrybe Admin
+              </div>
               <div className="text-xs text-[var(--ft-text-muted)]">Governance console</div>
             </div>
           </div>
 
           <nav className="mt-6 grid grid-cols-2 gap-1 xl:grid-cols-1">
             {[
-              { label: "Overview", icon: Radar },
-              { label: "Moderation", icon: ShieldCheck },
-              { label: "Payments", icon: Banknote },
-              { label: "Suppliers", icon: Boxes },
-              { label: "Audit", icon: FileSearch },
-              { label: "Access", icon: LockKeyhole }
+              { label: "Overview", href: "/", icon: Radar },
+              { label: "Moderation", href: "/campaign-ops", icon: ShieldCheck },
+              { label: "Payments", href: "/campaign-ops/reports", icon: Banknote },
+              { label: "Growth", href: "/growth-services", icon: Boxes },
+              { label: "Audit", href: "/campaign-ops/activity", icon: FileSearch },
+              { label: "Access", href: "/digital-access", icon: LockKeyhole }
             ].map((item) => (
-              <button
+              <a
                 className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
+                href={item.href}
                 key={item.label}
               >
                 <item.icon className="size-4" />
                 <span>{item.label}</span>
-              </button>
+              </a>
             ))}
           </nav>
 
@@ -95,9 +98,19 @@ export default function AdminPage() {
           </header>
 
           <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Active users" value="18.4k" detail="+9.2% weekly growth" tone="success" />
+            <MetricCard
+              label="Active users"
+              value="18.4k"
+              detail="+9.2% weekly growth"
+              tone="success"
+            />
             <MetricCard label="Payment volume" value="NGN 482.5M" detail="Mock ledger reconciled" />
-            <MetricCard label="Fraud signals" value="7" detail="2 require escalation" tone="warning" />
+            <MetricCard
+              label="Fraud signals"
+              value="7"
+              detail="2 require escalation"
+              tone="warning"
+            />
             <MetricCard label="Queue depth" value="196" detail="All workers healthy" tone="info" />
           </section>
 
@@ -105,8 +118,12 @@ export default function AdminPage() {
             <Panel className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">System monitoring</h2>
-                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">API, queues, providers, and realtime channels.</p>
+                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">
+                    System monitoring
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                    API, queues, providers, and realtime channels.
+                  </p>
                 </div>
                 <Network className="size-5 text-[var(--ft-blue)]" />
               </div>
@@ -119,7 +136,9 @@ export default function AdminPage() {
                   >
                     <div className="font-medium text-[var(--ft-text-primary)]">{queue.name}</div>
                     <div className="text-sm text-[var(--ft-text-muted)]">{queue.depth} jobs</div>
-                    <Badge tone={queue.status === "healthy" ? "success" : "warning"}>{queue.status}</Badge>
+                    <Badge tone={queue.status === "healthy" ? "success" : "warning"}>
+                      {queue.status}
+                    </Badge>
                   </div>
                 ))}
               </div>
@@ -129,7 +148,9 @@ export default function AdminPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Risk desk</h2>
-                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Moderation, fraud, disputes, and suspicious activity.</p>
+                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                    Moderation, fraud, disputes, and suspicious activity.
+                  </p>
                 </div>
                 <AlertTriangle className="size-5 text-[var(--ft-accent)]" />
               </div>
@@ -141,7 +162,15 @@ export default function AdminPage() {
                       <div className="font-medium text-[var(--ft-text-primary)]">{item.item}</div>
                       <div className="mt-1 text-sm text-[var(--ft-text-muted)]">{item.reason}</div>
                     </div>
-                    <Badge tone={item.risk === "High" ? "danger" : item.risk === "Medium" ? "warning" : "success"}>
+                    <Badge
+                      tone={
+                        item.risk === "High"
+                          ? "danger"
+                          : item.risk === "Medium"
+                            ? "warning"
+                            : "success"
+                      }
+                    >
                       {item.risk}
                     </Badge>
                   </div>
@@ -153,20 +182,36 @@ export default function AdminPage() {
           <div className="mt-6 grid gap-4 xl:grid-cols-3">
             <Panel className="p-4">
               <Users className="size-5 text-[var(--ft-text-primary)]" />
-              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">User management</h2>
+              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">
+                User management
+              </h2>
               <div className="mt-3 grid gap-3 text-sm text-[var(--ft-text-secondary)]">
-                <div className="flex justify-between"><span>New accounts</span><span className="font-medium text-[var(--ft-text-primary)]">842</span></div>
-                <div className="flex justify-between"><span>Suspended</span><span className="font-medium text-[var(--ft-text-primary)]">13</span></div>
-                <div className="flex justify-between"><span>Team invites</span><span className="font-medium text-[var(--ft-text-primary)]">91</span></div>
+                <div className="flex justify-between">
+                  <span>New accounts</span>
+                  <span className="font-medium text-[var(--ft-text-primary)]">842</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Suspended</span>
+                  <span className="font-medium text-[var(--ft-text-primary)]">13</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Team invites</span>
+                  <span className="font-medium text-[var(--ft-text-primary)]">91</span>
+                </div>
               </div>
             </Panel>
 
             <Panel className="p-4">
               <Banknote className="size-5 text-[var(--ft-text-primary)]" />
-              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">Fee controls</h2>
+              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">
+                Fee controls
+              </h2>
               <div className="mt-4 grid gap-3">
                 {["Korapay", "Paystack", "Stripe", "Manual transfer"].map((rail) => (
-                  <div className="flex h-10 items-center justify-between rounded-md border border-[var(--ft-border)] px-3 text-sm text-[var(--ft-text-secondary)]" key={rail}>
+                  <div
+                    className="flex h-10 items-center justify-between rounded-md border border-[var(--ft-border)] px-3 text-sm text-[var(--ft-text-secondary)]"
+                    key={rail}
+                  >
                     <span>{rail}</span>
                     <span className="font-medium text-[var(--ft-text-primary)]">adapter</span>
                   </div>
@@ -176,10 +221,15 @@ export default function AdminPage() {
 
             <Panel className="p-4">
               <FileSearch className="size-5 text-[var(--ft-text-primary)]" />
-              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">Audit trail</h2>
+              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">
+                Audit trail
+              </h2>
               <div className="mt-4 space-y-3">
                 {audits.map((audit) => (
-                  <div className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]" key={audit}>
+                  <div
+                    className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]"
+                    key={audit}
+                  >
                     {audit}
                   </div>
                 ))}

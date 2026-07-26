@@ -73,13 +73,18 @@ function labelStatus(statusValue: CampaignOpsStatus | "all") {
   }
 
   const labels: Record<CampaignOpsStatus, string> = {
+    approved: "Approved",
+    assigned: "Assigned",
     blocked: "Blocked",
     completed: "Completed",
+    creative_review: "Creative Review",
     failed: "Failed",
-    queued: "Needs Action",
-    reviewing: "Ops Review",
-    running: "Live",
-    scheduled: "Launch Ready"
+    optimization: "Optimization",
+    paused: "Paused",
+    platform_launch: "Platform Launch",
+    reporting: "Reporting",
+    review: "Review",
+    submitted: "Submitted"
   };
 
   return labels[statusValue];

@@ -19,12 +19,12 @@ import { Badge, Button, MetricCard, Panel, ThemeToggle } from "@fliptrybe/ui";
 import { MotionSection } from "./ui/motion-section";
 
 const nav = [
-  { label: "Campaigns", icon: Megaphone },
-  { label: "Live", icon: PlayCircle },
-  { label: "SMM", icon: Users },
-  { label: "Wallet", icon: Wallet },
-  { label: "Analytics", icon: BarChart3 },
-  { label: "Support", icon: MessageCircle }
+  { label: "Campaigns", href: "/campaigns", icon: Megaphone },
+  { label: "Live", href: "/campaigns", icon: PlayCircle },
+  { label: "Growth", href: "/growth-services", icon: Users },
+  { label: "Wallet", href: "/billing", icon: Wallet },
+  { label: "Analytics", href: "/campaigns/analytics", icon: BarChart3 },
+  { label: "Support", href: "/notifications", icon: MessageCircle }
 ];
 
 const destinations = [
@@ -52,7 +52,7 @@ export default function HomePage() {
   return (
     <main className="min-h-screen">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[252px_1fr]">
-        <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)]/90 px-4 py-4 backdrop-blur lg:border-b-0 lg:border-r">
+        <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)]/90 px-4 py-4 backdrop-blur lg:border-r lg:border-b-0">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-md bg-[var(--ft-accent)] text-sm font-semibold text-[var(--ft-text-inverse)]">
               FT
@@ -65,13 +65,14 @@ export default function HomePage() {
 
           <nav className="mt-6 grid grid-cols-2 gap-1 lg:grid-cols-1">
             {nav.map((item) => (
-              <button
+              <a
                 className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
+                href={item.href}
                 key={item.label}
               >
                 <item.icon className="size-4" />
                 <span>{item.label}</span>
-              </button>
+              </a>
             ))}
           </nav>
 
@@ -113,9 +114,24 @@ export default function HomePage() {
           </header>
 
           <MotionSection className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Active spend" value="NGN 1.25M" detail="+18.6% ROI this week" tone="success" />
-            <MetricCard label="Live viewers" value="1,240" detail="TikTok boost running" tone="info" />
-            <MetricCard label="Queued orders" value="37" detail="SMM fulfillment healthy" tone="warning" />
+            <MetricCard
+              label="Active spend"
+              value="NGN 1.25M"
+              detail="+18.6% ROI this week"
+              tone="success"
+            />
+            <MetricCard
+              label="Live viewers"
+              value="1,240"
+              detail="TikTok boost running"
+              tone="info"
+            />
+            <MetricCard
+              label="Queued orders"
+              value="37"
+              detail="SMM fulfillment healthy"
+              tone="warning"
+            />
             <MetricCard label="Wallet balance" value="NGN 12.5M" detail="NGN 175k reserved" />
           </MotionSection>
 
@@ -123,8 +139,12 @@ export default function HomePage() {
             <Panel className="p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Campaign builder</h2>
-                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Meta, TikTok, live, social, store, app, and traffic goals.</p>
+                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">
+                    Campaign builder
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                    Meta, TikTok, live, social, store, app, and traffic goals.
+                  </p>
                 </div>
                 <Badge tone="neutral">Draft autosaved</Badge>
               </div>
@@ -170,20 +190,29 @@ export default function HomePage() {
             <Panel className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">AI growth desk</h2>
-                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Captions, hashtags, audiences, and creative angles.</p>
+                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">
+                    AI growth desk
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                    Captions, hashtags, audiences, and creative angles.
+                  </p>
                 </div>
                 <Bot className="size-5 text-[var(--ft-accent)]" />
               </div>
 
               <div className="mt-5 space-y-3">
-                {["Hook creator buyers during the first 10 minutes.", "Target Lagos, London, Toronto creator-commerce clusters.", "Use proof-led captions and scarcity windows."].map(
-                  (item) => (
-                    <div className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]" key={item}>
-                      {item}
-                    </div>
-                  )
-                )}
+                {[
+                  "Hook creator buyers during the first 10 minutes.",
+                  "Target Lagos, London, Toronto creator-commerce clusters.",
+                  "Use proof-led captions and scarcity windows."
+                ].map((item) => (
+                  <div
+                    className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]"
+                    key={item}
+                  >
+                    {item}
+                  </div>
+                ))}
               </div>
 
               <Button className="mt-5 w-full" variant="secondary">
@@ -196,19 +225,36 @@ export default function HomePage() {
           <div className="mt-6 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
             <Panel className="overflow-hidden">
               <div className="border-b border-[var(--ft-border)] p-4">
-                <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Campaign queue</h2>
+                <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">
+                  Campaign queue
+                </h2>
               </div>
               <div className="divide-y divide-[var(--ft-border)]">
                 {campaigns.map((campaign) => (
-                  <div className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center" key={campaign.name}>
+                  <div
+                    className="grid gap-3 p-4 sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                    key={campaign.name}
+                  >
                     <div>
-                      <div className="font-medium text-[var(--ft-text-primary)]">{campaign.name}</div>
+                      <div className="font-medium text-[var(--ft-text-primary)]">
+                        {campaign.name}
+                      </div>
                       <div className="text-sm text-[var(--ft-text-muted)]">{campaign.channel}</div>
                     </div>
-                    <Badge tone={campaign.status === "Active" ? "success" : campaign.status === "Review" ? "warning" : "info"}>
+                    <Badge
+                      tone={
+                        campaign.status === "Active"
+                          ? "success"
+                          : campaign.status === "Review"
+                            ? "warning"
+                            : "info"
+                      }
+                    >
                       {campaign.status}
                     </Badge>
-                    <div className="text-sm font-medium text-[var(--ft-text-secondary)]">{campaign.spend}</div>
+                    <div className="text-sm font-medium text-[var(--ft-text-secondary)]">
+                      {campaign.spend}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -217,8 +263,12 @@ export default function HomePage() {
             <Panel className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Performance pulse</h2>
-                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Spend, reach, conversions, and livestream velocity.</p>
+                  <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">
+                    Performance pulse
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                    Spend, reach, conversions, and livestream velocity.
+                  </p>
                 </div>
                 <Gauge className="size-5 text-[var(--ft-blue)]" />
               </div>
@@ -253,14 +303,28 @@ export default function HomePage() {
 
           <div className="mt-6 grid gap-4 lg:grid-cols-3">
             {[
-              { icon: Activity, title: "Realtime updates", copy: "Campaign, livestream, notification, and admin channels are ready." },
-              { icon: CreditCard, title: "Wallet controls", copy: "Korapay, Paystack, Stripe, and manual rails sit behind adapter contracts." },
-              { icon: ShieldCheck, title: "Governance", copy: "RBAC, audit logging, moderation, and fraud signals are wired into the shell." }
+              {
+                icon: Activity,
+                title: "Realtime updates",
+                copy: "Campaign, livestream, notification, and admin channels are ready."
+              },
+              {
+                icon: CreditCard,
+                title: "Wallet controls",
+                copy: "Korapay, Paystack, Stripe, and manual rails sit behind adapter contracts."
+              },
+              {
+                icon: ShieldCheck,
+                title: "Governance",
+                copy: "RBAC, audit logging, moderation, and fraud signals are wired into the shell."
+              }
             ].map((item) => (
               <Panel className="p-4" key={item.title}>
                 <item.icon className="size-5 text-[var(--ft-text-primary)]" />
                 <div className="mt-4 font-semibold text-[var(--ft-text-primary)]">{item.title}</div>
-                <div className="mt-2 text-sm leading-6 text-[var(--ft-text-muted)]">{item.copy}</div>
+                <div className="mt-2 text-sm leading-6 text-[var(--ft-text-muted)]">
+                  {item.copy}
+                </div>
               </Panel>
             ))}
           </div>
