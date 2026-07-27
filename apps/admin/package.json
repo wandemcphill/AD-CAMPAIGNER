@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fliptrybe/design-system": "workspace:*",
+    "@fliptrybe/types": "workspace:*",
     "@fliptrybe/ui": "workspace:*",
     "@tailwindcss/postcss": "^4.3.0",
     "framer-motion": "^12.40.0",

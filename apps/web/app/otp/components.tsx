@@ -154,3 +154,14 @@ export function Field({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
+
+export function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <div className="grid min-h-40 place-items-center p-6 text-center">
+      <div>
+        <div className="font-semibold text-[var(--ft-text-primary)]">{title}</div>
+        <p className="mt-2 max-w-md text-sm text-[var(--ft-text-muted)]">{detail}</p>
+      </div>
+    </div>
+  );
+}

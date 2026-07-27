@@ -1,12 +1,38 @@
+"use client";
+
 import { ArrowRight, Copy, Search, ShieldCheck, Smartphone } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 
 import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
 
-import { OtpShell, PageHeader, StatusBadge } from "./components";
-import { orders, quickStats, services } from "./data";
+import { createOtpOrder } from "./api";
+import { EmptyState, OtpShell, PageHeader, StatusBadge } from "./components";
+import { useOtpDashboard } from "./use-otp-dashboard";
 
 export default function OtpPage() {
+  const { data, error, isLoading, refresh } = useOtpDashboard();
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isCreating, setIsCreating] = useState(false);
+  const services = data?.services ?? [];
+  const orders = data?.orders ?? [];
+  const quickStats = data?.quickStats ?? [];
+  const selectedService = services[selectedIndex] ?? services[0];
+
+  async function buyOtp() {
+    if (!selectedService) {
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      await createOtpOrder(selectedService);
+      await refresh();
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   return (
     <OtpShell active="/otp">
       <PageHeader
@@ -23,9 +49,9 @@ export default function OtpPage() {
               <Search className="size-4" />
               Search service, country, order
             </div>
-            <Button>
+            <Button disabled={!selectedService || isCreating} onClick={() => void buyOtp()}>
               <Smartphone className="size-4" />
-              Buy OTP
+              {isCreating ? "Buying..." : "Buy OTP"}
             </Button>
           </div>
         }
@@ -57,18 +83,26 @@ export default function OtpPage() {
           <div className="mt-5 grid gap-3 md:grid-cols-2">
             <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
               Service
-              <select className="h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-[var(--ft-text-primary)]">
-                {services.map((service) => (
-                  <option key={service.name}>{service.name}</option>
+              <select
+                className="h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-[var(--ft-text-primary)]"
+                onChange={(event) => setSelectedIndex(Number(event.target.value))}
+                value={selectedIndex}
+              >
+                {services.map((service, index) => (
+                  <option key={`${service.name}-${service.country}`} value={index}>
+                    {service.name}
+                  </option>
                 ))}
               </select>
             </label>
             <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
               Country
-              <select className="h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-[var(--ft-text-primary)]">
-                {services.map((service) => (
-                  <option key={service.country}>{service.country}</option>
-                ))}
+              <select
+                className="h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-[var(--ft-text-primary)]"
+                disabled
+                value={selectedService?.country ?? ""}
+              >
+                <option>{selectedService?.country ?? "Select a service"}</option>
               </select>
             </label>
           </div>
@@ -89,6 +123,11 @@ export default function OtpPage() {
               </div>
             ))}
           </div>
+          {error ? (
+            <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
+              {error}
+            </div>
+          ) : null}
           <div className="mt-5 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
             Status guide: healthy routes show higher delivery confidence, pending orders are still waiting for an OTP,
             and expired orders should be replaced with a fresh number.
@@ -106,22 +145,34 @@ export default function OtpPage() {
             </Link>
           </div>
           <div className="divide-y divide-[var(--ft-border)]">
-            {orders.slice(0, 4).map((order) => (
-              <Link
-                className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-muted)] sm:grid-cols-[1fr_auto_auto] sm:items-center"
-                href={`/otp/orders/${order.id}`}
-                key={order.id}
-              >
-                <div>
-                  <div className="font-medium text-[var(--ft-text-primary)]">{order.service}</div>
-                  <div className="text-sm text-[var(--ft-text-muted)]">{order.number}</div>
-                </div>
-                <StatusBadge status={order.status} />
-                <Button className="pointer-events-none px-3" variant="secondary">
-                  <Copy className="size-4" />
-                </Button>
-              </Link>
-            ))}
+            {isLoading ? (
+              <EmptyState
+                title="Loading live OTP orders"
+                detail="Checking your marketplace wallet and current provider queue."
+              />
+            ) : orders.length === 0 ? (
+              <EmptyState
+                title="No live OTP orders yet"
+                detail="Buy a number to start a real verification order from the API-backed marketplace."
+              />
+            ) : (
+              orders.slice(0, 4).map((order) => (
+                <Link
+                  className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-muted)] sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                  href={`/otp/orders/${order.id}`}
+                  key={order.id}
+                >
+                  <div>
+                    <div className="font-medium text-[var(--ft-text-primary)]">{order.service}</div>
+                    <div className="text-sm text-[var(--ft-text-muted)]">{order.number}</div>
+                  </div>
+                  <StatusBadge status={order.status} />
+                  <Button className="pointer-events-none px-3" variant="secondary">
+                    <Copy className="size-4" />
+                  </Button>
+                </Link>
+              ))
+            )}
           </div>
         </Panel>
       </div>

@@ -8,8 +8,16 @@ import {
   TimerReset,
   Wallet
 } from "lucide-react";
+import type { ComponentType } from "react";
 
-export type OtpStatus = "WAITING" | "RECEIVED" | "EXPIRED" | "REFUNDED" | "COMPLETED";
+export type OtpStatus =
+  | "CHARGED"
+  | "ALLOCATING"
+  | "WAITING"
+  | "RECEIVED"
+  | "EXPIRED"
+  | "REFUNDED"
+  | "COMPLETED";
 
 export type OtpOrder = {
   id: string;
@@ -25,9 +33,45 @@ export type OtpOrder = {
   events: Array<{ label: string; at: string; tone: "success" | "warning" | "info" | "neutral" }>;
 };
 
+export type OtpServiceRow = {
+  name: string;
+  country: string;
+  price: string;
+  stock: number;
+  success: string;
+  eta: string;
+  tag: string;
+  serviceCode?: string;
+  countryCode?: string;
+};
+
+export type OtpWalletSummary = {
+  available: string;
+  held: string;
+  spentToday: string;
+};
+
+export type OtpWalletLedgerEntry = {
+  label: string;
+  amount: string;
+  rail: string;
+  status: "COMPLETED" | "WAITING" | "REFUNDED";
+  at: string;
+};
+
+export type OtpMetric = {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "neutral" | "success" | "warning" | "info";
+  icon: ComponentType<{ className?: string }>;
+};
+
 export const statusTone: Record<OtpStatus, "neutral" | "success" | "warning" | "danger" | "info"> =
   {
     WAITING: "warning",
+    CHARGED: "info",
+    ALLOCATING: "warning",
     RECEIVED: "info",
     EXPIRED: "danger",
     REFUNDED: "neutral",
@@ -173,7 +217,7 @@ export const orders: OtpOrder[] = [
   }
 ];
 
-export const walletLedger = [
+export const walletLedger: OtpWalletLedgerEntry[] = [
   {
     label: "Wallet top-up",
     amount: "+NGN 85,000",
@@ -204,7 +248,7 @@ export const walletLedger = [
   }
 ] as const;
 
-export const quickStats = [
+export const quickStats: OtpMetric[] = [
   {
     label: "Wallet balance",
     value: "NGN 248,900",

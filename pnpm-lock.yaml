@@ -53,6 +53,9 @@ importers:
       '@fliptrybe/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
+      '@fliptrybe/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@fliptrybe/ui':
         specifier: workspace:*
         version: link:../../packages/ui

@@ -7,9 +7,46 @@ import {
   Network,
   ShieldAlert
 } from "lucide-react";
+import type { ComponentType } from "react";
 
-export type OtpStatus = "WAITING" | "RECEIVED" | "EXPIRED" | "REFUNDED" | "COMPLETED";
+export type OtpStatus =
+  | "CHARGED"
+  | "ALLOCATING"
+  | "WAITING"
+  | "RECEIVED"
+  | "EXPIRED"
+  | "REFUNDED"
+  | "COMPLETED";
 export type ProviderState = "healthy" | "degraded" | "paused";
+
+export type AdminOtpProvider = {
+  name: string;
+  state: ProviderState;
+  fill: string;
+  latency: string;
+  stock: number;
+  refund: string;
+  spend: string;
+};
+
+export type AdminOtpOrder = {
+  id: string;
+  user: string;
+  service: string;
+  provider: string;
+  status: OtpStatus;
+  amount: string;
+  risk: string;
+  age: string;
+};
+
+export type AdminOtpMetric = {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "neutral" | "success" | "warning" | "info";
+  icon: ComponentType<{ className?: string }>;
+};
 
 export const navItems = [
   { label: "Overview", href: "/otp", icon: Activity },
@@ -23,6 +60,8 @@ export const navItems = [
 export const statusTone: Record<OtpStatus, "neutral" | "success" | "warning" | "danger" | "info"> =
   {
     WAITING: "warning",
+    CHARGED: "info",
+    ALLOCATING: "warning",
     RECEIVED: "info",
     EXPIRED: "danger",
     REFUNDED: "neutral",
@@ -35,7 +74,7 @@ export const providerTone: Record<ProviderState, "success" | "warning" | "danger
   paused: "danger"
 };
 
-export const providers = [
+export const providers: AdminOtpProvider[] = [
   {
     name: "5SIM Budget",
     state: "healthy" as const,
@@ -74,7 +113,7 @@ export const providers = [
   }
 ];
 
-export const orders = [
+export const orders: AdminOtpOrder[] = [
   {
     id: "OTP-10482",
     user: "creator@fliptrybe.test",
@@ -237,7 +276,7 @@ export const auditEvents = [
 
 export const healthBars = [82, 94, 88, 96, 91, 75, 84, 93, 89, 97, 92, 86];
 
-export const overviewMetrics = [
+export const overviewMetrics: AdminOtpMetric[] = [
   {
     label: "OTP GMV",
     value: "NGN 42.8M",

@@ -1,11 +1,17 @@
+"use client";
+
 import { Banknote, CreditCard, Plus, WalletCards } from "lucide-react";
 
 import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
 
-import { OtpShell, PageHeader } from "../components";
-import { walletLedger } from "../data";
+import { EmptyState, OtpShell, PageHeader } from "../components";
+import { useOtpDashboard } from "../use-otp-dashboard";
 
 export default function OtpWalletPage() {
+  const { data, isLoading } = useOtpDashboard();
+  const wallet = data?.wallet;
+  const walletLedger = data?.walletLedger ?? [];
+
   return (
     <OtpShell active="/otp/wallet">
       <PageHeader
@@ -21,20 +27,20 @@ export default function OtpWalletPage() {
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <MetricCard
           label="Available"
-          value="NGN 248,900"
+          value={wallet?.available ?? "Loading"}
           detail="Ready for purchases"
           tone="success"
         />
         <MetricCard
           label="Live debits"
-          value="NGN 1,300"
+          value={wallet?.held ?? "Loading"}
           detail="Refund-safe OTP orders"
           tone="warning"
         />
         <MetricCard
           label="Spent today"
-          value="NGN 18,460"
-          detail="54 completed orders"
+          value={wallet?.spentToday ?? "Loading"}
+          detail="From current API ledger"
           tone="info"
         />
       </section>
@@ -76,33 +82,45 @@ export default function OtpWalletPage() {
             <div>Amount</div>
           </div>
           <div className="divide-y divide-[var(--ft-border)]">
-            {walletLedger.map((entry) => (
-              <div
-                className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] sm:grid-cols-[1fr_auto_auto] sm:items-center"
-                key={`${entry.label}-${entry.at}`}
-              >
-                <div>
-                  <div className="font-medium text-[var(--ft-text-primary)]">{entry.label}</div>
-                  <div className="text-sm text-[var(--ft-text-muted)]">
-                    {entry.rail} at {entry.at}
+            {isLoading ? (
+              <EmptyState
+                title="Loading wallet ledger"
+                detail="Reconciling wallet balance and recent OTP charges."
+              />
+            ) : walletLedger.length === 0 ? (
+              <EmptyState
+                title="No OTP wallet movements"
+                detail="Purchases, provider holds, and refunds will appear here after the first live order."
+              />
+            ) : (
+              walletLedger.map((entry) => (
+                <div
+                  className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                  key={`${entry.label}-${entry.at}`}
+                >
+                  <div>
+                    <div className="font-medium text-[var(--ft-text-primary)]">{entry.label}</div>
+                    <div className="text-sm text-[var(--ft-text-muted)]">
+                      {entry.rail} at {entry.at}
+                    </div>
+                  </div>
+                  <Badge
+                    tone={
+                      entry.status === "COMPLETED"
+                        ? "success"
+                        : entry.status === "WAITING"
+                          ? "warning"
+                          : "neutral"
+                    }
+                  >
+                    {entry.status}
+                  </Badge>
+                  <div className="font-mono text-sm font-semibold text-[var(--ft-text-primary)]">
+                    {entry.amount}
                   </div>
                 </div>
-                <Badge
-                  tone={
-                    entry.status === "COMPLETED"
-                      ? "success"
-                      : entry.status === "WAITING"
-                        ? "warning"
-                        : "neutral"
-                  }
-                >
-                  {entry.status}
-                </Badge>
-                <div className="font-mono text-sm font-semibold text-[var(--ft-text-primary)]">
-                  {entry.amount}
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </Panel>
       </div>

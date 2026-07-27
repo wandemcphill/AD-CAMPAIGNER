@@ -220,6 +220,12 @@ export class CampaignsController {
     return this.managedAds.getCampaignSpendBreakdown(workspaceContextFromRequest(request), id);
   }
 
+  @Get("budget-optimization")
+  @RequirePermissions("payment:manage")
+  budgetOptimization(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.getBudgetOptimizationRecommendations(workspaceContextFromRequest(request));
+  }
+
   @Get(":id")
   get(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.managedAds.getCampaign(workspaceContextFromRequest(request), id);
@@ -241,12 +247,6 @@ export class CampaignsController {
   @RequirePermissions("campaign:create")
   recommendations(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
     return this.managedAds.getCampaignRecommendations(workspaceContextFromRequest(request), body);
-  }
-
-  @Get("budget-optimization")
-  @RequirePermissions("payment:manage")
-  budgetOptimization(@Req() request: WorkspaceContextRequest) {
-    return this.managedAds.getBudgetOptimizationRecommendations(workspaceContextFromRequest(request));
   }
 
   @Patch(":id")
