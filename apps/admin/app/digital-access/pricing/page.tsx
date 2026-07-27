@@ -1,19 +1,35 @@
-import { Calculator, CheckCircle2 } from "lucide-react";
+"use client";
+
+import { Calculator, CheckCircle2, RefreshCw } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
-import { AdminDigitalAccessShell, AdminPageHeader, ServiceStateBadge } from "../components";
-import { services } from "../data";
+import {
+  AdminDigitalAccessShell,
+  AdminEmptyState,
+  AdminErrorNotice,
+  AdminPageHeader,
+  ServiceStateBadge
+} from "../components";
+import { useAdminDigitalAccessData } from "../use-admin-digital-access-data";
 
 export default function AdminDigitalAccessPricingPage() {
+  const { error, loading, refresh, services } = useAdminDigitalAccessData();
+
   return (
     <AdminDigitalAccessShell active="/digital-access/pricing">
       <AdminPageHeader
         action={
-          <Button>
-            <CheckCircle2 className="size-4" />
-            Publish selected
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4" />
+              Refresh
+            </Button>
+            <Button>
+              <CheckCircle2 className="size-4" />
+              Publish selected
+            </Button>
+          </div>
         }
         eyebrow={
           <>
@@ -23,6 +39,8 @@ export default function AdminDigitalAccessPricingPage() {
         }
         title="Plans and pricing"
       />
+
+      <AdminErrorNotice message={error} />
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel className="p-4">
@@ -49,22 +67,33 @@ export default function AdminDigitalAccessPricingPage() {
         </Panel>
 
         <div className="grid gap-3">
-          {services.map((service) => (
-            <Panel className="p-4" key={service.id}>
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                <div>
-                  <div className="font-semibold text-[var(--ft-text-primary)]">{service.name}</div>
-                  <div className="mt-1 text-sm text-[var(--ft-text-muted)]">
-                    {service.plans} plans · {service.eta}
+          {loading ? (
+            <AdminEmptyState title="Loading pricing" detail="Refreshing Digital Access service plans." />
+          ) : services.length === 0 ? (
+            <AdminEmptyState
+              title="No pricing rows returned"
+              detail="Service plan counts and starting prices will appear after the admin catalog API responds."
+            />
+          ) : (
+            services.map((service) => (
+              <Panel className="p-4" key={service.id}>
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                  <div>
+                    <div className="font-semibold text-[var(--ft-text-primary)]">
+                      {service.name}
+                    </div>
+                    <div className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                      {service.plans} plans - {service.eta}
+                    </div>
+                  </div>
+                  <ServiceStateBadge state={service.state} />
+                  <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                    {service.startingPrice}
                   </div>
                 </div>
-                <ServiceStateBadge state={service.state} />
-                <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
-                  {service.startingPrice}
-                </div>
-              </div>
-            </Panel>
-          ))}
+              </Panel>
+            ))
+          )}
         </div>
       </section>
     </AdminDigitalAccessShell>

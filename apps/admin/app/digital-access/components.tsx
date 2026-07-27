@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Badge, ThemeToggle, cn } from "@fliptrybe/ui";
+import { Badge, Panel, ThemeToggle, cn } from "@fliptrybe/ui";
 
 import { SessionPanel } from "../ui/session-panel";
 import {
@@ -147,6 +147,17 @@ export function AdminErrorNotice({ message }: { message?: string | undefined }) 
     <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/40 bg-[var(--ft-yellow-subtle)] p-3 text-sm text-[var(--ft-yellow)]">
       {safeMessage}
     </div>
+  );
+}
+
+export function AdminEmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <Panel className="p-6 text-center">
+      <div className="mx-auto max-w-md">
+        <div className="font-semibold text-[var(--ft-text-primary)]">{title}</div>
+        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-muted)]">{detail}</p>
+      </div>
+    </Panel>
   );
 }
 

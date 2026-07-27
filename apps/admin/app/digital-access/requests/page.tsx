@@ -34,7 +34,7 @@ export default function AdminDigitalAccessRequestsPage() {
             <Badge tone="warning">Pending queue</Badge>
             {process.env.NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE === "true" ? (
               <Badge tone={source === "api" ? "success" : "info"}>
-                {source === "api" ? "API data" : "Local preview"}
+                {source === "api" ? "API data" : "No API data"}
               </Badge>
             ) : null}
           </>

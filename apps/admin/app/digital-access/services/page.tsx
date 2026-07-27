@@ -1,11 +1,21 @@
-import { ImagePlus, Plus, Search } from "lucide-react";
+"use client";
+
+import { ImagePlus, Plus, RefreshCw, Search } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
-import { AdminDigitalAccessShell, AdminPageHeader, ServiceStateBadge } from "../components";
-import { services } from "../data";
+import {
+  AdminDigitalAccessShell,
+  AdminEmptyState,
+  AdminErrorNotice,
+  AdminPageHeader,
+  ServiceStateBadge
+} from "../components";
+import { useAdminDigitalAccessData } from "../use-admin-digital-access-data";
 
 export default function AdminDigitalAccessServicesPage() {
+  const { error, loading, refresh, services } = useAdminDigitalAccessData();
+
   return (
     <AdminDigitalAccessShell active="/digital-access/services">
       <AdminPageHeader
@@ -19,6 +29,10 @@ export default function AdminDigitalAccessServicesPage() {
               <Plus className="size-4" />
               Add service
             </Button>
+            <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4" />
+              Refresh
+            </Button>
           </div>
         }
         eyebrow={
@@ -29,6 +43,8 @@ export default function AdminDigitalAccessServicesPage() {
         }
         title="Service management"
       />
+
+      <AdminErrorNotice message={error} />
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Panel className="p-4">
@@ -58,30 +74,41 @@ export default function AdminDigitalAccessServicesPage() {
         </Panel>
 
         <div className="grid gap-3">
-          {services.map((service) => (
-            <Panel className="p-4" key={service.id}>
-              <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-center">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-semibold text-[var(--ft-text-primary)]">{service.name}</h2>
-                    <ServiceStateBadge state={service.state} />
+          {loading ? (
+            <AdminEmptyState title="Loading services" detail="Refreshing the Digital Access catalog." />
+          ) : services.length === 0 ? (
+            <AdminEmptyState
+              title="No services returned"
+              detail="Configured Digital Access services will appear here after the admin API returns catalog rows."
+            />
+          ) : (
+            services.map((service) => (
+              <Panel className="p-4" key={service.id}>
+                <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-center">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-semibold text-[var(--ft-text-primary)]">
+                        {service.name}
+                      </h2>
+                      <ServiceStateBadge state={service.state} />
+                    </div>
+                    <div className="mt-1 text-sm text-[var(--ft-text-muted)]">
+                      {service.category} - {service.eta}
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm text-[var(--ft-text-muted)]">
-                    {service.category} · {service.eta}
+                  <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                    {service.startingPrice}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="secondary">Plans</Button>
+                    <Button variant={service.state === "active" ? "danger" : "secondary"}>
+                      {service.state === "active" ? "Pause" : "Activate"}
+                    </Button>
                   </div>
                 </div>
-                <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
-                  {service.startingPrice}
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="secondary">Plans</Button>
-                  <Button variant={service.state === "active" ? "danger" : "secondary"}>
-                    {service.state === "active" ? "Pause" : "Activate"}
-                  </Button>
-                </div>
-              </div>
-            </Panel>
-          ))}
+              </Panel>
+            ))
+          )}
         </div>
       </section>
     </AdminDigitalAccessShell>

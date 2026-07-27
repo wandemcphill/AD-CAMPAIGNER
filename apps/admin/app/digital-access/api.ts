@@ -7,9 +7,6 @@ import {
 } from "../lib/api-client";
 import {
   adminAccessEnabled,
-  metrics as fallbackMetrics,
-  requests as fallbackRequests,
-  services as fallbackServices,
   statusTone,
   type AdminAccessRequest,
   type AdminAccessService,
@@ -77,9 +74,14 @@ type Paginated<T> = {
 
 const defaultState: AdminDigitalAccessState = {
   loading: false,
-  metrics: fallbackMetrics,
-  requests: fallbackRequests,
-  services: fallbackServices,
+  metrics: [
+    { label: "Open requests", value: "0", detail: "Awaiting or in fulfillment", tone: "info" },
+    { label: "Fulfilled", value: "0", detail: "Completed manually", tone: "success" },
+    { label: "Refund rate", value: "0%", detail: "Cancelled or failed", tone: "warning" },
+    { label: "Revenue", value: "NGN 0", detail: "Fulfilled request value" }
+  ],
+  requests: [],
+  services: [],
   source: adminAccessEnabled ? "fallback" : "disabled"
 };
 
@@ -193,7 +195,7 @@ export async function loadAdminDigitalAccessData() {
   const services =
     servicesPage.items.length > 0
       ? servicesPage.items.map((service) => mapService(service, requests))
-      : fallbackServices;
+      : [];
 
   return {
     loading: false,

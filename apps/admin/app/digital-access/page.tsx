@@ -44,7 +44,7 @@ export default function AdminDigitalAccessPage() {
             </Badge>
             {process.env.NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE === "true" ? (
               <Badge tone={source === "api" ? "success" : "info"}>
-                {source === "api" ? "API data" : source === "disabled" ? "Setup preview" : "Local preview"}
+                {source === "api" ? "API data" : source === "disabled" ? "Setup preview" : "No API data"}
               </Badge>
             ) : null}
           </>
