@@ -7,9 +7,11 @@ import {
   healthBars as fallbackHealthBars,
   overviewMetrics as fallbackOverviewMetrics,
   type AdminOtpOrder,
+  type AdminOtpAuditEvent,
   type AdminOtpMetric,
   type AdminOtpPricingRule,
   type AdminOtpProvider,
+  type AdminOtpRiskSignal,
   type OtpStatus,
   type ProviderState
 } from "./data";
@@ -42,6 +44,16 @@ export type AdminOtpDashboardData = {
   pricingRules: AdminOtpPricingRule[];
   orders: AdminOtpOrder[];
   healthBars: typeof fallbackHealthBars;
+};
+
+export type AdminOtpRiskData = {
+  metrics: {
+    flaggedUsers: number;
+    reviewOrders: number;
+    protectedAmountMinor: number;
+    blockedRoutes: number;
+  };
+  signals: AdminOtpRiskSignal[];
 };
 
 function percentFromBps(value?: number) {
@@ -190,4 +202,12 @@ export async function setOtpPricingRule(input: AdminOtpPricingRule) {
     method: "POST",
     body: JSON.stringify(input)
   });
+}
+
+export async function loadAdminOtpRisk() {
+  return apiRequest<AdminOtpRiskData>("/admin/otp/risk");
+}
+
+export async function loadAdminOtpAudit() {
+  return apiRequest<AdminOtpAuditEvent[]>("/admin/otp/audit");
 }

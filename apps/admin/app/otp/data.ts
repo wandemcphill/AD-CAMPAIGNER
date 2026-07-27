@@ -39,6 +39,22 @@ export type AdminOtpPricingRule = {
   usdToNgnRate: number;
 };
 
+export type AdminOtpRiskSignal = {
+  label: string;
+  entity: string;
+  severity: "High" | "Medium" | "Low";
+  action: string;
+};
+
+export type AdminOtpAuditEvent = {
+  id: string;
+  event: string;
+  actor: string;
+  target: string;
+  at: string;
+  tone: "info" | "neutral" | "success" | "warning";
+};
+
 export type AdminOtpOrder = {
   id: string;
   user: string;
@@ -83,71 +99,6 @@ export const providerTone: Record<ProviderState, "success" | "warning" | "danger
   degraded: "warning",
   paused: "danger"
 };
-
-export const riskSignals = [
-  {
-    label: "High refund velocity",
-    entity: "bulk@agency.test",
-    severity: "High",
-    action: "Limit route access"
-  },
-  {
-    label: "Provider latency spike",
-    entity: "TextVerified Premium",
-    severity: "Medium",
-    action: "Raise price guard"
-  },
-  {
-    label: "Repeated expirations",
-    entity: "new@buyer.test",
-    severity: "Medium",
-    action: "Shorten refund window"
-  },
-  {
-    label: "Clean completion streak",
-    entity: "5SIM Budget",
-    severity: "Low",
-    action: "Keep routing"
-  }
-];
-
-export const auditEvents = [
-  {
-    event: "otp.provider.paused",
-    actor: "Admin Operator",
-    target: "SMS-Activate Compatible",
-    at: "10:48",
-    tone: "warning" as const
-  },
-  {
-    event: "otp.refund.issued",
-    actor: "Risk Engine",
-    target: "OTP-10478",
-    at: "10:09",
-    tone: "neutral" as const
-  },
-  {
-    event: "otp.price.updated",
-    actor: "Pricing Desk",
-    target: "Premium identity United States",
-    at: "09:42",
-    tone: "info" as const
-  },
-  {
-    event: "otp.order.completed",
-    actor: "Provider Webhook",
-    target: "OTP-10480",
-    at: "10:21",
-    tone: "success" as const
-  },
-  {
-    event: "otp.risk.flagged",
-    actor: "Risk Engine",
-    target: "bulk@agency.test",
-    at: "09:58",
-    tone: "warning" as const
-  }
-];
 
 export const healthBars = [82, 94, 88, 96, 91, 75, 84, 93, 89, 97, 92, 86];
 

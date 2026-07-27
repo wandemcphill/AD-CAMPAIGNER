@@ -1,9 +1,13 @@
-import { Download, FileClock } from "lucide-react";
+"use client";
+
+import { Download, FileClock, RefreshCcw } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
-import { AdminOtpShell, AdminPageHeader } from "../components";
-import { auditEvents } from "../data";
+import { loadAdminOtpAudit } from "../api";
+import { AdminOtpShell, AdminPageHeader, EmptyState } from "../components";
+import type { AdminOtpAuditEvent } from "../data";
 
 const eventDot = {
   info: "bg-[var(--ft-blue)]",
@@ -12,18 +16,64 @@ const eventDot = {
   warning: "bg-[var(--ft-yellow)]"
 } as const;
 
+function timeLabel(value: string) {
+  const timestamp = new Date(value).getTime();
+
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-NG", {
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+    day: "numeric"
+  }).format(timestamp);
+}
+
 export default function AdminOtpAuditPage() {
+  const [events, setEvents] = useState<AdminOtpAuditEvent[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setEvents(await loadAdminOtpAudit());
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load OTP audit trail.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
   return (
     <AdminOtpShell active="/otp/audit">
       <AdminPageHeader
         eyebrow={<Badge tone="success">Immutable event log</Badge>}
         title="Audit"
         action={
-          <Button variant="secondary">
-            <Download className="size-4" /> Export CSV
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button disabled={events.length === 0} variant="secondary">
+              <Download className="size-4" /> Export CSV
+            </Button>
+            <Button disabled={isLoading} onClick={() => void refresh()}>
+              <RefreshCcw className="size-4" /> Refresh
+            </Button>
+          </div>
         }
       />
+
+      {error ? (
+        <div className="mt-6 rounded-[var(--radius-sm)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
+          {error}
+        </div>
+      ) : null}
 
       <Panel className="mt-6 overflow-hidden">
         <div className="border-b border-[var(--ft-border)] p-4">
@@ -39,20 +89,29 @@ export default function AdminOtpAuditPage() {
           <div>Time</div>
         </div>
         <div className="divide-y divide-[var(--ft-border)]">
-          {auditEvents.map((event) => (
-            <div
-              className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] lg:grid-cols-[1fr_0.8fr_0.8fr_auto] lg:items-center"
-              key={`${event.event}-${event.at}`}
-            >
-              <div className="flex items-center gap-3 font-semibold text-[var(--ft-text-primary)]">
-                <span className={`size-2 rounded-full ${eventDot[event.tone]}`} />
-                {event.event}
+          {isLoading ? (
+            <EmptyState title="Loading audit trail" detail="Fetching live OTP system events." />
+          ) : events.length === 0 ? (
+            <EmptyState
+              title="No OTP audit events"
+              detail="Provider control, pricing, and order events will appear here."
+            />
+          ) : (
+            events.map((event) => (
+              <div
+                className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] lg:grid-cols-[1fr_0.8fr_0.8fr_auto] lg:items-center"
+                key={event.id}
+              >
+                <div className="flex items-center gap-3 font-semibold text-[var(--ft-text-primary)]">
+                  <span className={`size-2 rounded-full ${eventDot[event.tone]}`} />
+                  {event.event}
+                </div>
+                <div className="text-sm text-[var(--ft-text-secondary)]">{event.actor}</div>
+                <div className="text-sm text-[var(--ft-text-secondary)]">{event.target}</div>
+                <Badge tone={event.tone}>{timeLabel(event.at)}</Badge>
               </div>
-              <div className="text-sm text-[var(--ft-text-secondary)]">{event.actor}</div>
-              <div className="text-sm text-[var(--ft-text-secondary)]">{event.target}</div>
-              <Badge tone={event.tone}>{event.at}</Badge>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </Panel>
     </AdminOtpShell>

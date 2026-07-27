@@ -81,6 +81,16 @@ export class AdminOtpController {
     return this.otp.getAdminProviders();
   }
 
+  @Get("risk")
+  risk() {
+    return this.otp.getAdminRisk();
+  }
+
+  @Get("audit")
+  audit() {
+    return this.otp.getAdminAudit();
+  }
+
   @Post("providers/:id/controls")
   controls(@Param("id") id: string, @Body() body: OtpProviderControlDto) {
     return this.otp.setProviderControl(id, body);

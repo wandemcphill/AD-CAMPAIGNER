@@ -463,6 +463,10 @@ export class OtpMarketplaceService {
     const next = { ...current, ...input };
 
     this.providerControls.set(providerName, next);
+    this.pushAdminEvent("otp.provider_control.updated", {
+      providerName,
+      enabled: next.enabled !== false
+    });
 
     return { providerName, control: next };
   }
@@ -470,6 +474,60 @@ export class OtpMarketplaceService {
   getPricingRules() {
     this.ensureAdminEnabled();
     return this.pricingRules;
+  }
+
+  async getAdminRisk() {
+    this.ensureAdminEnabled();
+    const health = await this.getProviderHealth();
+    const highRiskOrders = this.orders.filter((order) => (order.riskScore ?? 0) >= 70);
+    const reviewOrders = this.orders.filter((order) => (order.riskScore ?? 0) >= 35);
+    const blockedRoutes = health.filter((item) => item.status === "DOWN").length +
+      Array.from(this.providerControls.values()).filter((control) => control.enabled === false)
+        .length;
+    const providerSignals = health
+      .filter((item) => item.status === "DEGRADED" || item.status === "DOWN")
+      .map((item) => ({
+        label: item.status === "DOWN" ? "Provider unavailable" : "Provider degraded",
+        entity: item.providerName,
+        severity: item.status === "DOWN" ? "High" : "Medium",
+        action: item.status === "DOWN" ? "Pause route until healthy" : "Lower routing priority"
+      }));
+    const orderSignals = reviewOrders.slice(0, 10).map((order) => ({
+      label: order.riskScore && order.riskScore >= 70 ? "High-risk OTP order" : "Review OTP order",
+      entity: order.id,
+      severity: order.riskScore && order.riskScore >= 70 ? "High" : "Medium",
+      action: order.status === "REFUNDED" ? "Confirm refund closure" : "Review customer activity"
+    }));
+
+    return {
+      metrics: {
+        flaggedUsers: highRiskOrders.length,
+        reviewOrders: reviewOrders.length,
+        protectedAmountMinor: reviewOrders.reduce(
+          (total, order) => total + order.amount.amountMinor,
+          0
+        ),
+        blockedRoutes
+      },
+      signals: [...providerSignals, ...orderSignals]
+    };
+  }
+
+  getAdminAudit() {
+    this.ensureAdminEnabled();
+
+    return this.events.map((event) => ({
+      id: event.id,
+      event: event.name,
+      actor: "OTP system",
+      target: event.tenantId,
+      at: event.occurredAt,
+      tone: event.name.includes("Refunded")
+        ? "warning"
+        : event.name.includes("Created")
+          ? "success"
+          : "info"
+    }));
   }
 
   setPricingRule(input: OtpPricingRuleDto) {
@@ -502,6 +560,11 @@ export class OtpMarketplaceService {
     };
 
     this.pricingRules = [...this.pricingRules.filter((rule) => rule.tier !== tier), next];
+    this.pushAdminEvent("otp.pricing_rule.updated", {
+      tier: next.tier,
+      markupBps: next.markupBps,
+      customerCurrency: next.customerCurrency
+    });
 
     return next;
   }
@@ -714,6 +777,16 @@ export class OtpMarketplaceService {
         tenantId: workspaceId,
         payload
       } as unknown as Omit<Extract<PlatformEvent, { name: TEvent }>, "id" | "occurredAt">)
+    );
+  }
+
+  private pushAdminEvent(name: string, payload: Record<string, unknown>) {
+    this.events.unshift(
+      createEvent({
+        name,
+        tenantId: workspaceId,
+        payload
+      } as unknown as Omit<PlatformEvent, "id" | "occurredAt">)
     );
   }
 }
