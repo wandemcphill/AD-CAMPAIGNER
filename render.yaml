@@ -106,6 +106,14 @@ services:
         value: anthropic
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
+      - key: ANTHROPIC_BASE_URL
+        sync: false
+      - key: ANTHROPIC_TIMEOUT_SECONDS
+        value: "20"
+      - key: ANTHROPIC_MAX_RETRIES
+        value: "2"
       - key: AI_BRAIN_ENABLED
         value: "true"
       - key: AI_BRAIN_BASE_URL
@@ -135,6 +143,8 @@ services:
       - key: DIGITAL_ACCESS_WORKER_ENABLED
         value: "true"
       - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
+        value: "true"
+      - key: OTP_PROVIDER_HEALTH_WORKER_ENABLED
         value: "true"
       - key: OTP_PROVIDER_MODE
         value: live
@@ -182,11 +192,19 @@ services:
         sync: false
       - key: PAYSTACK_SECRET_KEY
         sync: false
+      - key: PAYSTACK_PUBLIC_KEY
+        sync: false
       - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLIC_KEY
         sync: false
       - key: META_APP_SECRET
         sync: false
+      - key: META_APP_ID
+        sync: false
       - key: TIKTOK_CLIENT_SECRET
+        sync: false
+      - key: TIKTOK_CLIENT_KEY
         sync: false
 
   - type: web
@@ -205,8 +223,14 @@ services:
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
         value: https://ft-campaigner-api-fra.onrender.com
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS
         value: "true"
+      - key: NEXT_PUBLIC_ENABLE_GROWTH_SERVICES
+        value: "true"
+      - key: NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE
+        value: "false"
 
   - type: web
     runtime: static
@@ -224,8 +248,16 @@ services:
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
         value: https://ft-campaigner-api-fra.onrender.com
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS_ADMIN
         value: "true"
+      - key: NEXT_PUBLIC_ENABLE_GROWTH_SERVICES_ADMIN
+        value: "true"
+      - key: NEXT_PUBLIC_ENABLE_CAMPAIGN_OPS_ADMIN
+        value: "true"
+      - key: NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE
+        value: "false"
 
   - type: worker
     runtime: node
@@ -317,6 +349,24 @@ services:
         sync: false
       - key: AI_PROVIDER
         value: anthropic
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        sync: false
+      - key: ANTHROPIC_BASE_URL
+        sync: false
+      - key: ANTHROPIC_TIMEOUT_SECONDS
+        value: "20"
+      - key: ANTHROPIC_MAX_RETRIES
+        value: "2"
+      - key: AI_BRAIN_ENABLED
+        value: "true"
+      - key: AI_BRAIN_BASE_URL
+        sync: false
+      - key: AI_BRAIN_API_KEY
+        sync: false
+      - key: AI_BRAIN_TIMEOUT_SECONDS
+        value: "0.8"
       - key: NOTIFICATION_PROVIDER
         value: live
       - key: ENABLE_OTP_MODULE
@@ -338,6 +388,8 @@ services:
       - key: DIGITAL_ACCESS_WORKER_ENABLED
         value: "true"
       - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
+        value: "true"
+      - key: OTP_PROVIDER_HEALTH_WORKER_ENABLED
         value: "true"
       - key: OTP_PROVIDER_MODE
         value: live
