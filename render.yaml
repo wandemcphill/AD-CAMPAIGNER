@@ -23,6 +23,8 @@ services:
         value: https://ft-campaigner-api-fra-g25g.onrender.com
       - key: DATABASE_URL
         sync: false
+      - key: PRISMA_MIGRATE_DATABASE_URL
+        sync: false
       - key: REDIS_URL
         fromService:
           type: keyvalue

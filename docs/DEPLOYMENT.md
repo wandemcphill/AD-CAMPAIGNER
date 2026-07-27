@@ -21,6 +21,8 @@ The Blueprint keeps Digital Access, OTP, and worker automation disabled by defau
 
 ## Core Production Env
 
+Prisma migrations run during the API `preDeployCommand`. When production Postgres is hosted on Supabase, set `PRISMA_MIGRATE_DATABASE_URL` in the API service to a Render-reachable migration connection string. Supabase direct hosts such as `db.<project>.supabase.co:5432` may be IPv6-only unless the IPv4 add-on is enabled; use the Supabase session pooler/IPv4-compatible URL or an approved direct IPv4 migration URL. Runtime database access still uses `DATABASE_URL`.
+
 Media storage is configured for Cloudinary through `STORAGE_PROVIDER=cloudinary`. The API service must have `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_UPLOAD_PRESET`, and the optional Cloudinary folder/distribution values set before upload flows are enabled.
 
 SMM fulfillment is configured as a routed multi-supplier layer across SMDPanel, SMM Raja, JustAnotherPanel, and Peakerr. Keep supplier currencies in USD, keep customer wallet/pricing in NGN unless a workspace explicitly changes currency later, and use each `*_SERVICE_MAP` JSON value to pin known-good services.
