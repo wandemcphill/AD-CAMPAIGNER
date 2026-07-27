@@ -27,6 +27,16 @@ export type AdminOtpProvider = {
   stock: number;
   refund: string;
   spend: string;
+  enabled: boolean;
+};
+
+export type AdminOtpPricingRule = {
+  tier: "BUDGET" | "PREMIUM";
+  markupBps: number;
+  minimumMarginMinor: number;
+  platformFeeMinor: number;
+  customerCurrency: string;
+  usdToNgnRate: number;
 };
 
 export type AdminOtpOrder = {
@@ -74,98 +84,6 @@ export const providerTone: Record<ProviderState, "success" | "warning" | "danger
   paused: "danger"
 };
 
-export const providers: AdminOtpProvider[] = [
-  {
-    name: "5SIM Budget",
-    state: "healthy" as const,
-    fill: "98.2%",
-    latency: "18s",
-    stock: 1840,
-    refund: "1.1%",
-    spend: "NGN 2.8M"
-  },
-  {
-    name: "SMS-Man Budget",
-    state: "healthy" as const,
-    fill: "96.1%",
-    latency: "25s",
-    stock: 920,
-    refund: "1.8%",
-    spend: "NGN 1.9M"
-  },
-  {
-    name: "TextVerified Premium",
-    state: "degraded" as const,
-    fill: "91.4%",
-    latency: "54s",
-    stock: 406,
-    refund: "4.9%",
-    spend: "NGN 3.4M"
-  },
-  {
-    name: "SMS-Activate Compatible",
-    state: "paused" as const,
-    fill: "82.0%",
-    latency: "71s",
-    stock: 0,
-    refund: "9.8%",
-    spend: "NGN 410K"
-  }
-];
-
-export const orders: AdminOtpOrder[] = [
-  {
-    id: "OTP-10482",
-    user: "creator@fliptrybe.test",
-    service: "WhatsApp",
-    provider: "5SIM Budget",
-    status: "WAITING" as const,
-    amount: "NGN 340",
-    risk: "Low",
-    age: "02m"
-  },
-  {
-    id: "OTP-10481",
-    user: "ops@market.test",
-    service: "Telegram",
-    provider: "SMS-Man Budget",
-    status: "RECEIVED" as const,
-    amount: "NGN 620",
-    risk: "Low",
-    age: "09m"
-  },
-  {
-    id: "OTP-10480",
-    user: "growth@studio.test",
-    service: "Premium identity",
-    provider: "TextVerified Premium",
-    status: "COMPLETED" as const,
-    amount: "NGN 1,120",
-    risk: "Medium",
-    age: "24m"
-  },
-  {
-    id: "OTP-10479",
-    user: "new@buyer.test",
-    service: "Instagram",
-    provider: "5SIM Budget",
-    status: "EXPIRED" as const,
-    amount: "NGN 510",
-    risk: "Medium",
-    age: "38m"
-  },
-  {
-    id: "OTP-10478",
-    user: "bulk@agency.test",
-    service: "TikTok",
-    provider: "SMS-Activate Compatible",
-    status: "REFUNDED" as const,
-    amount: "NGN 780",
-    risk: "High",
-    age: "51m"
-  }
-];
-
 export const riskSignals = [
   {
     label: "High refund velocity",
@@ -190,49 +108,6 @@ export const riskSignals = [
     entity: "5SIM Budget",
     severity: "Low",
     action: "Keep routing"
-  }
-];
-
-export const pricingRows = [
-  {
-    service: "WhatsApp",
-    country: "Nigeria",
-    base: "NGN 260",
-    markup: "31%",
-    user: "NGN 340",
-    margin: "NGN 80"
-  },
-  {
-    service: "Telegram",
-    country: "United Kingdom",
-    base: "NGN 470",
-    markup: "32%",
-    user: "NGN 620",
-    margin: "NGN 150"
-  },
-  {
-    service: "Premium identity",
-    country: "United States",
-    base: "NGN 860",
-    markup: "30%",
-    user: "NGN 1,120",
-    margin: "NGN 260"
-  },
-  {
-    service: "TikTok",
-    country: "Canada",
-    base: "NGN 610",
-    markup: "28%",
-    user: "NGN 780",
-    margin: "NGN 170"
-  },
-  {
-    service: "Instagram",
-    country: "South Africa",
-    base: "NGN 390",
-    markup: "31%",
-    user: "NGN 510",
-    margin: "NGN 120"
   }
 ];
 

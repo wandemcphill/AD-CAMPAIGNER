@@ -467,6 +467,11 @@ export class OtpMarketplaceService {
     return { providerName, control: next };
   }
 
+  getPricingRules() {
+    this.ensureAdminEnabled();
+    return this.pricingRules;
+  }
+
   setPricingRule(input: OtpPricingRuleDto) {
     this.ensureAdminEnabled();
     assertOptionalNonNegativeInteger(

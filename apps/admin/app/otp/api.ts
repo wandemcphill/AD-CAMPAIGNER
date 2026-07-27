@@ -8,6 +8,7 @@ import {
   overviewMetrics as fallbackOverviewMetrics,
   type AdminOtpOrder,
   type AdminOtpMetric,
+  type AdminOtpPricingRule,
   type AdminOtpProvider,
   type OtpStatus,
   type ProviderState
@@ -38,6 +39,7 @@ type AdminProvider = {
 export type AdminOtpDashboardData = {
   overviewMetrics: AdminOtpMetric[];
   providers: AdminOtpProvider[];
+  pricingRules: AdminOtpPricingRule[];
   orders: AdminOtpOrder[];
   healthBars: typeof fallbackHealthBars;
 };
@@ -102,14 +104,17 @@ function ageText(createdAt?: string) {
 }
 
 function mapProvider(provider: AdminProvider): AdminOtpProvider {
+  const enabled = provider.control?.enabled !== false;
+
   return {
     name: provider.name,
     state: providerState(provider),
     fill: percentFromBps(provider.health?.successRateBps),
     latency: secondsFromMs(provider.health?.latencyMs),
-    stock: provider.control?.enabled === false ? 0 : 1,
+    stock: enabled ? 1 : 0,
     refund: provider.health?.status === "DEGRADED" ? "Review" : "Normal",
-    spend: provider.tier
+    spend: provider.tier,
+    enabled
   };
 }
 
@@ -154,19 +159,35 @@ function metricsFrom(overview: AdminOverview): AdminOtpMetric[] {
 }
 
 export async function loadAdminOtpDashboard(): Promise<AdminOtpDashboardData> {
-  const [overview, providers, orders] = await Promise.all([
+  const [overview, providers, pricingRules, orders] = await Promise.all([
     apiRequest<AdminOverview>("/admin/otp/overview"),
     apiRequest<AdminProvider[]>("/admin/otp/providers"),
+    apiRequest<AdminOtpPricingRule[]>("/admin/otp/pricing-rules"),
     apiRequest<ApiOtpOrder[]>("/otp/orders")
   ]);
 
   return {
     overviewMetrics: metricsFrom(overview),
     providers: providers.map(mapProvider),
+    pricingRules,
     orders: orders.map(mapOrder),
     healthBars:
       overview.providers.length > 0
         ? overview.providers.map((provider) => Math.max(8, Math.round(provider.successRateBps / 100)))
         : fallbackHealthBars
   };
+}
+
+export async function setOtpProviderControl(providerName: string, enabled: boolean) {
+  return apiRequest(`/admin/otp/providers/${encodeURIComponent(providerName)}/controls`, {
+    method: "POST",
+    body: JSON.stringify({ enabled })
+  });
+}
+
+export async function setOtpPricingRule(input: AdminOtpPricingRule) {
+  return apiRequest<AdminOtpPricingRule>("/admin/otp/pricing-rules", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
 }

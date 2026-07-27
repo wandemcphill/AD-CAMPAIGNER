@@ -86,6 +86,11 @@ export class AdminOtpController {
     return this.otp.setProviderControl(id, body);
   }
 
+  @Get("pricing-rules")
+  pricingRules() {
+    return this.otp.getPricingRules();
+  }
+
   @Post("pricing-rules")
   pricing(@Body() body: OtpPricingRuleDto) {
     return this.otp.setPricingRule(body);

@@ -1,15 +1,33 @@
 "use client";
 
 import { PauseCircle, PlayCircle } from "lucide-react";
+import { useState } from "react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
+import { setOtpProviderControl } from "../api";
 import { AdminOtpShell, AdminPageHeader, EmptyState, ProviderBadge } from "../components";
 import { useAdminOtpDashboard } from "../use-admin-otp-dashboard";
 
 export default function AdminOtpProvidersPage() {
-  const { data, isLoading, refresh } = useAdminOtpDashboard();
+  const { data, error, isLoading, refresh } = useAdminOtpDashboard();
+  const [controlError, setControlError] = useState<string | null>(null);
+  const [pendingProvider, setPendingProvider] = useState<string | null>(null);
   const providers = data?.providers ?? [];
+  const changeProviderState = async (providerName: string, enabled: boolean) => {
+    setPendingProvider(providerName);
+    setControlError(null);
+    try {
+      await setOtpProviderControl(providerName, enabled);
+      await refresh();
+    } catch (caught) {
+      setControlError(
+        caught instanceof Error ? caught.message : "Unable to update provider controls."
+      );
+    } finally {
+      setPendingProvider(null);
+    }
+  };
 
   return (
     <AdminOtpShell active="/otp/providers">
@@ -24,6 +42,11 @@ export default function AdminOtpProvidersPage() {
       />
 
       <Panel className="mt-6 overflow-hidden">
+        {error || controlError ? (
+          <div className="border-b border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] px-4 py-3 text-sm text-[var(--ft-red)]">
+            {controlError ?? error}
+          </div>
+        ) : null}
         <div className="hidden grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
           <div>Provider</div>
           <div>State</div>
@@ -81,9 +104,15 @@ export default function AdminOtpProvidersPage() {
                 </div>
                 <Button
                   className="px-3"
+                  disabled={pendingProvider === provider.name}
+                  onClick={() => void changeProviderState(provider.name, !provider.enabled)}
                   variant={provider.state === "paused" ? "secondary" : "ghost"}
                 >
-                  <PauseCircle className="size-4" />
+                  {provider.enabled ? (
+                    <PauseCircle className="size-4" />
+                  ) : (
+                    <PlayCircle className="size-4" />
+                  )}
                 </Button>
               </div>
             ))
