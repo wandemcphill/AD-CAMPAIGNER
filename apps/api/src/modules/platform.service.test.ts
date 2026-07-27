@@ -95,6 +95,10 @@ describe("PlatformService", () => {
       expect(service.listNotifications(workspaceA)).toEqual([]);
       expect(service.listAuditLogs(workspaceA)).toEqual([]);
       expect(service.search()).toEqual({ query: "", results: [] });
+      expect(service.getHealth().providers.smm).toBe("smm-router:none");
+      await expect(service.createSmmOrder(workspaceA, { quantity: 100 })).rejects.toThrow(
+        "No SMM supplier could quote this service."
+      );
       await expect(service.quoteCampaign({})).rejects.toThrow("legacy mock provider");
       await expect(service.createCampaign(workspaceA, { name: "Launch" })).rejects.toThrow(
         "legacy mock provider"

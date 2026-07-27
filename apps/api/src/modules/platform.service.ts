@@ -273,6 +273,26 @@ function normalizeGrowthOrderStatus(status?: string) {
 
 function createSmmSupplierBundle() {
   if (process.env.SMM_PROVIDER !== "live") {
+    if (isProductionRuntime() && process.env.ALLOW_MOCK_PROVIDERS !== "true") {
+      const providerAudit: SmmSupplierAuditProvider[] = [
+        {
+          name: "live-smm",
+          mode: "perfect-panel",
+          configured: false,
+          supportedCategories: getAllSmmServiceKinds(),
+          pricingModel: "per-1000-rate-card",
+          routingRole: "disabled",
+          serviceMapCoverage: []
+        }
+      ];
+
+      return {
+        providerAudit,
+        supplier: createRoutedSmmSupplier([]),
+        suppliers: []
+      };
+    }
+
     const supplier = createMockSmmSupplier();
     const providerAudit: SmmSupplierAuditProvider[] = [
       {
