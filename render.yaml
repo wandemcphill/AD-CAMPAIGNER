@@ -208,19 +208,19 @@ services:
         sync: false
 
   - type: web
-    runtime: static
+    runtime: node
     name: fliptrybe-ads-campaigner-web
+    region: frankfurt
+    plan: starter
     rootDir: .
     autoDeployTrigger: commit
     buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/web build
-    staticPublishPath: apps/web/out
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    startCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/web start
     envVars:
       - key: NODE_VERSION
         value: 22.12.0
+      - key: NODE_ENV
+        value: production
       - key: NEXT_PUBLIC_API_URL
         value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_API_BASE_URL

@@ -8,7 +8,7 @@ type WebpackConfig = {
 
 const nextConfig: NextConfig = {
   ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
-  output: "export",
+  ...(process.env.NEXT_OUTPUT === "export" ? { output: "export" as const } : {}),
   transpilePackages: ["@fliptrybe/ui", "@fliptrybe/types", "@fliptrybe/design-system"],
   typedRoutes: true,
   webpack(config: WebpackConfig, { isServer }: { isServer: boolean }) {

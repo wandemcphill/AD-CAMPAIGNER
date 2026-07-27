@@ -229,3 +229,15 @@ export function createOtpOrder(service: OtpServiceRow) {
     })
   });
 }
+
+export function cancelOtpOrder(orderId: string) {
+  return apiRequest<unknown>(`/otp/orders/${encodeURIComponent(orderId)}/cancel`, {
+    method: "POST"
+  });
+}
+
+export function refundOtpOrder(orderId: string) {
+  return apiRequest<unknown>(`/otp/orders/${encodeURIComponent(orderId)}/refund`, {
+    method: "POST"
+  });
+}
