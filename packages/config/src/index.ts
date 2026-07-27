@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const providerSchema = z.enum(["mock", "sandbox", "live"]).default("mock");
+const aiProviderSchema = z.enum(["mock", "sandbox", "live", "anthropic", "claude"]).default("mock");
 const storageProviderSchema = z.enum(["mock", "cloudinary", "s3"]).default("mock");
 
 export const envSchema = z.object({
@@ -18,7 +19,12 @@ export const envSchema = z.object({
   ADS_PROVIDER: providerSchema,
   PAYMENT_PROVIDER: providerSchema,
   SMM_PROVIDER: providerSchema,
-  AI_PROVIDER: providerSchema,
+  AI_PROVIDER: aiProviderSchema,
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().optional(),
+  ANTHROPIC_BASE_URL: z.url().optional(),
+  ANTHROPIC_TIMEOUT_SECONDS: z.string().optional(),
+  ANTHROPIC_MAX_RETRIES: z.string().optional(),
   AI_BRAIN_ENABLED: z.string().optional(),
   AI_BRAIN_BASE_URL: z.url().optional(),
   AI_BRAIN_API_KEY: z.string().optional(),
@@ -47,9 +53,12 @@ export const envSchema = z.object({
   SMSACTIVATE_API_KEY: z.string().optional(),
   SMSACTIVATE_COMPATIBLE_ENABLED: z.string().optional(),
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
+  CLOUDINARY_URL: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
   CLOUDINARY_UPLOAD_PRESET: z.string().optional(),
+  CLOUDINARY_IMAGE_UPLOAD_PRESET: z.string().optional(),
+  CLOUDINARY_VIDEO_UPLOAD_PRESET: z.string().optional(),
   CLOUDINARY_FOLDER: z.string().optional(),
   CLOUDINARY_SECURE_DISTRIBUTION: z.string().optional(),
   MEDIA_UPLOAD_SIGNATURE_TTL_SECONDS: z.string().optional(),

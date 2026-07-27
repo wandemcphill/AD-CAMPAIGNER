@@ -16,11 +16,11 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_URL
-        value: https://fliptrybe-ads-campaigner-web-g25g.onrender.com
+        value: https://fliptrybe-ads-campaigner-web-qz8a.onrender.com
       - key: ADMIN_URL
-        value: https://fliptrybe-ads-campaigner-admin-g25g.onrender.com
+        value: https://fliptrybe-ads-campaigner-admin-lndq.onrender.com
       - key: API_URL
-        value: https://ft-campaigner-api-fra-g25g.onrender.com
+        value: https://ft-campaigner-api-fra.onrender.com
       - key: DATABASE_URL
         sync: false
       - key: PRISMA_MIGRATE_DATABASE_URL
@@ -42,11 +42,17 @@ services:
         value: "true"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
+      - key: CLOUDINARY_URL
+        sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
       - key: CLOUDINARY_UPLOAD_PRESET
+        sync: false
+      - key: CLOUDINARY_IMAGE_UPLOAD_PRESET
+        sync: false
+      - key: CLOUDINARY_VIDEO_UPLOAD_PRESET
         sync: false
       - key: CLOUDINARY_FOLDER
         value: fliptrybe-ads-campaigner
@@ -57,7 +63,7 @@ services:
       - key: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE
         value: "false"
       - key: ADS_PROVIDER
-        value: mock
+        value: live
       - key: PAYMENT_PROVIDER
         value: live
       - key: SMM_PROVIDER
@@ -97,11 +103,11 @@ services:
       - key: PEAKERR_SERVICE_MAP
         sync: false
       - key: AI_PROVIDER
-        value: mock
+        value: anthropic
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: AI_BRAIN_ENABLED
-        value: "false"
+        value: "true"
       - key: AI_BRAIN_BASE_URL
         sync: false
       - key: AI_BRAIN_API_KEY
@@ -109,29 +115,29 @@ services:
       - key: AI_BRAIN_TIMEOUT_SECONDS
         value: "0.8"
       - key: NOTIFICATION_PROVIDER
-        value: mock
+        value: live
       - key: ENABLE_OTP_MODULE
-        value: "false"
+        value: "true"
       - key: ENABLE_PREMIUM_OTP
-        value: "false"
+        value: "true"
       - key: ENABLE_BUDGET_OTP
-        value: "false"
+        value: "true"
       - key: ENABLE_OTP_ADMIN
-        value: "false"
+        value: "true"
       - key: ENABLE_DIGITAL_ACCESS
-        value: "false"
+        value: "true"
       - key: ENABLE_DIGITAL_ACCESS_ADMIN
-        value: "false"
+        value: "true"
       - key: TRUST_PROXY_AUTH_HEADERS
         value: "false"
       - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
         value: "false"
       - key: DIGITAL_ACCESS_WORKER_ENABLED
-        value: "false"
+        value: "true"
       - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
-        value: "false"
+        value: "true"
       - key: OTP_PROVIDER_MODE
-        value: mock
+        value: live
       - key: OTP_BETA_WORKSPACE_IDS
         sync: false
       - key: OTP_USD_TO_NGN_RATE
@@ -153,7 +159,7 @@ services:
       - key: SMSACTIVATE_API_KEY
         sync: false
       - key: SMSACTIVATE_COMPATIBLE_ENABLED
-        value: "false"
+        value: "true"
       - key: KORAPAY_BASE_URL
         value: https://api.korapay.com
       - key: KORAPAY_PUBLIC_KEY
@@ -163,11 +169,11 @@ services:
       - key: KORAPAY_ENCRYPTION_KEY
         sync: false
       - key: KORAPAY_WEBHOOK_URL
-        value: https://ft-campaigner-api-fra-g25g.onrender.com/api/webhooks/korapay
+        value: https://ft-campaigner-api-fra.onrender.com/api/webhooks/korapay
       - key: KORAPAY_WEBHOOK_SECRET
         sync: false
       - key: KORAPAY_REDIRECT_URL
-        value: https://fliptrybe-ads-campaigner-web-g25g.onrender.com
+        value: https://fliptrybe-ads-campaigner-web-qz8a.onrender.com
       - key: TREASURY_BANK_NAME
         sync: false
       - key: TREASURY_ACCOUNT_NAME
@@ -198,9 +204,9 @@ services:
       - key: NODE_VERSION
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
-        value: https://ft-campaigner-api-fra-g25g.onrender.com
+        value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS
-        value: "false"
+        value: "true"
 
   - type: web
     runtime: static
@@ -217,9 +223,9 @@ services:
       - key: NODE_VERSION
         value: 22.12.0
       - key: NEXT_PUBLIC_API_URL
-        value: https://ft-campaigner-api-fra-g25g.onrender.com
+        value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS_ADMIN
-        value: "false"
+        value: "true"
 
   - type: worker
     runtime: node
@@ -246,11 +252,35 @@ services:
       - key: WORKER_CONCURRENCY
         value: 5
       - key: ADS_PROVIDER
-        value: mock
+        value: live
       - key: PAYMENT_PROVIDER
         value: live
       - key: SMM_PROVIDER
         value: live
+      - key: STORAGE_PROVIDER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_URL
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_UPLOAD_PRESET
+        sync: false
+      - key: CLOUDINARY_IMAGE_UPLOAD_PRESET
+        sync: false
+      - key: CLOUDINARY_VIDEO_UPLOAD_PRESET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: fliptrybe-ads-campaigner
+      - key: CLOUDINARY_SECURE_DISTRIBUTION
+        sync: false
+      - key: MEDIA_UPLOAD_SIGNATURE_TTL_SECONDS
+        value: "900"
+      - key: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE
+        value: "false"
       - key: SMDPANEL_API_URL
         value: https://smdpanel.com/api/v2
       - key: SMDPANEL_ENDPOINT
@@ -286,31 +316,31 @@ services:
       - key: PEAKERR_SERVICE_MAP
         sync: false
       - key: AI_PROVIDER
-        value: mock
+        value: anthropic
       - key: NOTIFICATION_PROVIDER
-        value: mock
+        value: live
       - key: ENABLE_OTP_MODULE
-        value: "false"
+        value: "true"
       - key: ENABLE_PREMIUM_OTP
-        value: "false"
+        value: "true"
       - key: ENABLE_BUDGET_OTP
-        value: "false"
+        value: "true"
       - key: ENABLE_OTP_ADMIN
-        value: "false"
+        value: "true"
       - key: ENABLE_DIGITAL_ACCESS
-        value: "false"
+        value: "true"
       - key: ENABLE_DIGITAL_ACCESS_ADMIN
-        value: "false"
+        value: "true"
       - key: TRUST_PROXY_AUTH_HEADERS
         value: "false"
       - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
         value: "false"
       - key: DIGITAL_ACCESS_WORKER_ENABLED
-        value: "false"
+        value: "true"
       - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
-        value: "false"
+        value: "true"
       - key: OTP_PROVIDER_MODE
-        value: mock
+        value: live
       - key: OTP_BETA_WORKSPACE_IDS
         sync: false
       - key: OTP_USD_TO_NGN_RATE
@@ -332,7 +362,7 @@ services:
       - key: SMSACTIVATE_API_KEY
         sync: false
       - key: SMSACTIVATE_COMPATIBLE_ENABLED
-        value: "false"
+        value: "true"
       - key: KORAPAY_BASE_URL
         value: https://api.korapay.com
       - key: KORAPAY_PUBLIC_KEY
@@ -342,11 +372,11 @@ services:
       - key: KORAPAY_ENCRYPTION_KEY
         sync: false
       - key: KORAPAY_WEBHOOK_URL
-        value: https://ft-campaigner-api-fra-g25g.onrender.com/api/webhooks/korapay
+        value: https://ft-campaigner-api-fra.onrender.com/api/webhooks/korapay
       - key: KORAPAY_WEBHOOK_SECRET
         sync: false
       - key: KORAPAY_REDIRECT_URL
-        value: https://fliptrybe-ads-campaigner-web-g25g.onrender.com
+        value: https://fliptrybe-ads-campaigner-web-qz8a.onrender.com
       - key: TREASURY_BANK_NAME
         sync: false
       - key: TREASURY_ACCOUNT_NAME
