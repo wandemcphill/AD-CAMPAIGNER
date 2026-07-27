@@ -19,8 +19,6 @@ import {
   type ApiMoney
 } from "../lib/api-client";
 import {
-  fallbackOrders,
-  fallbackServices,
   growthEnabled,
   type GrowthOrder,
   type GrowthOrderStatus,
@@ -84,8 +82,8 @@ type CreateOrderResponse = {
 
 const defaultState: GrowthState = {
   loading: false,
-  orders: fallbackOrders,
-  services: fallbackServices,
+  orders: [],
+  services: [],
   source: growthEnabled ? "fallback" : "disabled"
 };
 
@@ -200,8 +198,8 @@ export async function loadGrowthData(includeOrders: boolean) {
 
   return {
     loading: false,
-    orders: ordersPayload ? ordersPayload.map(mapOrder) : fallbackOrders,
-    services: servicesPayload.length > 0 ? servicesPayload.map(mapService) : fallbackServices,
+    orders: ordersPayload ? ordersPayload.map(mapOrder) : [],
+    services: servicesPayload.map(mapService),
     source: "api" as const
   };
 }

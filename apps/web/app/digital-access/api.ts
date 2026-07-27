@@ -22,8 +22,6 @@ import {
 import {
   accessEnabled,
   categories as fallbackCategories,
-  requests as fallbackRequests,
-  services as fallbackServices,
   statusTone,
   type AccessCategory,
   type AccessPlan,
@@ -105,8 +103,8 @@ type CreateRequestResponse = {
 const defaultState: DigitalAccessState = {
   categories: fallbackCategories,
   loading: false,
-  requests: fallbackRequests,
-  services: fallbackServices,
+  requests: [],
+  services: [],
   source: accessEnabled ? "fallback" : "disabled"
 };
 
@@ -130,13 +128,20 @@ function categoryVisual(slug: string): Pick<AccessCategory, "icon" | "tone"> {
 }
 
 function serviceIcon(service: Pick<ApiService, "category" | "name" | "slug">): LucideIcon {
-  const fallback = fallbackServices.find(
-    (item) => item.slug === service.slug || item.name.toLowerCase() === service.name.toLowerCase()
+  const fallback = fallbackCategories.find(
+    (item) => service.category.toLowerCase().includes(item.label.toLowerCase())
   );
-  const haystack = `${service.name} ${service.slug} ${service.category}`.toLowerCase();
 
   if (fallback) {
     return fallback.icon;
+  }
+  const categoryFallback = fallbackCategories.find(
+    (item) => item.slug === service.slug || service.category.toLowerCase().includes(item.slug)
+  );
+  const haystack = `${service.name} ${service.slug} ${service.category}`.toLowerCase();
+
+  if (categoryFallback) {
+    return categoryFallback.icon;
   }
   if (haystack.includes("canva") || haystack.includes("design")) {
     return Palette;
@@ -240,9 +245,8 @@ export async function loadDigitalAccessData(includeRequests: boolean) {
 
   const categories =
     categoryPayload.length > 0 ? categoryPayload.map(mapCategory) : fallbackCategories;
-  const services =
-    servicePayload.items.length > 0 ? servicePayload.items.map(mapService) : fallbackServices;
-  const requests = requestPayload ? requestPayload.map(mapRequest) : fallbackRequests;
+  const services = servicePayload.items.map(mapService);
+  const requests = requestPayload ? requestPayload.map(mapRequest) : [];
 
   return {
     categories,

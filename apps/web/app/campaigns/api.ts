@@ -21,9 +21,7 @@ import {
   subscribeToSessionChanges
 } from "../lib/api-client";
 import {
-  fallbackBillingActivity,
   fallbackDestinations,
-  fallbackHealth,
   type BillingActivity,
   type CampaignAiInsights,
   type CampaignAnalyticsOverview,
@@ -130,7 +128,7 @@ export const defaultCampaignBuilderState: CampaignBuilderState = {
 };
 
 export const defaultBillingState: BillingState = {
-  activity: fallbackBillingActivity,
+  activity: [],
   loading: false,
   source: "fallback",
   wallet: null
@@ -138,7 +136,7 @@ export const defaultBillingState: BillingState = {
 
 export const defaultOnboardingState: OnboardingState = {
   destinations: fallbackDestinations,
-  health: fallbackHealth,
+  health: null,
   loading: false,
   source: "fallback"
 };
