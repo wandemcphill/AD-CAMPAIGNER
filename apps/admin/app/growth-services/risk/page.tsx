@@ -4,7 +4,12 @@ import { RefreshCw, ShieldAlert } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
-import { AdminErrorNotice, AdminGrowthShell, AdminPageHeader } from "../components";
+import {
+  AdminEmptyState,
+  AdminErrorNotice,
+  AdminGrowthShell,
+  AdminPageHeader
+} from "../components";
 import { useAdminGrowthData } from "../use-admin-growth-data";
 
 export default function AdminGrowthRiskPage() {
@@ -31,7 +36,13 @@ export default function AdminGrowthRiskPage() {
       <AdminErrorNotice message={error} />
 
       <section className="mt-6 grid gap-4">
-        {risks.map((risk) => (
+        {risks.length === 0 ? (
+          <AdminEmptyState
+            title="No risk assessments returned"
+            detail="Service policy, account, refund, and reputation risk checks will appear once the API returns assessments."
+          />
+        ) : (
+          risks.map((risk) => (
           <Panel className="p-4" key={risk.serviceCode}>
             <div className="grid gap-4 xl:grid-cols-[1fr_1.3fr] xl:items-start">
               <div>
@@ -52,7 +63,8 @@ export default function AdminGrowthRiskPage() {
               </div>
             </div>
           </Panel>
-        ))}
+          ))
+        )}
       </section>
     </AdminGrowthShell>
   );

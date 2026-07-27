@@ -135,9 +135,20 @@ export function AdminErrorNotice({ message }: { message?: string | undefined }) 
   return (
     <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/40 bg-[var(--ft-yellow-subtle)] p-3 text-sm text-[var(--ft-yellow)]">
       {technicalMessage
-        ? "Growth admin data could not refresh right now. Showing local fallback data."
+        ? "Growth admin data could not refresh right now. Showing the last safe local state."
         : message}
     </div>
+  );
+}
+
+export function AdminEmptyState({ title, detail }: { title: string; detail: string }) {
+  return (
+    <Panel className="p-6 text-center">
+      <div className="mx-auto max-w-md">
+        <div className="font-semibold text-[var(--ft-text-primary)]">{title}</div>
+        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-muted)]">{detail}</p>
+      </div>
+    </Panel>
   );
 }
 

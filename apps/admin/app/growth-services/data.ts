@@ -76,82 +76,18 @@ export type AdminGrowthMetric = {
 
 export const adminGrowthEnabled = process.env.NEXT_PUBLIC_ENABLE_GROWTH_SERVICES_ADMIN !== "false";
 
-export const fallbackServices: AdminGrowthService[] = [
-  {
-    code: "tiktok-views",
-    name: "TikTok Views",
-    platform: "TikTok",
-    enabled: true,
-    price: "NGN 1,800 / 1k",
-    marginBps: 3500,
-    maximumQuantity: 100000,
-    expectedCompletion: "4-24 hours",
-    preferredSupplier: "auto",
-    routingStrategy: "LOWEST_COST",
-    riskTone: "warning",
-    riskSummary: "Artificial views can be filtered or reviewed by platform systems."
-  },
-  {
-    code: "website-traffic",
-    name: "Website Traffic",
-    platform: "Website",
-    enabled: false,
-    price: "NGN 2,500 / 1k",
-    marginBps: 3500,
-    maximumQuantity: 250000,
-    expectedCompletion: "2-7 days",
-    preferredSupplier: "manual",
-    routingStrategy: "MANUAL_REVIEW",
-    riskTone: "danger",
-    riskSummary: "Disabled until source quality controls are approved."
-  }
-];
+export const fallbackServices: AdminGrowthService[] = [];
 
-export const fallbackOrders: AdminGrowthOrder[] = [
-  {
-    id: "GR-1042",
-    serviceName: "TikTok Views",
-    platform: "TikTok",
-    destinationUrl: "https://www.tiktok.com/@fliptrybe",
-    quantityOrdered: 1000,
-    quantityDelivered: 640,
-    status: "IN_PROGRESS",
-    amount: "NGN 2,700",
-    supplierName: "mock-smm",
-    supplierReference: "mock_smm",
-    updatedAt: "Delivery in progress"
-  }
-];
+export const fallbackOrders: AdminGrowthOrder[] = [];
 
-export const fallbackSuppliers: AdminSupplierAudit[] = [
-  {
-    name: "mock-smm",
-    configured: true,
-    mode: "mock",
-    routingRole: "primary",
-    serviceMapCoverage: 0,
-    reliability: "healthy",
-    latencyMs: 12
-  }
-];
+export const fallbackSuppliers: AdminSupplierAudit[] = [];
 
-export const fallbackRisks: AdminGrowthRisk[] = [
-  {
-    serviceCode: "youtube-subscribers",
-    serviceName: "YouTube Subscribers",
-    platform: "YouTube",
-    platformPolicyRisk: "CRITICAL",
-    accountRisk: "HIGH",
-    refundRisk: "HIGH",
-    reputationRisk: "HIGH",
-    summary: "Subscriber services are highly exposed to spam and fake engagement enforcement."
-  }
-];
+export const fallbackRisks: AdminGrowthRisk[] = [];
 
 export const fallbackMetrics: AdminGrowthMetric[] = [
-  { label: "Open orders", value: "1", detail: "Pending or in delivery", tone: "info" },
-  { label: "Active services", value: "8", detail: "Customer-visible", tone: "success" },
-  { label: "Disabled services", value: "1", detail: "Awaiting controls", tone: "warning" },
+  { label: "Open orders", value: "0", detail: "Pending or in delivery", tone: "info" },
+  { label: "Active services", value: "0", detail: "Customer-visible", tone: "success" },
+  { label: "Disabled services", value: "0", detail: "Awaiting controls", tone: "warning" },
   { label: "Revenue", value: "NGN 0", detail: "Completed order value" }
 ];
 

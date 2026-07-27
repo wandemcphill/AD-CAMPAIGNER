@@ -6,7 +6,12 @@ import { CheckCircle2, RefreshCw, Save } from "lucide-react";
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
 import { updateGrowthService } from "../api";
-import { AdminErrorNotice, AdminGrowthShell, AdminPageHeader } from "../components";
+import {
+  AdminEmptyState,
+  AdminErrorNotice,
+  AdminGrowthShell,
+  AdminPageHeader
+} from "../components";
 import type { AdminGrowthService } from "../data";
 import { useAdminGrowthData } from "../use-admin-growth-data";
 
@@ -67,7 +72,13 @@ export default function AdminGrowthServicesPage() {
       ) : null}
 
       <section className="mt-6 grid gap-4">
-        {services.map((service) => (
+        {services.length === 0 ? (
+          <AdminEmptyState
+            title="No growth services returned"
+            detail="Enable Growth Services admin APIs and configure catalog rows to manage pricing, margins, and supplier routing."
+          />
+        ) : (
+          services.map((service) => (
           <Panel className="p-4" key={service.code}>
             <form
               className="grid gap-4 xl:grid-cols-[1fr_1.3fr_auto] xl:items-end"
@@ -160,7 +171,8 @@ export default function AdminGrowthServicesPage() {
               </Button>
             </form>
           </Panel>
-        ))}
+          ))
+        )}
       </section>
     </AdminGrowthShell>
   );

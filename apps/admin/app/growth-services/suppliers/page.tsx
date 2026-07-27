@@ -5,6 +5,7 @@ import { RefreshCw, Route } from "lucide-react";
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
 import {
+  AdminEmptyState,
   AdminErrorNotice,
   AdminGrowthShell,
   AdminPageHeader,
@@ -36,7 +37,13 @@ export default function AdminGrowthSuppliersPage() {
       <AdminErrorNotice message={error} />
 
       <section className="mt-6 grid gap-4 xl:grid-cols-2">
-        {suppliers.map((supplier) => (
+        {suppliers.length === 0 ? (
+          <AdminEmptyState
+            title="No supplier routes returned"
+            detail="Configured SMM suppliers, routing roles, service-map coverage, and latency checks will appear here."
+          />
+        ) : (
+          suppliers.map((supplier) => (
           <Panel className="p-4" key={supplier.name}>
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -58,7 +65,8 @@ export default function AdminGrowthSuppliersPage() {
               <AuditStat label="Latency" value={`${supplier.latencyMs}ms`} />
             </div>
           </Panel>
-        ))}
+          ))
+        )}
       </section>
     </AdminGrowthShell>
   );
