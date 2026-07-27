@@ -5,7 +5,6 @@ import type { OtpOrder as ApiOtpOrder, OtpService } from "@fliptrybe/types";
 import { apiRequest, formatMoney, getStoredToken } from "../lib/api-client";
 import {
   quickStats as fallbackQuickStats,
-  services as fallbackServices,
   type OtpMetric,
   type OtpOrder,
   type OtpServiceRow,
@@ -167,14 +166,14 @@ function quickStatsFrom(orders: OtpOrder[], wallet: OtpWalletSummary): OtpMetric
 
 export async function loadOtpDashboard(): Promise<OtpDashboardData> {
   const token = getStoredToken();
-  let services = fallbackServices;
+  let services: OtpServiceRow[] = [];
   let loadedFromApi = false;
 
   try {
     services = (await apiRequest<OtpService[]>("/otp/services")).map(mapService);
     loadedFromApi = true;
   } catch {
-    services = fallbackServices;
+    services = [];
   }
 
   if (!token) {
