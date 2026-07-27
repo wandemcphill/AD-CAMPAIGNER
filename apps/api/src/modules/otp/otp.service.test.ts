@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OtpMarketplaceService } from "./otp.service";
 
 const env = { ...process.env };
+const workspaceA = { userId: "user_a", workspaceId: "workspace_a" };
+const workspaceB = { userId: "user_b", workspaceId: "workspace_b" };
 
 describe("OtpMarketplaceService", () => {
   beforeEach(() => {
@@ -11,7 +13,7 @@ describe("OtpMarketplaceService", () => {
     process.env.ENABLE_PREMIUM_OTP = "false";
     process.env.ENABLE_OTP_ADMIN = "true";
     process.env.OTP_PROVIDER_MODE = "mock";
-    process.env.OTP_BETA_WORKSPACE_IDS = "workspace_demo";
+    process.env.OTP_BETA_WORKSPACE_IDS = "workspace_demo,workspace_a,workspace_b";
   });
 
   afterEach(() => {
@@ -65,6 +67,29 @@ describe("OtpMarketplaceService", () => {
     expect(first.idempotent).toBe(false);
     expect(second.idempotent).toBe(true);
     expect(second.order.id).toBe(first.order.id);
+  });
+
+  it("scopes OTP orders and wallet state to the active workspace", async () => {
+    const service = new OtpMarketplaceService();
+    const created = await service.createOrder(
+      {
+        serviceCode: "whatsapp",
+        countryCode: "NG",
+        providerTier: "BUDGET",
+        attestationAccepted: true,
+        idempotencyKey: "otp_workspace_a"
+      },
+      undefined,
+      workspaceA
+    );
+
+    expect(service.listOrders(workspaceA)).toEqual([created.order]);
+    expect(service.listOrders(workspaceB)).toEqual([]);
+    expect(service.getWallet(workspaceA).workspaceId).toBe(workspaceA.workspaceId);
+    expect(service.getWallet(workspaceB).workspaceId).toBe(workspaceB.workspaceId);
+    expect(() => service.refundOrder(created.order.id, workspaceB)).toThrow(
+      `OTP order ${created.order.id} was not found.`
+    );
   });
 
   it("refunds idempotently through the OTP wallet boundary", async () => {

@@ -36,9 +36,10 @@ import type {
   OtpProviderControlDto,
   QuoteOtpOrderDto
 } from "./otp.dtos";
+import type { AuthenticatedRequestContext } from "../request-context";
 
-const workspaceId = "workspace_demo";
-const walletId = "wallet_demo";
+const defaultWorkspaceId = "workspace_demo";
+const defaultUserId = "user_demo";
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
@@ -93,11 +94,22 @@ function normalizeReference(value: string | undefined) {
   return value?.trim() || id("otp_idem");
 }
 
-function createWallet(): Wallet {
+function walletIdFor(workspaceId: string) {
+  return `wallet_${workspaceId}`;
+}
+
+function scopedContext(context?: Pick<AuthenticatedRequestContext, "workspaceId" | "userId">) {
+  return {
+    workspaceId: context?.workspaceId ?? defaultWorkspaceId,
+    userId: context?.userId ?? defaultUserId
+  };
+}
+
+function createWallet(workspaceId: string): Wallet {
   const timestamp = now();
 
   return {
-    id: walletId,
+    id: walletIdFor(workspaceId),
     workspaceId,
     availableBalance: { amountMinor: 5000000, currency: "NGN" },
     heldBalance: { amountMinor: 0, currency: "NGN" },
@@ -106,11 +118,12 @@ function createWallet(): Wallet {
   };
 }
 
-function createOpeningCredit(): LedgerEntry {
+function createOpeningCredit(workspaceId: string): LedgerEntry {
   const timestamp = now();
+  const walletId = walletIdFor(workspaceId);
 
   return {
-    id: "ledger_otp_opening",
+    id: `ledger_otp_opening_${workspaceId}`,
     walletId,
     kind: "CREDIT",
     amount: { amountMinor: 5000000, currency: "NGN" },
@@ -180,11 +193,7 @@ export class OtpMarketplaceService {
   private readonly events: PlatformEvent[] = [];
   private readonly orders: OtpOrder[] = [];
   private pricingRules = getPricingRules();
-  private walletState: OtpWalletState = {
-    wallet: createWallet(),
-    ledgerEntries: [createOpeningCredit()],
-    charges: []
-  };
+  private readonly walletStates = new Map<string, OtpWalletState>();
 
   listServices() {
     this.ensureOtpEnabled();
@@ -198,13 +207,14 @@ export class OtpMarketplaceService {
       }));
   }
 
-  async quote(input: QuoteOtpOrderDto) {
+  async quote(input: QuoteOtpOrderDto, context?: AuthenticatedRequestContext) {
     this.ensureOtpEnabled();
+    const scope = scopedContext(context);
     const service = this.resolveService(input);
     const fraudAssessment = assessOtpFraud({
       service,
-      recentOrders: this.orders,
-      workspaceApproved: this.isWorkspaceApproved(),
+      recentOrders: this.listOrders(scope),
+      workspaceApproved: this.isWorkspaceApproved(scope.workspaceId),
       attestationAccepted: input.attestationAccepted === true
     });
     const { routing, health } = await this.routeForService(service, input.providerTier);
@@ -215,7 +225,7 @@ export class OtpMarketplaceService {
       providerHealth: summarizeOtpProviderHealth(health),
       fraudAssessment,
       compliance: {
-        betaWorkspaceApproved: this.isWorkspaceApproved(),
+        betaWorkspaceApproved: this.isWorkspaceApproved(scope.workspaceId),
         attestationRequired: true,
         highRiskRequiresAdminApproval: service.requiresAdminApproval
       }
@@ -224,11 +234,15 @@ export class OtpMarketplaceService {
 
   async createOrder(
     input: CreateOtpOrderDto,
-    request?: { ipAddress?: string; userAgent?: string; deviceId?: string }
+    request?: { ipAddress?: string; userAgent?: string; deviceId?: string },
+    context?: AuthenticatedRequestContext
   ) {
     this.ensureOtpEnabled();
+    const scope = scopedContext(context);
     const idempotencyKey = normalizeReference(input.idempotencyKey ?? input.customerReference);
-    const existingOrder = this.orders.find((order) => order.idempotencyKey === idempotencyKey);
+    const existingOrder = this.orders.find(
+      (order) => order.workspaceId === scope.workspaceId && order.idempotencyKey === idempotencyKey
+    );
 
     if (existingOrder) {
       return { order: existingOrder, idempotent: true };
@@ -237,8 +251,8 @@ export class OtpMarketplaceService {
     const service = this.resolveService(input);
     const fraudAssessment = assessOtpFraud({
       service,
-      recentOrders: this.orders,
-      workspaceApproved: this.isWorkspaceApproved(),
+      recentOrders: this.listOrders(scope),
+      workspaceApproved: this.isWorkspaceApproved(scope.workspaceId),
       attestationAccepted: input.attestationAccepted === true,
       ...(request?.deviceId === undefined ? {} : { deviceId: request.deviceId }),
       ...(request?.ipAddress === undefined ? {} : { ipAddress: request.ipAddress })
@@ -261,7 +275,7 @@ export class OtpMarketplaceService {
     const timestamp = now();
     const order: OtpOrder = {
       id: id("otp"),
-      workspaceId,
+      workspaceId: scope.workspaceId,
       serviceCode: service.code,
       serviceName: service.name,
       countryCode: service.countryCode,
@@ -277,16 +291,16 @@ export class OtpMarketplaceService {
       createdAt: timestamp,
       updatedAt: timestamp
     };
-    const chargeResult = chargeOtpWallet(this.walletState, {
+    const chargeResult = chargeOtpWallet(this.getWalletState(scope.workspaceId), {
       otpOrderId: order.id,
       idempotencyKey,
-      workspaceId,
-      walletId,
+      workspaceId: scope.workspaceId,
+      walletId: walletIdFor(scope.workspaceId),
       amount: order.amount,
       providerName: routing.providerName
     });
 
-    this.walletState = chargeResult.state;
+    this.setWalletState(scope.workspaceId, chargeResult.state);
     this.orders.unshift(order);
 
     try {
@@ -304,8 +318,8 @@ export class OtpMarketplaceService {
       };
 
       this.replaceOrder(readyOrder);
-      this.pushEvent("OtpOrderCreated", { order: readyOrder });
-      this.pushEvent("OtpOrderWaiting", { orderId: readyOrder.id });
+      this.pushEvent(scope.workspaceId, "OtpOrderCreated", { order: readyOrder });
+      this.pushEvent(scope.workspaceId, "OtpOrderWaiting", { orderId: readyOrder.id });
 
       return {
         order: readyOrder,
@@ -315,12 +329,17 @@ export class OtpMarketplaceService {
         idempotent: false
       };
     } catch (error) {
-      const refund = refundOtpWallet(this.walletState, { otpOrderId: order.id });
+      const refund = refundOtpWallet(this.getWalletState(scope.workspaceId), {
+        otpOrderId: order.id
+      });
       const failedOrder: OtpOrder = { ...order, status: "REFUNDED", updatedAt: now() };
 
-      this.walletState = refund.state;
+      this.setWalletState(scope.workspaceId, refund.state);
       this.replaceOrder(failedOrder);
-      this.pushEvent("OtpOrderRefunded", { orderId: failedOrder.id, refund: refund.refund });
+      this.pushEvent(scope.workspaceId, "OtpOrderRefunded", {
+        orderId: failedOrder.id,
+        refund: refund.refund
+      });
 
       throw new BadRequestException({
         message: "OTP allocation failed and wallet was automatically refunded.",
@@ -330,15 +349,17 @@ export class OtpMarketplaceService {
     }
   }
 
-  listOrders() {
+  listOrders(context?: Pick<AuthenticatedRequestContext, "workspaceId" | "userId">) {
     this.ensureOtpEnabled();
+    const scope = scopedContext(context);
 
-    return this.orders;
+    return this.orders.filter((order) => order.workspaceId === scope.workspaceId);
   }
 
-  async getOrder(orderId: string) {
+  async getOrder(orderId: string, context?: AuthenticatedRequestContext) {
     this.ensureOtpEnabled();
-    const order = this.getStoredOrder(orderId);
+    const scope = scopedContext(context);
+    const order = this.getStoredOrder(orderId, scope.workspaceId);
 
     if (!order.providerName || !order.providerReference) {
       return order;
@@ -376,46 +397,57 @@ export class OtpMarketplaceService {
     this.replaceOrder(nextOrder);
 
     if (nextOrder.status === "RECEIVED") {
-      this.pushEvent("OtpMessageReceived", { orderId: nextOrder.id, status: nextOrder.status });
+      this.pushEvent(scope.workspaceId, "OtpMessageReceived", {
+        orderId: nextOrder.id,
+        status: nextOrder.status
+      });
     }
 
     return nextOrder;
   }
 
-  async cancelOrder(orderId: string) {
+  async cancelOrder(orderId: string, context?: AuthenticatedRequestContext) {
     this.ensureOtpEnabled();
-    const order = this.getStoredOrder(orderId);
+    const scope = scopedContext(context);
+    const order = this.getStoredOrder(orderId, scope.workspaceId);
 
     if (order.providerName && order.providerReference) {
       const provider = this.providers.find((item) => item.name === order.providerName);
       await provider?.cancelOrder(order.providerReference);
     }
 
-    const refund = refundOtpWallet(this.walletState, { otpOrderId: order.id });
+    const refund = refundOtpWallet(this.getWalletState(scope.workspaceId), { otpOrderId: order.id });
     const cancelledOrder: OtpOrder = { ...order, status: "REFUNDED", updatedAt: now() };
 
-    this.walletState = refund.state;
+    this.setWalletState(scope.workspaceId, refund.state);
     this.replaceOrder(cancelledOrder);
-    this.pushEvent("OtpOrderRefunded", { orderId: order.id, refund: refund.refund });
+    this.pushEvent(scope.workspaceId, "OtpOrderRefunded", {
+      orderId: order.id,
+      refund: refund.refund
+    });
 
     return { order: cancelledOrder, refund: refund.refund };
   }
 
-  refundOrder(orderId: string) {
+  refundOrder(orderId: string, context?: AuthenticatedRequestContext) {
     this.ensureOtpEnabled();
-    const order = this.getStoredOrder(orderId);
-    const refund = refundOtpWallet(this.walletState, { otpOrderId: order.id });
+    const scope = scopedContext(context);
+    const order = this.getStoredOrder(orderId, scope.workspaceId);
+    const refund = refundOtpWallet(this.getWalletState(scope.workspaceId), { otpOrderId: order.id });
     const refundedOrder: OtpOrder = { ...order, status: "REFUNDED", updatedAt: now() };
 
-    this.walletState = refund.state;
+    this.setWalletState(scope.workspaceId, refund.state);
     this.replaceOrder(refundedOrder);
-    this.pushEvent("OtpOrderRefunded", { orderId: order.id, refund: refund.refund });
+    this.pushEvent(scope.workspaceId, "OtpOrderRefunded", {
+      orderId: order.id,
+      refund: refund.refund
+    });
 
     return { order: refundedOrder, refund: refund.refund };
   }
 
-  getWallet() {
-    return this.walletState.wallet;
+  getWallet(context?: AuthenticatedRequestContext) {
+    return this.getWalletState(scopedContext(context).workspaceId).wallet;
   }
 
   async getAdminOverview() {
@@ -681,8 +713,10 @@ export class OtpMarketplaceService {
     throw new Error(`All OTP provider allocation attempts failed after ${attempts.length} tries.`);
   }
 
-  private getStoredOrder(orderId: string) {
-    const order = this.orders.find((item) => item.id === orderId);
+  private getStoredOrder(orderId: string, workspaceId: string) {
+    const order = this.orders.find(
+      (item) => item.id === orderId && item.workspaceId === workspaceId
+    );
 
     if (!order) {
       throw new BadRequestException(`OTP order ${orderId} was not found.`);
@@ -743,7 +777,29 @@ export class OtpMarketplaceService {
       : isEnabled(process.env.ENABLE_BUDGET_OTP);
   }
 
-  private isWorkspaceApproved() {
+  private getWalletState(workspaceId: string) {
+    const existing = this.walletStates.get(workspaceId);
+
+    if (existing) {
+      return existing;
+    }
+
+    const next: OtpWalletState = {
+      wallet: createWallet(workspaceId),
+      ledgerEntries: [createOpeningCredit(workspaceId)],
+      charges: []
+    };
+
+    this.walletStates.set(workspaceId, next);
+
+    return next;
+  }
+
+  private setWalletState(workspaceId: string, state: OtpWalletState) {
+    this.walletStates.set(workspaceId, state);
+  }
+
+  private isWorkspaceApproved(workspaceId: string) {
     return csv(process.env.OTP_BETA_WORKSPACE_IDS).has(workspaceId);
   }
 
@@ -768,6 +824,7 @@ export class OtpMarketplaceService {
   }
 
   private pushEvent<TEvent extends PlatformEvent["name"]>(
+    workspaceId: string,
     name: TEvent,
     payload: Extract<PlatformEvent, { name: TEvent }>["payload"]
   ) {
@@ -784,7 +841,7 @@ export class OtpMarketplaceService {
     this.events.unshift(
       createEvent({
         name,
-        tenantId: workspaceId,
+        tenantId: defaultWorkspaceId,
         payload
       } as unknown as Omit<PlatformEvent, "id" | "occurredAt">)
     );

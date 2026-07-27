@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Req } from "@nestjs/common";
 
 import type {
   CreateOtpOrderDto,
@@ -7,6 +7,10 @@ import type {
   QuoteOtpOrderDto
 } from "./otp.dtos";
 import { Public, RequirePermissions } from "../authorization.decorators";
+import {
+  workspaceContextFromRequest,
+  type WorkspaceContextRequest
+} from "../request-context";
 import { OtpMarketplaceService } from "./otp.service";
 
 @Controller("otp")
@@ -22,47 +26,52 @@ export class OtpController {
 
   @Post("quote")
   @RequirePermissions("analytics:read")
-  quote(@Body() body: QuoteOtpOrderDto) {
-    return this.otp.quote(body);
+  quote(@Body() body: QuoteOtpOrderDto, @Req() request: WorkspaceContextRequest) {
+    return this.otp.quote(body, workspaceContextFromRequest(request));
   }
 
   @Get("orders")
-  orders() {
-    return this.otp.listOrders();
+  orders(@Req() request: WorkspaceContextRequest) {
+    return this.otp.listOrders(workspaceContextFromRequest(request));
   }
 
   @Post("orders")
   createOrder(
     @Body() body: CreateOtpOrderDto,
-    @Headers("x-forwarded-for") ipAddress?: string,
-    @Headers("user-agent") userAgent?: string,
-    @Headers("x-device-id") deviceId?: string
+    @Headers("x-forwarded-for") ipAddress: string | undefined,
+    @Headers("user-agent") userAgent: string | undefined,
+    @Headers("x-device-id") deviceId: string | undefined,
+    @Req() request: WorkspaceContextRequest
   ) {
-    return this.otp.createOrder(body, {
-      ...(ipAddress === undefined ? {} : { ipAddress }),
-      ...(userAgent === undefined ? {} : { userAgent }),
-      ...(deviceId === undefined ? {} : { deviceId })
-    });
+    return this.otp.createOrder(
+      body,
+      {
+        ...(ipAddress === undefined ? {} : { ipAddress }),
+        ...(userAgent === undefined ? {} : { userAgent }),
+        ...(deviceId === undefined ? {} : { deviceId })
+      },
+      workspaceContextFromRequest(request)
+    );
   }
 
   @Get("orders/:id")
-  getOrder(@Param("id") id: string) {
-    return this.otp.getOrder(id);
+  getOrder(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.otp.getOrder(id, workspaceContextFromRequest(request));
   }
 
   @Post("orders/:id/cancel")
-  cancel(@Param("id") id: string) {
-    return this.otp.cancelOrder(id);
+  cancel(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.otp.cancelOrder(id, workspaceContextFromRequest(request));
   }
 
   @Post("orders/:id/refund")
-  refund(@Param("id") id: string) {
-    return this.otp.refundOrder(id);
+  refund(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.otp.refundOrder(id, workspaceContextFromRequest(request));
   }
 
   @Get("wallet")
-  wallet() {
-    return this.otp.getWallet();
+  wallet(@Req() request: WorkspaceContextRequest) {
+    return this.otp.getWallet(workspaceContextFromRequest(request));
   }
 }
 
