@@ -16,11 +16,13 @@
 html {
   min-width: 320px;
   background: var(--ft-bg-base);
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: clip;
   color: var(--ft-text-primary);
   font-family: var(--font-display);
   letter-spacing: 0;
@@ -125,4 +127,19 @@ a {
   );
   background-size: 200% 100%;
   border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }
