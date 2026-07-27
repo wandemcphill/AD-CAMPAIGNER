@@ -78,6 +78,9 @@ const demoUserId = "user_demo";
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 const growthActiveStatuses = new Set<GrowthOrderStatus>(["PENDING", "SUBMITTED", "IN_PROGRESS"]);
+const isProductionRuntime = () => process.env.NODE_ENV === "production";
+const legacyMockProvidersAllowed = () =>
+  !isProductionRuntime() || process.env.ALLOW_MOCK_PROVIDERS === "true";
 
 interface GrowthMonitoringEvent {
   id: string;
@@ -132,6 +135,16 @@ function createPaymentGateway() {
   }
 
   return createMockPaymentGateway();
+}
+
+function productionProviderName(name: string, productionName: string) {
+  return isProductionRuntime() && name.startsWith("mock-") ? productionName : name;
+}
+
+function rejectLegacyMockProvider(operation: string): never {
+  throw new BadRequestException(
+    `${operation} is unavailable on the legacy mock provider in production. Use the managed campaign workflow.`
+  );
 }
 
 function getCurrency(value: string | undefined, fallback: CurrencyCode): CurrencyCode {
@@ -371,11 +384,15 @@ export class PlatformService {
       service: "fliptrybe-api",
       checkedAt: now(),
       providers: {
-        ads: this.adsProvider.name,
-        ai: this.aiProvider.name,
-        payments: this.paymentGateway.name,
+        ads: legacyMockProvidersAllowed() ? this.adsProvider.name : "managed-ads",
+        ai: legacyMockProvidersAllowed()
+          ? this.aiProvider.name
+          : process.env.AI_PROVIDER === "anthropic" || process.env.AI_PROVIDER === "claude"
+            ? "anthropic"
+            : "not-configured",
+        payments: productionProviderName(this.paymentGateway.name, "not-configured"),
         smm: this.smmSupplier.name,
-        storage: this.storageProvider.name
+        storage: productionProviderName(this.storageProvider.name, "not-configured")
       },
       operations: {
         smmSuppliers: this.smmSupplierBundle.suppliers.map((supplier) => supplier.name),
@@ -431,6 +448,10 @@ export class PlatformService {
   }
 
   async quoteCampaign(input: QuoteCampaignDto) {
+    if (!legacyMockProvidersAllowed()) {
+      rejectLegacyMockProvider("Campaign quoting");
+    }
+
     return this.adsProvider.quoteCampaign({
       objective: input.objective ?? "ENGAGEMENT",
       budgetMinor: input.budgetMinor ?? 250000,
@@ -440,6 +461,10 @@ export class PlatformService {
   }
 
   async createCampaign(context: AuthenticatedRequestContext | undefined, input: CreateCampaignDto) {
+    if (!legacyMockProvidersAllowed()) {
+      rejectLegacyMockProvider("Campaign creation");
+    }
+
     const scope = requireWorkspaceContext(context);
     const destination: PromotionDestination = {
       kind: input.destinationKind ?? "INSTAGRAM_REEL",
@@ -491,10 +516,14 @@ export class PlatformService {
       (campaign) => campaign.workspaceId === scope.workspaceId
     );
 
-    return campaigns.length > 0 ? campaigns : [this.seedCampaign(scope)];
+    return campaigns.length > 0 || !legacyMockProvidersAllowed() ? campaigns : [this.seedCampaign(scope)];
   }
 
   async startCampaign(context: AuthenticatedRequestContext | undefined, campaignId: string) {
+    if (!legacyMockProvidersAllowed()) {
+      rejectLegacyMockProvider("Campaign starting");
+    }
+
     const scope = requireWorkspaceContext(context);
     const campaign =
       this.campaigns.find(
@@ -553,7 +582,11 @@ export class PlatformService {
 
   listLivePromotions(context?: AuthenticatedRequestContext) {
     const scope = requireWorkspaceContext(context);
-    const campaign = this.listCampaigns(scope)[0] ?? this.seedCampaign(scope, "cmp_live_demo");
+    const campaign = this.listCampaigns(scope)[0];
+
+    if (!campaign) {
+      return [];
+    }
 
     return [
       {
@@ -1380,6 +1413,10 @@ export class PlatformService {
     );
 
     if (notifications.length === 0) {
+      if (!legacyMockProvidersAllowed()) {
+        return notifications;
+      }
+
       const notification = createNotification({
         workspaceId: scope.workspaceId,
         channel: "IN_APP",
@@ -1395,6 +1432,10 @@ export class PlatformService {
   }
 
   async createAiSuggestion() {
+    if (!legacyMockProvidersAllowed()) {
+      rejectLegacyMockProvider("AI copy suggestions");
+    }
+
     return this.aiProvider.generateCampaignCopy({
       objective: "ENGAGEMENT",
       destinationKind: "TIKTOK_LIVE",
@@ -1440,6 +1481,10 @@ export class PlatformService {
   }
 
   search(query = "") {
+    if (!legacyMockProvidersAllowed()) {
+      return { query, results: [] };
+    }
+
     return {
       query,
       results: [
@@ -1453,6 +1498,23 @@ export class PlatformService {
   }
 
   getAdminOverview() {
+    if (!legacyMockProvidersAllowed()) {
+      return {
+        users: 0,
+        activeCampaigns: 0,
+        pendingModeration: 0,
+        paymentVolumeMinor: 0,
+        fraudSignals: 0,
+        smmSupplierCount: this.smmSupplierBundle.suppliers.length,
+        queueHealth: {
+          campaign: "managed-ads",
+          smm: "healthy",
+          notifications: "healthy",
+          analytics: "managed-ads"
+        }
+      };
+    }
+
     return {
       users: 18420,
       activeCampaigns: 312,
@@ -1472,9 +1534,14 @@ export class PlatformService {
   listAuditLogs(context?: AuthenticatedRequestContext): AuditLog[] {
     const scope = requireWorkspaceContext(context);
     const timestamp = now();
+    const logs = this.auditLogs.filter((log) => log.workspaceId === scope.workspaceId);
+
+    if (!legacyMockProvidersAllowed()) {
+      return logs;
+    }
 
     return [
-      ...this.auditLogs.filter((log) => log.workspaceId === scope.workspaceId),
+      ...logs,
       {
         id: `audit_${scope.workspaceId}`,
         workspaceId: scope.workspaceId,

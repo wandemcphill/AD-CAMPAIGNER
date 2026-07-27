@@ -70,6 +70,55 @@ function replaceSmmSupplier(service: PlatformService, supplier: SmmSupplierAdapt
 }
 
 describe("PlatformService", () => {
+  it("does not expose legacy mock provider data in production", async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousAllowMockProviders = process.env.ALLOW_MOCK_PROVIDERS;
+    const previousAiProvider = process.env.AI_PROVIDER;
+
+    process.env.NODE_ENV = "production";
+    delete process.env.ALLOW_MOCK_PROVIDERS;
+    process.env.AI_PROVIDER = "anthropic";
+
+    try {
+      const service = new PlatformService();
+
+      expect(service.getHealth().providers).toEqual(
+        expect.objectContaining({
+          ads: "managed-ads",
+          ai: "anthropic",
+          payments: "not-configured",
+          storage: "not-configured"
+        })
+      );
+      expect(service.listCampaigns(workspaceA)).toEqual([]);
+      expect(service.listLivePromotions(workspaceA)).toEqual([]);
+      expect(service.listNotifications(workspaceA)).toEqual([]);
+      expect(service.listAuditLogs(workspaceA)).toEqual([]);
+      expect(service.search()).toEqual({ query: "", results: [] });
+      await expect(service.quoteCampaign({})).rejects.toThrow("legacy mock provider");
+      await expect(service.createCampaign(workspaceA, { name: "Launch" })).rejects.toThrow(
+        "legacy mock provider"
+      );
+      await expect(service.createAiSuggestion()).rejects.toThrow("legacy mock provider");
+    } finally {
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+      if (previousAllowMockProviders === undefined) {
+        delete process.env.ALLOW_MOCK_PROVIDERS;
+      } else {
+        process.env.ALLOW_MOCK_PROVIDERS = previousAllowMockProviders;
+      }
+      if (previousAiProvider === undefined) {
+        delete process.env.AI_PROVIDER;
+      } else {
+        process.env.AI_PROVIDER = previousAiProvider;
+      }
+    }
+  });
+
   it("creates campaigns through the provider boundary", async () => {
     const service = new PlatformService();
     const campaign = await service.createCampaign(workspaceA, {
