@@ -1,3 +1,5 @@
+"use client";
+
 import {
   AlertTriangle,
   Banknote,
@@ -7,34 +9,24 @@ import {
   LockKeyhole,
   Network,
   Radar,
+  RefreshCcw,
   ShieldCheck,
-  SlidersHorizontal,
   Users
 } from "lucide-react";
 
 import { Badge, Button, MetricCard, Panel, ThemeToggle } from "@fliptrybe/ui";
 
-const queues = [
-  { name: "campaigns", depth: 18, status: "healthy" },
-  { name: "smm fulfillment", depth: 43, status: "healthy" },
-  { name: "notifications", depth: 9, status: "healthy" },
-  { name: "analytics ingestion", depth: 126, status: "watch" }
-];
-
-const moderation = [
-  { item: "TikTok LIVE boost", risk: "Medium", reason: "Destination freshness" },
-  { item: "Manual bank transfer", risk: "High", reason: "Payment proof review" },
-  { item: "Supplier API order", risk: "Low", reason: "Velocity anomaly" }
-];
-
-const audits = [
-  "campaign.created by Demo Operator",
-  "payment.completed via mock-payments",
-  "wallet.hold.created for campaign reserve",
-  "team.invitation.sent to finance ops"
-];
+import { useAdminDashboard } from "./use-admin-dashboard";
 
 export default function AdminPage() {
+  const { data, error, isLoading, refresh } = useAdminDashboard();
+  const metrics = data?.metrics ?? [];
+  const queues = data?.queues ?? [];
+  const moderation = data?.risk ?? [];
+  const audits = data?.audits ?? [];
+  const rails = data?.rails ?? [];
+  const pendingReviews = metrics.find((metric) => metric.label === "Fraud signals")?.detail ?? "Loading";
+
   return (
     <main className="min-h-screen">
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[260px_1fr]">
@@ -79,7 +71,9 @@ export default function AdminPage() {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="success">Systems nominal</Badge>
-                <Badge tone="warning">18 moderation items</Badge>
+                <Badge tone={data?.source === "partial" ? "warning" : "info"}>
+                  {data?.source === "partial" ? "Partial telemetry" : "API telemetry"}
+                </Badge>
               </div>
               <h1 className="mt-3 text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
                 Operations command
@@ -90,29 +84,39 @@ export default function AdminPage() {
                 <Bell className="size-4" />
                 Notify team
               </Button>
-              <Button>
-                <SlidersHorizontal className="size-4" />
-                Controls
+              <Button disabled={isLoading} onClick={() => void refresh()}>
+                <RefreshCcw className="size-4" />
+                Refresh
               </Button>
             </div>
           </header>
 
           <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard
-              label="Active users"
-              value="18.4k"
-              detail="+9.2% weekly growth"
-              tone="success"
-            />
-            <MetricCard label="Payment volume" value="NGN 482.5M" detail="Mock ledger reconciled" />
-            <MetricCard
-              label="Fraud signals"
-              value="7"
-              detail="2 require escalation"
-              tone="warning"
-            />
-            <MetricCard label="Queue depth" value="196" detail="All workers healthy" tone="info" />
+            {metrics.length > 0 ? (
+              metrics.map((metric) => (
+                <MetricCard
+                  detail={metric.detail}
+                  key={metric.label}
+                  label={metric.label}
+                  tone={metric.tone}
+                  value={metric.value}
+                />
+              ))
+            ) : (
+              <>
+                <MetricCard label="Active users" value="Loading" detail="Waiting for API telemetry" />
+                <MetricCard label="Payment volume" value="Loading" detail="Waiting for payment telemetry" />
+                <MetricCard label="Fraud signals" value="Loading" detail={pendingReviews} />
+                <MetricCard label="Queue depth" value="Loading" detail="Waiting for queue telemetry" />
+              </>
+            )}
           </section>
+
+          {error ? (
+            <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
+              {error}
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_0.9fr]">
             <Panel className="p-4">
@@ -141,6 +145,11 @@ export default function AdminPage() {
                     </Badge>
                   </div>
                 ))}
+                {queues.length === 0 ? (
+                  <div className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4 text-sm text-[var(--ft-text-muted)]">
+                    Queue telemetry will appear here when the admin APIs respond.
+                  </div>
+                ) : null}
               </div>
             </Panel>
 
@@ -175,6 +184,11 @@ export default function AdminPage() {
                     </Badge>
                   </div>
                 ))}
+                {moderation.length === 0 ? (
+                  <div className="py-6 text-sm text-[var(--ft-text-muted)]">
+                    No campaign risks returned by the API.
+                  </div>
+                ) : null}
               </div>
             </Panel>
           </div>
@@ -207,15 +221,20 @@ export default function AdminPage() {
                 Fee controls
               </h2>
               <div className="mt-4 grid gap-3">
-                {["Korapay", "Paystack", "Stripe", "Manual transfer"].map((rail) => (
+                {rails.map((rail) => (
                   <div
                     className="flex h-10 items-center justify-between rounded-md border border-[var(--ft-border)] px-3 text-sm text-[var(--ft-text-secondary)]"
-                    key={rail}
+                    key={rail.name}
                   >
-                    <span>{rail}</span>
-                    <span className="font-medium text-[var(--ft-text-primary)]">adapter</span>
+                    <span>{rail.name}</span>
+                    <span className="font-medium text-[var(--ft-text-primary)]">{rail.status}</span>
                   </div>
                 ))}
+                {rails.length === 0 ? (
+                  <div className="rounded-md border border-[var(--ft-border)] px-3 py-3 text-sm text-[var(--ft-text-muted)]">
+                    Payment rail status is waiting on admin telemetry.
+                  </div>
+                ) : null}
               </div>
             </Panel>
 
@@ -233,6 +252,11 @@ export default function AdminPage() {
                     {audit}
                   </div>
                 ))}
+                {audits.length === 0 ? (
+                  <div className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-muted)]">
+                    Audit activity will appear after the first workspace event.
+                  </div>
+                ) : null}
               </div>
             </Panel>
           </div>
