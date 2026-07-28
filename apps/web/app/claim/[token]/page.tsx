@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowRight, LockKeyhole, Sparkles } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button, Panel } from "@fliptrybe/ui";

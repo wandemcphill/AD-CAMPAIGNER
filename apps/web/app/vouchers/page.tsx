@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowRight, Copy, Plus, RefreshCw, Share2, Sparkles } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";

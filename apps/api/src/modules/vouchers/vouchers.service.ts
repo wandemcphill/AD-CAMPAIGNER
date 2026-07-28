@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
+import { Prisma, type PrismaClient } from "@fliptrybe/database";
+
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 
@@ -91,17 +93,21 @@ function requireContext(context?: AuthenticatedRequestContext) {
   return context;
 }
 
+function jsonValue(input?: Record<string, unknown>) {
+  return input as Prisma.InputJsonValue;
+}
+
+type TransactionClient = Parameters<PrismaClient["$transaction"]>[0] extends (prisma: infer Client) => Promise<unknown>
+  ? Client
+  : never;
+
 @Injectable()
 export class VouchersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private db() {
-    return this.prisma.client as any;
-  }
-
   async listProducts() {
     await this.seedProducts();
-    return this.db().voucherProduct.findMany({
+    return this.prisma.client.voucherProduct.findMany({
       where: { active: true },
       orderBy: [{ category: "asc" }, { name: "asc" }]
     });
@@ -114,7 +120,7 @@ export class VouchersService {
     const scope = requireContext(context);
     await this.seedProducts();
 
-    const product = await this.db().voucherProduct.findFirst({
+    const product = await this.prisma.client.voucherProduct.findFirst({
       where: { id: input.productId, active: true }
     });
 
@@ -123,7 +129,7 @@ export class VouchersService {
     }
 
     const pin = voucherPin();
-    const voucher = await this.db().voucher.create({
+    const voucher = await this.prisma.client.voucher.create({
       data: {
         serialNumber: serialNumber(),
         pinEncrypted: encryptPin(pin),
@@ -136,7 +142,7 @@ export class VouchersService {
         expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
         ...(input.giftNote === undefined ? {} : { giftNote: input.giftNote }),
         ...(input.redemptionDestination === undefined ? {} : { redemptionDestination: input.redemptionDestination }),
-        ...(input.metadata === undefined ? {} : { metadata: input.metadata })
+        ...(input.metadata === undefined ? {} : { metadata: jsonValue(input.metadata) })
       },
       include: { product: true, purchaser: true, owner: true, claimTokens: true }
     });
@@ -148,14 +154,14 @@ export class VouchersService {
     const scope = requireContext(context);
     const voucher = await this.getOwnedVoucher(voucherId, scope.userId, scope.workspaceId);
 
-    const existing = await this.db().voucherClaimToken.findFirst({
+    const existing = await this.prisma.client.voucherClaimToken.findFirst({
       where: { voucherId: voucher.id, claimedAt: null, tokenExpiresAt: { gt: new Date() } },
       orderBy: { createdAt: "desc" }
     });
 
     const claim =
       existing ??
-      (await this.db().voucherClaimToken.create({
+      (await this.prisma.client.voucherClaimToken.create({
         data: {
           token: randomBytes(12).toString("base64url"),
           voucherId: voucher.id,
@@ -172,7 +178,7 @@ export class VouchersService {
   }
 
   async getClaimPreview(token: string) {
-    const claim = await this.db().voucherClaimToken.findUnique({
+    const claim = await this.prisma.client.voucherClaimToken.findUnique({
       where: { token },
       include: { voucher: { include: { product: true, purchaser: true, owner: true, claimTokens: true } } }
     });
@@ -190,7 +196,7 @@ export class VouchersService {
   async claimVoucher(token: string, context?: AuthenticatedRequestContext) {
     const scope = requireContext(context);
 
-    const result = await this.db().$transaction(async (tx: any) => {
+    const result = await this.prisma.client.$transaction(async (tx: TransactionClient) => {
       const record = await tx.voucherClaimToken.findUnique({
         where: { token },
         include: { voucher: true }
@@ -230,7 +236,7 @@ export class VouchersService {
     const scope = requireContext(context);
     const voucher = await this.getOwnedVoucher(voucherId, scope.userId, scope.workspaceId);
 
-    const revealed = await this.db().voucher.update({
+    const revealed = await this.prisma.client.voucher.update({
       where: { id: voucher.id },
       data: { status: "REVEALED", revealedAt: new Date() },
       include: { product: true, purchaser: true, owner: true, claimTokens: true }
@@ -250,10 +256,10 @@ export class VouchersService {
       throw new ConflictException("Voucher must be revealed before redemption.");
     }
 
-    return this.db().voucher.update({
+    return this.prisma.client.voucher.update({
       where: { id: voucher.id },
       data: {
-        redemptionInput: input,
+        redemptionInput: jsonValue(input),
         status: "REDEEMED",
         redeemedAt: new Date()
       },
@@ -265,7 +271,7 @@ export class VouchersService {
     const scope = requireContext(context);
     await this.seedProducts();
 
-    return this.db().voucher.findMany({
+    return this.prisma.client.voucher.findMany({
       where: {
         workspaceId: scope.workspaceId,
         deletedAt: null
@@ -276,7 +282,7 @@ export class VouchersService {
   }
 
   private async getOwnedVoucher(voucherId: string, userId: string, workspaceId: string) {
-    const voucher = await this.db().voucher.findFirst({
+    const voucher = await this.prisma.client.voucher.findFirst({
       where: {
         id: voucherId,
         workspaceId,
@@ -295,25 +301,25 @@ export class VouchersService {
 
   private async seedProducts() {
     for (const seed of productSeeds) {
-      const existing = await this.db().voucherProduct.findFirst({ where: { name: seed.name } });
+      const existing = await this.prisma.client.voucherProduct.findFirst({ where: { name: seed.name } });
 
       if (existing) {
-        await this.db().voucherProduct.update({
+        await this.prisma.client.voucherProduct.update({
           where: { id: existing.id },
           data: { active: true }
         });
         continue;
       }
 
-      await this.db().voucherProduct.create({
+      await this.prisma.client.voucherProduct.create({
         data: {
           name: seed.name,
           category: seed.category,
           handler: seed.handler,
-          provider: seed.provider,
-          providerServiceId: seed.providerServiceId,
-          targetWalletType: seed.targetWalletType,
-          inputSchema: seed.inputSchema
+          ...(seed.provider === undefined ? {} : { provider: seed.provider }),
+          ...(seed.providerServiceId === undefined ? {} : { providerServiceId: seed.providerServiceId }),
+          ...(seed.targetWalletType === undefined ? {} : { targetWalletType: seed.targetWalletType }),
+          inputSchema: jsonValue(seed.inputSchema)
         }
       });
     }
