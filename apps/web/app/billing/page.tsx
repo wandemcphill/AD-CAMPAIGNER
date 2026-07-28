@@ -279,11 +279,8 @@ export default function BillingPage() {
         currency
       };
 
-      if (session?.user.email) {
-        input.customerEmail = session.user.email;
-      }
-      if (session?.user.name) {
-        input.customerName = session.user.name;
+      if (session?.user.displayName ?? session?.user.name) {
+        input.customerName = session.user.displayName ?? session.user.name;
       }
       if (typeof window !== "undefined") {
         input.redirectUrl = `${window.location.origin}/billing`;
