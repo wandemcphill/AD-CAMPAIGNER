@@ -85,6 +85,28 @@ describe("AuthorizationGuard", () => {
     });
   });
 
+  it("reuses an already attached workspace context when middleware has resolved it", async () => {
+    const request = {
+      headers: { authorization: "Bearer token" },
+      workspaceContext: {
+        permissions: [],
+        role: "ADMIN",
+        userId: "user_123",
+        workspaceId: "workspace_123"
+      }
+    };
+    const { getWorkspaceContext, guard } = createGuard({
+      [authorizationPermissionsKey]: ["admin:access"]
+    });
+
+    await expect(guard.canActivate(createContext(request))).resolves.toBe(true);
+    expect(getWorkspaceContext).not.toHaveBeenCalled();
+    expect(request).toMatchObject({
+      workspaceContextValidated: true,
+      context: request.workspaceContext
+    });
+  });
+
   it("denies authenticated members missing a required permission", async () => {
     const { guard } = createGuard(
       { [authorizationPermissionsKey]: ["admin:access"] },

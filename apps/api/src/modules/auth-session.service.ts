@@ -16,7 +16,7 @@ import {
 } from "@nestjs/common";
 
 import { rolePermissions } from "@fliptrybe/auth";
-import type { Permission } from "@fliptrybe/types";
+import type { Permission, Role } from "@fliptrybe/types";
 import { PrismaService } from "./prisma.service";
 import {
   authenticatedContextFromHeaders,
@@ -26,6 +26,11 @@ import {
   type HeaderBag,
   type RequestMetadataContext
 } from "./request-context";
+
+type SessionHeaderContext = Partial<AuthenticatedRequestContext> & {
+  userId?: string;
+  workspaceId?: string;
+};
 
 const defaultSessionTtlSeconds = 60 * 60 * 24 * 7;
 const passwordHashAlgorithm = "scrypt";
@@ -327,7 +332,7 @@ export class AuthSessionService {
       ...(scope.sessionId === undefined ? {} : { sessionId: scope.sessionId }),
       userEmail: scope.user.email,
       userName: scope.user.name,
-      role: scope.membership.role,
+      role: scope.membership.role as Role,
       permissions: scope.membership.permissions as Permission[]
     };
   }
@@ -435,7 +440,7 @@ export class AuthSessionService {
     const context = authenticatedContextFromHeaders(headers);
     const token = bearerTokenFromHeaders(headers);
 
-    if (!context.sessionId || !token) {
+    if (!context.sessionId || !context.userId || !token) {
       throw new UnauthorizedException("Bearer session token is required to logout.");
     }
 
@@ -501,7 +506,7 @@ export class AuthSessionService {
     const token = bearerTokenFromHeaders(headers);
     const scope = await this.resolveScope(context);
 
-    if (context.sessionId) {
+    if (context.sessionId && context.userId) {
       await this.validateStoredSession(context.sessionId, context.userId, token);
     }
 
@@ -511,32 +516,9 @@ export class AuthSessionService {
     };
   }
 
-  private async resolveScope(context: AuthenticatedRequestContext) {
-    const workspace = await this.db.workspace.findFirst({
-      where: {
-        id: context.workspaceId,
-        deletedAt: null,
-        organization: { deletedAt: null }
-      },
-      include: {
-        organization: {
-          include: {
-            members: {
-              where: { userId: context.userId, deletedAt: null },
-              select: { role: true, permissions: true },
-              take: 1
-            }
-          }
-        }
-      }
-    });
-    const membership = workspace?.organization.members[0];
-
-    if (!workspace || !membership) {
-      throw new ForbiddenException("User is not a member of the active workspace.");
-    }
-    if (context.organizationId && context.organizationId !== workspace.organization.id) {
-      throw new ForbiddenException("Workspace does not belong to the requested organization.");
+  private async resolveScope(context: SessionHeaderContext) {
+    if (!context.userId) {
+      throw new UnauthorizedException("Authenticated user is not active.");
     }
 
     const user = await this.db.user.findFirst({
@@ -548,8 +530,74 @@ export class AuthSessionService {
       throw new UnauthorizedException("Authenticated user is not active.");
     }
 
+    const scope = context.workspaceId
+      ? await this.resolveUserWorkspaceScope(user, context.workspaceId, context.organizationId)
+      : await this.resolveDefaultWorkspaceScope(user, context.organizationId);
+
     return {
       user,
+      ...scope
+    };
+  }
+
+  private async resolveUserLoginScope(
+    user: AuthScope["user"],
+    requestedWorkspaceId: string | undefined,
+    requestedOrganizationId?: string
+  ): Promise<AuthScope> {
+    if (requestedWorkspaceId) {
+      return {
+        user,
+        ...(await this.resolveUserWorkspaceScope(
+          user,
+          requestedWorkspaceId,
+          requestedOrganizationId
+        ))
+      };
+    }
+
+    return {
+      user,
+      ...(await this.resolveDefaultWorkspaceScope(user, requestedOrganizationId))
+    };
+  }
+
+  private async resolveUserWorkspaceScope(
+    user: AuthScope["user"],
+    requestedWorkspaceId: string,
+    requestedOrganizationId?: string
+  ): Promise<Omit<AuthScope, "user">> {
+    const workspace = await this.db.workspace.findFirst({
+      where: {
+        id: requestedWorkspaceId,
+        deletedAt: null,
+        organization: {
+          deletedAt: null,
+          members: { some: { userId: user.id, deletedAt: null } }
+        }
+      },
+      include: {
+        organization: {
+          include: {
+            members: {
+              where: { userId: user.id, deletedAt: null },
+              select: { role: true, permissions: true },
+              take: 1
+            }
+          }
+        }
+      }
+    });
+    const membership = workspace?.organization.members[0];
+
+    if (!workspace || !membership) {
+      throw new ForbiddenException("User is not a member of the requested workspace.");
+    }
+    if (requestedOrganizationId && requestedOrganizationId !== workspace.organization.id) {
+      throw new ForbiddenException("Workspace does not belong to the requested organization.");
+    }
+
+    return {
       workspace: {
         id: workspace.id,
         name: workspace.name,
@@ -560,62 +608,22 @@ export class AuthSessionService {
         name: workspace.organization.name,
         slug: workspace.organization.slug
       },
-      membership
+      membership: {
+        role: membership.role,
+        permissions: membership.permissions
+      }
     };
   }
 
-  private async resolveUserLoginScope(
+  private async resolveDefaultWorkspaceScope(
     user: AuthScope["user"],
-    requestedWorkspaceId: string | undefined
-  ): Promise<AuthScope> {
-    if (requestedWorkspaceId) {
-      const workspace = await this.db.workspace.findFirst({
-        where: {
-          id: requestedWorkspaceId,
-          deletedAt: null,
-          organization: {
-            deletedAt: null,
-            members: { some: { userId: user.id, deletedAt: null } }
-          }
-        },
-        include: {
-          organization: {
-            include: {
-              members: {
-                where: { userId: user.id, deletedAt: null },
-                select: { role: true, permissions: true },
-                take: 1
-              }
-            }
-          }
-        }
-      });
-      const membership = workspace?.organization.members[0];
-
-      if (!workspace || !membership) {
-        throw new ForbiddenException("User is not a member of the requested workspace.");
-      }
-
-      return {
-        user,
-        workspace: {
-          id: workspace.id,
-          name: workspace.name,
-          defaultCurrency: workspace.defaultCurrency
-        },
-        organization: {
-          id: workspace.organization.id,
-          name: workspace.organization.name,
-          slug: workspace.organization.slug
-        },
-        membership
-      };
-    }
-
+    requestedOrganizationId?: string
+  ): Promise<Omit<AuthScope, "user">> {
     const membership = await this.db.teamMember.findFirst({
       where: {
         userId: user.id,
         deletedAt: null,
+        ...(requestedOrganizationId ? { organizationId: requestedOrganizationId } : {}),
         organization: { deletedAt: null }
       },
       orderBy: { createdAt: "asc" },
@@ -641,7 +649,6 @@ export class AuthSessionService {
     }
 
     return {
-      user,
       workspace,
       organization: membership.organization,
       membership: {

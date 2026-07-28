@@ -46,7 +46,8 @@ export class AuthorizationGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<WorkspaceContextRequest>();
-    const workspaceContext = await this.authSession.getWorkspaceContext(request.headers);
+    const workspaceContext =
+      request.workspaceContext ?? (await this.authSession.getWorkspaceContext(request.headers));
     const member = {
       role: workspaceContext.role as Role,
       permissions: workspaceContext.permissions ?? []
@@ -62,6 +63,26 @@ export class AuthorizationGuard implements CanActivate {
 
     request.workspaceContext = workspaceContext;
     request.workspaceContextValidated = true;
+    request.context = workspaceContext;
+    if (workspaceContext.userId) {
+      request.user = {
+        id: workspaceContext.userId,
+        ...(workspaceContext.userEmail === undefined ? {} : { email: workspaceContext.userEmail }),
+        ...(workspaceContext.userName === undefined ? {} : { name: workspaceContext.userName })
+      };
+    }
+    if (workspaceContext.workspaceId) {
+      request.workspace = {
+        id: workspaceContext.workspaceId,
+        name: request.workspace?.name ?? workspaceContext.workspaceId
+      };
+    }
+    if (workspaceContext.organizationId) {
+      request.organization = {
+        id: workspaceContext.organizationId,
+        name: request.organization?.name ?? workspaceContext.organizationId
+      };
+    }
 
     return true;
   }

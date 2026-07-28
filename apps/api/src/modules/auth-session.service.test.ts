@@ -512,6 +512,27 @@ describe("AuthSessionService", () => {
     expect(context.organizationId).toBe("org_123");
   });
 
+  it("resolves a default workspace when the authenticated user header is present without workspace scope", async () => {
+    const { prisma } = createPrisma();
+    const service = new AuthSessionService(prisma);
+
+    const issued = await service.issueSession({
+      "x-user-id": "user_123",
+      "x-device-id": "fallback-device"
+    });
+
+    expect(issued.token).toBeTruthy();
+    expect(issued.workspace.id).toBe("workspace_123");
+
+    await expect(
+      service.getWorkspaceContext({ authorization: `Bearer ${issued.token}` })
+    ).resolves.toMatchObject({
+      userId: "user_123",
+      workspaceId: "workspace_123",
+      organizationId: "org_123"
+    });
+  });
+
   it("registers a user, organization, workspace, owner membership, and signed session", async () => {
     const { prisma, users, organizations, workspaces, teamMembers, sessions } = createPrisma({
       seedDefault: false

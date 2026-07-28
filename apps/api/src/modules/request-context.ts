@@ -16,6 +16,17 @@ export interface AuthenticatedRequestContext {
   permissions?: Permission[];
 }
 
+export interface WorkspaceContextEntity {
+  id: string;
+  name: string;
+}
+
+export interface WorkspaceContextUser {
+  id: string;
+  email?: string;
+  name?: string;
+}
+
 export interface RequestMetadataContext {
   idempotencyKey?: string;
   ipAddress?: string;
@@ -29,6 +40,10 @@ export interface WorkspaceContextRequest {
   workspaceContextError?: unknown;
   workspaceContextValidated?: boolean;
   requestMetadata?: RequestMetadataContext;
+  user?: WorkspaceContextUser;
+  workspace?: WorkspaceContextEntity;
+  organization?: WorkspaceContextEntity & { slug?: string };
+  context?: AuthenticatedRequestContext;
 }
 
 type JwtClaims = Record<string, unknown>;
@@ -60,7 +75,7 @@ function claim(claims: JwtClaims, names: string[]) {
 }
 
 function requireScopedIdentity(context: Partial<AuthenticatedRequestContext>) {
-  if (!context.userId || !context.workspaceId) {
+  if (!context.userId) {
     throw new UnauthorizedException(
       "Digital Access requires an authenticated user and workspace context."
     );
@@ -68,7 +83,7 @@ function requireScopedIdentity(context: Partial<AuthenticatedRequestContext>) {
 
   return {
     userId: context.userId,
-    workspaceId: context.workspaceId,
+    ...(context.workspaceId === undefined ? {} : { workspaceId: context.workspaceId }),
     ...(context.organizationId === undefined ? {} : { organizationId: context.organizationId }),
     ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
     ...(context.userEmail === undefined ? {} : { userEmail: context.userEmail }),
@@ -211,7 +226,38 @@ function contextFromHeaders(headers: HeaderBag): Partial<AuthenticatedRequestCon
   return context;
 }
 
-export function authenticatedContextFromHeaders(headers: HeaderBag): AuthenticatedRequestContext {
+function requestAliasesFromContext(context: Partial<AuthenticatedRequestContext>) {
+  return {
+    ...(context.userId === undefined
+      ? {}
+      : {
+          user: {
+            id: context.userId,
+            ...(context.userEmail === undefined ? {} : { email: context.userEmail }),
+            ...(context.userName === undefined ? {} : { name: context.userName })
+          }
+        }),
+    ...(context.workspaceId === undefined
+      ? {}
+      : {
+          workspace: {
+            id: context.workspaceId,
+            name: context.workspaceId
+          }
+        }),
+    ...(context.organizationId === undefined
+      ? {}
+      : {
+          organization: {
+            id: context.organizationId,
+            name: context.organizationId
+          }
+        }),
+    context
+  };
+}
+
+export function authenticatedContextFromHeaders(headers: HeaderBag): Partial<AuthenticatedRequestContext> {
   const token = bearerToken(headers);
 
   if (token) {
@@ -244,15 +290,34 @@ export function metadataContextFromHeaders(headers: HeaderBag): RequestMetadataC
 }
 
 export function attachWorkspaceContext(request: WorkspaceContextRequest) {
-  request.workspaceContext = authenticatedContextFromHeaders(request.headers);
+  const context = authenticatedContextFromHeaders(request.headers);
+  request.workspaceContext = context as AuthenticatedRequestContext;
+  request.context = context as AuthenticatedRequestContext;
+  Object.assign(request, requestAliasesFromContext(context));
   request.requestMetadata = metadataContextFromHeaders(request.headers);
 }
 
 export function workspaceContextFromRequest(request: WorkspaceContextRequest) {
-  if (request.workspaceContextValidated) {
-    if (request.workspaceContext) {
-      return request.workspaceContext;
+  if (request.workspaceContext) {
+    if (!request.workspaceContext.userId) {
+      throw new UnauthorizedException("Workspace context is missing.");
     }
+
+    if (!request.workspaceContext.workspaceId) {
+      if (request.workspace?.id) {
+        request.workspaceContext = {
+          ...request.workspaceContext,
+          workspaceId: request.workspace.id
+        };
+      } else {
+        throw new UnauthorizedException("Workspace context is missing.");
+      }
+    }
+
+    return request.workspaceContext as AuthenticatedRequestContext;
+  }
+
+  if (request.workspaceContextValidated) {
     if (request.workspaceContextError instanceof Error) {
       throw request.workspaceContextError;
     }
@@ -260,9 +325,7 @@ export function workspaceContextFromRequest(request: WorkspaceContextRequest) {
     throw new UnauthorizedException("Workspace context is missing.");
   }
 
-  if (!request.workspaceContext) {
-    attachWorkspaceContext(request);
-  }
+  attachWorkspaceContext(request);
 
   if (!request.workspaceContext) {
     throw new UnauthorizedException("Workspace context is missing.");
