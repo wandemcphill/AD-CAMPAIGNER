@@ -19,7 +19,7 @@ import { useOnboardingData } from "../campaigns/use-campaign-dashboard-data";
 import { useApiSession } from "../lib/use-session";
 
 const onboardingStepCopy: Record<string, string> = {
-  "Workspace session": "Connect the client workspace the team will use for campaign review and reporting.",
+  "Workspace session": "Sign in once and the platform creates the workspace session automatically.",
   Destinations: "Confirm the social, store, app, or website endpoints available for launch plans.",
   "Billing rail": "Prepare wallet and invoice context before budgets move into campaign holds.",
   "First campaign": "Submit a managed brief so operators can review, quote, and prepare launch.",
@@ -108,8 +108,8 @@ export default function OnboardingPage() {
           items={[
             {
               label: "Workspace",
-              value: session ? "Ready" : sessionLoading ? "Checking" : "Pending",
-              detail: session?.workspace.name ?? "No active session"
+              value: session ? "Ready" : sessionLoading ? "Checking" : "Signed out",
+              detail: session?.workspace.name ?? "Sign in to create your workspace automatically"
             },
             {
               label: "Destinations",
@@ -139,9 +139,13 @@ export default function OnboardingPage() {
         </div>
         <a
           className={`${secondaryLinkButtonClass} w-full sm:w-auto`}
-          href={readySteps === stepStates.length ? "/campaigns/new" : "/billing"}
+          href={session ? (readySteps === stepStates.length ? "/campaigns/new" : "/billing") : "/login"}
         >
-          {readySteps === stepStates.length ? "Start campaign" : "Continue setup"}
+          {session
+            ? readySteps === stepStates.length
+              ? "Start campaign"
+              : "Continue setup"
+            : "Sign in"}
           <ArrowRight className="size-4 stroke-[1.5]" />
         </a>
       </section>
@@ -198,8 +202,8 @@ export default function OnboardingPage() {
                   step.ready ? "text-[var(--ft-green)]" : "text-[var(--ft-text-muted)]"
                 )}
               />
-              <Badge tone={step.ready ? "success" : "warning"}>
-                {step.ready ? "Ready" : sessionLoading ? "Checking" : "Pending"}
+                <Badge tone={step.ready ? "success" : "warning"}>
+                {step.ready ? "Ready" : sessionLoading ? "Checking" : "Signed out"}
               </Badge>
             </div>
             <div className="mt-4 font-medium text-[var(--ft-text-primary)]">{step.label}</div>
@@ -221,20 +225,21 @@ export default function OnboardingPage() {
             </div>
             <ShieldCheck className="size-5 stroke-[1.5] text-[var(--ft-green)]" />
           </div>
-          <div className="mt-5 border-y border-[var(--ft-border)] py-4">
+            <div className="mt-5 border-y border-[var(--ft-border)] py-4">
             {session ? (
               <div className="grid gap-2 text-sm">
                 <div className="font-medium text-[var(--ft-text-primary)]">{session.workspace.name}</div>
-                <div className="text-[var(--ft-text-secondary)]">{session.user.email}</div>
+                <div className="text-[var(--ft-text-secondary)]">{session.user.name}</div>
+                <div className="text-xs text-[var(--ft-text-muted)]">@{session.user.username}</div>
                 <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                   {session.role ?? "member"}
                 </div>
               </div>
             ) : (
               <EmptyState
-                copy="Use the session panel in the left rail to connect a workspace."
+                copy="Use the login screen to create your workspace and attach this session automatically."
                 icon={ShieldCheck}
-                title="No active session"
+                title="Sign in required"
               />
             )}
           </div>

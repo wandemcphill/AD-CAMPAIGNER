@@ -8,8 +8,11 @@ type UserStatus = "ACTIVE" | "SUSPENDED" | "DELETED";
 
 interface StoredUser {
   id: string;
-  email: string;
+  username: string;
   name: string;
+  displayName: string | null;
+  email: string | null;
+  defaultWorkspaceId: string | null;
   status: UserStatus;
   passwordHash: string | null;
   emailVerifiedAt: Date | null;
@@ -52,7 +55,7 @@ interface StoredSession {
 }
 
 interface UserFindUniqueArgs {
-  where: { email: string };
+  where: { username: string };
 }
 
 interface UserFindFirstArgs {
@@ -61,11 +64,13 @@ interface UserFindFirstArgs {
 
 interface UserCreateArgs {
   data: {
-    email: string;
+    username: string;
     name: string;
+    displayName: string | null;
+    email: string | null;
+    defaultWorkspaceId?: string | null;
     status: UserStatus;
     passwordHash: string;
-    emailVerifiedAt: Date;
   };
 }
 
@@ -152,8 +157,11 @@ interface SessionUpdateManyArgs {
 interface FakeClient {
   user: {
     findUnique: (args: UserFindUniqueArgs) => Promise<StoredUser | null>;
-    findFirst: (args: UserFindFirstArgs) => Promise<Pick<StoredUser, "id" | "email" | "name" | "status"> | null>;
-    create: (args: UserCreateArgs) => Promise<Pick<StoredUser, "id" | "email" | "name">>;
+    findFirst: (
+      args: UserFindFirstArgs
+    ) => Promise<Pick<StoredUser, "id" | "username" | "name" | "displayName" | "email" | "defaultWorkspaceId" | "status"> | null>;
+    create: (args: UserCreateArgs) => Promise<Pick<StoredUser, "id" | "username" | "name" | "displayName" | "email" | "defaultWorkspaceId">>;
+    update: (args: { where: { id: string }; data: { defaultWorkspaceId: string } }) => Promise<void>;
   };
   organization: {
     create: (args: OrganizationCreateArgs) => Promise<Pick<StoredOrganization, "id" | "name" | "slug">>;
@@ -202,8 +210,11 @@ function createPrisma({ seedDefault = true }: { seedDefault?: boolean } = {}) {
   if (seedDefault) {
     users.set("user_123", {
       id: "user_123",
-      email: "operator@fliptrybe.test",
+      username: "operator",
       name: "Operator",
+      displayName: "Operator",
+      email: null,
+      defaultWorkspaceId: "workspace_123",
       status: "ACTIVE",
       passwordHash: null,
       emailVerifiedAt: now,
@@ -253,7 +264,7 @@ function createPrisma({ seedDefault = true }: { seedDefault?: boolean } = {}) {
   const client: FakeClient = {
     user: {
       findUnique: ({ where }: UserFindUniqueArgs) =>
-        Promise.resolve([...users.values()].find((user) => user.email === where.email) ?? null),
+        Promise.resolve([...users.values()].find((user) => user.username === where.username) ?? null),
       findFirst: ({ where }: UserFindFirstArgs) => {
         const user = [...users.values()].find(
           (storedUser) =>
@@ -264,24 +275,51 @@ function createPrisma({ seedDefault = true }: { seedDefault?: boolean } = {}) {
 
         return Promise.resolve(
           user
-            ? { id: user.id, email: user.email, name: user.name, status: user.status }
+            ? {
+                id: user.id,
+                username: user.username,
+                name: user.name,
+                displayName: user.displayName,
+                email: user.email,
+                defaultWorkspaceId: user.defaultWorkspaceId,
+                status: user.status
+              }
             : null
         );
       },
       create: ({ data }: UserCreateArgs) => {
         const user: StoredUser = {
           id: `user_${users.size + 1}`,
-          email: data.email,
+          username: data.username,
           name: data.name,
+          displayName: data.displayName,
+          email: data.email,
+          defaultWorkspaceId: data.defaultWorkspaceId ?? null,
           status: data.status,
           passwordHash: data.passwordHash,
-          emailVerifiedAt: data.emailVerifiedAt,
+          emailVerifiedAt: null,
           deletedAt: null
         };
 
         users.set(user.id, user);
 
-        return Promise.resolve({ id: user.id, email: user.email, name: user.name });
+        return Promise.resolve({
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          displayName: user.displayName,
+          email: user.email,
+          defaultWorkspaceId: user.defaultWorkspaceId
+        });
+      },
+      update: ({ where, data }) => {
+        const user = users.get(where.id);
+
+        if (user) {
+          users.set(where.id, { ...user, defaultWorkspaceId: data.defaultWorkspaceId });
+        }
+
+        return Promise.resolve();
       }
     },
     organization: {
@@ -491,7 +529,7 @@ describe("AuthSessionService", () => {
     const { prisma, sessions } = createPrisma();
     const service = new AuthSessionService(prisma);
 
-    const issued = await service.login(undefined, {
+    const issued = await service.issueSession({
       "x-user-id": "user_123",
       "x-workspace-id": "workspace_123",
       "x-organization-id": "org_123",
@@ -510,6 +548,7 @@ describe("AuthSessionService", () => {
     expect(session.role).toBe("OWNER");
     expect(context.workspaceId).toBe("workspace_123");
     expect(context.organizationId).toBe("org_123");
+    expect(context.defaultWorkspaceId).toBe("workspace_123");
   });
 
   it("resolves a default workspace when the authenticated user header is present without workspace scope", async () => {
@@ -541,11 +580,10 @@ describe("AuthSessionService", () => {
 
     const registered = await service.register(
       {
-        email: "Founder@Example.com",
+        username: "founder",
         password: "correct-password",
-        name: "Ada Founder",
-        organizationName: "Ada Growth",
-        workspaceName: "Ada Launch Desk"
+        confirmPassword: "correct-password",
+        displayName: "Ada Founder"
       },
       { "user-agent": "vitest" }
     );
@@ -554,33 +592,35 @@ describe("AuthSessionService", () => {
     const workspace = [...workspaces.values()][0];
     const member = [...teamMembers.values()][0];
 
-    expect(user?.email).toBe("founder@example.com");
+    expect(user?.username).toBe("founder");
     expect(user?.passwordHash).toMatch(/^scrypt\$/);
     expect(organization?.ownerUserId).toBe(user?.id);
     expect(workspace?.organizationId).toBe(organization?.id);
     expect(member?.role).toBe("OWNER");
     expect(member?.userId).toBe(user?.id);
     expect(registered.token).toBeTruthy();
-    expect(registered.user.email).toBe("founder@example.com");
-    expect(registered.workspace.name).toBe("Ada Launch Desk");
+    expect(registered.user.username).toBe("founder");
+    expect(registered.user.displayName).toBe("Ada Founder");
+    expect(registered.workspace.name).toBe("Ada Founder's Workspace");
+    expect(registered.defaultWorkspaceId).toBe(registered.workspace.id);
     expect(sessions.size).toBe(1);
 
     await expect(
       service.getSession({ authorization: `Bearer ${registered.token}` })
     ).resolves.toMatchObject({
-      user: { email: "founder@example.com" },
-      organization: { name: "Ada Growth" },
+      user: { username: "founder" },
+      organization: { name: "Ada Founder's Workspace" },
       role: "OWNER"
     });
   });
 
-  it("rejects duplicate registration emails", async () => {
+  it("rejects duplicate registration usernames", async () => {
     const { prisma } = createPrisma({ seedDefault: false });
     const service = new AuthSessionService(prisma);
     const body = {
-      email: "owner@example.com",
+      username: "owner",
       password: "correct-password",
-      name: "Owner Example"
+      confirmPassword: "correct-password"
     };
 
     await service.register(body, {});
@@ -588,22 +628,22 @@ describe("AuthSessionService", () => {
     await expect(service.register(body, {})).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it("logs in active members with email and password", async () => {
+  it("logs in active members with username and password", async () => {
     const { prisma, sessions } = createPrisma({ seedDefault: false });
     const service = new AuthSessionService(prisma);
 
     const registered = await service.register(
       {
-        email: "owner@example.com",
+        username: "owner",
         password: "correct-password",
-        name: "Owner Example",
-        organizationName: "Owner Ops"
+        confirmPassword: "correct-password",
+        displayName: "Owner Example"
       },
       {}
     );
     const loggedIn = await service.login(
       {
-        email: "OWNER@example.com",
+        username: "owner",
         password: "correct-password",
         workspaceId: registered.workspace.id
       },
@@ -623,15 +663,15 @@ describe("AuthSessionService", () => {
 
     await service.register(
       {
-        email: "owner@example.com",
+        username: "owner",
         password: "correct-password",
-        name: "Owner Example"
+        confirmPassword: "correct-password"
       },
       {}
     );
 
     await expect(
-      service.login({ email: "owner@example.com", password: "wrong-password" }, {})
+      service.login({ username: "owner", password: "wrong-password" }, {})
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
@@ -641,9 +681,9 @@ describe("AuthSessionService", () => {
 
     const registered = await service.register(
       {
-        email: "owner@example.com",
+        username: "owner",
         password: "correct-password",
-        name: "Owner Example"
+        confirmPassword: "correct-password"
       },
       {}
     );

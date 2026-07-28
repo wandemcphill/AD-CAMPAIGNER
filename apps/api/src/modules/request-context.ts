@@ -8,6 +8,7 @@ export type HeaderBag = Record<string, string | string[] | undefined>;
 export interface AuthenticatedRequestContext {
   userId: string;
   workspaceId: string;
+  defaultWorkspaceId?: string;
   organizationId?: string;
   sessionId?: string;
   userEmail?: string;
@@ -84,6 +85,7 @@ function requireScopedIdentity(context: Partial<AuthenticatedRequestContext>) {
   return {
     userId: context.userId,
     ...(context.workspaceId === undefined ? {} : { workspaceId: context.workspaceId }),
+    ...(context.defaultWorkspaceId === undefined ? {} : { defaultWorkspaceId: context.defaultWorkspaceId }),
     ...(context.organizationId === undefined ? {} : { organizationId: context.organizationId }),
     ...(context.sessionId === undefined ? {} : { sessionId: context.sessionId }),
     ...(context.userEmail === undefined ? {} : { userEmail: context.userEmail }),
@@ -119,7 +121,9 @@ export function hasAuthenticationContextHeaders(headers: HeaderBag) {
       header(headers, "x-user-id") ||
       header(headers, "x-fliptrybe-user-id") ||
       header(headers, "x-workspace-id") ||
-      header(headers, "x-fliptrybe-workspace-id")
+      header(headers, "x-fliptrybe-workspace-id") ||
+      header(headers, "x-default-workspace-id") ||
+      header(headers, "x-fliptrybe-default-workspace-id")
   );
 }
 
@@ -179,7 +183,8 @@ function verifyJwt(token: string) {
 
 function contextFromClaims(claims: JwtClaims): Partial<AuthenticatedRequestContext> {
   const userId = claim(claims, ["sub", "userId", "user_id"]);
-  const workspaceId = claim(claims, ["workspaceId", "workspace_id", "workspace"]);
+  const defaultWorkspaceId = claim(claims, ["defaultWorkspaceId", "default_workspace_id"]);
+  const workspaceId = claim(claims, ["workspaceId", "workspace_id", "workspace"]) ?? defaultWorkspaceId;
   const organizationId = claim(claims, ["organizationId", "organization_id", "orgId", "org_id"]);
   const sessionId = claim(claims, ["sid", "sessionId", "session_id"]);
   const userEmail = claim(claims, ["email", "userEmail", "user_email"]);
@@ -187,6 +192,7 @@ function contextFromClaims(claims: JwtClaims): Partial<AuthenticatedRequestConte
 
   return {
     ...(userId === undefined ? {} : { userId }),
+    ...(defaultWorkspaceId === undefined ? {} : { defaultWorkspaceId }),
     ...(workspaceId === undefined ? {} : { workspaceId }),
     ...(organizationId === undefined ? {} : { organizationId }),
     ...(sessionId === undefined ? {} : { sessionId }),
@@ -207,13 +213,17 @@ function contextFromHeaders(headers: HeaderBag): Partial<AuthenticatedRequestCon
   const userId = header(headers, "x-user-id") ?? header(headers, "x-fliptrybe-user-id");
   const workspaceId =
     header(headers, "x-workspace-id") ?? header(headers, "x-fliptrybe-workspace-id");
+  const defaultWorkspaceId =
+    header(headers, "x-default-workspace-id") ?? header(headers, "x-fliptrybe-default-workspace-id");
   const organizationId =
     header(headers, "x-organization-id") ?? header(headers, "x-fliptrybe-organization-id");
   const userEmail = header(headers, "x-user-email") ?? header(headers, "x-fliptrybe-user-email");
   const userName = header(headers, "x-user-name") ?? header(headers, "x-fliptrybe-user-name");
-  const context = {
+  const resolvedWorkspaceId = workspaceId ?? defaultWorkspaceId;
+  const context: Partial<AuthenticatedRequestContext> = {
     ...(userId === undefined ? {} : { userId }),
-    ...(workspaceId === undefined ? {} : { workspaceId }),
+    ...(defaultWorkspaceId === undefined ? {} : { defaultWorkspaceId }),
+    ...(resolvedWorkspaceId === undefined ? {} : { workspaceId: resolvedWorkspaceId }),
     ...(organizationId === undefined ? {} : { organizationId }),
     ...(userEmail === undefined ? {} : { userEmail }),
     ...(userName === undefined ? {} : { userName })
@@ -243,6 +253,14 @@ function requestAliasesFromContext(context: Partial<AuthenticatedRequestContext>
           workspace: {
             id: context.workspaceId,
             name: context.workspaceId
+          }
+        }),
+    ...(context.defaultWorkspaceId === undefined
+      ? {}
+      : {
+          defaultWorkspace: {
+            id: context.defaultWorkspaceId,
+            name: context.defaultWorkspaceId
           }
         }),
     ...(context.organizationId === undefined
@@ -309,12 +327,17 @@ export function workspaceContextFromRequest(request: WorkspaceContextRequest) {
           ...request.workspaceContext,
           workspaceId: request.workspace.id
         };
+      } else if (request.workspaceContext.defaultWorkspaceId) {
+        request.workspaceContext = {
+          ...request.workspaceContext,
+          workspaceId: request.workspaceContext.defaultWorkspaceId
+        };
       } else {
         throw new UnauthorizedException("Workspace context is missing.");
       }
     }
 
-    return request.workspaceContext as AuthenticatedRequestContext;
+    return request.workspaceContext;
   }
 
   if (request.workspaceContextValidated) {

@@ -18,7 +18,8 @@ export function SessionPanel({ title = "Workspace status" }: { title?: string })
         </div>
         <div className="mt-4 grid gap-2 text-[var(--ft-text-secondary)]">
           <div className="truncate font-medium text-[var(--ft-text-primary)]">{session.workspace.name}</div>
-          <div className="truncate">{session.user.email}</div>
+          <div className="truncate">{session.user.name}</div>
+          <div className="truncate text-xs text-[var(--ft-text-muted)]">@{session.user.username}</div>
           <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             {session.role ?? "member"}
           </div>
@@ -41,7 +42,7 @@ export function SessionPanel({ title = "Workspace status" }: { title?: string })
     <div className="mt-6 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4 text-sm shadow-[var(--shadow-sm)]">
       <div className="flex items-center justify-between gap-3">
         <div className="font-medium text-[var(--ft-text-primary)]">{title}</div>
-        <Badge tone={loading ? "info" : "warning"}>{loading ? "Checking" : "Not connected"}</Badge>
+        <Badge tone={loading ? "info" : "warning"}>{loading ? "Checking" : "Signed out"}</Badge>
       </div>
       <div className="mt-4 flex gap-3">
         <div className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-accent)]/35 bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]">
@@ -49,11 +50,12 @@ export function SessionPanel({ title = "Workspace status" }: { title?: string })
         </div>
         <div className="min-w-0">
           <p className="text-sm leading-5 text-[var(--ft-text-secondary)]">
-            Connect a workspace to submit briefs, fund invoices, and receive operator updates.
+            Sign in to create your workspace automatically and keep Studio, billing, and campaigns attached to the
+            same account.
           </p>
           {error ? (
             <p className="mt-2 text-xs leading-5 text-[var(--ft-red)]">
-              Workspace check is unavailable. Try again from the profile screen.
+              Session check is unavailable. Try again from the login screen.
             </p>
           ) : null}
         </div>
@@ -61,9 +63,9 @@ export function SessionPanel({ title = "Workspace status" }: { title?: string })
       <div className="mt-4 flex gap-2">
         <a
           className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-accent)] bg-[var(--ft-accent)] px-3 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
-          href="/onboarding"
+          href="/login"
         >
-          <span className="truncate">Connect</span>
+          <span className="truncate">Sign in</span>
           <ArrowRight className="size-4" />
         </a>
         <Button className="px-3" disabled={loading} onClick={() => void refresh()} variant="secondary">

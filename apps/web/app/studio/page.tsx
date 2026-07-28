@@ -106,7 +106,7 @@ function formatPresetLabel(amountMinor: number) {
 }
 
 export default function StudioPage() {
-  const { loading: sessionLoading } = useApiSession();
+  const { loading: sessionLoading, session } = useApiSession();
   const [goal, setGoal] = useState<StudioGoal>();
   const [link, setLink] = useState("");
   const [productDescription, setProductDescription] = useState("");
@@ -125,6 +125,37 @@ export default function StudioPage() {
     () => detectMarketplaceLaneHint(productDescription),
     [productDescription]
   );
+
+  if (!sessionLoading && !session) {
+    return (
+      <CampaignShell active="/studio">
+        <Panel className="mx-auto mt-16 max-w-2xl p-8">
+          <Badge tone="warning">Sign in required</Badge>
+          <h1 className="mt-4 text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)]">
+            Studio creates your workspace automatically
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+            Sign in or create an account to attach a workspace session, hydrate the studio, and launch a campaign
+            without a manual setup step.
+          </p>
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+            <a
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-accent)] bg-[var(--ft-accent)] px-5 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
+              href="/login"
+            >
+              Sign in
+            </a>
+            <a
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-5 text-sm font-semibold text-[var(--ft-text-primary)] transition hover:border-[var(--ft-accent)]"
+              href="/register"
+            >
+              Create account
+            </a>
+          </div>
+        </Panel>
+      </CampaignShell>
+    );
+  }
 
   useEffect(() => {
     if (!detectedMarketplaceLane) {

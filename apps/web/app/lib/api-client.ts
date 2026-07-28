@@ -7,8 +7,12 @@ export type ApiSession = {
   user: {
     id: string;
     name: string;
-    email: string;
+    username: string;
+    displayName?: string;
+    email?: string;
+    defaultWorkspaceId?: string;
   };
+  defaultWorkspaceId?: string;
   workspace: {
     id: string;
     name: string;
@@ -24,10 +28,10 @@ export type ApiSession = {
 };
 
 export type AuthCredentials = {
-  email: string;
+  username: string;
   password: string;
-  name?: string;
-  workspaceName?: string;
+  confirmPassword?: string;
+  displayName?: string;
 };
 
 export type AuthResult = {
@@ -39,6 +43,7 @@ export type AuthResult = {
 type SessionSource = Partial<ApiSession> & {
   token?: string;
   expiresAt?: string;
+  defaultWorkspaceId?: string;
 };
 
 type AuthEnvelope = SessionSource & {
@@ -186,7 +191,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 function normalizeAuthPayload(payload: AuthEnvelope): AuthResult {
   const source = payload.session ?? payload.data ?? payload;
   const session: ApiSession = {
-    user: source.user ?? { id: "", name: "Unknown user", email: "" },
+    user: source.user ?? { id: "", name: "Unknown user", username: "unknown" },
     workspace: source.workspace ?? {
       id: "",
       name: "Workspace",
@@ -202,6 +207,9 @@ function normalizeAuthPayload(payload: AuthEnvelope): AuthResult {
   }
   if (source.permissions) {
     session.permissions = source.permissions;
+  }
+  if (source.defaultWorkspaceId) {
+    session.defaultWorkspaceId = source.defaultWorkspaceId;
   }
 
   const result: AuthResult = { session };

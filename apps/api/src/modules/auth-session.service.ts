@@ -45,8 +45,11 @@ const passwordHashOptions = {
 interface AuthScope {
   user: {
     id: string;
-    email: string;
+    username: string;
     name: string;
+    displayName?: string | null;
+    email?: string | null;
+    defaultWorkspaceId?: string | null;
   };
   workspace: {
     id: string;
@@ -66,15 +69,14 @@ interface AuthScope {
 }
 
 interface RegistrationInput {
-  email: string;
+  username: string;
   password: string;
-  name: string;
-  organizationName: string;
-  workspaceName: string;
+  confirmPassword: string;
+  displayName?: string;
 }
 
 interface LoginInput {
-  email: string;
+  username: string;
   password: string;
   workspaceId?: string;
 }
@@ -176,10 +178,6 @@ function recordFromBody(body: unknown) {
   return body as Record<string, unknown>;
 }
 
-function hasOwnField(body: Record<string, unknown>, field: string) {
-  return Object.prototype.hasOwnProperty.call(body, field);
-}
-
 function optionalString(body: Record<string, unknown>, field: string) {
   const value = body[field];
 
@@ -205,14 +203,19 @@ function requireString(body: Record<string, unknown>, field: string) {
   return value;
 }
 
-function normalizeEmail(value: string) {
-  const email = value.trim().toLowerCase();
+function normalizeUsername(value: string) {
+  const username = value.trim().toLowerCase();
 
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new BadRequestException("email must be a valid email address.");
+  if (username.length < 3 || username.length > 32) {
+    throw new BadRequestException("username must be between 3 and 32 characters.");
+  }
+  if (!/^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(username)) {
+    throw new BadRequestException(
+      "username may only contain letters, numbers, periods, underscores, and hyphens."
+    );
   }
 
-  return email;
+  return username;
 }
 
 function normalizePassword(value: unknown) {
@@ -246,21 +249,10 @@ function slugify(value: string) {
   return slug || "organization";
 }
 
-function organizationSlug(name: string, email: string) {
-  const emailHandle = email.split("@").at(0) ?? "organization";
-  const base = slugify(name || emailHandle);
+function organizationSlug(name: string, username: string) {
+  const base = slugify(name || username);
 
   return `${base}-${randomUUID().slice(0, 8)}`;
-}
-
-function looksLikeCredentialLogin(body: unknown) {
-  const record = recordFromBody(body);
-
-  if (!record) {
-    return false;
-  }
-
-  return ["email", "password", "workspaceId"].some((field) => hasOwnField(record, field));
 }
 
 function parseRegistrationInput(body: unknown): RegistrationInput {
@@ -270,19 +262,22 @@ function parseRegistrationInput(body: unknown): RegistrationInput {
     throw new BadRequestException("Registration body is required.");
   }
 
-  const email = normalizeEmail(requireString(record, "email"));
+  const username = normalizeUsername(requireString(record, "username"));
   const password = normalizePassword(record.password);
-  const name = normalizeDisplayName(requireString(record, "name"), "name");
-  const organizationName = normalizeDisplayName(
-    optionalString(record, "organizationName") ?? `${name}'s Organization`,
-    "organizationName"
-  );
-  const workspaceName = normalizeDisplayName(
-    optionalString(record, "workspaceName") ?? `${organizationName} Workspace`,
-    "workspaceName"
-  );
+  const confirmPassword = normalizePassword(record.confirmPassword);
 
-  return { email, password, name, organizationName, workspaceName };
+  if (password !== confirmPassword) {
+    throw new BadRequestException("confirmPassword must match password.");
+  }
+
+  const displayName = optionalString(record, "displayName");
+
+  return {
+    username,
+    password,
+    confirmPassword,
+    ...(displayName === undefined ? {} : { displayName: normalizeDisplayName(displayName, "displayName") })
+  };
 }
 
 function parseLoginInput(body: unknown): LoginInput {
@@ -292,12 +287,12 @@ function parseLoginInput(body: unknown): LoginInput {
     throw new BadRequestException("Login body is required.");
   }
 
-  const email = normalizeEmail(requireString(record, "email"));
+  const username = normalizeUsername(requireString(record, "username"));
   const password = normalizePassword(record.password);
   const workspaceId = optionalString(record, "workspaceId");
 
   return {
-    email,
+    username,
     password,
     ...(workspaceId === undefined ? {} : { workspaceId })
   };
@@ -328,9 +323,10 @@ export class AuthSessionService {
     return {
       userId: scope.user.id,
       workspaceId: scope.workspace.id,
+      defaultWorkspaceId: scope.user.defaultWorkspaceId ?? scope.workspace.id,
       organizationId: scope.organization.id,
       ...(scope.sessionId === undefined ? {} : { sessionId: scope.sessionId }),
-      userEmail: scope.user.email,
+      ...(scope.user.email == null ? {} : { userEmail: scope.user.email }),
       userName: scope.user.name,
       role: scope.membership.role as Role,
       permissions: scope.membership.permissions as Permission[]
@@ -340,32 +336,35 @@ export class AuthSessionService {
   async register(body: unknown, headers: HeaderBag) {
     const input = parseRegistrationInput(body);
     const existingUser = await this.db.user.findUnique({
-      where: { email: input.email },
+      where: { username: input.username },
       select: { id: true }
     });
 
     if (existingUser) {
-      throw new ConflictException("An account with this email already exists.");
+      throw new ConflictException("An account with this username already exists.");
     }
 
     const passwordHash = await createPasswordHash(input.password);
+    const displayName = input.displayName ?? input.username;
+    const workspaceName = displayName ? `${displayName}'s Workspace` : "Default Workspace";
 
     try {
       const scope = await this.db.$transaction(async (transaction) => {
         const user = await transaction.user.create({
           data: {
-            email: input.email,
-            name: input.name,
+            username: input.username,
+            name: displayName,
+            email: null,
+            displayName,
             status: "ACTIVE",
-            passwordHash,
-            emailVerifiedAt: new Date()
+            passwordHash
           },
-          select: { id: true, email: true, name: true }
+          select: { id: true, username: true, name: true, displayName: true, email: true }
         });
         const organization = await transaction.organization.create({
           data: {
-            name: input.organizationName,
-            slug: organizationSlug(input.organizationName, input.email),
+            name: workspaceName,
+            slug: organizationSlug(workspaceName, input.username),
             ownerUserId: user.id
           },
           select: { id: true, name: true, slug: true }
@@ -373,7 +372,7 @@ export class AuthSessionService {
         const workspace = await transaction.workspace.create({
           data: {
             organizationId: organization.id,
-            name: input.workspaceName
+            name: workspaceName
           },
           select: { id: true, name: true, defaultCurrency: true }
         });
@@ -386,14 +385,23 @@ export class AuthSessionService {
           },
           select: { role: true, permissions: true }
         });
+        await transaction.user.update({
+          where: { id: user.id },
+          data: { defaultWorkspaceId: workspace.id }
+        });
 
-        return { user, organization, workspace, membership };
+        return {
+          user: { ...user, defaultWorkspaceId: workspace.id },
+          organization,
+          workspace,
+          membership
+        };
       });
 
       return this.issueSignedSession(scope, metadataContextFromHeaders(headers));
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        throw new ConflictException("An account or organization with these details already exists.");
+        throw new ConflictException("An account with these details already exists.");
       }
 
       throw error;
@@ -401,31 +409,29 @@ export class AuthSessionService {
   }
 
   async login(body: unknown, headers: HeaderBag) {
-    if (!looksLikeCredentialLogin(body)) {
-      return this.issueSession(headers);
-    }
-
     const input = parseLoginInput(body);
     const user = await this.db.user.findUnique({
-      where: { email: input.email },
+      where: { username: input.username },
       select: {
         id: true,
-        email: true,
+        username: true,
         name: true,
+        displayName: true,
         status: true,
         passwordHash: true,
+        defaultWorkspaceId: true,
         deletedAt: true
       }
     });
 
     if (!user || user.deletedAt || !user.passwordHash) {
-      throw new UnauthorizedException("Email or password is invalid.");
+      throw new UnauthorizedException("Username or password is invalid.");
     }
 
     const passwordMatches = await verifyPassword(input.password, user.passwordHash);
 
     if (!passwordMatches) {
-      throw new UnauthorizedException("Email or password is invalid.");
+      throw new UnauthorizedException("Username or password is invalid.");
     }
     if (user.status !== "ACTIVE") {
       throw new UnauthorizedException("User account is not active.");
@@ -474,8 +480,10 @@ export class AuthSessionService {
       sub: scope.user.id,
       sid: sessionId,
       workspaceId: scope.workspace.id,
+      defaultWorkspaceId: scope.user.defaultWorkspaceId ?? scope.workspace.id,
       organizationId: scope.organization.id,
-      email: scope.user.email,
+      username: scope.user.username,
+      displayName: scope.user.displayName ?? scope.user.name,
       name: scope.user.name,
       role: scope.membership.role,
       iat: nowSeconds,
@@ -523,7 +531,15 @@ export class AuthSessionService {
 
     const user = await this.db.user.findFirst({
       where: { id: context.userId, status: "ACTIVE", deletedAt: null },
-      select: { id: true, email: true, name: true, status: true }
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        displayName: true,
+        email: true,
+        defaultWorkspaceId: true,
+        status: true
+      }
     });
 
     if (!user) {
@@ -619,6 +635,51 @@ export class AuthSessionService {
     user: AuthScope["user"],
     requestedOrganizationId?: string
   ): Promise<Omit<AuthScope, "user">> {
+    if (user.defaultWorkspaceId) {
+      const defaultWorkspace = await this.db.workspace.findFirst({
+        where: {
+          id: user.defaultWorkspaceId,
+          deletedAt: null,
+          organization: { deletedAt: null }
+        },
+        include: {
+          organization: {
+            include: {
+              members: {
+                where: { userId: user.id, deletedAt: null },
+                select: { role: true, permissions: true },
+                take: 1
+              }
+            }
+          }
+        }
+      });
+      const defaultMembership = defaultWorkspace?.organization.members[0];
+
+      if (defaultWorkspace && defaultMembership) {
+        if (requestedOrganizationId && requestedOrganizationId !== defaultWorkspace.organization.id) {
+          throw new ForbiddenException("Workspace does not belong to the requested organization.");
+        }
+
+        return {
+          workspace: {
+            id: defaultWorkspace.id,
+            name: defaultWorkspace.name,
+            defaultCurrency: defaultWorkspace.defaultCurrency
+          },
+          organization: {
+            id: defaultWorkspace.organization.id,
+            name: defaultWorkspace.organization.name,
+            slug: defaultWorkspace.organization.slug
+          },
+          membership: {
+            role: defaultMembership.role,
+            permissions: defaultMembership.permissions
+          }
+        };
+      }
+    }
+
     const membership = await this.db.teamMember.findFirst({
       where: {
         userId: user.id,
@@ -686,13 +747,17 @@ export class AuthSessionService {
       user: {
         id: scope.user.id,
         name: scope.user.name,
-        email: scope.user.email
+        username: scope.user.username,
+        displayName: scope.user.displayName ?? scope.user.name,
+        ...(scope.user.email == null ? {} : { email: scope.user.email }),
+        defaultWorkspaceId: scope.user.defaultWorkspaceId ?? scope.workspace.id
       },
       workspace: {
         id: scope.workspace.id,
         name: scope.workspace.name,
         defaultCurrency: scope.workspace.defaultCurrency
       },
+      defaultWorkspaceId: scope.user.defaultWorkspaceId ?? scope.workspace.id,
       organization: {
         id: scope.organization.id,
         name: scope.organization.name,

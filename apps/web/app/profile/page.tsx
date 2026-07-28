@@ -39,12 +39,12 @@ import { useApiSession } from "../lib/use-session";
 
 const profileSections = [
   {
-    copy: "Company name, industry, service category, and preferred campaign channels.",
+    copy: "Account identity, workspace name, and preferred campaign channels.",
     icon: Building2,
-    label: "Business info"
+    label: "Account info"
   },
   {
-    copy: "Primary contact, email, phone, and team handoff details for client-visible updates.",
+    copy: "Primary contact details and team handoff notes for client-visible updates.",
     icon: ShieldCheck,
     label: "Contact"
   },
@@ -73,17 +73,17 @@ export default function ProfilePage() {
     {
       detail:
         session?.workspace.name ??
-        "Connect a workspace so briefs can be assigned to the right business.",
+        "Your workspace will be created automatically when you sign in.",
       href: "/campaigns",
       ready: Boolean(session?.workspace.name),
       title: "Workspace identity"
     },
     {
       detail:
-        session?.user.email ??
-        "Add a primary email for approvals, invoices, and published reports.",
+        session?.user.name ??
+        "Add a display name for approvals, reports, and published handoff notes.",
       href: "/campaigns",
-      ready: Boolean(session?.user.email),
+      ready: Boolean(session?.user.name),
       title: "Client contact"
     },
     {
@@ -129,11 +129,14 @@ export default function ProfilePage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a className={`${secondaryLinkButtonClass} w-full sm:w-auto`} href="/billing">
-              Wallet & Billing
+            <a
+              className={`${secondaryLinkButtonClass} w-full sm:w-auto`}
+              href={session ? "/billing" : "/login"}
+            >
+              {session ? "Wallet & Billing" : "Sign in"}
             </a>
-            <a className={`${linkButtonClass} w-full sm:w-auto`} href="/campaigns/new">
-              Start Campaign
+            <a className={`${linkButtonClass} w-full sm:w-auto`} href={session ? "/campaigns/new" : "/register"}>
+              {session ? "Start Campaign" : "Create account"}
               <ArrowRight className="size-4 stroke-[1.5]" />
             </a>
           </div>
@@ -200,11 +203,11 @@ export default function ProfilePage() {
             </div>
 
             <div className="p-5">
-              <SummaryStatStrip
+                <SummaryStatStrip
                 items={[
                   {
                     label: "workspace",
-                    value: sessionLoading ? "Checking" : session ? "Ready" : "Pending"
+                    value: sessionLoading ? "Checking" : session ? "Ready" : "Signed out"
                   },
                   { label: "destinations", value: loading ? "..." : destinations.length },
                   { label: "setup gaps", value: loading ? "..." : setupGapCount }
@@ -280,14 +283,14 @@ export default function ProfilePage() {
           {!session && !sessionLoading ? (
             <EmptyState
               action={
-                <a className={linkButtonClass} href="/campaigns">
-                  Connect Workspace
+                <a className={linkButtonClass} href="/login">
+                  Sign in
                   <ArrowRight className="size-4 stroke-[1.5]" />
                 </a>
               }
-              copy="A workspace session connects this profile to campaign briefs, invoices, reports, and operator updates."
+              copy="A signed-in session connects this profile to campaign briefs, invoices, reports, and operator updates."
               icon={ShieldCheck}
-              title="No workspace session"
+              title="Sign in required"
             />
           ) : null}
 
@@ -313,7 +316,7 @@ export default function ProfilePage() {
               {completionItems.map((item) => (
                 <a
                   className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 transition hover:border-[var(--ft-accent)]"
-                  href={item.href}
+                  href={session ? item.href : "/login"}
                   key={item.title}
                 >
                   <span className="grid size-8 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
