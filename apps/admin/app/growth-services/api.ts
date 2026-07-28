@@ -8,11 +8,6 @@ import {
 } from "../lib/api-client";
 import {
   adminGrowthEnabled,
-  fallbackMetrics,
-  fallbackOrders,
-  fallbackRisks,
-  fallbackServices,
-  fallbackSuppliers,
   type AdminGrowthMetric,
   type AdminGrowthOrder,
   type AdminGrowthRisk,
@@ -122,12 +117,17 @@ export type UpdateGrowthOrderInput = {
 
 export const defaultState: AdminGrowthState = {
   loading: false,
-  metrics: fallbackMetrics,
-  orders: fallbackOrders,
-  risks: fallbackRisks,
-  services: fallbackServices,
+  metrics: [
+    { label: "Open orders", value: "0", detail: "Pending or in delivery", tone: "info" },
+    { label: "Active services", value: "0", detail: "Customer-visible", tone: "success" },
+    { label: "Disabled services", value: "0", detail: "Awaiting controls", tone: "warning" },
+    { label: "Revenue", value: "NGN 0", detail: "Completed order value" }
+  ],
+  orders: [],
+  risks: [],
+  services: [],
   source: adminGrowthEnabled ? "fallback" : "disabled",
-  suppliers: fallbackSuppliers
+  suppliers: []
 };
 
 function normalizePlatform(platform: string) {

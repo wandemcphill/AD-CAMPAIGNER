@@ -76,21 +76,6 @@ export type AdminGrowthMetric = {
 
 export const adminGrowthEnabled = process.env.NEXT_PUBLIC_ENABLE_GROWTH_SERVICES_ADMIN !== "false";
 
-export const fallbackServices: AdminGrowthService[] = [];
-
-export const fallbackOrders: AdminGrowthOrder[] = [];
-
-export const fallbackSuppliers: AdminSupplierAudit[] = [];
-
-export const fallbackRisks: AdminGrowthRisk[] = [];
-
-export const fallbackMetrics: AdminGrowthMetric[] = [
-  { label: "Open orders", value: "0", detail: "Pending or in delivery", tone: "info" },
-  { label: "Active services", value: "0", detail: "Customer-visible", tone: "success" },
-  { label: "Disabled services", value: "0", detail: "Awaiting controls", tone: "warning" },
-  { label: "Revenue", value: "NGN 0", detail: "Completed order value" }
-];
-
 export const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
   { label: "Overview", href: "/growth-services", icon: Store },
   { label: "Orders", href: "/growth-services/orders", icon: ListChecks },
