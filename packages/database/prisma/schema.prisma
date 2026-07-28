@@ -106,6 +106,41 @@ enum PaymentStatus {
   CANCELLED
 }
 
+enum VoucherStatus {
+  CREATED
+  SEALED
+  CLAIMED
+  REVEALED
+  FULFILLMENT_PENDING
+  REDEEMED
+  FAILED
+  EXPIRED
+}
+
+enum VoucherProductCategory {
+  CAMPAIGN
+  TELECOM
+  SMM
+  CREATOR
+  GIFT
+  MARKETPLACE
+}
+
+enum VoucherProductHandler {
+  WALLET_CREDIT
+  VTU_TOPUP
+  SMM_ORDER
+  EXTERNAL_API
+}
+
+enum VoucherWalletType {
+  CAMPAIGN
+  CREATOR
+  PROMOTION
+  USER
+  MARKETPLACE
+}
+
 enum CompanyProfileStatus {
   INCOMPLETE
   ACTIVE
@@ -356,6 +391,9 @@ model User {
   digitalAccessRequests DigitalAccessRequest[]
   companyProfiles       CompanyProfile[]         @relation("CompanyProfileOwner")
   mediaAssets           MediaAsset[]             @relation("MediaAssetUploader")
+  voucherPurchases      Voucher[]                @relation("VoucherPurchaser")
+  voucherOwnerships     Voucher[]                @relation("VoucherOwner")
+  voucherClaims         VoucherClaimToken[]      @relation("VoucherClaimedBy")
   campaignNotes         CampaignNote[]           @relation("CampaignNoteAuthor")
   campaignAssignments   CampaignAssignment[]     @relation("CampaignAssignee")
   assignedCampaigns     CampaignAssignment[]     @relation("CampaignAssigner")
@@ -404,6 +442,7 @@ model Workspace {
   digitalAccessWalletCharges DigitalAccessWalletCharge[]
   companyProfiles            CompanyProfile[]
   mediaAssets                MediaAsset[]
+  vouchers                   Voucher[]
   campaignInvoices           CampaignInvoice[]
   campaignLedgerEntries      CampaignLedgerEntry[]
   eventOutbox                EventOutbox[]
@@ -683,6 +722,77 @@ model PaymentIntent {
   @@index([walletId, status])
   @@index([campaignId, status])
   @@index([campaignInvoiceId, status])
+}
+
+model VoucherProduct {
+  id                String                  @id @default(uuid())
+  name              String
+  category          VoucherProductCategory
+  handler           VoucherProductHandler
+  provider          String?
+  providerServiceId String?
+  inputSchema       Json                    @default("{}")
+  targetWalletType  VoucherWalletType?
+  active            Boolean                 @default(true)
+  metadata          Json                    @default("{}")
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  vouchers          Voucher[]
+
+  @@index([category, active])
+  @@index([handler, active])
+}
+
+model Voucher {
+  id                    String             @id @default(uuid())
+  serialNumber          String             @unique
+  pinEncrypted          String
+  workspaceId           String
+  productId             String
+  status                VoucherStatus      @default(CREATED)
+  locked                Boolean            @default(false)
+  ownerUserId           String?
+  purchaserUserId       String
+  giftNote              String?
+  redemptionInput       Json               @default("{}")
+  redemptionDestination String?
+  metadata              Json               @default("{}")
+  createdAt             DateTime           @default(now())
+  activatedAt           DateTime?
+  revealedAt            DateTime?
+  redeemedAt            DateTime?
+  expiresAt             DateTime
+  updatedAt             DateTime           @updatedAt
+  deletedAt             DateTime?
+  workspace             Workspace          @relation(fields: [workspaceId], references: [id])
+  product               VoucherProduct     @relation(fields: [productId], references: [id])
+  purchaser             User               @relation("VoucherPurchaser", fields: [purchaserUserId], references: [id])
+  owner                 User?              @relation("VoucherOwner", fields: [ownerUserId], references: [id])
+  claimTokens           VoucherClaimToken[]
+
+  @@index([status, expiresAt])
+  @@index([purchaserUserId, createdAt])
+  @@index([ownerUserId, status])
+  @@index([productId, status])
+}
+
+model VoucherClaimToken {
+  id                   String   @id @default(uuid())
+  token                String   @unique
+  voucherId            String
+  createdByShareActionAt DateTime @default(now())
+  claimedAt            DateTime?
+  claimedByUserId      String?
+  channel              String?
+  tokenExpiresAt       DateTime
+  metadata             Json     @default("{}")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  voucher              Voucher  @relation(fields: [voucherId], references: [id])
+  claimedBy            User?    @relation("VoucherClaimedBy", fields: [claimedByUserId], references: [id])
+
+  @@index([voucherId, tokenExpiresAt])
+  @@index([claimedByUserId, claimedAt])
 }
 
 model CompanyProfile {
