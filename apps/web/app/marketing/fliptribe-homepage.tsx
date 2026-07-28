@@ -130,13 +130,14 @@ export function FliptribeHomepage() {
 
   return (
     <main
-      className="flip-home min-h-screen overflow-hidden bg-[#050507] text-white"
+      className="flip-home min-h-screen overflow-hidden bg-[#0B0F19] text-white"
       id="engine"
       style={{
-        "--flip-amber": "#FF8A00",
+        "--flip-primary": "#0066FF",
+        "--flip-accent": "#8B5CF6",
+        "--flip-cyan": "#06B6D4",
         "--flip-emerald": "#10B981",
-        "--flip-indigo": "#5E5CE6",
-        "--flip-terracotta": "#D95338",
+        "--flip-surface": "#111827",
         "--flip-white": "#F9FAFB"
       } as React.CSSProperties}
     >
@@ -144,24 +145,24 @@ export function FliptribeHomepage() {
 
       <section className="relative isolate flex min-h-[100svh] items-start px-4 pt-24 pb-14 sm:px-6 lg:pt-28 xl:items-center xl:pt-24">
         <ParticleCanvas pulseKey={pulseKey} reducedMotion={reducedMotion} />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_48%_20%,rgba(255,138,0,0.2),transparent_26%),radial-gradient(circle_at_78%_30%,rgba(94,92,230,0.16),transparent_28%),linear-gradient(180deg,rgba(5,5,7,0.1),#050507_92%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_48%_20%,rgba(0,102,255,0.18),transparent_26%),radial-gradient(circle_at_78%_30%,rgba(139,92,246,0.14),transparent_28%),linear-gradient(180deg,rgba(11,15,25,0.1),#0B0F19_92%)]" />
         <div className="pointer-events-none absolute inset-0 opacity-[0.045] [background-image:linear-gradient(rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:64px_64px]" />
 
         <div className="relative z-10 mx-auto w-full max-w-7xl">
           <div className="mx-auto max-w-5xl text-center">
             <motion.div
               animate={{ scaleX: 1 }}
-              className="mx-auto h-px w-48 origin-left bg-[linear-gradient(90deg,transparent,var(--flip-amber),var(--flip-indigo),transparent)]"
+              className="mx-auto h-px w-48 origin-left bg-[linear-gradient(90deg,transparent,var(--flip-primary),var(--flip-accent),transparent)]"
               initial={{ scaleX: reducedMotion ? 1 : 0 }}
               transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
             />
             <motion.div
               animate={{ y: 0 }}
-              className="mt-5 inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.045] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/56 backdrop-blur-xl sm:mt-6 sm:text-xs"
+              className="mt-5 inline-flex items-center gap-2 rounded-[12px] border border-white/10 bg-white/[0.045] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/56 backdrop-blur-xl sm:mt-6 sm:text-xs"
               initial={{ y: reducedMotion ? 0 : 14 }}
               transition={{ delay: 0.1, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Orbit className="size-4 text-[var(--flip-amber)]" />
+              <Orbit className="size-4 text-[var(--flip-primary)]" />
               AI growth operating system
             </motion.div>
 
@@ -209,10 +210,10 @@ export function FliptribeHomepage() {
           <CampaignPreview activeStep={activeStep} prompt={prompt} />
 
           <a
-            className="mx-auto mt-8 flex w-fit items-center gap-2 rounded-md border border-white/10 px-3 py-2 font-mono text-xs uppercase tracking-[0.24em] text-white/48 transition hover:border-white/24 hover:text-white"
+            className="mx-auto mt-8 flex w-fit items-center gap-2 rounded-[12px] border border-white/10 px-3 py-2 font-mono text-xs uppercase tracking-[0.24em] text-white/48 transition hover:border-white/24 hover:text-white"
             href="#phase-one"
           >
-            <Sparkles className="size-4 text-[var(--flip-amber)]" />
+            <Sparkles className="size-4 text-[var(--flip-primary)]" />
             Phase engine online
             <ArrowDown className="size-4" />
           </a>
