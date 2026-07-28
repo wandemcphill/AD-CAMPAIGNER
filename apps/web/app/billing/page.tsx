@@ -529,7 +529,7 @@ export default function BillingPage() {
                 <div>Description</div>
                 <div>Type</div>
                 <div className="text-right">Amount</div>
-                <div>Reference</div>
+                <div>Ref #</div>
               </div>
               {loading ? (
                 <div className="p-4">

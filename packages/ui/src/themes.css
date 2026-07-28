@@ -4,9 +4,11 @@
 [data-theme="studio"] {
   color-scheme: light;
   --font-display:
-    "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "DM Sans", "Noto Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
   --font-mono:
-    "Geist Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular, Menlo, monospace;
+    "Geist Mono", "Noto Sans", "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular,
+    Menlo, monospace;
   --ft-bg-base: #f5f2ee;
   --ft-bg-surface: #fdfbf8;
   --ft-bg-raised: #ffffff;

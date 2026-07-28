@@ -42,7 +42,7 @@ export function SessionPanel({ title = "Workspace status" }: { title?: string })
     <div className="mt-6 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4 text-sm shadow-[var(--shadow-sm)]">
       <div className="flex items-center justify-between gap-3">
         <div className="font-medium text-[var(--ft-text-primary)]">{title}</div>
-        <Badge tone={loading ? "info" : "warning"}>{loading ? "Checking" : "Signed out"}</Badge>
+        <Badge tone={loading ? "info" : "warning"}>{loading ? "Checking" : "Redirecting"}</Badge>
       </div>
       <div className="mt-4 flex gap-3">
         <div className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-accent)]/35 bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]">

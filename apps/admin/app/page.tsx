@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import {
   AlertTriangle,
   Banknote,
@@ -20,12 +21,18 @@ import { useAdminDashboard } from "./use-admin-dashboard";
 
 export default function AdminPage() {
   const { data, error, isLoading, refresh } = useAdminDashboard();
+  const [telemetryOpen, setTelemetryOpen] = useState(false);
+  const [selectedRail, setSelectedRail] = useState<string | null>(null);
   const metrics = data?.metrics ?? [];
   const queues = data?.queues ?? [];
   const moderation = data?.risk ?? [];
   const audits = data?.audits ?? [];
   const rails = data?.rails ?? [];
   const pendingReviews = metrics.find((metric) => metric.label === "Fraud signals")?.detail ?? "Loading";
+  const selectedRailDetails = useMemo(
+    () => rails.find((rail) => rail.name === selectedRail),
+    [rails, selectedRail]
+  );
 
   return (
     <main className="min-h-screen">
@@ -71,10 +78,30 @@ export default function AdminPage() {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="success">Systems nominal</Badge>
-                <Badge tone={data?.source === "partial" ? "warning" : "info"}>
-                  {data?.source === "partial" ? "Partial telemetry" : "API telemetry"}
-                </Badge>
+                <button
+                  className="rounded-[var(--radius-sm)]"
+                  onBlur={() => setTelemetryOpen(false)}
+                  onClick={() => setTelemetryOpen((value) => !value)}
+                  onFocus={() => setTelemetryOpen(true)}
+                  onMouseEnter={() => setTelemetryOpen(true)}
+                  onMouseLeave={() => setTelemetryOpen(false)}
+                  type="button"
+                >
+                  <Badge tone={data?.source === "partial" ? "warning" : "info"}>
+                    {data?.source === "partial" ? "Partial telemetry" : "API telemetry"}
+                  </Badge>
+                </button>
               </div>
+              {telemetryOpen ? (
+                <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-3 text-sm text-[var(--ft-text-secondary)]">
+                  <div className="font-medium text-[var(--ft-text-primary)]">Telemetry detail</div>
+                  <div className="mt-2 grid gap-1">
+                    <div>Payments: {data?.source === "api" ? "live" : "delayed 4m"}</div>
+                    <div>Campaign queue: {queues.length > 0 ? "OK" : "waiting"}</div>
+                    <div>Audit trail: {audits.length > 0 ? "OK" : "waiting"}</div>
+                  </div>
+                </div>
+              ) : null}
               <h1 className="mt-3 text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
                 Operations command
               </h1>
@@ -222,13 +249,19 @@ export default function AdminPage() {
               </h2>
               <div className="mt-4 grid gap-3">
                 {rails.map((rail) => (
-                  <div
-                    className="flex h-10 items-center justify-between rounded-md border border-[var(--ft-border)] px-3 text-sm text-[var(--ft-text-secondary)]"
+                  <button
+                    className={`flex h-10 items-center justify-between rounded-md border px-3 text-sm transition ${
+                      selectedRail === rail.name
+                        ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)]"
+                        : "border-[var(--ft-border)] text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)]"
+                    }`}
                     key={rail.name}
+                    onClick={() => setSelectedRail(rail.name)}
+                    type="button"
                   >
                     <span>{rail.name}</span>
                     <span className="font-medium text-[var(--ft-text-primary)]">{rail.status}</span>
-                  </div>
+                  </button>
                 ))}
                 {rails.length === 0 ? (
                   <div className="rounded-md border border-[var(--ft-border)] px-3 py-3 text-sm text-[var(--ft-text-muted)]">
@@ -236,6 +269,14 @@ export default function AdminPage() {
                   </div>
                 ) : null}
               </div>
+              {selectedRailDetails ? (
+                <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]">
+                  <div className="font-medium text-[var(--ft-text-primary)]">{selectedRailDetails.name}</div>
+                  <div className="mt-1">Masked secret: ************</div>
+                  <div>Webhook: healthy</div>
+                  <div>Last successful transaction: just now</div>
+                </div>
+              ) : null}
             </Panel>
 
             <Panel className="p-4">
