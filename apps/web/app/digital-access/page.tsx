@@ -2,7 +2,7 @@
 
 import { ArrowRight, Clock, RefreshCw, Search, ShieldCheck, Wallet } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import { DigitalAccessShell, ErrorNotice, PageHeader, RequestStatus } from "./components";
 import { accessEnabled } from "./data";
@@ -45,6 +45,50 @@ export default function DigitalAccessPage() {
 
       <ErrorNotice message={error} />
 
+      <section className="mt-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={accessEnabled ? "success" : "warning"}>
+            {accessEnabled ? "Desk online" : "Admin setup"}
+          </Badge>
+          <Badge tone="info">Wallet-funded requests</Badge>
+          <Badge tone="neutral">Manual fulfillment</Badge>
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
+              Premium service gateway
+            </p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
+              Request creator tools, paid infrastructure, and managed services from one desk.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+              Browse approved services, submit a wallet-paid request, and track fulfillment
+              without exposing provider internals or administrative steps.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4" />
+              Refresh desk
+            </Button>
+            <Button className="border-[var(--ft-border-strong)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)] hover:bg-[var(--ft-bg-muted)]">
+              <ArrowRight className="size-4" />
+              Open services
+            </Button>
+          </div>
+        </div>
+        <div className="mt-6">
+          <SummaryStatStrip
+            items={[
+              { label: "Open requests", value: loading ? "..." : String(openRequests), detail: "Queued or in fulfillment" },
+              { label: "Fulfilled", value: loading ? "..." : String(fulfilledRequests), detail: "Completed by the desk" },
+              { label: "Catalog", value: loading ? "..." : String(services.length), detail: "Active services" },
+              { label: "Access mode", value: accessEnabled ? "Live" : "Setup", detail: "Rollout state" }
+            ]}
+          />
+        </div>
+      </section>
+
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <MetricCard
           label="Open requests"
@@ -66,7 +110,7 @@ export default function DigitalAccessPage() {
       </section>
 
       <section className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-lg border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 text-[var(--ft-text-primary)]">
+        <div className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 text-[var(--ft-text-primary)]">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="neutral">Creator infrastructure</Badge>
             <Badge tone="info">Wallet-ready</Badge>

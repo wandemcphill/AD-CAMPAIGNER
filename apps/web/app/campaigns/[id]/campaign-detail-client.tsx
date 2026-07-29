@@ -56,6 +56,7 @@ import {
   PageHeader,
   SourceBadge,
   StatusBadge,
+  SummaryStatStrip,
   linkButtonClass,
   secondaryLinkButtonClass
 } from "../components";
@@ -1050,6 +1051,36 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
       ) : (
         <section className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
           <div className="grid gap-5">
+            <section className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,rgba(0,102,255,0.14),transparent_38%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-2xl">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+                    Campaign record
+                  </div>
+                  <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
+                    {campaign.name}
+                  </h2>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+                    One view for review state, delivery progress, spend transparency, and the latest team actions.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone="success">{campaignStatusMeta(campaign.status).label}</Badge>
+                  <Badge tone="info">{platformFromDestination(campaign.destination.kind)}</Badge>
+                  <Badge tone="neutral">{flightWindow(campaign).progress}% progress</Badge>
+                </div>
+              </div>
+              <div className="mt-5">
+                <SummaryStatStrip
+                  items={[
+                    { label: "budget", value: formatCampaignMoney(campaign.budget) },
+                    { label: "current spend", value: formatCompact(analyticsMetric(analytics, "impressions")) },
+                    { label: "launch window", value: flightWindow(campaign).startLabel }
+                  ]}
+                />
+              </div>
+            </section>
+
             <Panel className="overflow-hidden">
               <div className="border-b border-[var(--ft-border)] p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

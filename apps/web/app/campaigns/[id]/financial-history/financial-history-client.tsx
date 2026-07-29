@@ -3,7 +3,7 @@
 import { ArrowLeft, RefreshCw, ReceiptText } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 import type { CampaignBudgetSummary, CampaignLedgerEntry } from "@fliptrybe/types";
 
 import { formatCampaignMoney, formatDateTime, loadCampaignFinancialData } from "../../api";
@@ -103,22 +103,31 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
       <section className="mt-6 grid gap-5">
         {state.budgetSummary ? (
           <Panel className="overflow-hidden">
-            <div className="grid gap-px bg-[var(--ft-border)] md:grid-cols-4">
-              {[
-                { label: "Total Budget", value: formatCampaignMoney(state.budgetSummary.totalBudget) },
-                { label: "Funds Used", value: formatCampaignMoney(state.budgetSummary.fundsUsed) },
-                { label: "Remaining", value: formatCampaignMoney(state.budgetSummary.remainingBalance) },
-                { label: "Pending", value: formatCampaignMoney(state.budgetSummary.pendingSpend) }
-              ].map((item) => (
-                <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
+            <div className="border-b border-[var(--ft-border)] p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="max-w-2xl">
                   <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
-                    {item.label}
+                    Ledger summary
                   </div>
-                  <div className="mt-2 font-mono text-2xl font-medium text-[var(--ft-text-primary)]">
-                    {item.value}
-                  </div>
+                  <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
+                    Campaign spend transparency
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                    Budget movement, allocation, and remaining balance for this campaign.
+                  </p>
                 </div>
-              ))}
+                <Badge tone="info">Updated {formatDateTime(state.budgetSummary.updatedAt)}</Badge>
+              </div>
+            </div>
+            <div className="p-4">
+              <SummaryStatStrip
+                items={[
+                  { label: "total budget", value: formatCampaignMoney(state.budgetSummary.totalBudget) },
+                  { label: "funds used", value: formatCampaignMoney(state.budgetSummary.fundsUsed) },
+                  { label: "remaining", value: formatCampaignMoney(state.budgetSummary.remainingBalance) },
+                  { label: "pending", value: formatCampaignMoney(state.budgetSummary.pendingSpend) }
+                ]}
+              />
             </div>
           </Panel>
         ) : null}

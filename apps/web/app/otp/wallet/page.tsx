@@ -2,7 +2,7 @@
 
 import { Banknote, CreditCard, Plus, WalletCards } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import { EmptyState, OtpShell, PageHeader } from "../components";
 import { useOtpDashboard } from "../use-otp-dashboard";
@@ -23,6 +23,32 @@ export default function OtpWalletPage() {
           </Button>
         }
       />
+
+      <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_36%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+              OTP wallet
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
+              Funding, holds, and ledger movement stay visible while orders run.
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+              This keeps the marketplace feeling like part of the same commerce system rather than a side utility.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <SummaryStatStrip
+          items={[
+            { label: "available", value: wallet?.available ?? "Loading" },
+            { label: "held", value: wallet?.held ?? "Loading" },
+            { label: "spent today", value: wallet?.spentToday ?? "Loading" }
+          ]}
+        />
+      </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <MetricCard

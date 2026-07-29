@@ -16,7 +16,7 @@ import {
   Link2
 } from "lucide-react";
 
-import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip, cn } from "@fliptrybe/ui";
 
 import {
   amountToMinor,
@@ -276,6 +276,16 @@ export default function StudioPage() {
       </header>
 
       <ErrorNotice message={formError} />
+
+      <section className="mt-6">
+        <SummaryStatStrip
+          items={[
+            { label: "generation cost", value: "15 credits" },
+            { label: "workspace", value: session?.workspace.name ?? "Attached" },
+            { label: "launch mode", value: "Managed desk review" }
+          ]}
+        />
+      </section>
 
       <form className="mt-6 grid gap-6" onSubmit={(event) => void handleSubmit(event)}>
         <Panel className="p-5">

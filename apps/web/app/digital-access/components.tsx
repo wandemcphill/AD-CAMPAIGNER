@@ -7,7 +7,7 @@ import { accessEnabled, navItems, statusTone, type AccessRequest } from "./data"
 
 export function DigitalAccessShell({ children, active }: { children: ReactNode; active: string }) {
   return (
-    <main className="min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
+    <main className="ft-shell min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-[220px] border-r border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-4 md:block">
         <a className="flex h-12 items-center gap-3 px-1" href="/digital-access">
           <div className="flex size-9 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-accent)] font-mono text-xs font-semibold text-[var(--ft-bg-base)]">
@@ -67,7 +67,7 @@ export function DigitalAccessShell({ children, active }: { children: ReactNode; 
       </aside>
 
       <div className="min-h-screen md:pl-[220px]">
-        <div className="sticky top-0 z-40 flex h-[52px] items-center justify-between border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)]/95 px-4 font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase backdrop-blur md:px-8">
+        <div className="sticky top-0 z-40 flex h-[52px] items-center justify-between border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)]/85 px-4 font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase backdrop-blur md:px-8">
           <span>Digital Access / Client workspace</span>
           <ThemeToggle className="normal-case tracking-normal" />
         </div>

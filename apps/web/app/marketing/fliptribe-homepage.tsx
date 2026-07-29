@@ -130,7 +130,7 @@ export function FliptribeHomepage() {
 
   return (
     <main
-      className="flip-home min-h-screen overflow-hidden bg-[#0B0F19] text-white"
+      className="flip-home ft-shell min-h-screen overflow-hidden bg-[#0B0F19] text-white"
       id="engine"
       style={{
         "--flip-primary": "#0066FF",

@@ -198,6 +198,27 @@ export default function CampaignsPage() {
 
       <ErrorNotice message={error} />
 
+      <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,rgba(0,102,255,0.16),transparent_38%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+              Managed campaign desk
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
+              One view for briefs, launch prep, live spend, and reports.
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+              Review the state of your active campaigns, filter the queue, and jump straight into the next action without leaving the desk.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="success">Live monitoring</Badge>
+            <Badge tone="info">{loading ? "Syncing" : `${activeCampaigns} active`}</Badge>
+            <Badge tone="neutral">{loading ? "..." : `${pendingReviewCampaigns} in review`}</Badge>
+          </div>
+        </div>
+      </section>
+
       <section className="mt-6">
         <SummaryStatStrip
           className="mb-4"

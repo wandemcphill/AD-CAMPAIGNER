@@ -4,7 +4,7 @@ import { ArrowRight, Copy, Search, ShieldCheck, Smartphone } from "lucide-react"
 import Link from "next/link";
 import { useState } from "react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import { createOtpOrder } from "./api";
 import { EmptyState, OtpShell, PageHeader, StatusBadge } from "./components";
@@ -56,6 +56,37 @@ export default function OtpPage() {
           </div>
         }
       />
+
+      <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.12),transparent_36%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+              OTP marketplace
+            </div>
+            <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
+              Buy compliant numbers, watch live orders, and keep wallet state visible.
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+              The desk keeps routing, purchasing, and order state in one place so the flow feels connected.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge tone="success">{loading ? "Syncing" : `${services.length} routes`}</Badge>
+            <Badge tone="info">{loading ? "..." : `${orders.length} live orders`}</Badge>
+            <Badge tone="neutral">{loading ? "..." : `${quickStats.length} metrics`}</Badge>
+          </div>
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <SummaryStatStrip
+          items={[
+            { label: "available wallet", value: quickStats[0]?.value ?? "..." },
+            { label: "held orders", value: quickStats[1]?.value ?? "..." },
+            { label: "orders today", value: quickStats[2]?.value ?? "..." }
+          ]}
+        />
+      </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {quickStats.map((stat) => (

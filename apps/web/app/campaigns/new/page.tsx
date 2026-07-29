@@ -29,6 +29,7 @@ import {
   PlatformChip,
   PlatformSelectCard,
   UploadZone as SharedUploadZone,
+  SummaryStatStrip,
   WizardStepBar,
   cn
 } from "@fliptrybe/ui";
@@ -677,6 +678,16 @@ export default function NewCampaignPage() {
           </div>
         </Panel>
       ) : null}
+
+      <section className="mt-6">
+        <SummaryStatStrip
+          items={[
+            { label: "wizard step", value: `${Math.min(activeStep + 1, builderSteps.length)}/5` },
+            { label: "budget estimate", value: formatCampaignMoney(estimatedBudget) },
+            { label: "desk status", value: businessProfileComplete ? "Connected" : "Needs profile" }
+          ]}
+        />
+      </section>
 
       {businessProfileComplete ? (
       <section className="mt-6 grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_340px]">

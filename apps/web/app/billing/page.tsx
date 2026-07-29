@@ -15,7 +15,7 @@ import {
   X
 } from "lucide-react";
 
-import { Badge, Button, InvoiceCard, Panel, WalletBalance, cn } from "@fliptrybe/ui";
+import { Badge, Button, InvoiceCard, Panel, SummaryStatStrip, WalletBalance, cn } from "@fliptrybe/ui";
 import type { CurrencyCode, PaymentIntent } from "@fliptrybe/types";
 
 import {
@@ -324,6 +324,16 @@ export default function BillingPage() {
       />
 
       <ErrorNotice message={error ?? formError} />
+
+      <section className="mt-6">
+        <SummaryStatStrip
+          items={[
+            { label: "available balance", value: availableLabel },
+            { label: "budget reserve", value: heldLabel },
+            { label: "spend this period", value: moneyValue(totalSpentMinor, currency) }
+          ]}
+        />
+      </section>
 
       <section className="mt-6">
         <WalletBalance

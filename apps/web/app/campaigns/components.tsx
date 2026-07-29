@@ -38,7 +38,7 @@ export function CampaignShell({ children, active }: { children: ReactNode; activ
   }
 
   return (
-    <main className="min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
+    <main className="ft-shell min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-[220px] border-r border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-4 md:block">
         <a className="flex h-12 items-center gap-3 px-1" href="/campaigns">
           <div className="flex size-9 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-accent)] font-mono text-xs font-semibold text-[var(--ft-bg-base)]">
@@ -77,7 +77,7 @@ export function CampaignShell({ children, active }: { children: ReactNode; activ
       </aside>
 
       <div className="min-h-screen md:pl-[220px]">
-        <div className="sticky top-0 z-40 flex h-[52px] items-center justify-between border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)]/95 px-4 backdrop-blur md:px-8">
+        <div className="sticky top-0 z-40 flex h-[52px] items-center justify-between border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)]/88 px-4 backdrop-blur-xl md:px-8">
           <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             <Menu className="size-4 md:hidden" />
             Campaigns / Managed ads

@@ -28,6 +28,8 @@ body {
   color: var(--ft-text-primary);
   font-family: var(--font-display);
   letter-spacing: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
 }
 
 button,
@@ -129,6 +131,29 @@ a {
   );
   background-size: 200% 100%;
   border-radius: 2px;
+}
+
+.ft-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.ft-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 88%);
+}
+
+.ft-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

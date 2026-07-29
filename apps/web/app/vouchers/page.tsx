@@ -3,9 +3,18 @@
 import { ArrowRight, Copy, Plus, RefreshCw, Share2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
-import { createVoucher, loadVoucherProducts, loadVouchers, redeemVoucher, revealVoucher, shareVoucher, type VoucherProduct, type VoucherRecord } from "./api";
+import {
+  createVoucher,
+  loadVoucherProducts,
+  loadVouchers,
+  redeemVoucher,
+  revealVoucher,
+  shareVoucher,
+  type VoucherProduct,
+  type VoucherRecord
+} from "./api";
 import { VoucherCard } from "./voucher-card";
 
 export default function VouchersPage() {
@@ -56,14 +65,18 @@ export default function VouchersPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#05050a] text-white">
-      <div className="border-b border-white/10 bg-white/3 px-6 py-4">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+    <main className="ft-shell min-h-screen bg-[#05050a] text-white">
+      <div className="border-b border-white/10 bg-white/4 px-6 py-4 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-sm uppercase tracking-[0.4em] text-white/45">Wallet</div>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Voucher engine</h1>
+            <div className="text-sm uppercase tracking-[0.4em] text-white/45">Wallet / Voucher engine</div>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">Campaign credit cards</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/60">
+              Issue sealed vouchers, share them while hidden, and reveal them only when it is time
+              to redeem campaign credit.
+            </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => void refresh()} variant="secondary">
               <RefreshCw className="size-4" />
               Refresh
@@ -74,10 +87,20 @@ export default function VouchersPage() {
             </Button>
           </div>
         </div>
+        <div className="mx-auto mt-5 max-w-7xl">
+          <SummaryStatStrip
+            items={[
+              { label: "Products", value: String(products.length), detail: "Live catalog" },
+              { label: "Vouchers", value: String(vouchers.length), detail: "Issued records" },
+              { label: "Selected", value: currentProduct?.name ?? "None", detail: "Current product" },
+              { label: "Status", value: busy ? "Issuing" : "Ready", detail: "Wallet action" }
+            ]}
+          />
+        </div>
       </div>
 
       <div className="mx-auto grid max-w-7xl gap-6 px-6 py-8 xl:grid-cols-[0.9fr_1.1fr]">
-        <Panel className="p-5">
+        <Panel className="rounded-[var(--radius-lg)] p-5">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm text-white/50">Products</div>
@@ -88,7 +111,7 @@ export default function VouchersPage() {
           <div className="mt-4 grid gap-3">
             {products.map((product) => (
               <button
-                className={`rounded-[18px] border px-4 py-4 text-left transition ${
+                className={`rounded-[16px] border px-4 py-4 text-left transition ${
                   selectedProduct === product.id
                     ? "border-violet-400/70 bg-violet-400/10"
                     : "border-white/10 bg-white/5 hover:bg-white/8"
@@ -108,7 +131,7 @@ export default function VouchersPage() {
               </button>
             ))}
           </div>
-          <div className="mt-5 rounded-[18px] border border-white/10 bg-white/5 p-4 text-sm text-white/65">
+          <div className="mt-5 rounded-[16px] border border-white/10 bg-white/5 p-4 text-sm text-white/65">
             Issue a voucher, share it while sealed, then reveal and redeem from the same wallet view.
           </div>
         </Panel>
@@ -141,7 +164,7 @@ export default function VouchersPage() {
               </div>
             ))
           )}
-          <div className="rounded-[18px] border border-white/10 bg-white/5 p-5 text-sm text-white/60">
+          <div className="rounded-[16px] border border-white/10 bg-white/5 p-5 text-sm text-white/60">
             <a className="inline-flex items-center gap-2 text-violet-300 hover:text-violet-200" href="/claim/demo">
               Public claim experience <ArrowRight className="size-4" />
             </a>
