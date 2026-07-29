@@ -1488,12 +1488,9 @@ describe("ManagedAdsService campaign financial ledger", () => {
       campaignId: "campaign_123",
       reason: "Campaign submitted from Studio"
     });
-    expect(campaignUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: "campaign_123" },
-        data: expect.objectContaining({ status: "PENDING_REVIEW" })
-      })
-    );
+    const updateInput = campaignUpdate.mock.calls.at(-1)?.[0];
+    expect(updateInput?.where).toEqual({ id: "campaign_123" });
+    expect(updateInput?.data.status).toBe("PENDING_REVIEW");
   });
 });
 
