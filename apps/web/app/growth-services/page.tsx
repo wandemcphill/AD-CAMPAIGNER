@@ -2,7 +2,7 @@
 
 import { RefreshCw, Search, ShieldAlert } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import {
   DeliveryMeter,
@@ -51,9 +51,69 @@ export default function GrowthServicesPage() {
           </>
         }
         title="Growth Services"
-      />
+      /> 
 
       <ErrorNotice message={error} />
+
+      <section className="mt-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.22)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={growthEnabled ? "success" : "warning"}>
+            {growthEnabled ? "Routing live" : "Setup mode"}
+          </Badge>
+          <Badge tone="info">Supplier routed</Badge>
+          <Badge tone="neutral">Managed delivery</Badge>
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
+              Growth services desk
+            </p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
+              Order social growth, paid traffic support, and fulfillment routed through approved suppliers.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+              Each request moves through a managed delivery path so the team can keep pricing,
+              risk, and status visible without exposing the supplier layer.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4" />
+              Refresh desk
+            </Button>
+            <Button className="border-[var(--ft-border-strong)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)] hover:bg-[var(--ft-bg-muted)]">
+              <Search className="size-4" />
+              Explore services
+            </Button>
+          </div>
+        </div>
+        <div className="mt-6">
+          <SummaryStatStrip
+            items={[
+              {
+                label: "services",
+                value: loading ? "..." : String(activeServices.length),
+                detail: "Enabled catalog"
+              },
+              {
+                label: "active orders",
+                value: loading ? "..." : String(activeOrders),
+                detail: "Queued or running"
+              },
+              {
+                label: "completed",
+                value: loading ? "..." : String(completedOrders),
+                detail: "Delivered orders"
+              },
+              {
+                label: "risk flags",
+                value: loading ? "..." : String(highRiskServices),
+                detail: "Review required"
+              }
+            ]}
+          />
+        </div>
+      </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-4">
         <MetricCard

@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { ArrowRight, LogIn, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import { useApiSession } from "../lib/use-session";
 
@@ -38,20 +38,32 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--ft-bg-base)] px-4 py-10 text-[var(--ft-text-primary)] sm:px-6 lg:px-8">
-      <Panel className="mx-auto w-full max-w-lg p-6 sm:p-8">
-        <div className="flex items-center gap-2">
-          <Badge tone="info">Admin auth</Badge>
-          <span className="text-xs uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
-            Username only
-          </span>
+    <main className="ft-shell min-h-screen bg-[var(--ft-bg-base)] px-4 py-10 text-[var(--ft-text-primary)] sm:px-6 lg:px-8">
+      <Panel className="mx-auto w-full max-w-xl overflow-hidden p-0">
+        <div className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-raised)] px-6 py-5 sm:px-8">
+          <div className="flex items-center gap-2">
+            <Badge tone="info">Admin auth</Badge>
+            <span className="text-xs uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              Username only
+            </span>
+          </div>
+          <h1 className="mt-4 text-3xl font-semibold tracking-normal">Sign in</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+            Use your internal FlipTrybe username and password. The admin workspace session
+            attaches automatically.
+          </p>
         </div>
-        <h1 className="mt-4 text-3xl font-semibold tracking-normal">Sign in</h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-          Use your internal FlipTrybe username and password. The admin workspace session attaches automatically.
-        </p>
 
-        <form className="mt-6 grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
+        <div className="p-6 sm:p-8">
+          <SummaryStatStrip
+            items={[
+              { label: "identity", value: "Username" },
+              { label: "verification", value: "None" },
+              { label: "workspace", value: "Auto-attached", detail: "On sign in" }
+            ]}
+          />
+
+          <form className="mt-6 grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
           <label className="grid gap-2 text-sm font-medium" htmlFor="username">
             Username
             <input
@@ -85,17 +97,18 @@ export default function LoginPage() {
             <LogIn className="size-4" />
             {submitting ? "Signing in..." : "Sign in"}
           </Button>
-        </form>
+          </form>
 
-        <div className="mt-6 flex items-center justify-between gap-3 border-t border-[var(--ft-border)] pt-5 text-sm">
-          <div className="flex items-center gap-2 text-[var(--ft-text-secondary)]">
-            <ShieldCheck className="size-4 text-[var(--ft-accent)]" />
-            Workspace session is attached automatically.
+          <div className="mt-6 flex items-center justify-between gap-3 border-t border-[var(--ft-border)] pt-5 text-sm">
+            <div className="flex items-center gap-2 text-[var(--ft-text-secondary)]">
+              <ShieldCheck className="size-4 text-[var(--ft-accent)]" />
+              Workspace session is attached automatically.
+            </div>
+            <a className="inline-flex items-center gap-2 font-medium text-[var(--ft-accent)]" href="/register">
+              Create account
+              <ArrowRight className="size-4" />
+            </a>
           </div>
-          <a className="inline-flex items-center gap-2 font-medium text-[var(--ft-accent)]" href="/register">
-            Create account
-            <ArrowRight className="size-4" />
-          </a>
         </div>
       </Panel>
     </main>
