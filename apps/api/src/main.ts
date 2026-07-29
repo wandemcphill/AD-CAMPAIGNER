@@ -5,9 +5,24 @@ import { NestFactory } from "@nestjs/core";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 import { AppModule } from "./modules/app.module";
+import { validateEnvironment } from "./env.validation";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  validateEnvironment();
+
+  const corsOrigins = process.env.FRONTEND_URLS?.split(",").map((url) => url.trim()) ?? [
+    "http://localhost:3000",
+    "http://localhost:3001"
+  ];
+
+  const app = await NestFactory.create(AppModule, {
+    cors: {
+      origin: corsOrigins,
+      credentials: false,
+      methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE"],
+      allowedHeaders: ["Content-Type", "Authorization"]
+    }
+  });
   app.setGlobalPrefix("v1", {
     exclude: [{ path: "api/webhooks/korapay", method: RequestMethod.POST }]
   });

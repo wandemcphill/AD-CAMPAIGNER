@@ -1,10 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { createMetric } from "@fliptrybe/analytics";
 import { createEvent, type PlatformEvent } from "@fliptrybe/events";
 import { createNotification } from "@fliptrybe/notifications";
@@ -50,7 +50,6 @@ import {
   type GrowthServiceCatalogItem,
   type LedgerEntry,
   type NotificationMessage,
-  type PaymentIntent,
   type PromotionDestination,
   type SmmOrder,
   type SmmServiceKind,
@@ -61,7 +60,6 @@ import {
 import type {
   CreateCampaignDto,
   CreateGrowthOrderDto,
-  CreatePaymentIntentDto,
   CreateSmmOrderDto,
   CreateSupportTicketDto,
   QuoteCampaignDto,
@@ -71,12 +69,17 @@ import type {
   UpdateGrowthServiceDto
 } from "./platform.dtos";
 import { AiBrainClient } from "./ai-brain.client";
+import { PrismaService } from "./prisma.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
-const demoWorkspaceId = "workspace_demo";
-const demoUserId = "user_demo";
+type DbClient = Record<string, any>;
+
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+const iso = (value: Date | string | null | undefined) =>
+  value ? new Date(value).toISOString() : now();
+const getCurrencyLocal = (value: string | undefined): CurrencyCode =>
+  currencies.includes(value as CurrencyCode) ? (value as CurrencyCode) : "NGN";
 const growthActiveStatuses = new Set<GrowthOrderStatus>(["PENDING", "SUBMITTED", "IN_PROGRESS"]);
 const isProductionRuntime = () => process.env.NODE_ENV === "production";
 const legacyMockProvidersAllowed = () =>
@@ -101,10 +104,6 @@ function requireWorkspaceContext(context?: AuthenticatedRequestContext) {
   }
 
   return context;
-}
-
-function walletIdFor(workspaceId: string) {
-  return `wallet_${workspaceId}`;
 }
 
 function createStorageProvider() {
@@ -163,38 +162,6 @@ function getSecret(value: string | undefined) {
 
 function getPanelEndpoint(value: string | undefined) {
   return value?.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/iu, "").trim();
-}
-
-function getKorapayWebhookSigningSecret() {
-  const configuredSecret = getSecret(process.env.KORAPAY_WEBHOOK_SECRET);
-
-  if (configuredSecret && !configuredSecret.startsWith("http")) {
-    return configuredSecret;
-  }
-
-  return getSecret(process.env.KORAPAY_SECRET_KEY);
-}
-
-function verifyKorapaySignature(input: { body: unknown; signature?: string | undefined }) {
-  const signingSecret = getKorapayWebhookSigningSecret();
-
-  if (!signingSecret) {
-    return process.env.NODE_ENV !== "production";
-  }
-  if (!input.signature) {
-    return false;
-  }
-
-  const eventBody =
-    typeof input.body === "object" && input.body !== null
-      ? (input.body as Record<string, unknown>)
-      : {};
-  const signedPayload = JSON.stringify(eventBody.data ?? {});
-  const expectedSignature = createHmac("sha256", signingSecret).update(signedPayload).digest("hex");
-  const expected = Buffer.from(expectedSignature);
-  const actual = Buffer.from(input.signature);
-
-  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 function getApiHost(apiUrl: string) {
@@ -387,16 +354,19 @@ export class PlatformService {
   private readonly storageProvider = createStorageProvider();
   private readonly events: PlatformEvent[] = [];
   private readonly campaigns: Campaign[] = [];
-  private readonly paymentIntents: PaymentIntent[] = [];
-  private readonly ledgerEntries: LedgerEntry[] = [];
   private readonly auditLogs: AuditLog[] = [];
   private readonly smmOrders: SmmOrder[] = [];
   private readonly growthServices: GrowthServiceCatalogItem[] =
     defaultGrowthServicesCatalog.map(cloneGrowthService);
-  private readonly growthOrders: GrowthOrder[] = [];
   private readonly growthMonitoringEvents: GrowthMonitoringEvent[] = [];
   private readonly supportTickets: SupportTicket[] = [];
   private readonly notifications: NotificationMessage[] = [];
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  private get db(): DbClient {
+    return this.prisma.client as unknown as DbClient;
+  }
 
   getHealth() {
     return {
@@ -421,50 +391,53 @@ export class PlatformService {
     };
   }
 
-  getSession() {
-    return {
-      user: {
-        id: demoUserId,
-        name: "Demo Operator",
-        email: "operator@fliptrybe.test"
-      },
-      workspace: {
-        id: demoWorkspaceId,
-        name: "FlipTrybe Growth HQ",
-        defaultCurrency: "NGN"
-      },
-      role: "OWNER"
-    };
-  }
+  async listOrganizations(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const workspace = await this.db.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null },
+      include: { organization: true }
+    });
 
-  listOrganizations() {
+    if (!workspace) {
+      throw new NotFoundException("Workspace was not found.");
+    }
+
+    const workspaces = await this.db.workspace.findMany({
+      where: { organizationId: workspace.organizationId, deletedAt: null }
+    });
+
     return [
       {
-        id: "org_demo",
-        name: "FlipTrybe",
-        slug: "fliptrybe",
-        region: "global",
-        workspaces: [{ id: demoWorkspaceId, name: "FlipTrybe Growth HQ" }]
+        id: workspace.organization.id,
+        name: workspace.organization.name,
+        slug: workspace.organization.slug,
+        region: workspace.organization.region,
+        workspaces: workspaces.map((item: any) => ({ id: item.id, name: item.name }))
       }
     ];
   }
 
-  listTeamMembers() {
-    return [
-      { id: "member_owner", name: "Demo Operator", role: "OWNER", permissions: ["admin:access"] },
-      {
-        id: "member_finance",
-        name: "Finance Ops",
-        role: "FINANCE",
-        permissions: ["payment:manage"]
-      },
-      {
-        id: "member_support",
-        name: "Support Lead",
-        role: "SUPPORT",
-        permissions: ["support:manage"]
-      }
-    ];
+  async listTeamMembers(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const workspace = await this.db.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null }
+    });
+
+    if (!workspace) {
+      throw new NotFoundException("Workspace was not found.");
+    }
+
+    const members = await this.db.teamMember.findMany({
+      where: { organizationId: workspace.organizationId, deletedAt: null },
+      include: { user: true }
+    });
+
+    return members.map((member: any) => ({
+      id: member.id,
+      name: member.user.displayName ?? member.user.name,
+      role: member.role,
+      permissions: member.permissions
+    }));
   }
 
   async quoteCampaign(input: QuoteCampaignDto) {
@@ -602,6 +575,11 @@ export class PlatformService {
 
   listLivePromotions(context?: AuthenticatedRequestContext) {
     const scope = requireWorkspaceContext(context);
+
+    if (!legacyMockProvidersAllowed()) {
+      return [];
+    }
+
     const campaign = this.listCampaigns(scope)[0];
 
     if (!campaign) {
@@ -812,38 +790,43 @@ export class PlatformService {
     const timestamp = now();
     const destinationUrl = input.destinationUrl?.trim() || getDefaultGrowthDestinationUrl(service);
     const idempotencyKey = input.idempotencyKey?.trim() || id("growth_idempotency");
-    const existingIdempotentOrder = this.findGrowthOrderByIdempotencyKey(
-      scope.workspaceId,
-      idempotencyKey
-    );
+    const existingRow = await this.db.growthOrder.findUnique({ where: { idempotencyKey } });
 
-    if (existingIdempotentOrder) {
+    if (existingRow) {
+      if (existingRow.workspaceId !== scope.workspaceId) {
+        throw new BadRequestException("Idempotency key was already used for another scope.");
+      }
+
+      const existingOrder = this.toGrowthOrder(existingRow);
       this.recordGrowthMonitoringEvent({
         workspaceId: scope.workspaceId,
-        orderId: existingIdempotentOrder.id,
+        orderId: existingOrder.id,
         kind: "SUPPLIER_SUBMISSION_SKIPPED_DUPLICATE",
         detail: "Growth order idempotency key reused; returning existing order without supplier execution."
       });
 
       return {
-        order: existingIdempotentOrder,
-        reviewRequired:
-          existingIdempotentOrder.status === "PENDING" && !existingIdempotentOrder.supplierReference,
+        order: existingOrder,
+        reviewRequired: existingOrder.status === "PENDING" && !existingOrder.supplierReference,
         idempotent: true
       };
     }
 
-    const activeDuplicate = this.findActiveGrowthDuplicate({
-      workspaceId: scope.workspaceId,
-      serviceCode: service.code,
-      destinationUrl,
-      quantity
+    const activeDuplicateRow = await this.db.growthOrder.findFirst({
+      where: {
+        workspaceId: scope.workspaceId,
+        serviceCode: service.code,
+        destinationUrl: { equals: destinationUrl, mode: "insensitive" },
+        quantityOrdered: quantity,
+        status: { in: Array.from(growthActiveStatuses) },
+        deletedAt: null
+      }
     });
 
-    if (activeDuplicate) {
+    if (activeDuplicateRow) {
       this.recordGrowthMonitoringEvent({
         workspaceId: scope.workspaceId,
-        orderId: activeDuplicate.id,
+        orderId: activeDuplicateRow.id,
         kind: "SUPPLIER_SUBMISSION_SKIPPED_DUPLICATE",
         detail: "Growth supplier execution blocked because an equivalent active order already exists."
       });
@@ -891,54 +874,93 @@ export class PlatformService {
     }
 
     const orderId = id("growth");
-    const reservation = this.reserveGrowthFunds({
-      context: scope,
-      orderId,
-      amount: pricedQuote.customerPrice,
-      idempotencyKey
+    const wallet = await this.getOrCreateGrowthWallet(
+      this.db,
+      scope.workspaceId,
+      pricedQuote.customerPrice.currency
+    );
+    const expectedCompletionAt = getGrowthExpectedCompletionAt({
+      estimatedDeliveryMinutes: pricedQuote.estimatedDeliveryMinutes,
+      now: timestamp
     });
-    const baseGrowthOrder: GrowthOrder = {
-      id: orderId,
-      workspaceId: scope.workspaceId,
-      serviceCode: service.code,
-      serviceName: service.name,
-      platform: service.platform,
-      serviceKind: service.serviceKind,
-      destinationKind: service.destinationKind,
-      destinationUrl,
-      quantityOrdered: quantity,
-      quantityDelivered: 0,
-      status: "PENDING",
-      amount: pricedQuote.customerPrice,
-      supplierCost: pricedQuote.supplierCost,
-      grossMargin: pricedQuote.grossMargin,
-      expectedCompletionAt: getGrowthExpectedCompletionAt({
-        estimatedDeliveryMinutes: pricedQuote.estimatedDeliveryMinutes,
-        now: timestamp
-      }),
-      idempotencyKey,
-      paymentStatus: "FUNDS_RESERVED",
-      reservationLedgerEntryId: reservation.id,
-      refundEligibility: "NONE",
-      refundReviewStatus: "NOT_REQUIRED",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      ...(pricedQuote.supplierName === undefined ? {} : { supplierName: pricedQuote.supplierName })
-    };
-    this.growthOrders.unshift(baseGrowthOrder);
+
+    let orderRow: any;
+
+    try {
+      orderRow = await this.db.$transaction(async (tx: DbClient) => {
+        await this.lockGrowthWallet(tx, wallet.id);
+        const reservation = await this.reserveGrowthFundsDb(tx, scope, {
+          walletId: wallet.id,
+          orderId,
+          amountMinor: pricedQuote.customerPrice.amountMinor,
+          currency: pricedQuote.customerPrice.currency,
+          idempotencyKey
+        });
+
+        return tx.growthOrder.create({
+          data: {
+            id: orderId,
+            workspaceId: scope.workspaceId,
+            walletId: wallet.id,
+            serviceCode: service.code,
+            serviceName: service.name,
+            platform: service.platform,
+            serviceKind: service.serviceKind,
+            destinationKind: service.destinationKind,
+            destinationUrl,
+            quantityOrdered: quantity,
+            quantityDelivered: 0,
+            status: "PENDING",
+            amountMinor: pricedQuote.customerPrice.amountMinor,
+            currency: pricedQuote.customerPrice.currency,
+            supplierCostMinor: pricedQuote.supplierCost.amountMinor,
+            supplierCostCurrency: pricedQuote.supplierCost.currency,
+            grossMarginMinor: pricedQuote.grossMargin.amountMinor,
+            expectedCompletionAt: new Date(expectedCompletionAt),
+            idempotencyKey,
+            paymentStatus: "FUNDS_RESERVED",
+            reservationLedgerEntryId: reservation.id,
+            refundEligibility: "NONE",
+            refundReviewStatus: "NOT_REQUIRED",
+            createdByUserId: scope.userId,
+            ...(pricedQuote.supplierName ? { supplierName: pricedQuote.supplierName } : {})
+          }
+        });
+      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        this.recordGrowthMonitoringEvent({
+          workspaceId: scope.workspaceId,
+          orderId,
+          kind: "UNPAID_EXECUTION_ATTEMPT",
+          detail: "Growth supplier execution blocked because wallet funds were unavailable."
+        });
+        this.recordAuditLog({
+          workspaceId: scope.workspaceId,
+          actorUserId: scope.userId,
+          action: "growth.payment_blocked",
+          entityType: "GrowthOrder",
+          entityId: orderId,
+          metadata: { amountMinor: pricedQuote.customerPrice.amountMinor }
+        });
+      }
+
+      throw error;
+    }
 
     if (
       fraudAssessment.action === "REVIEW" ||
       service.supplierRouting.strategy === "MANUAL_REVIEW"
     ) {
-      const reviewOrder: GrowthOrder = {
-        ...baseGrowthOrder,
-        paymentStatus: "MANUAL_REVIEW",
-        refundEligibility: "MANUAL_REVIEW",
-        refundReviewStatus: "PENDING",
-        updatedAt: now()
-      };
-      this.growthOrders[0] = reviewOrder;
+      const reviewRow = await this.db.growthOrder.update({
+        where: { id: orderRow.id },
+        data: {
+          paymentStatus: "MANUAL_REVIEW",
+          refundEligibility: "MANUAL_REVIEW",
+          refundReviewStatus: "PENDING"
+        }
+      });
+      const reviewOrder = this.toGrowthOrder(reviewRow);
       this.recordAuditLog({
         workspaceId: scope.workspaceId,
         actorUserId: scope.userId,
@@ -969,28 +991,28 @@ export class PlatformService {
         updatedAt: now()
       };
       const status = mapSmmOrderStatusToGrowthStatus(result.status);
-      const finance = this.applyGrowthFinancialTransition(baseGrowthOrder, status);
-      const growthOrder: GrowthOrder = {
-        ...baseGrowthOrder,
-        status,
-        ...finance,
-        quantityDelivered: calculateGrowthDeliveredQuantity({
-          quantityOrdered: quantity,
-          status
-        }),
-        supplierReference: result.supplierReference,
-        submittedAt: timestamp,
-        updatedAt: submittedSmmOrder.updatedAt,
-        ...(status === "COMPLETED" ? { completedAt: submittedSmmOrder.updatedAt } : {})
-      };
+
+      const updatedRow = await this.db.$transaction(async (tx: DbClient) => {
+        await this.lockGrowthWallet(tx, orderRow.walletId);
+        const finance = await this.applyGrowthFinancialTransitionDb(tx, scope, orderRow, status);
+
+        return tx.growthOrder.update({
+          where: { id: orderRow.id },
+          data: {
+            status,
+            ...finance,
+            quantityDelivered: calculateGrowthDeliveredQuantity({
+              quantityOrdered: quantity,
+              status
+            }),
+            supplierReference: result.supplierReference,
+            submittedAt: new Date(timestamp),
+            ...(status === "COMPLETED" ? { completedAt: new Date() } : {})
+          }
+        });
+      });
 
       this.smmOrders.unshift(submittedSmmOrder);
-      const growthOrderIndex = this.growthOrders.findIndex((order) => order.id === baseGrowthOrder.id);
-      if (growthOrderIndex >= 0) {
-        this.growthOrders[growthOrderIndex] = growthOrder;
-      } else {
-        this.growthOrders.unshift(growthOrder);
-      }
       this.pushEvent(
         createEvent({
           name: "SMMOrderCreated",
@@ -1000,36 +1022,34 @@ export class PlatformService {
       );
 
       return {
-        order: growthOrder,
+        order: this.toGrowthOrder(updatedRow),
         fraudAssessment,
         pricing: pricedQuote,
         reviewRequired: false
       };
     } catch (error) {
-      const failedOrder: GrowthOrder = {
-        ...baseGrowthOrder,
-        status: "FAILED",
-        failureReason:
-          error instanceof Error ? error.message : "Supplier submission failed unexpectedly.",
-        ...this.applyGrowthFinancialTransition(baseGrowthOrder, "FAILED"),
-        updatedAt: now()
-      };
+      const failureReason =
+        error instanceof Error ? error.message : "Supplier submission failed unexpectedly.";
 
-      const growthOrderIndex = this.growthOrders.findIndex((order) => order.id === baseGrowthOrder.id);
-      if (growthOrderIndex >= 0) {
-        this.growthOrders[growthOrderIndex] = failedOrder;
-      } else {
-        this.growthOrders.unshift(failedOrder);
-      }
+      const failedRow = await this.db.$transaction(async (tx: DbClient) => {
+        await this.lockGrowthWallet(tx, orderRow.walletId);
+        const finance = await this.applyGrowthFinancialTransitionDb(tx, scope, orderRow, "FAILED");
+
+        return tx.growthOrder.update({
+          where: { id: orderRow.id },
+          data: { status: "FAILED", failureReason, ...finance }
+        });
+      });
+
       this.recordGrowthMonitoringEvent({
         workspaceId: scope.workspaceId,
-        orderId: failedOrder.id,
+        orderId: failedRow.id,
         kind: "SUPPLIER_SUBMISSION_FAILED",
-        detail: failedOrder.failureReason ?? "Supplier submission failed unexpectedly."
+        detail: failureReason
       });
 
       return {
-        order: failedOrder,
+        order: this.toGrowthOrder(failedRow),
         fraudAssessment,
         pricing: pricedQuote,
         reviewRequired: false
@@ -1037,28 +1057,36 @@ export class PlatformService {
     }
   }
 
-  async listGrowthOrders(context: AuthenticatedRequestContext | undefined) {
+  async listGrowthOrders(context: AuthenticatedRequestContext | undefined): Promise<GrowthOrder[]> {
     const scope = requireWorkspaceContext(context);
 
     await this.refreshGrowthOrders(scope);
 
-    return this.growthOrders.filter((order) => order.workspaceId === scope.workspaceId);
+    const rows = await this.db.growthOrder.findMany({
+      where: { workspaceId: scope.workspaceId, deletedAt: null },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return rows.map((row: any) => this.toGrowthOrder(row));
   }
 
-  async getGrowthOrder(context: AuthenticatedRequestContext | undefined, orderId: string) {
+  async getGrowthOrder(
+    context: AuthenticatedRequestContext | undefined,
+    orderId: string
+  ): Promise<GrowthOrder> {
     const scope = requireWorkspaceContext(context);
 
     await this.refreshGrowthOrders(scope);
 
-    const order = this.growthOrders.find(
-      (item) => item.id === orderId && item.workspaceId === scope.workspaceId
-    );
+    const row = await this.db.growthOrder.findFirst({
+      where: { id: orderId, workspaceId: scope.workspaceId, deletedAt: null }
+    });
 
-    if (!order) {
+    if (!row) {
       throw new NotFoundException("Growth order was not found.");
     }
 
-    return order;
+    return this.toGrowthOrder(row);
   }
 
   async getGrowthOverview(context: AuthenticatedRequestContext | undefined) {
@@ -1137,250 +1165,261 @@ export class PlatformService {
     return cloneGrowthService(updated);
   }
 
-  updateGrowthOrder(
+  async updateGrowthOrder(
     context: AuthenticatedRequestContext | undefined,
     orderId: string,
     input: UpdateGrowthOrderDto
-  ) {
+  ): Promise<GrowthOrder> {
     const scope = requireWorkspaceContext(context);
-    const index = this.growthOrders.findIndex(
-      (order) => order.id === orderId && order.workspaceId === scope.workspaceId
-    );
-
-    if (index < 0) {
-      throw new NotFoundException("Growth order was not found.");
-    }
-
-    const current = this.growthOrders[index];
-
-    if (!current) {
-      throw new NotFoundException("Growth order was not found.");
-    }
-
-    const timestamp = now();
     const nextStatus = normalizeGrowthOrderStatus(input.status);
-    if (nextStatus !== undefined) {
-      this.assertGrowthStatusTransition(current, nextStatus);
-    }
-    const finance = nextStatus === undefined ? {} : this.applyGrowthFinancialTransition(current, nextStatus);
-    const updated: GrowthOrder = {
-      ...current,
-      ...(nextStatus === undefined ? {} : { status: nextStatus }),
-      ...finance,
-      ...(typeof input.quantityDelivered === "number"
-        ? {
-            quantityDelivered: Math.max(
-              0,
-              Math.min(Math.round(input.quantityDelivered), current.quantityOrdered)
-            )
-          }
-        : {}),
-      ...(input.supplierName === undefined ? {} : { supplierName: input.supplierName }),
-      ...(input.supplierReference === undefined
-        ? {}
-        : { supplierReference: input.supplierReference }),
-      ...(input.adminNote === undefined ? {} : { adminNote: input.adminNote }),
-      ...(input.failureReason === undefined ? {} : { failureReason: input.failureReason }),
-      updatedAt: timestamp,
-      ...((nextStatus === "COMPLETED" || nextStatus === "REFUNDED") && !current.completedAt
-        ? { completedAt: timestamp }
-        : {})
-    };
 
-    this.growthOrders[index] = updated;
+    const updated = await this.db.$transaction(async (tx: DbClient) => {
+      const current = await tx.growthOrder.findFirst({
+        where: { id: orderId, workspaceId: scope.workspaceId, deletedAt: null }
+      });
+
+      if (!current) {
+        throw new NotFoundException("Growth order was not found.");
+      }
+
+      if (nextStatus !== undefined) {
+        this.assertGrowthStatusTransition(this.toGrowthOrder(current), nextStatus);
+      }
+
+      await this.lockGrowthWallet(tx, current.walletId);
+      const finance =
+        nextStatus === undefined
+          ? {}
+          : await this.applyGrowthFinancialTransitionDb(tx, scope, current, nextStatus);
+
+      return tx.growthOrder.update({
+        where: { id: current.id },
+        data: {
+          ...(nextStatus === undefined ? {} : { status: nextStatus }),
+          ...finance,
+          ...(typeof input.quantityDelivered === "number"
+            ? {
+                quantityDelivered: Math.max(
+                  0,
+                  Math.min(Math.round(input.quantityDelivered), current.quantityOrdered)
+                )
+              }
+            : {}),
+          ...(input.supplierName === undefined ? {} : { supplierName: input.supplierName }),
+          ...(input.supplierReference === undefined
+            ? {}
+            : { supplierReference: input.supplierReference }),
+          ...(input.adminNote === undefined ? {} : { adminNote: input.adminNote }),
+          ...(input.failureReason === undefined ? {} : { failureReason: input.failureReason }),
+          ...((nextStatus === "COMPLETED" || nextStatus === "REFUNDED") && !current.completedAt
+            ? { completedAt: new Date() }
+            : {})
+        }
+      });
+    });
+
+    const growthOrder = this.toGrowthOrder(updated);
+
     if (nextStatus) {
       this.recordAuditLog({
         workspaceId: scope.workspaceId,
         actorUserId: scope.userId,
         action: `growth.status_${nextStatus.toLowerCase()}`,
         entityType: "GrowthOrder",
-        entityId: updated.id,
+        entityId: growthOrder.id,
         metadata: {
           status: nextStatus,
-          paymentStatus: updated.paymentStatus ?? null,
-          amountMinor: updated.amount.amountMinor
+          paymentStatus: growthOrder.paymentStatus ?? null,
+          amountMinor: growthOrder.amount.amountMinor
         }
       });
     }
 
-    return updated;
+    return growthOrder;
   }
 
-  async createPaymentIntent(
-    context: AuthenticatedRequestContext | undefined,
-    input: CreatePaymentIntentDto
-  ) {
+  async getWallet(context?: AuthenticatedRequestContext): Promise<Wallet> {
     const scope = requireWorkspaceContext(context);
-    const intent = await this.paymentGateway.createPaymentIntent({
-      amount: { amountMinor: input.amountMinor ?? 500000, currency: input.currency ?? "NGN" },
-      workspaceId: scope.workspaceId,
-      ...(input.customerEmail === undefined ? {} : { customerEmail: input.customerEmail }),
-      ...(input.customerName === undefined ? {} : { customerName: input.customerName }),
-      ...(input.redirectUrl === undefined ? {} : { redirectUrl: input.redirectUrl }),
-      ...(input.webhookUrl === undefined ? {} : { webhookUrl: input.webhookUrl })
+    const wallet = await this.getOrCreateGrowthWallet(this.db, scope.workspaceId, "NGN");
+    const entries = await this.db.ledgerEntry.findMany({ where: { walletId: wallet.id } });
+    const mappedEntries: LedgerEntry[] = entries.map((entry: any) => this.mapDbLedgerEntry(entry));
+    const heldMinor = mappedEntries
+      .filter((entry) => entry.kind === "HOLD")
+      .reduce((total, hold) => {
+        const released = mappedEntries.some(
+          (entry) =>
+            (entry.kind === "RELEASE" || entry.kind === "DEBIT") &&
+            entry.sourceId === hold.sourceId &&
+            entry.sourceId !== undefined
+        );
+        return released ? total : total + hold.amount.amountMinor;
+      }, 0);
+
+    return {
+      id: wallet.id,
+      workspaceId: wallet.workspaceId,
+      availableBalance: calculateAvailableBalance(mappedEntries),
+      heldBalance: { amountMinor: heldMinor, currency: getCurrencyLocal(wallet.currency) },
+      createdAt: iso(wallet.createdAt),
+      updatedAt: iso(wallet.updatedAt)
+    };
+  }
+
+  private async getOrCreateGrowthWallet(tx: DbClient, workspaceId: string, currency: string) {
+    return tx.wallet.upsert({
+      where: { workspaceId_currency: { workspaceId, currency } },
+      update: {},
+      create: { workspaceId, currency }
     });
+  }
 
-    this.paymentIntents.unshift(intent);
+  private async lockGrowthWallet(tx: DbClient, walletId: string) {
+    if (tx.$queryRaw) {
+      await tx.$queryRaw`SELECT id FROM "Wallet" WHERE id = ${walletId} FOR UPDATE`;
+    }
+  }
 
-    if (intent.status === "COMPLETED") {
-      this.pushEvent(
-        createEvent({
-          name: "PaymentCompleted",
-          tenantId: scope.workspaceId,
-          payload: { payment: intent, wallet: this.getWallet(scope) }
-        })
+  private async assertGrowthWalletCanPay(
+    tx: DbClient,
+    walletId: string,
+    amountMinor: number,
+    currency: string
+  ) {
+    const entries = await tx.ledgerEntry.findMany({ where: { walletId } });
+    const balance = calculateAvailableBalance(entries.map((entry: any) => this.mapDbLedgerEntry(entry)));
+
+    if (balance.currency !== currency || balance.amountMinor < amountMinor) {
+      throw new BadRequestException(
+        "Growth order requires a paid invoice or enough wallet balance to reserve funds."
       );
     }
-
-    return intent;
   }
 
-  async verifyPayment(context: AuthenticatedRequestContext | undefined, reference: string) {
-    const scope = requireWorkspaceContext(context);
-    const result = await this.paymentGateway.verifyPayment(reference);
-    const intent = this.paymentIntents.find(
-      (paymentIntent) => paymentIntent.providerReference === reference
-    );
-
-    if (intent && intent.workspaceId !== scope.workspaceId) {
-      throw new BadRequestException("Payment reference does not belong to the active workspace.");
+  private async createGrowthLedgerEntry(tx: DbClient, data: Record<string, any>) {
+    if (data.idempotencyKey) {
+      return tx.ledgerEntry.upsert({
+        where: { idempotencyKey: data.idempotencyKey },
+        update: {},
+        create: data
+      });
     }
 
-    const updatedIntent: PaymentIntent = {
-      ...(intent ?? {
-        id: id("pay"),
-        workspaceId: scope.workspaceId,
-        gateway: this.paymentGateway.name === "korapay" ? "KORAPAY" : "MOCK",
-        amount: { amountMinor: 0, currency: "NGN" },
-        createdAt: now()
-      }),
-      status: result.status,
-      providerReference: result.providerReference,
-      updatedAt: now()
+    return tx.ledgerEntry.create({ data });
+  }
+
+  private mapDbLedgerEntry(entry: any): LedgerEntry {
+    return {
+      id: entry.id,
+      walletId: entry.walletId,
+      kind: entry.kind,
+      amount: { amountMinor: entry.amountMinor, currency: getCurrencyLocal(entry.currency) },
+      reference: entry.reference,
+      description: entry.description,
+      ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}),
+      ...(entry.sourceType ? { sourceType: entry.sourceType } : {}),
+      ...(entry.sourceId ? { sourceId: entry.sourceId } : {}),
+      metadata: entry.metadata ?? {},
+      createdAt: iso(entry.createdAt),
+      updatedAt: iso(entry.updatedAt)
     };
-    const existingIndex = this.paymentIntents.findIndex(
-      (paymentIntent) => paymentIntent.id === updatedIntent.id
-    );
+  }
 
-    if (existingIndex >= 0) {
-      this.paymentIntents[existingIndex] = updatedIntent;
-    }
+  private toGrowthOrder(row: any): GrowthOrder {
+    return {
+      id: row.id,
+      workspaceId: row.workspaceId,
+      serviceCode: row.serviceCode,
+      serviceName: row.serviceName,
+      platform: row.platform,
+      serviceKind: row.serviceKind,
+      destinationKind: row.destinationKind,
+      destinationUrl: row.destinationUrl,
+      quantityOrdered: row.quantityOrdered,
+      quantityDelivered: row.quantityDelivered,
+      status: row.status,
+      amount: { amountMinor: row.amountMinor, currency: getCurrencyLocal(row.currency) },
+      supplierCost: {
+        amountMinor: row.supplierCostMinor,
+        currency: getCurrencyLocal(row.supplierCostCurrency)
+      },
+      grossMargin: { amountMinor: row.grossMarginMinor, currency: getCurrencyLocal(row.currency) },
+      expectedCompletionAt: iso(row.expectedCompletionAt),
+      idempotencyKey: row.idempotencyKey,
+      paymentStatus: row.paymentStatus,
+      ...(row.reservationLedgerEntryId ? { reservationLedgerEntryId: row.reservationLedgerEntryId } : {}),
+      ...(row.captureLedgerEntryId ? { captureLedgerEntryId: row.captureLedgerEntryId } : {}),
+      ...(row.releaseLedgerEntryId ? { releaseLedgerEntryId: row.releaseLedgerEntryId } : {}),
+      ...(row.refundLedgerEntryId ? { refundLedgerEntryId: row.refundLedgerEntryId } : {}),
+      refundEligibility: row.refundEligibility,
+      refundReviewStatus: row.refundReviewStatus,
+      ...(row.submittedAt ? { submittedAt: iso(row.submittedAt) } : {}),
+      ...(row.completedAt ? { completedAt: iso(row.completedAt) } : {}),
+      ...(row.supplierName ? { supplierName: row.supplierName } : {}),
+      ...(row.supplierReference ? { supplierReference: row.supplierReference } : {}),
+      ...(row.failureReason ? { failureReason: row.failureReason } : {}),
+      ...(row.adminNote ? { adminNote: row.adminNote } : {}),
+      createdAt: iso(row.createdAt),
+      updatedAt: iso(row.updatedAt)
+    };
+  }
 
-    if (result.status === "COMPLETED") {
-      this.pushEvent(
-        createEvent({
-          name: "PaymentCompleted",
-          tenantId: scope.workspaceId,
-          payload: { payment: updatedIntent, wallet: this.getWallet(scope) }
+  async getAnalyticsOverview(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+
+    if (legacyMockProvidersAllowed()) {
+      const metrics: AnalyticsMetric[] = [
+        createMetric({
+          workspaceId: scope.workspaceId,
+          name: "impressions",
+          value: 428500,
+          dimensions: { channel: "all" }
+        }),
+        createMetric({
+          workspaceId: scope.workspaceId,
+          name: "clicks",
+          value: 18420,
+          dimensions: { channel: "all" }
+        }),
+        createMetric({
+          workspaceId: scope.workspaceId,
+          name: "roi_bps",
+          value: 1860,
+          dimensions: { channel: "all" }
+        }),
+        createMetric({
+          workspaceId: scope.workspaceId,
+          name: "live_viewers",
+          value: 1240,
+          dimensions: { channel: "tiktok" }
         })
-      );
+      ];
+
+      return {
+        metrics,
+        trend: [
+          { day: "Mon", spendMinor: 82000, conversions: 42 },
+          { day: "Tue", spendMinor: 94000, conversions: 57 },
+          { day: "Wed", spendMinor: 118000, conversions: 71 },
+          { day: "Thu", spendMinor: 126000, conversions: 84 }
+        ]
+      };
     }
 
-    return updatedIntent;
-  }
+    const rows = await this.db.analyticsMetric.findMany({
+      where: { workspaceId: scope.workspaceId },
+      orderBy: { recordedAt: "desc" },
+      take: 50
+    });
+    const metrics: AnalyticsMetric[] = rows.map((row: any) => ({
+      workspaceId: row.workspaceId,
+      ...(row.campaignId ? { campaignId: row.campaignId } : {}),
+      name: row.name,
+      value: row.value,
+      dimensions: row.dimensions ?? {},
+      recordedAt: iso(row.recordedAt)
+    }));
 
-  handleKorapayWebhook(body: unknown, signature?: string) {
-    if (!verifyKorapaySignature({ body, signature })) {
-      throw new BadRequestException("Invalid Korapay webhook signature.");
-    }
-
-    const eventBody =
-      typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
-    const data =
-      typeof eventBody.data === "object" && eventBody.data !== null
-        ? (eventBody.data as Record<string, unknown>)
-        : {};
-    const reference =
-      typeof data.reference === "string"
-        ? data.reference
-        : typeof data.payment_reference === "string"
-          ? data.payment_reference
-          : undefined;
-    const status = typeof data.status === "string" ? data.status : undefined;
-
-    if (!reference) {
-      throw new BadRequestException("Korapay webhook is missing a payment reference.");
-    }
-
-    return {
-      accepted: true,
-      reference,
-      status
-    };
-  }
-
-  getWallet(context?: AuthenticatedRequestContext): Wallet {
-    const scope = requireWorkspaceContext(context);
-    const timestamp = now();
-    const walletId = walletIdFor(scope.workspaceId);
-    const workspaceLedgerEntries = this.ledgerEntries.filter(
-      (entry) => entry.walletId === walletId
-    );
-
-    if (workspaceLedgerEntries.length === 0) {
-      const openingEntry = {
-        id: id("ledger"),
-        walletId,
-        kind: "CREDIT",
-        amount: { amountMinor: 1250000, currency: "NGN" },
-        reference: "opening_balance",
-        description: "Demo wallet funding",
-        createdAt: timestamp,
-        updatedAt: timestamp
-      } satisfies LedgerEntry;
-
-      this.ledgerEntries.push(openingEntry);
-      workspaceLedgerEntries.push(openingEntry);
-    }
-
-    return {
-      id: walletId,
-      workspaceId: scope.workspaceId,
-      availableBalance: calculateAvailableBalance(workspaceLedgerEntries),
-      heldBalance: this.calculateHeldBalance(walletId),
-      createdAt: timestamp,
-      updatedAt: timestamp
-    };
-  }
-
-  getAnalyticsOverview(context?: AuthenticatedRequestContext) {
-    const scope = requireWorkspaceContext(context);
-    const metrics: AnalyticsMetric[] = [
-      createMetric({
-        workspaceId: scope.workspaceId,
-        name: "impressions",
-        value: 428500,
-        dimensions: { channel: "all" }
-      }),
-      createMetric({
-        workspaceId: scope.workspaceId,
-        name: "clicks",
-        value: 18420,
-        dimensions: { channel: "all" }
-      }),
-      createMetric({
-        workspaceId: scope.workspaceId,
-        name: "roi_bps",
-        value: 1860,
-        dimensions: { channel: "all" }
-      }),
-      createMetric({
-        workspaceId: scope.workspaceId,
-        name: "live_viewers",
-        value: 1240,
-        dimensions: { channel: "tiktok" }
-      })
-    ];
-
-    return {
-      metrics,
-      trend: [
-        { day: "Mon", spendMinor: 82000, conversions: 42 },
-        { day: "Tue", spendMinor: 94000, conversions: 57 },
-        { day: "Wed", spendMinor: 118000, conversions: 71 },
-        { day: "Thu", spendMinor: 126000, conversions: 84 }
-      ]
-    };
+    return { metrics, trend: [] };
   }
 
   async getAiAdsInsights(context?: AuthenticatedRequestContext) {
@@ -1460,15 +1499,6 @@ export class PlatformService {
       objective: "ENGAGEMENT",
       destinationKind: "TIKTOK_LIVE",
       audience: "creator-led commerce buyers"
-    });
-  }
-
-  async createUploadUrl(context: AuthenticatedRequestContext | undefined) {
-    const scope = requireWorkspaceContext(context);
-
-    return this.storageProvider.createUploadUrl({
-      key: `${scope.workspaceId}/campaign-assets/${id("asset")}.png`,
-      contentType: "image/png"
     });
   }
 
@@ -1651,34 +1681,6 @@ export class PlatformService {
     };
   }
 
-  private findGrowthOrderByIdempotencyKey(workspaceId: string, idempotencyKey: string) {
-    return this.growthOrders.find(
-      (order) => order.workspaceId === workspaceId && order.idempotencyKey === idempotencyKey
-    );
-  }
-
-  private findActiveGrowthDuplicate(input: {
-    workspaceId: string;
-    serviceCode: string;
-    destinationUrl: string;
-    quantity: number;
-  }) {
-    const destinationUrl = input.destinationUrl.toLowerCase();
-
-    return this.growthOrders.find(
-      (order) =>
-        order.workspaceId === input.workspaceId &&
-        order.serviceCode === input.serviceCode &&
-        order.destinationUrl.toLowerCase() === destinationUrl &&
-        order.quantityOrdered === input.quantity &&
-        growthActiveStatuses.has(order.status)
-    );
-  }
-
-  private growthLedgerKey(order: Pick<GrowthOrder, "id" | "idempotencyKey">) {
-    return order.idempotencyKey ?? order.id;
-  }
-
   private assertGrowthStatusTransition(current: GrowthOrder, nextStatus: GrowthOrderStatus) {
     if (current.status === nextStatus) {
       return;
@@ -1697,204 +1699,101 @@ export class PlatformService {
     }
   }
 
-  private hasLedgerEntry(idempotencyKey: string) {
-    return this.ledgerEntries.some((entry) => entry.idempotencyKey === idempotencyKey);
-  }
+  private async reserveGrowthFundsDb(
+    tx: DbClient,
+    scope: AuthenticatedRequestContext,
+    input: { walletId: string; orderId: string; amountMinor: number; currency: string; idempotencyKey: string }
+  ) {
+    await this.assertGrowthWalletCanPay(tx, input.walletId, input.amountMinor, input.currency);
 
-  private pushLedgerEntry(entry: Omit<LedgerEntry, "id" | "createdAt" | "updatedAt">) {
-    const existing = entry.idempotencyKey
-      ? this.ledgerEntries.find((item) => item.idempotencyKey === entry.idempotencyKey)
-      : undefined;
-
-    if (existing) {
-      return existing;
-    }
-
-    const timestamp = now();
-    const ledgerEntry: LedgerEntry = {
-      id: id("ledger"),
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      ...entry
-    };
-
-    this.ledgerEntries.push(ledgerEntry);
-
-    return ledgerEntry;
-  }
-
-  private calculateHeldBalance(walletId: string): Wallet["heldBalance"] {
-    const activeHoldMinor = this.ledgerEntries
-      .filter((entry) => entry.walletId === walletId && entry.kind === "HOLD")
-      .reduce((total, hold) => {
-        const sourceId = hold.sourceId ?? hold.metadata?.sourceId;
-        const hasReleaseOrCapture = this.ledgerEntries.some(
-          (entry) =>
-            entry.walletId === walletId &&
-            (entry.kind === "RELEASE" || entry.kind === "DEBIT") &&
-            (entry.sourceId ?? entry.metadata?.sourceId) === sourceId &&
-            entry.reference.includes("growth_")
-        );
-
-        return hasReleaseOrCapture ? total : total + hold.amount.amountMinor;
-      }, 0);
-
-    return { amountMinor: activeHoldMinor, currency: "NGN" };
-  }
-
-  private reserveGrowthFunds(input: {
-    context: AuthenticatedRequestContext;
-    orderId: string;
-    amount: Wallet["availableBalance"];
-    idempotencyKey: string;
-  }) {
-    if (input.amount.amountMinor <= 0) {
-      throw new BadRequestException("Growth order amount must be greater than zero.");
-    }
-
-    const wallet = this.getWallet(input.context);
-
-    if (wallet.availableBalance.currency !== input.amount.currency) {
-      throw new BadRequestException("Growth order currency must match wallet currency.");
-    }
-
-    if (wallet.availableBalance.amountMinor < input.amount.amountMinor) {
-      this.recordGrowthMonitoringEvent({
-        workspaceId: input.context.workspaceId,
-        orderId: input.orderId,
-        kind: "UNPAID_EXECUTION_ATTEMPT",
-        detail: "Growth supplier execution blocked because wallet funds were unavailable."
-      });
-      this.recordAuditLog({
-        workspaceId: input.context.workspaceId,
-        actorUserId: input.context.userId,
-        action: "growth.payment_blocked",
-        entityType: "GrowthOrder",
-        entityId: input.orderId,
-        metadata: {
-          amountMinor: input.amount.amountMinor,
-          availableMinor: wallet.availableBalance.amountMinor
-        }
-      });
-
-      throw new BadRequestException(
-        "Growth order requires a paid invoice or enough wallet balance to reserve funds."
-      );
-    }
-
-    const reservation = this.pushLedgerEntry({
-      walletId: wallet.id,
+    const reservation = await this.createGrowthLedgerEntry(tx, {
+      walletId: input.walletId,
       kind: "HOLD",
-      amount: input.amount,
+      amountMinor: input.amountMinor,
+      currency: input.currency,
       reference: `growth_hold:${input.orderId}`,
       description: "Growth Services funds reserved before supplier execution",
       idempotencyKey: `growth:${input.idempotencyKey}:reserve`,
       sourceType: "GrowthOrder",
-      sourceId: input.orderId,
-      metadata: {
-        orderId: input.orderId,
-        sourceId: input.orderId,
-        idempotencyKey: input.idempotencyKey
-      }
+      sourceId: input.orderId
     });
 
     this.recordAuditLog({
-      workspaceId: input.context.workspaceId,
-      actorUserId: input.context.userId,
+      workspaceId: scope.workspaceId,
+      actorUserId: scope.userId,
       action: "growth.funds_reserved",
       entityType: "GrowthOrder",
       entityId: input.orderId,
-      metadata: {
-        amountMinor: input.amount.amountMinor,
-        ledgerEntryId: reservation.id
-      }
+      metadata: { amountMinor: input.amountMinor, ledgerEntryId: reservation.id }
     });
 
     return reservation;
   }
 
-  private releaseGrowthFunds(order: GrowthOrder, reason: string) {
-    const ledgerKey = this.growthLedgerKey(order);
-
-    if (this.hasLedgerEntry(`growth:${ledgerKey}:capture`)) {
-      return undefined;
-    }
-
-    const release = this.pushLedgerEntry({
-      walletId: walletIdFor(order.workspaceId),
+  private async releaseGrowthFundsDb(
+    tx: DbClient,
+    scope: AuthenticatedRequestContext,
+    order: any,
+    reason: string
+  ) {
+    const release = await this.createGrowthLedgerEntry(tx, {
+      walletId: order.walletId,
       kind: "RELEASE",
-      amount: order.amount,
+      amountMinor: order.amountMinor,
+      currency: order.currency,
       reference: `growth_release:${order.id}`,
       description: `Growth Services funds released: ${reason}`,
-      idempotencyKey: `growth:${ledgerKey}:release`,
+      idempotencyKey: `growth:${order.idempotencyKey}:release`,
       sourceType: "GrowthOrder",
-      sourceId: order.id,
-      metadata: {
-        orderId: order.id,
-        sourceId: order.id,
-        reason
-      }
+      sourceId: order.id
     });
 
     this.recordAuditLog({
-      workspaceId: order.workspaceId,
+      workspaceId: scope.workspaceId,
       action: "growth.funds_released",
       entityType: "GrowthOrder",
       entityId: order.id,
-      metadata: {
-        amountMinor: order.amount.amountMinor,
-        ledgerEntryId: release.id,
-        reason
-      }
+      metadata: { amountMinor: order.amountMinor, ledgerEntryId: release.id, reason }
     });
 
     return release;
   }
 
-  private captureGrowthFunds(order: GrowthOrder) {
-    const ledgerKey = this.growthLedgerKey(order);
-
-    if (this.hasLedgerEntry(`growth:${ledgerKey}:capture`)) {
-      return undefined;
-    }
-
-    const release = this.pushLedgerEntry({
-      walletId: walletIdFor(order.workspaceId),
+  private async captureGrowthFundsDb(
+    tx: DbClient,
+    scope: AuthenticatedRequestContext,
+    order: any
+  ) {
+    const release = await this.createGrowthLedgerEntry(tx, {
+      walletId: order.walletId,
       kind: "RELEASE",
-      amount: order.amount,
+      amountMinor: order.amountMinor,
+      currency: order.currency,
       reference: `growth_capture_release:${order.id}`,
       description: "Growth Services hold released for capture",
-      idempotencyKey: `growth:${ledgerKey}:capture_release`,
+      idempotencyKey: `growth:${order.idempotencyKey}:capture_release`,
       sourceType: "GrowthOrder",
-      sourceId: order.id,
-      metadata: {
-        orderId: order.id,
-        sourceId: order.id
-      }
+      sourceId: order.id
     });
-    const capture = this.pushLedgerEntry({
-      walletId: walletIdFor(order.workspaceId),
+    const capture = await this.createGrowthLedgerEntry(tx, {
+      walletId: order.walletId,
       kind: "DEBIT",
-      amount: order.amount,
+      amountMinor: order.amountMinor,
+      currency: order.currency,
       reference: `growth_capture:${order.id}`,
       description: "Growth Services supplier fulfillment captured",
-      idempotencyKey: `growth:${ledgerKey}:capture`,
+      idempotencyKey: `growth:${order.idempotencyKey}:capture`,
       sourceType: "GrowthOrder",
-      sourceId: order.id,
-      metadata: {
-        orderId: order.id,
-        sourceId: order.id,
-        supplierReference: order.supplierReference ?? null
-      }
+      sourceId: order.id
     });
 
     this.recordAuditLog({
-      workspaceId: order.workspaceId,
+      workspaceId: scope.workspaceId,
       action: "growth.funds_captured",
       entityType: "GrowthOrder",
       entityId: order.id,
       metadata: {
-        amountMinor: order.amount.amountMinor,
+        amountMinor: order.amountMinor,
         releaseLedgerEntryId: release.id,
         captureLedgerEntryId: capture.id
       }
@@ -1903,84 +1802,77 @@ export class PlatformService {
     return { release, capture };
   }
 
-  private refundGrowthOrder(order: GrowthOrder, reason: string) {
-    const ledgerKey = this.growthLedgerKey(order);
-
-    if (this.hasLedgerEntry(`growth:${ledgerKey}:refund`)) {
-      return undefined;
+  private async refundGrowthOrderDb(
+    tx: DbClient,
+    scope: AuthenticatedRequestContext,
+    order: any,
+    reason: string
+  ) {
+    if (order.paymentStatus !== "FUNDS_CAPTURED") {
+      return this.releaseGrowthFundsDb(tx, scope, order, reason);
     }
 
-    if (!this.hasLedgerEntry(`growth:${ledgerKey}:capture`)) {
-      return this.releaseGrowthFunds(order, reason);
-    }
-
-    const refund = this.pushLedgerEntry({
-      walletId: walletIdFor(order.workspaceId),
+    const refund = await this.createGrowthLedgerEntry(tx, {
+      walletId: order.walletId,
       kind: "REVERSAL",
-      amount: order.amount,
+      amountMinor: order.amountMinor,
+      currency: order.currency,
       reference: `growth_refund:${order.id}`,
       description: `Growth Services refund: ${reason}`,
-      idempotencyKey: `growth:${ledgerKey}:refund`,
+      idempotencyKey: `growth:${order.idempotencyKey}:refund`,
       sourceType: "GrowthOrder",
-      sourceId: order.id,
-      metadata: {
-        orderId: order.id,
-        sourceId: order.id,
-        reason
-      }
+      sourceId: order.id
     });
 
     this.recordAuditLog({
-      workspaceId: order.workspaceId,
+      workspaceId: scope.workspaceId,
       action: "growth.refund_recorded",
       entityType: "GrowthOrder",
       entityId: order.id,
-      metadata: {
-        amountMinor: order.amount.amountMinor,
-        ledgerEntryId: refund.id,
-        reason
-      }
+      metadata: { amountMinor: order.amountMinor, ledgerEntryId: refund.id, reason }
     });
 
     return refund;
   }
 
-  private applyGrowthFinancialTransition(order: GrowthOrder, status: GrowthOrderStatus) {
+  private async applyGrowthFinancialTransitionDb(
+    tx: DbClient,
+    scope: AuthenticatedRequestContext,
+    order: any,
+    status: GrowthOrderStatus
+  ) {
     if (status === "COMPLETED") {
-      const capture = this.captureGrowthFunds(order);
+      const { release, capture } = await this.captureGrowthFundsDb(tx, scope, order);
 
       return {
         paymentStatus: "FUNDS_CAPTURED" as const,
         refundEligibility: "NONE" as const,
         refundReviewStatus: "NOT_REQUIRED" as const,
-        ...(capture?.release === undefined ? {} : { releaseLedgerEntryId: capture.release.id }),
-        ...(capture?.capture === undefined ? {} : { captureLedgerEntryId: capture.capture.id })
+        releaseLedgerEntryId: release.id,
+        captureLedgerEntryId: capture.id
       };
     }
 
     if (status === "FAILED") {
-      const release = this.releaseGrowthFunds(order, "supplier_failure");
+      const release = await this.releaseGrowthFundsDb(tx, scope, order, "supplier_failure");
 
       return {
         paymentStatus: "FUNDS_RELEASED" as const,
         refundEligibility: "AUTOMATIC" as const,
         refundReviewStatus: "NOT_REQUIRED" as const,
-        ...(release === undefined ? {} : { releaseLedgerEntryId: release.id })
+        releaseLedgerEntryId: release.id
       };
     }
 
     if (status === "REFUNDED") {
-      const refund = this.refundGrowthOrder(order, "manual_or_supplier_refund");
+      const wasCaptured = order.paymentStatus === "FUNDS_CAPTURED";
+      const refund = await this.refundGrowthOrderDb(tx, scope, order, "manual_or_supplier_refund");
 
       return {
         paymentStatus: "REFUNDED" as const,
         refundEligibility: "AUTOMATIC" as const,
         refundReviewStatus: "APPROVED" as const,
-        ...(refund === undefined
-          ? {}
-          : refund.kind === "REVERSAL"
-            ? { refundLedgerEntryId: refund.id }
-            : { releaseLedgerEntryId: refund.id })
+        ...(wasCaptured ? { refundLedgerEntryId: refund.id } : { releaseLedgerEntryId: refund.id })
       };
     }
 
@@ -2017,17 +1909,17 @@ export class PlatformService {
   }
 
   private async refreshGrowthOrders(context: AuthenticatedRequestContext) {
-    const orders = this.growthOrders.filter(
-      (order) =>
-        order.workspaceId === context.workspaceId &&
-        order.supplierReference &&
-        order.status !== "COMPLETED" &&
-        order.status !== "FAILED" &&
-        order.status !== "REFUNDED"
-    );
+    const orderRows = await this.db.growthOrder.findMany({
+      where: {
+        workspaceId: context.workspaceId,
+        deletedAt: null,
+        supplierReference: { not: null },
+        status: { notIn: ["COMPLETED", "FAILED", "REFUNDED"] }
+      }
+    });
     const timestampMs = Date.now();
 
-    for (const order of orders) {
+    for (const order of orderRows) {
       if (new Date(order.expectedCompletionAt).getTime() < timestampMs) {
         this.recordGrowthMonitoringEvent({
           workspaceId: context.workspaceId,
@@ -2038,9 +1930,9 @@ export class PlatformService {
       }
     }
 
-    const supplierReferences = orders
-      .map((order) => order.supplierReference)
-      .filter((reference): reference is string => Boolean(reference));
+    const supplierReferences = orderRows
+      .map((order: any) => order.supplierReference)
+      .filter((reference: string | null): reference is string => Boolean(reference));
 
     if (supplierReferences.length === 0) {
       return;
@@ -2048,39 +1940,36 @@ export class PlatformService {
 
     try {
       const snapshots = await this.smmSupplier.getOrderStatuses(supplierReferences);
-      const timestamp = now();
 
       for (const snapshot of snapshots) {
-        const index = this.growthOrders.findIndex(
-          (order) =>
-            order.workspaceId === context.workspaceId &&
-            order.supplierReference === snapshot.supplierReference
+        const current = orderRows.find(
+          (order: any) => order.supplierReference === snapshot.supplierReference
         );
-
-        if (index < 0) {
-          continue;
-        }
-
-        const current = this.growthOrders[index];
 
         if (!current) {
           continue;
         }
 
         const status = mapSmmOrderStatusToGrowthStatus(snapshot.status);
-        const finance = this.applyGrowthFinancialTransition(current, status);
-        this.growthOrders[index] = {
-          ...current,
-          status,
-          ...finance,
-          quantityDelivered: calculateGrowthDeliveredQuantity({
-            quantityOrdered: current.quantityOrdered,
-            status,
-            ...(snapshot.remains === undefined ? {} : { remains: snapshot.remains })
-          }),
-          updatedAt: timestamp,
-          ...(status === "COMPLETED" && !current.completedAt ? { completedAt: timestamp } : {})
-        };
+
+        await this.db.$transaction(async (tx: DbClient) => {
+          await this.lockGrowthWallet(tx, current.walletId);
+          const finance = await this.applyGrowthFinancialTransitionDb(tx, context, current, status);
+
+          return tx.growthOrder.update({
+            where: { id: current.id },
+            data: {
+              status,
+              ...finance,
+              quantityDelivered: calculateGrowthDeliveredQuantity({
+                quantityOrdered: current.quantityOrdered,
+                status,
+                ...(snapshot.remains === undefined ? {} : { remains: snapshot.remains })
+              }),
+              ...(status === "COMPLETED" && !current.completedAt ? { completedAt: new Date() } : {})
+            }
+          });
+        });
 
         if (status === "FAILED") {
           this.recordGrowthMonitoringEvent({
@@ -2092,7 +1981,7 @@ export class PlatformService {
         }
       }
     } catch {
-      for (const order of orders) {
+      for (const order of orderRows) {
         this.recordGrowthMonitoringEvent({
           workspaceId: context.workspaceId,
           orderId: order.id,

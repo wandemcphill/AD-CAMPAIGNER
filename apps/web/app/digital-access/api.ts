@@ -243,8 +243,8 @@ export async function loadDigitalAccessData(includeRequests: boolean) {
       : Promise.resolve(undefined)
   ]);
 
-  const categories =
-    categoryPayload.length > 0 ? categoryPayload.map(mapCategory) : fallbackCategories;
+  const usedFallbackCategories = categoryPayload.length === 0;
+  const categories = usedFallbackCategories ? fallbackCategories : categoryPayload.map(mapCategory);
   const services = servicePayload.items.map(mapService);
   const requests = requestPayload ? requestPayload.map(mapRequest) : [];
 
@@ -253,7 +253,7 @@ export async function loadDigitalAccessData(includeRequests: boolean) {
     loading: false,
     requests,
     services,
-    source: "api" as const
+    source: usedFallbackCategories ? ("fallback" as const) : ("api" as const)
   };
 }
 

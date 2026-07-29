@@ -326,6 +326,45 @@ enum SmmOrderStatus {
   CANCELLED
 }
 
+enum GrowthServicePlatform {
+  TIKTOK
+  INSTAGRAM
+  YOUTUBE
+  TELEGRAM
+  WEBSITE
+}
+
+enum GrowthOrderStatus {
+  PENDING
+  SUBMITTED
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum GrowthOrderPaymentStatus {
+  FUNDS_REQUIRED
+  FUNDS_RESERVED
+  FUNDS_CAPTURED
+  FUNDS_RELEASED
+  REFUNDED
+  MANUAL_REVIEW
+}
+
+enum GrowthRefundEligibility {
+  NONE
+  AUTOMATIC
+  MANUAL_REVIEW
+}
+
+enum GrowthRefundReviewStatus {
+  NOT_REQUIRED
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum OtpProviderTier {
   PREMIUM
   BUDGET
@@ -436,6 +475,7 @@ model Workspace {
   wallets                    Wallet[]
   paymentIntents             PaymentIntent[]
   smmOrders                  SmmOrder[]
+  growthOrders               GrowthOrder[]
   otpOrders                  OtpOrder[]
   otpWalletCharges           OtpWalletCharge[]
   digitalAccessRequests      DigitalAccessRequest[]
@@ -664,6 +704,7 @@ model Wallet {
   paymentIntents       PaymentIntent[]
   campaignLedgerEntries CampaignLedgerEntry[]
   adAccounts           AdAccount[]
+  growthOrders         GrowthOrder[]
 
   @@unique([workspaceId, currency])
 }
@@ -1223,6 +1264,52 @@ model SmmOrder {
 
   @@index([workspaceId, status])
   @@index([supplierReference])
+}
+
+model GrowthOrder {
+  id                    String                   @id @default(uuid())
+  workspaceId           String
+  walletId              String
+  serviceCode           String
+  serviceName           String
+  platform              GrowthServicePlatform
+  serviceKind           String
+  destinationKind       DestinationKind
+  destinationUrl        String
+  quantityOrdered       Int
+  quantityDelivered     Int                      @default(0)
+  status                GrowthOrderStatus        @default(PENDING)
+  amountMinor           Int
+  currency              String                   @default("NGN")
+  supplierCostMinor     Int
+  supplierCostCurrency  String                   @default("USD")
+  grossMarginMinor      Int
+  expectedCompletionAt  DateTime
+  idempotencyKey        String                   @unique
+  paymentStatus         GrowthOrderPaymentStatus @default(FUNDS_REQUIRED)
+  reservationLedgerEntryId String?
+  captureLedgerEntryId  String?
+  releaseLedgerEntryId  String?
+  refundLedgerEntryId   String?
+  refundEligibility     GrowthRefundEligibility  @default(NONE)
+  refundReviewStatus    GrowthRefundReviewStatus @default(NOT_REQUIRED)
+  submittedAt           DateTime?
+  completedAt           DateTime?
+  supplierName          String?
+  supplierReference     String?
+  failureReason         String?
+  adminNote             String?
+  createdByUserId       String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  deletedAt             DateTime?
+  workspace             Workspace                @relation(fields: [workspaceId], references: [id])
+  wallet                Wallet                   @relation(fields: [walletId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([walletId, status])
+  @@index([supplierReference])
+  @@index([deletedAt])
 }
 
 model OtpService {

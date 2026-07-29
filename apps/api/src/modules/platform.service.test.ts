@@ -1,8 +1,10 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
 import { describe, expect, it, vi } from "vitest";
 
 import type { SmmSupplierAdapter } from "@fliptrybe/providers";
 import { toCanonicalEvent } from "./ai-brain.client";
 import { PlatformService } from "./platform.service";
+import { PrismaService } from "./prisma.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
 const workspaceA: AuthenticatedRequestContext = {
@@ -69,6 +71,139 @@ function replaceSmmSupplier(service: PlatformService, supplier: SmmSupplierAdapt
   });
 }
 
+// Minimal in-memory stand-in for the Prisma client, covering only the models and
+// operations PlatformService actually touches (wallet/ledger/growth order lifecycle).
+function matchesWhere(row: Record<string, any>, where: Record<string, any> | undefined) {
+  return Object.entries(where ?? {}).every(([key, condition]) => {
+    if (condition === null) {
+      return row[key] === null || row[key] === undefined;
+    }
+    if (condition && typeof condition === "object") {
+      if ("not" in condition) return row[key] !== condition.not;
+      if ("in" in condition) return condition.in.includes(row[key]);
+      if ("notIn" in condition) return !condition.notIn.includes(row[key]);
+      if ("equals" in condition) {
+        return String(row[key]).toLowerCase() === String(condition.equals).toLowerCase();
+      }
+      return true;
+    }
+    return row[key] === condition;
+  });
+}
+
+function createFakeDb() {
+  const wallets: Record<string, any>[] = [];
+  const ledgerEntries: Record<string, any>[] = [];
+  const growthOrders: Record<string, any>[] = [];
+  let seq = 0;
+  const nextId = (prefix: string) => `${prefix}_${++seq}`;
+
+  const db: Record<string, any> = {
+    wallet: {
+      upsert: async ({ where, create }: any) => {
+        const key = where.workspaceId_currency;
+        let row = wallets.find(
+          (item) => item.workspaceId === key.workspaceId && item.currency === key.currency
+        );
+        if (!row) {
+          row = {
+            id: nextId("wallet"),
+            workspaceId: create.workspaceId,
+            currency: create.currency,
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+          wallets.push(row);
+        }
+        return row;
+      }
+    },
+    ledgerEntry: {
+      upsert: async ({ where, create }: any) => {
+        if (where.idempotencyKey) {
+          const existing = ledgerEntries.find(
+            (item) => item.idempotencyKey === where.idempotencyKey
+          );
+          if (existing) return existing;
+        }
+        const row = { id: nextId("ledger"), createdAt: new Date(), updatedAt: new Date(), ...create };
+        ledgerEntries.push(row);
+        return row;
+      },
+      create: async ({ data }: any) => {
+        const row = { id: nextId("ledger"), createdAt: new Date(), updatedAt: new Date(), ...data };
+        ledgerEntries.push(row);
+        return row;
+      },
+      findMany: async ({ where }: any) => ledgerEntries.filter((row) => matchesWhere(row, where))
+    },
+    growthOrder: {
+      create: async ({ data }: any) => {
+        const row = {
+          quantityDelivered: 0,
+          deletedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ...data
+        };
+        growthOrders.push(row);
+        return row;
+      },
+      update: async ({ where, data }: any) => {
+        const row = growthOrders.find((item) => item.id === where.id);
+        if (!row) {
+          throw new Error(`Fake growthOrder.update: no row with id ${where.id}`);
+        }
+        Object.assign(row, data, { updatedAt: new Date() });
+        return row;
+      },
+      findUnique: async ({ where }: any) => {
+        if (where.idempotencyKey) {
+          return growthOrders.find((item) => item.idempotencyKey === where.idempotencyKey) ?? null;
+        }
+        return growthOrders.find((item) => item.id === where.id) ?? null;
+      },
+      findFirst: async ({ where }: any) => growthOrders.find((row) => matchesWhere(row, where)) ?? null,
+      findMany: async ({ where }: any) => growthOrders.filter((row) => matchesWhere(row, where))
+    },
+    $transaction: async (fn: (tx: Record<string, any>) => Promise<any>) => fn(db)
+  };
+
+  return db;
+}
+
+async function fundWallet(
+  db: Record<string, any>,
+  workspaceId: string,
+  amountMinor: number,
+  currency = "NGN"
+) {
+  const wallet = await db.wallet.upsert({
+    where: { workspaceId_currency: { workspaceId, currency } },
+    update: {},
+    create: { workspaceId, currency }
+  });
+  await db.ledgerEntry.create({
+    data: {
+      walletId: wallet.id,
+      kind: "CREDIT",
+      amountMinor,
+      currency,
+      reference: "test_funding",
+      description: "Test wallet funding",
+      sourceType: "Test",
+      sourceId: "seed"
+    }
+  });
+
+  return wallet;
+}
+
+function createTestService(db: Record<string, any> = createFakeDb()) {
+  const prisma = new PrismaService(db as any);
+  return { service: new PlatformService(prisma), db };
+}
+
 describe("PlatformService", () => {
   it("does not expose legacy mock provider data in production", async () => {
     const previousNodeEnv = process.env.NODE_ENV;
@@ -80,7 +215,7 @@ describe("PlatformService", () => {
     process.env.AI_PROVIDER = "anthropic";
 
     try {
-      const service = new PlatformService();
+      const { service } = createTestService();
 
       expect(service.getHealth().providers).toEqual(
         expect.objectContaining({
@@ -124,7 +259,7 @@ describe("PlatformService", () => {
   });
 
   it("creates campaigns through the provider boundary", async () => {
-    const service = new PlatformService();
+    const { service } = createTestService();
     const campaign = await service.createCampaign(workspaceA, {
       name: "Test campaign",
       objective: "TRAFFIC",
@@ -143,21 +278,17 @@ describe("PlatformService", () => {
     expect(toCanonicalEvent(event!)?.event).toBe("campaign_created");
   });
 
-  it("tracks payment intents and wallet state", async () => {
-    const service = new PlatformService();
-    const intent = await service.createPaymentIntent(workspaceA, {
-      amountMinor: 250000,
-      currency: "NGN"
-    });
+  it("tracks wallet state after funding", async () => {
+    const { service, db } = createTestService();
+    await fundWallet(db, workspaceA.workspaceId, 250000);
 
-    expect(intent.status).toBe("PENDING");
-    expect(intent.workspaceId).toBe(workspaceA.workspaceId);
-    expect(service.getWallet(workspaceA).workspaceId).toBe(workspaceA.workspaceId);
-    expect(service.getWallet(workspaceA).availableBalance.amountMinor).toBeGreaterThan(0);
+    const wallet = await service.getWallet(workspaceA);
+    expect(wallet.workspaceId).toBe(workspaceA.workspaceId);
+    expect(wallet.availableBalance.amountMinor).toBeGreaterThan(0);
   });
 
   it("returns local ads insight fallback when AI Brain is disabled", async () => {
-    const service = new PlatformService();
+    const { service } = createTestService();
     const insights = await service.getAiAdsInsights(workspaceA);
 
     expect(insights.summary.mode).toBe("local_fallback");
@@ -166,7 +297,7 @@ describe("PlatformService", () => {
   });
 
   it("keeps campaigns and support tickets scoped to the active workspace", async () => {
-    const service = new PlatformService();
+    const { service } = createTestService();
     await service.createCampaign(workspaceA, { name: "Workspace A campaign" });
     await service.createCampaign(workspaceB, { name: "Workspace B campaign" });
     service.createSupportTicket(workspaceA, { subject: "Workspace A support" });
@@ -192,11 +323,12 @@ describe("PlatformService", () => {
     ]);
   });
 
-  it("scopes workspace read models to the active workspace", () => {
-    const service = new PlatformService();
+  it("scopes workspace read models to the active workspace", async () => {
+    const { service } = createTestService();
 
-    expect(service.getWallet(workspaceA).id).toBe(`wallet_${workspaceA.workspaceId}`);
-    expect(service.getAnalyticsOverview(workspaceA).metrics).toEqual(
+    const wallet = await service.getWallet(workspaceA);
+    expect(wallet.workspaceId).toBe(workspaceA.workspaceId);
+    expect((await service.getAnalyticsOverview(workspaceA)).metrics).toEqual(
       expect.arrayContaining([expect.objectContaining({ workspaceId: workspaceA.workspaceId })])
     );
     expect(service.listNotifications(workspaceA)).toEqual([
@@ -210,19 +342,11 @@ describe("PlatformService", () => {
     ]);
   });
 
-  it("rejects cross-workspace payment and SMM supplier references", async () => {
-    const service = new PlatformService();
-    const intent = await service.createPaymentIntent(workspaceA, {
-      amountMinor: 250000,
-      currency: "NGN"
-    });
+  it("rejects cross-workspace SMM supplier references", async () => {
+    const { service } = createTestService();
     const order = await service.createSmmOrder(workspaceA, { quantity: 100 });
-    const paymentReference = requireReference(intent.providerReference, "payment");
     const supplierReference = requireReference(order.supplierReference, "supplier");
 
-    await expect(service.verifyPayment(workspaceB, paymentReference)).rejects.toThrow(
-      "Payment reference does not belong to the active workspace."
-    );
     expect(() =>
       service.getSmmOrderStatuses(workspaceB, {
         supplierReferences: [supplierReference]
@@ -230,15 +354,15 @@ describe("PlatformService", () => {
     ).toThrow("One or more SMM supplier references do not belong to the active workspace.");
   });
 
-  it("rejects protected platform reads without workspace context", () => {
-    const service = new PlatformService();
+  it("rejects protected platform reads without workspace context", async () => {
+    const { service } = createTestService();
 
     expect(() => service.listCampaigns()).toThrow("Authenticated workspace context is required.");
-    expect(() => service.getWallet()).toThrow("Authenticated workspace context is required.");
+    await expect(service.getWallet()).rejects.toThrow("Authenticated workspace context is required.");
   });
 
   it("blocks Growth supplier execution when funds cannot be reserved", async () => {
-    const service = new PlatformService();
+    const { service } = createTestService();
     const createOrder = vi.fn(() => Promise.resolve({
       supplierReference: "should_not_execute",
       status: "QUEUED" as const
@@ -254,7 +378,7 @@ describe("PlatformService", () => {
         createOrder
       })
     );
-    const walletBefore = service.getWallet(workspaceA);
+    const walletBefore = await service.getWallet(workspaceA);
 
     await expect(
       service.createGrowthOrder(workspaceA, {
@@ -266,16 +390,16 @@ describe("PlatformService", () => {
     ).rejects.toThrow("Growth order requires a paid invoice or enough wallet balance");
 
     expect(createOrder).not.toHaveBeenCalled();
-    expect(service.getWallet(workspaceA).availableBalance.amountMinor).toBe(
-      walletBefore.availableBalance.amountMinor
-    );
-    expect((await service.listGrowthOrders(workspaceA))).toHaveLength(0);
+    const walletAfter = await service.getWallet(workspaceA);
+    expect(walletAfter.availableBalance.amountMinor).toBe(walletBefore.availableBalance.amountMinor);
+    expect(await service.listGrowthOrders(workspaceA)).toHaveLength(0);
     expect((await service.getGrowthOverview(workspaceA)).monitoring.unpaidExecutionAttempts).toBe(1);
   });
 
   it("reserves Growth funds and prevents duplicate active supplier submissions", async () => {
-    const service = new PlatformService();
-    const walletBefore = service.getWallet(workspaceA);
+    const { service, db } = createTestService();
+    await fundWallet(db, workspaceA.workspaceId, 10000000);
+    const walletBefore = await service.getWallet(workspaceA);
     const destinationUrl = "https://www.tiktok.com/@fliptrybe/video/101";
 
     const created = await service.createGrowthOrder(workspaceA, {
@@ -287,12 +411,11 @@ describe("PlatformService", () => {
 
     expect(created.order.paymentStatus).toBe("FUNDS_RESERVED");
     expect(created.order.reservationLedgerEntryId).toMatch(/^ledger_/);
-    expect(service.getWallet(workspaceA).availableBalance.amountMinor).toBe(
+    const walletAfterReserve = await service.getWallet(workspaceA);
+    expect(walletAfterReserve.availableBalance.amountMinor).toBe(
       walletBefore.availableBalance.amountMinor - created.order.amount.amountMinor
     );
-    expect(service.getWallet(workspaceA).heldBalance.amountMinor).toBe(
-      created.order.amount.amountMinor
-    );
+    expect(walletAfterReserve.heldBalance.amountMinor).toBe(created.order.amount.amountMinor);
 
     await expect(
       service.createGrowthOrder(workspaceA, {
@@ -320,8 +443,9 @@ describe("PlatformService", () => {
   });
 
   it("releases reserved Growth funds when supplier submission fails", async () => {
-    const service = new PlatformService();
-    const walletBefore = service.getWallet(workspaceA);
+    const { service, db } = createTestService();
+    await fundWallet(db, workspaceA.workspaceId, 10000000);
+    const walletBefore = await service.getWallet(workspaceA);
     const createOrder = vi.fn(() => Promise.reject(new Error("Supplier timeout")));
     replaceSmmSupplier(service, createTestSupplier({ createOrder }));
 
@@ -336,10 +460,9 @@ describe("PlatformService", () => {
     expect(result.order.status).toBe("FAILED");
     expect(result.order.paymentStatus).toBe("FUNDS_RELEASED");
     expect(result.order.releaseLedgerEntryId).toMatch(/^ledger_/);
-    expect(service.getWallet(workspaceA).availableBalance.amountMinor).toBe(
-      walletBefore.availableBalance.amountMinor
-    );
-    expect(service.getWallet(workspaceA).heldBalance.amountMinor).toBe(0);
+    const walletAfter = await service.getWallet(workspaceA);
+    expect(walletAfter.availableBalance.amountMinor).toBe(walletBefore.availableBalance.amountMinor);
+    expect(walletAfter.heldBalance.amountMinor).toBe(0);
     expect(service.listAuditLogs(workspaceA)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -352,8 +475,9 @@ describe("PlatformService", () => {
   });
 
   it("captures completed Growth funds and records refund reversals", async () => {
-    const service = new PlatformService();
-    const walletBefore = service.getWallet(workspaceA);
+    const { service, db } = createTestService();
+    await fundWallet(db, workspaceA.workspaceId, 10000000);
+    const walletBefore = await service.getWallet(workspaceA);
     const created = await service.createGrowthOrder(workspaceA, {
       serviceCode: "tiktok-views",
       quantity: 100,
@@ -361,32 +485,34 @@ describe("PlatformService", () => {
       idempotencyKey: "growth-refund"
     });
 
-    const completed = service.updateGrowthOrder(workspaceA, created.order.id, {
+    const completed = await service.updateGrowthOrder(workspaceA, created.order.id, {
       status: "COMPLETED",
       quantityDelivered: created.order.quantityOrdered
     });
 
     expect(completed.paymentStatus).toBe("FUNDS_CAPTURED");
     expect(completed.captureLedgerEntryId).toMatch(/^ledger_/);
-    expect(service.getWallet(workspaceA).heldBalance.amountMinor).toBe(0);
-    expect(service.getWallet(workspaceA).availableBalance.amountMinor).toBe(
+    const walletAfterCapture = await service.getWallet(workspaceA);
+    expect(walletAfterCapture.heldBalance.amountMinor).toBe(0);
+    expect(walletAfterCapture.availableBalance.amountMinor).toBe(
       walletBefore.availableBalance.amountMinor - created.order.amount.amountMinor
     );
-    expect(() =>
+    await expect(
       service.updateGrowthOrder(workspaceA, created.order.id, {
         status: "FAILED",
         failureReason: "Invalid downgrade"
       })
-    ).toThrow("Completed Growth orders can only transition to refunded.");
+    ).rejects.toThrow("Completed Growth orders can only transition to refunded.");
 
-    const refunded = service.updateGrowthOrder(workspaceA, created.order.id, {
+    const refunded = await service.updateGrowthOrder(workspaceA, created.order.id, {
       status: "REFUNDED",
       failureReason: "Supplier rejected fulfilled order"
     });
 
     expect(refunded.paymentStatus).toBe("REFUNDED");
     expect(refunded.refundLedgerEntryId).toMatch(/^ledger_/);
-    expect(service.getWallet(workspaceA).availableBalance.amountMinor).toBe(
+    const walletAfterRefund = await service.getWallet(workspaceA);
+    expect(walletAfterRefund.availableBalance.amountMinor).toBe(
       walletBefore.availableBalance.amountMinor
     );
     expect(service.listAuditLogs(workspaceA)).toEqual(

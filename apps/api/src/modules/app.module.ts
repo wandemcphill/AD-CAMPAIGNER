@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 
 import {
   AdminController,
@@ -40,7 +41,23 @@ import { DigitalAccessModule } from "./digital-access/digital-access.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), DigitalAccessModule, VouchersModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([
+      {
+        name: "short",
+        ttl: 60000,
+        limit: 100
+      },
+      {
+        name: "long",
+        ttl: 900000,
+        limit: 1000
+      }
+    ]),
+    DigitalAccessModule,
+    VouchersModule
+  ],
   controllers: [
     HealthController,
     AuthController,
@@ -75,6 +92,10 @@ import { VouchersModule } from "./vouchers/vouchers.module";
     PlatformService,
     ManagedAdsService,
     RealtimeGateway,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard
+    },
     {
       provide: APP_GUARD,
       useClass: AuthorizationGuard

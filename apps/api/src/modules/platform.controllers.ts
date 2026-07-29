@@ -83,8 +83,8 @@ export class OrganizationsController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get()
-  list() {
-    return this.platform.listOrganizations();
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listOrganizations(workspaceContextFromRequest(request));
   }
 }
 
@@ -94,8 +94,8 @@ export class TeamsController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get()
-  list() {
-    return this.platform.listTeamMembers();
+  list(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listTeamMembers(workspaceContextFromRequest(request));
   }
 }
 
