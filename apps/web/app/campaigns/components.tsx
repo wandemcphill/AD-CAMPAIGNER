@@ -628,6 +628,17 @@ export function EmptyState({
   );
 }
 
+// A lighter one-line stand-in for EmptyState, for secondary cards whose "no data" state
+// shares the same root cause (no campaigns yet) as a fuller EmptyState already shown
+// elsewhere on the page -- avoids repeating the same full-sentence explanation per card.
+export function InlineEmptyNote({ label }: { label: string }) {
+  return (
+    <div className="mt-5 grid min-h-28 place-items-center rounded-[var(--radius-sm)] border border-dashed border-[var(--ft-border)] bg-[var(--ft-bg-muted)]/60 px-4 text-center text-sm text-[var(--ft-text-muted)]">
+      {label}
+    </div>
+  );
+}
+
 export function LoadingBlock({ label }: { label: string }) {
   return (
     <div className="skeleton p-5 text-sm text-[var(--ft-text-muted)]">

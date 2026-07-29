@@ -38,6 +38,7 @@ import {
   CampaignShell,
   EmptyState,
   ErrorNotice,
+  InlineEmptyNote,
   LoadingBlock,
   PageHeader,
   RecommendedActionsPanel,
@@ -482,6 +483,8 @@ export default function CampaignsPage() {
                 ))}
               </div>
             </div>
+          ) : campaigns.length === 0 ? (
+            <InlineEmptyNote label="No desk insights yet — start a campaign to generate them." />
           ) : (
             <div className="mt-5">
               <EmptyState
@@ -509,7 +512,9 @@ export default function CampaignsPage() {
             </div>
             <BarChart3 className="size-5 stroke-[1.5] text-[var(--ft-green)]" />
           </div>
-          {trend.length === 0 ? (
+          {trend.length === 0 && campaigns.length === 0 ? (
+            <InlineEmptyNote label="No trend data yet — start a campaign to begin tracking." />
+          ) : trend.length === 0 ? (
             <div className="mt-5">
               <EmptyState
                 copy="Spend and conversion trend points will appear after analytics ingestion."
@@ -550,13 +555,7 @@ export default function CampaignsPage() {
                 <LoadingBlock label="Loading launch windows" />
               </div>
             ) : campaigns.length === 0 ? (
-              <div className="py-4">
-                <EmptyState
-                  copy="Your first launch window will appear once a campaign brief is submitted."
-                  icon={CalendarDays}
-                  title="No launch windows yet"
-                />
-              </div>
+              <InlineEmptyNote label="No launch windows yet." />
             ) : (
               campaigns.slice(0, 3).map((campaign) => (
                 <a
