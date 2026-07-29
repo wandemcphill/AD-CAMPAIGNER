@@ -7,7 +7,7 @@ Context: two apps — client-facing "Campaign Desk" (`fliptrybe-ads-campaigner-w
 | # | Item | Status |
 | --- | --- | --- |
 | 1 | Auth state shows "SIGNED OUT" | ✅ Resolved (admin app only) |
-| 2 | Naira symbol renders as strikethrough "N" | Open |
+| 2 | Naira symbol renders as strikethrough "N" | ✅ Resolved |
 | 3 | Spend History header truncates to "REFER" | Open |
 | 4 | Admin telemetry mismatch (live users, zeroed campaign/payment) | Open |
 | 5 | "PARTIAL TELEMETRY" badge has no drill-down | Open |
@@ -34,10 +34,12 @@ Context: two apps — client-facing "Campaign Desk" (`fliptrybe-ads-campaigner-w
 
 **Not yet done:** Client-facing app (`/campaigns`, `/billing`, `/reports`) still shows session panel with redirects-after-render behavior instead of pre-render guards. The original problem statement mentions client pages specifically ("Wallet & Billing, My Campaigns, Studio, Reports"), but those have a different architectural pattern (SessionPanel is embedded in CampaignShell which is always rendered) — they avoid the "Signed out" pill contradiction by showing the redirect message only when `!session`, not by pre-rendering locked UI. Admin app took the stricter approach (pre-redirect) which felt safer for privileged surfaces.
 
-### 2. Naira symbol (₦) rendering as strikethrough "N"
+### 2. Naira symbol (₦) rendering as strikethrough "N" — ✅ Resolved
 **Problem:** Currency values across Wallet & Billing, My Campaigns, and admin Payment Volume render the ₦ glyph incorrectly (appears as struck-through N) in at least one browser/font context.
 **Fix:** Check font-family stack for currency-bearing components; ensure a font with full ₦ (U+20A6) glyph coverage is loaded, or fall back to a system font known to support it (e.g., Noto Sans, system-ui with Naira coverage) rather than relying on a custom font that lacks the glyph.
 **Acceptance criteria:** ₦ renders correctly across Chrome/Edge/Firefox and mobile webviews; add a visual regression test or snapshot for a currency component.
+
+**Resolution (commit `e104069`):** Imported Noto Sans from Google Fonts and prioritized it at the head of the `--font-display` stack (before DM Sans). Noto Sans has full glyph coverage for U+20A6 (₦), while DM Sans lacks it. Consolidated font-display definitions into `packages/ui/src/themes.css` to avoid duplication and ensure consistent font ordering across both web and admin apps. Font stack now reads: `"Noto Sans", "DM Sans", ui-sans-serif, system-ui, ...`, guaranteeing Naira support without system-font dependencies.
 
 ### 3. Table column header truncation in Spend History
 **Problem:** In Wallet & Billing → Spend History table, the last column header renders as "REFER" instead of "REFERENCE" (or whatever the full label is).
