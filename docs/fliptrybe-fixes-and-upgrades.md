@@ -6,7 +6,7 @@ Context: two apps — client-facing "Campaign Desk" (`fliptrybe-ads-campaigner-w
 
 | # | Item | Status |
 | --- | --- | --- |
-| 1 | Auth state shows "SIGNED OUT" | Open |
+| 1 | Auth state shows "SIGNED OUT" | ✅ Resolved (admin app only) |
 | 2 | Naira symbol renders as strikethrough "N" | Open |
 | 3 | Spend History header truncates to "REFER" | Open |
 | 4 | Admin telemetry mismatch (live users, zeroed campaign/payment) | Open |
@@ -22,13 +22,17 @@ Context: two apps — client-facing "Campaign Desk" (`fliptrybe-ads-campaigner-w
 
 ## 🔴 P0 — Bugs
 
-### 1. Auth state shows "SIGNED OUT" while rendering authenticated views
+### 1. Auth state shows "SIGNED OUT" while rendering authenticated views — ✅ Resolved (admin app only)
 **Problem:** The sidebar workspace-status pill reads `SIGNED OUT` on every page (Wallet & Billing, My Campaigns, Studio, Reports) even though the user is actively navigating dashboard content that should require auth.
 **Investigate:** Whether route guards are failing to check session state before render, or whether this is an intentional "preview shell" for unauthenticated visitors.
 **Expected behavior:**
 - If unauthenticated: redirect to login before any dashboard data/UI is rendered — no flash of authenticated content, no real numbers exposed.
 - If this is an intentional guest-preview mode: the status pill should say something like `PREVIEW MODE` instead of `SIGNED OUT`, to avoid implying a broken session.
 **Acceptance criteria:** Confirm with the person which behavior is intended, then implement route guard fix (or copy fix) accordingly. Add a test that hits `/billing`, `/campaigns`, `/reports` while logged out and asserts redirect (or correct preview labeling).
+
+**Resolution (admin app, commit `0ad966d`):** All four admin shells (`AdminCampaignOpsShell`, `AdminDigitalAccessShell`, `AdminGrowthShell`) + root `/` page now check `useApiSession()` on render and redirect unauthenticated visitors to `/login` via `window.location.replace()`, showing no admin UI/nav/session-pill in the interim. Authenticated paths correctly render with "Connected" badge + real content. Verified against real local API and login form.
+
+**Not yet done:** Client-facing app (`/campaigns`, `/billing`, `/reports`) still shows session panel with redirects-after-render behavior instead of pre-render guards. The original problem statement mentions client pages specifically ("Wallet & Billing, My Campaigns, Studio, Reports"), but those have a different architectural pattern (SessionPanel is embedded in CampaignShell which is always rendered) — they avoid the "Signed out" pill contradiction by showing the redirect message only when `!session`, not by pre-rendering locked UI. Admin app took the stricter approach (pre-redirect) which felt safer for privileged surfaces.
 
 ### 2. Naira symbol (₦) rendering as strikethrough "N"
 **Problem:** Currency values across Wallet & Billing, My Campaigns, and admin Payment Volume render the ₦ glyph incorrectly (appears as struck-through N) in at least one browser/font context.
