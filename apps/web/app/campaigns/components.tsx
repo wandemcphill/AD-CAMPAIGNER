@@ -3,6 +3,7 @@
 import { useEffect, type ReactNode } from "react";
 import {
   AlertCircle,
+  ArrowRight,
   BarChart3,
   Bell,
   CheckCircle2,
@@ -12,13 +13,14 @@ import {
   HelpCircle,
   Menu,
   MessageSquare,
+  Plus,
   UploadCloud,
   WalletCards,
   type LucideIcon
 } from "lucide-react";
 
 import { Badge, Panel, PlatformChip, StatusBadge as DesignStatusBadge, ThemeToggle, cn } from "@fliptrybe/ui";
-import type { Campaign, CampaignStatus, Money } from "@fliptrybe/types";
+import type { Campaign, CampaignStatus, Money, Wallet } from "@fliptrybe/types";
 
 import { useApiSession } from "../lib/use-session";
 import { SessionPanel } from "../ui/session-panel";
@@ -177,6 +179,115 @@ export function campaignProgress(status: string) {
   if (status === "CHANGES_REQUESTED") return 18;
 
   return 10;
+}
+
+type RecommendedAction = {
+  id: string;
+  title: string;
+  detail: string;
+  href: string;
+  cta: string;
+  tone: "urgent" | "info";
+};
+
+function needsAttention(status: string) {
+  return status === "CHANGES_REQUESTED" || status === "REJECTED" || status === "FAILED";
+}
+
+function attentionReason(status: string) {
+  if (status === "CHANGES_REQUESTED") return "Add the requested details so review can continue.";
+  if (status === "REJECTED" || status === "FAILED") return "Check the record before funding or relaunching.";
+
+  return "Open the campaign to see what changed.";
+}
+
+export function buildRecommendedActions(campaigns: Campaign[], wallet: Wallet | null): RecommendedAction[] {
+  const actions: RecommendedAction[] = [];
+
+  for (const campaign of campaigns) {
+    if (!needsAttention(campaign.status)) continue;
+    actions.push({
+      cta: campaign.status === "CHANGES_REQUESTED" ? "Add details" : "Review campaign",
+      detail: attentionReason(campaign.status),
+      href: `/campaigns/${campaign.id}`,
+      id: `campaign-${campaign.id}`,
+      title: campaign.name,
+      tone: "urgent"
+    });
+  }
+
+  const activeBudgetMinor = campaigns
+    .filter((campaign) => campaign.status === "ACTIVE" || campaign.status === "RUNNING")
+    .reduce((sum, campaign) => sum + (campaign.budget?.amountMinor ?? 0), 0);
+  const availableMinor = wallet?.availableBalance.amountMinor ?? 0;
+
+  if (activeBudgetMinor > 0 && availableMinor < activeBudgetMinor * 0.2) {
+    actions.push({
+      cta: "Fund wallet",
+      detail: "Your live campaigns are outspending the funded balance. Top up to avoid a pacing pause.",
+      href: "/billing",
+      id: "fund-wallet",
+      title: "Wallet balance running low",
+      tone: "urgent"
+    });
+  }
+
+  if (campaigns.length === 0) {
+    actions.push({
+      cta: "Start a campaign",
+      detail: "Submit a brief and the managed desk will turn it into a launch-ready plan.",
+      href: "/campaigns/new",
+      id: "start-first",
+      title: "You don't have a campaign yet",
+      tone: "info"
+    });
+  }
+
+  return actions.sort((a, b) => (a.tone === b.tone ? 0 : a.tone === "urgent" ? -1 : 1)).slice(0, 4);
+}
+
+export function RecommendedActionsPanel({
+  actions
+}: {
+  actions: RecommendedAction[];
+}) {
+  if (actions.length === 0) return null;
+
+  return (
+    <Panel className="mb-4 overflow-hidden border-l-4 border-l-[var(--ft-accent)] p-4 sm:p-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-[var(--ft-text-primary)]">Needs your attention</h2>
+        <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          {actions.length} {actions.length === 1 ? "item" : "items"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {actions.map((action) => (
+          <a
+            className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 py-2.5 transition hover:border-[var(--ft-border-strong)] hover:bg-[var(--ft-bg-raised)]"
+            href={action.href}
+            key={action.id}
+          >
+            <div className="flex min-w-0 items-start gap-2.5">
+              {action.tone === "urgent" ? (
+                <AlertCircle className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-[var(--ft-red)]" />
+              ) : (
+                <Plus className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-[var(--ft-accent)]" />
+              )}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium text-[var(--ft-text-primary)]">{action.title}</div>
+                <div className="mt-0.5 text-xs leading-5 text-[var(--ft-text-secondary)]">{action.detail}</div>
+              </div>
+            </div>
+            <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-[var(--ft-accent)]">
+              {action.cta}
+              <ArrowRight className="size-3.5 stroke-[1.5]" />
+            </span>
+          </a>
+        ))}
+      </div>
+    </Panel>
+  );
 }
 
 function formatMoneyValue(money?: Money | null) {

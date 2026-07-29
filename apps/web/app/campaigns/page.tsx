@@ -40,8 +40,10 @@ import {
   ErrorNotice,
   LoadingBlock,
   PageHeader,
+  RecommendedActionsPanel,
   SourceBadge,
   StatusBadge,
+  buildRecommendedActions,
   campaignProgress,
   destinationPlatform,
   linkButtonClass,
@@ -151,6 +153,7 @@ export default function CampaignsPage() {
   const trend = analytics?.trend ?? [];
   const maxSpend = Math.max(1, ...trend.map((point) => point.spendMinor));
   const primaryInsight = aiInsights?.items[0];
+  const recommendedActions = loading ? [] : buildRecommendedActions(campaigns, wallet);
   const platformOptions = Array.from(
     new Set(campaigns.map((campaign) => destinationPlatform(campaign.destination.kind)))
   );
@@ -220,6 +223,7 @@ export default function CampaignsPage() {
       </section>
 
       <section className="mt-6">
+        <RecommendedActionsPanel actions={recommendedActions} />
         <SummaryStatStrip
           className="mb-4"
           items={[
@@ -232,19 +236,9 @@ export default function CampaignsPage() {
         <MetricStrip
           items={[
             {
-              label: "Live Campaigns",
-              value: loading ? "..." : String(activeCampaigns),
-              detail: "Currently monitored"
-            },
-            {
-              label: "Portfolio Budget",
-              value: loading ? "..." : spend,
-              detail: "Managed campaign funding"
-            },
-            {
               label: "Impressions",
               value: loading ? "..." : formatCompact(impressions),
-              detail: `${completedCampaigns} closed / ${pendingReviewCampaigns} in review`
+              detail: "Portfolio-wide, all live campaigns"
             },
             {
               label: "Avg CPM",
