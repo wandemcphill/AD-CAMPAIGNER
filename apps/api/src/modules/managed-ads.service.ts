@@ -1443,7 +1443,7 @@ export class ManagedAdsService {
       );
     }
 
-    await this.createBudgetHold(context, campaignId, {
+    await this.createBudgetHoldRecord(scope, campaignId, {
       amountMinor: existing.budgetMinor,
       invoiceId: input.invoiceId,
       reason: input.reason ?? "Campaign submitted from Studio",
@@ -2388,6 +2388,10 @@ export class ManagedAdsService {
   async createBudgetHold(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
     await this.assertCampaignPermission(this.db, scope, "payment:manage");
+    return this.createBudgetHoldRecord(scope, campaignId, input);
+  }
+
+  private async createBudgetHoldRecord(scope: AuthenticatedRequestContext, campaignId: string, input: Record<string, any>) {
     const campaign = await this.findCampaignOrThrow(this.db, scope.workspaceId, campaignId);
     const amountMinor = parsePositiveMinorAmount(
       input.amountMinor ?? campaign.budgetMinor,
