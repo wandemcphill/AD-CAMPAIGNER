@@ -1443,6 +1443,13 @@ export class ManagedAdsService {
       );
     }
 
+    await this.createBudgetHold(context, campaignId, {
+      amountMinor: existing.budgetMinor,
+      invoiceId: input.invoiceId,
+      reason: input.reason ?? "Campaign submitted from Studio",
+      idempotencyKey: `campaign:${campaignId}:studio-submit-hold`
+    });
+
     return this.changeCampaignStatus(scope, campaignId, "PENDING_REVIEW", input.reason ?? "Submitted for review");
   }
 
