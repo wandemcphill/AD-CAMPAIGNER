@@ -36,12 +36,11 @@ import { PrismaService } from "./prisma.service";
 import { AuthSessionService } from "./auth-session.service";
 import { AuthorizationGuard } from "./authorization.guard";
 import { RealtimeGateway } from "./realtime.gateway";
-import { OtpModule } from "./otp/otp.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), OtpModule, DigitalAccessModule, VouchersModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), DigitalAccessModule, VouchersModule],
   controllers: [
     HealthController,
     AuthController,

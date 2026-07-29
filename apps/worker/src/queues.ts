@@ -15,11 +15,7 @@ export const queueNames = [
   "media-processing",
   "payments",
   "audit-events",
-  "digital-access-automation",
-  "otp-allocation",
-  "otp-polling",
-  "otp-refunds",
-  "otp-provider-health"
+  "digital-access-automation"
 ] as const;
 
 export type QueueName = (typeof queueNames)[number];
@@ -64,47 +60,6 @@ export interface AuditEventJob {
   entityId: string;
 }
 
-export type OtpProviderMode = "mock" | "sandbox" | "live";
-
-export interface OtpAllocationJob {
-  requestId: string;
-  workspaceId: string;
-  orderId: string;
-  countryCode: string;
-  serviceCode: string;
-  provider: OtpProviderMode;
-  maxPriceMinor: number;
-  currency: string;
-  requestedAt: string;
-}
-
-export interface OtpPollingJob {
-  allocationId: string;
-  orderId: string;
-  provider: OtpProviderMode;
-  providerOrderId: string;
-  attempt: number;
-  pollAfter: string;
-}
-
-export interface OtpRefundJob {
-  refundId: string;
-  orderId: string;
-  allocationId: string;
-  reason: "expired" | "provider_cancelled" | "provider_failure" | "user_cancelled";
-  amountMinor: number;
-  currency: string;
-  idempotencyKey: string;
-}
-
-export interface OtpProviderHealthJob {
-  checkId: string;
-  provider: OtpProviderMode;
-  region: string;
-  sampledAt: string;
-  degradedThresholdMs: number;
-}
-
 export interface QueueRuntimePolicy {
   concurrency: number;
   retryPolicy: SmmRetryPolicy;
@@ -144,10 +99,6 @@ export type QueuePayloads = {
   payments: PaymentJob;
   "audit-events": AuditEventJob;
   "digital-access-automation": DigitalAccessAutomationJob;
-  "otp-allocation": OtpAllocationJob;
-  "otp-polling": OtpPollingJob;
-  "otp-refunds": OtpRefundJob;
-  "otp-provider-health": OtpProviderHealthJob;
 };
 
 export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
@@ -204,30 +155,6 @@ export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
     retryPolicy: { attempts: 6, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.1 },
     removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
     removeOnFail: { ageSeconds: 2_592_000, count: 50_000 }
-  },
-  "otp-allocation": {
-    concurrency: 10,
-    retryPolicy: { attempts: 5, baseDelayMs: 10_000, maxDelayMs: 180_000, jitterRatio: 0.1 },
-    removeOnComplete: { ageSeconds: 86_400, count: 20_000 },
-    removeOnFail: { ageSeconds: 1_209_600, count: 25_000 }
-  },
-  "otp-polling": {
-    concurrency: 30,
-    retryPolicy: { attempts: 8, baseDelayMs: 3_000, maxDelayMs: 60_000, jitterRatio: 0.05 },
-    removeOnComplete: { ageSeconds: 43_200, count: 50_000 },
-    removeOnFail: { ageSeconds: 604_800, count: 20_000 }
-  },
-  "otp-refunds": {
-    concurrency: 8,
-    retryPolicy: { attempts: 6, baseDelayMs: 15_000, maxDelayMs: 300_000, jitterRatio: 0.1 },
-    removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
-    removeOnFail: { ageSeconds: 2_592_000, count: 50_000 }
-  },
-  "otp-provider-health": {
-    concurrency: 6,
-    retryPolicy: { attempts: 3, baseDelayMs: 30_000, maxDelayMs: 120_000, jitterRatio: 0.05 },
-    removeOnComplete: { ageSeconds: 86_400, count: 10_000 },
-    removeOnFail: { ageSeconds: 604_800, count: 10_000 }
   }
 };
 

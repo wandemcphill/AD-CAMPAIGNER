@@ -17,24 +17,12 @@ export interface ProcessorFlags {
   managedAdsAutomationEnabled: boolean;
   digitalAccessWorkerEnabled: boolean;
   digitalAccessAutomationEnabled: boolean;
-  otpWorkerEnabled: boolean;
-  otpAllocationEnabled: boolean;
-  otpPollingEnabled: boolean;
-  otpRefundsEnabled: boolean;
-  otpProviderHealthEnabled: boolean;
 }
 
 export interface ProcessorOptions {
   env?: NodeJS.ProcessEnv;
   flags?: Partial<ProcessorFlags>;
 }
-
-const otpQueueFlagNames = {
-  "otp-allocation": "otpAllocationEnabled",
-  "otp-polling": "otpPollingEnabled",
-  "otp-refunds": "otpRefundsEnabled",
-  "otp-provider-health": "otpProviderHealthEnabled"
-} as const satisfies Partial<Record<QueueName, keyof ProcessorFlags>>;
 
 const digitalAccessQueueFlagNames = {
   "digital-access-automation": "digitalAccessAutomationEnabled"
@@ -56,17 +44,8 @@ export function resolveProcessorFlags(options?: ProcessorOptions): ProcessorFlag
     managedAdsAutomationEnabled: readBooleanFlag(env.MANAGED_ADS_AUTOMATION_WORKER_ENABLED),
     digitalAccessWorkerEnabled: readBooleanFlag(env.DIGITAL_ACCESS_WORKER_ENABLED),
     digitalAccessAutomationEnabled: readBooleanFlag(env.DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED),
-    otpWorkerEnabled: readBooleanFlag(env.OTP_WORKER_ENABLED),
-    otpAllocationEnabled: readBooleanFlag(env.OTP_ALLOCATION_WORKER_ENABLED),
-    otpPollingEnabled: readBooleanFlag(env.OTP_POLLING_WORKER_ENABLED),
-    otpRefundsEnabled: readBooleanFlag(env.OTP_REFUNDS_WORKER_ENABLED),
-    otpProviderHealthEnabled: readBooleanFlag(env.OTP_PROVIDER_HEALTH_WORKER_ENABLED),
     ...options?.flags
   };
-}
-
-function isOtpQueueEnabled(queue: keyof typeof otpQueueFlagNames, flags: ProcessorFlags): boolean {
-  return flags.otpWorkerEnabled && flags[otpQueueFlagNames[queue]];
 }
 
 function isDigitalAccessQueueEnabled(
@@ -83,10 +62,6 @@ function isManagedAdsQueueEnabled(
   return flags.managedAdsWorkerEnabled && flags[managedAdsQueueFlagNames[queue]];
 }
 
-function isOtpQueueName(queue: QueueName): queue is keyof typeof otpQueueFlagNames {
-  return queue in otpQueueFlagNames;
-}
-
 function isDigitalAccessQueueName(
   queue: QueueName
 ): queue is keyof typeof digitalAccessQueueFlagNames {
@@ -100,10 +75,6 @@ function isManagedAdsQueueName(queue: QueueName): queue is keyof typeof managedA
 export function shouldStartQueueWorker(queue: QueueName, options?: ProcessorOptions): boolean {
   const flags = resolveProcessorFlags(options);
 
-  if (isOtpQueueName(queue)) {
-    return isOtpQueueEnabled(queue, flags);
-  }
-
   if (isDigitalAccessQueueName(queue)) {
     return isDigitalAccessQueueEnabled(queue, flags);
   }
@@ -113,22 +84,6 @@ export function shouldStartQueueWorker(queue: QueueName, options?: ProcessorOpti
   }
 
   return true;
-}
-
-function createOtpSkippedResult(
-  queue: keyof typeof otpQueueFlagNames,
-  processedAt: string
-): ProcessorResult {
-  return {
-    queue,
-    status: "skipped",
-    detail: `${queue} skipped because OTP worker flags are disabled`,
-    details: {
-      reason: "otp_worker_disabled",
-      sideEffects: false
-    },
-    processedAt
-  };
 }
 
 function createDigitalAccessSkippedResult(
@@ -307,94 +262,6 @@ export function processQueueJob(
           ...(data.nextStatus === undefined ? {} : { nextStatus: data.nextStatus }),
           ...(data.amountMinor === undefined ? {} : { amountMinor: data.amountMinor }),
           ...(data.currency === undefined ? {} : { currency: data.currency }),
-          sideEffects: false
-        },
-        processedAt
-      };
-    }
-    case "otp-allocation": {
-      if (!isOtpQueueEnabled(queue, flags)) {
-        return createOtpSkippedResult(queue, processedAt);
-      }
-
-      const data = job.data as QueuePayloads["otp-allocation"];
-      return {
-        queue,
-        status: "processed",
-        detail: `OTP allocation ${data.requestId} accepted for ${data.countryCode}/${data.serviceCode}`,
-        details: {
-          requestId: data.requestId,
-          orderId: data.orderId,
-          workspaceId: data.workspaceId,
-          countryCode: data.countryCode,
-          serviceCode: data.serviceCode,
-          provider: data.provider,
-          maxPriceMinor: data.maxPriceMinor,
-          currency: data.currency,
-          sideEffects: false
-        },
-        processedAt
-      };
-    }
-    case "otp-polling": {
-      if (!isOtpQueueEnabled(queue, flags)) {
-        return createOtpSkippedResult(queue, processedAt);
-      }
-
-      const data = job.data as QueuePayloads["otp-polling"];
-      return {
-        queue,
-        status: "processed",
-        detail: `OTP polling ${data.allocationId} attempt ${data.attempt} scheduled`,
-        details: {
-          allocationId: data.allocationId,
-          orderId: data.orderId,
-          provider: data.provider,
-          attempt: data.attempt,
-          pollAfter: data.pollAfter,
-          sideEffects: false
-        },
-        processedAt
-      };
-    }
-    case "otp-refunds": {
-      if (!isOtpQueueEnabled(queue, flags)) {
-        return createOtpSkippedResult(queue, processedAt);
-      }
-
-      const data = job.data as QueuePayloads["otp-refunds"];
-      return {
-        queue,
-        status: "processed",
-        detail: `OTP refund ${data.refundId} accepted for ${data.reason}`,
-        details: {
-          refundId: data.refundId,
-          orderId: data.orderId,
-          allocationId: data.allocationId,
-          reason: data.reason,
-          amountMinor: data.amountMinor,
-          currency: data.currency,
-          sideEffects: false
-        },
-        processedAt
-      };
-    }
-    case "otp-provider-health": {
-      if (!isOtpQueueEnabled(queue, flags)) {
-        return createOtpSkippedResult(queue, processedAt);
-      }
-
-      const data = job.data as QueuePayloads["otp-provider-health"];
-      return {
-        queue,
-        status: "processed",
-        detail: `OTP provider health ${data.checkId} accepted for ${data.provider}`,
-        details: {
-          checkId: data.checkId,
-          provider: data.provider,
-          region: data.region,
-          sampledAt: data.sampledAt,
-          degradedThresholdMs: data.degradedThresholdMs,
           sideEffects: false
         },
         processedAt

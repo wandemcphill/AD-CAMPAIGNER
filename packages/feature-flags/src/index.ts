@@ -4,10 +4,6 @@ export const featureFlags = {
   aiCampaignAssistant: true,
   globalSearch: true,
   realtimeCampaignUpdates: true,
-  otpModule: false,
-  premiumOtp: false,
-  budgetOtp: false,
-  otpAdmin: false,
   digitalAccess: false,
   digitalAccessAdmin: false
 } as const;

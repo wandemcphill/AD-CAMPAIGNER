@@ -14,7 +14,6 @@ import { hasPermission } from "@fliptrybe/auth";
 import type { Permission } from "@fliptrybe/types";
 import { AuthSessionService } from "./auth-session.service";
 import { PlatformService } from "./platform.service";
-import { OtpMarketplaceService } from "./otp/otp.service";
 import { DigitalAccessHubService } from "./digital-access/digital-access.service";
 import { ManagedAdsService } from "./managed-ads.service";
 import type { AuthenticatedRequestContext } from "./request-context";
@@ -30,7 +29,6 @@ export class RealtimeGateway implements OnGatewayConnection {
 
   constructor(
     @Inject(PlatformService) private readonly platform: PlatformService,
-    @Inject(OtpMarketplaceService) private readonly otp: OtpMarketplaceService,
     @Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService,
     @Inject(DigitalAccessHubService) private readonly digitalAccess: DigitalAccessHubService,
     @Inject(AuthSessionService) private readonly authSession: AuthSessionService
@@ -46,18 +44,8 @@ export class RealtimeGateway implements OnGatewayConnection {
 
     if (this.canAccess(workspaceContext, "admin:access")) {
       client.emit("admin-monitoring", this.platform.getAdminOverview());
-      const otpSnapshot = this.otp.getRealtimeSnapshot();
-      client.emit("otp-orders", otpSnapshot.orders);
-      client.emit("otp-provider-health", []);
-      client.emit("otp-admin-monitoring", {
-        activeOrders: otpSnapshot.orders.length,
-        emittedAt: new Date().toISOString()
-      });
     } else {
       client.emit("admin-monitoring", null);
-      client.emit("otp-orders", []);
-      client.emit("otp-provider-health", []);
-      client.emit("otp-admin-monitoring", null);
     }
 
     void this.emitManagedAdsSnapshot(client, workspaceContext);

@@ -23,7 +23,6 @@
     "@fliptrybe/service-ai-engine": "workspace:*",
     "@fliptrybe/service-campaigns": "workspace:*",
     "@fliptrybe/service-digital-access": "workspace:*",
-    "@fliptrybe/service-otp": "workspace:*",
     "@fliptrybe/service-smm": "workspace:*",
     "@fliptrybe/types": "workspace:*",
     "@nestjs/common": "^11.1.22",
