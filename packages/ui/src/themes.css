@@ -1,10 +1,12 @@
 /* Fliptrybe theme contract.
    Components consume --ft-* tokens so Studio and Clay can swap without per-component branches. */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap');
+
 :root,
 [data-theme="studio"] {
   color-scheme: light;
   --font-display:
-    "DM Sans", "Noto Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Noto Sans", "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   --font-mono:
     "Geist Mono", "Noto Sans", "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular,
