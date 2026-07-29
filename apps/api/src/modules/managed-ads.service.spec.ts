@@ -177,6 +177,11 @@ type CampaignLedgerEntryUpsertInput = {
   } & Record<string, unknown>;
 };
 
+type CampaignRiskAssessmentUpsertInput = {
+  create?: Record<string, unknown>;
+  update?: Record<string, unknown>;
+};
+
 type CampaignSpendEntryCreateInput = {
   data: {
     amountMinor?: number;
@@ -308,6 +313,7 @@ function createService(
 
     return Promise.resolve(baseCampaign);
   });
+  const campaignCount = vi.fn(() => Promise.resolve(0));
   const campaignUpdate = vi.fn((input: CampaignUpdateInput) =>
     Promise.resolve({
       ...baseCampaign,
@@ -386,6 +392,9 @@ function createService(
   );
   const campaignOutcomeFindUnique = vi.fn(
     (): Promise<Record<string, unknown> | null> => Promise.resolve(null)
+  );
+  const campaignRiskAssessmentUpsert = vi.fn((input: CampaignRiskAssessmentUpsertInput) =>
+    Promise.resolve({ id: "risk_123", campaignId: "campaign_123", ...input.create, ...input.update })
   );
   const campaignLedgerEntryUpsert = vi.fn((input: CampaignLedgerEntryUpsertInput) =>
     Promise.resolve({ id: "campaign_ledger_123", ...input.create })
@@ -538,7 +547,15 @@ function createService(
       $queryRaw: vi.fn(() => Promise.resolve()),
       analyticsMetric: { create: analyticsMetricCreate },
       auditLog: { create: auditLogCreate },
-      campaign: { findFirst: campaignFindFirst, update: campaignUpdate, create: campaignCreate },
+      campaign: {
+        findFirst: campaignFindFirst,
+        update: campaignUpdate,
+        create: campaignCreate,
+        count: campaignCount
+      },
+      campaignRiskAssessment: {
+        upsert: campaignRiskAssessmentUpsert
+      },
       campaignBudgetHold: {
         create: campaignBudgetHoldCreate,
         findFirst: campaignBudgetHoldFindFirst,
@@ -588,7 +605,11 @@ function createService(
       $transaction: transaction,
       campaign: {
         findFirst: campaignFindFirst,
+        count: campaignCount,
         update: campaignUpdate
+      },
+      campaignRiskAssessment: {
+        upsert: campaignRiskAssessmentUpsert
       },
       campaignBudgetHold: {
         create: campaignBudgetHoldCreate,
@@ -669,6 +690,7 @@ function createService(
     adAccountCreate,
     adAccountUpdate,
     campaignFindFirst,
+    campaignCount,
     campaignCreate,
     campaignInvoiceCreate,
     campaignInvoiceFindFirst,
@@ -678,6 +700,7 @@ function createService(
     campaignLedgerEntryUpsert,
     campaignOutcomeUpsert,
     campaignOutcomeFindUnique,
+    campaignRiskAssessmentUpsert,
     campaignSpendEntryCreate,
     eventOutboxFindUnique,
     eventOutboxUpsert,
@@ -1431,6 +1454,46 @@ describe("ManagedAdsService campaign financial ledger", () => {
     expect(ledgerInput?.create?.category).toBe("Creative cost");
     expect(ledgerInput?.create?.direction).toBe("DEBIT");
     expect(ledgerInput?.create?.type).toBe("CREATIVE_COST");
+  });
+
+  it("reserves the campaign budget and advances to review when Studio submits a draft", async () => {
+    const {
+      campaignBudgetHoldCreate,
+      campaignFindFirst,
+      campaignCount,
+      campaignUpdate,
+      baseCampaign,
+      service
+    } = createService();
+
+    campaignCount.mockResolvedValue(5);
+    campaignFindFirst.mockResolvedValue({
+      ...baseCampaign,
+      adAccount: { type: "MANAGED", kycStatus: "VERIFIED" },
+      brief: "Women's thrift fashion in Lagos",
+      budgetMinor: 1000000,
+      destination: { kind: "INSTAGRAM_REEL", url: "https://instagram.com/reel/abc123" },
+      name: "Women's thrift fashion in Lagos",
+      status: "DRAFT"
+    });
+
+    await expect(service.submitCampaign(workspace, "campaign_123")).resolves.toMatchObject({
+      id: "campaign_123",
+      status: "PENDING_REVIEW"
+    });
+
+    expect(campaignBudgetHoldCreate).toHaveBeenCalledTimes(1);
+    expect(campaignBudgetHoldCreate.mock.calls.at(-1)?.[0]?.data).toMatchObject({
+      amountMinor: 1000000,
+      campaignId: "campaign_123",
+      reason: "Campaign submitted from Studio"
+    });
+    expect(campaignUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "campaign_123" },
+        data: expect.objectContaining({ status: "PENDING_REVIEW" })
+      })
+    );
   });
 });
 
