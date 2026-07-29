@@ -3,14 +3,20 @@ import {
   Bell,
   CreditCard,
   Gauge,
+  Layers,
   Megaphone,
   Rocket,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Store,
+  Ticket,
+  UserCircle,
   WalletCards,
   type LucideIcon
 } from "lucide-react";
+
+import { accessEnabled } from "../digital-access/data";
 
 import {
   campaignObjectives,
@@ -89,6 +95,40 @@ export const campaignNavItems = [
   { label: "Business Setup", href: "/onboarding", icon: ShieldCheck },
   { label: "Notifications", href: "/notifications", icon: Bell }
 ] satisfies Array<{ label: string; href: string; icon: LucideIcon }>;
+
+type NavItem = { label: string; href: string; icon: LucideIcon };
+
+// The mobile bottom bar keeps the flat, five-item campaignNavItems slice. This grouped
+// structure is for the desktop sidebar, and also surfaces product areas that already ship
+// (growth-services, vouchers, profile) but weren't reachable from the shell nav at all.
+export const campaignNavGroups = [
+  {
+    groupTitle: "Campaigns",
+    items: [
+      { label: "Studio", href: "/studio", icon: Rocket },
+      { label: "My Campaigns", href: "/campaigns", icon: Gauge },
+      { label: "Start a Campaign", href: "/campaigns/new", icon: Sparkles },
+      { label: "Campaign Reports", href: "/reports", icon: BarChart3 }
+    ] satisfies NavItem[]
+  },
+  {
+    groupTitle: "Wallet & Growth",
+    items: [
+      { label: "Wallet & Billing", href: "/billing", icon: CreditCard },
+      { label: "Growth Services", href: "/growth-services", icon: Store },
+      { label: "Vouchers", href: "/vouchers", icon: Ticket }
+    ] satisfies NavItem[]
+  },
+  {
+    groupTitle: "Account",
+    items: [
+      { label: "Business Setup", href: "/onboarding", icon: ShieldCheck },
+      ...(accessEnabled ? [{ label: "Digital Access", href: "/digital-access", icon: Layers }] : []),
+      { label: "Profile", href: "/profile", icon: UserCircle },
+      { label: "Notifications", href: "/notifications", icon: Bell }
+    ] satisfies NavItem[]
+  }
+] satisfies Array<{ groupTitle: string; items: NavItem[] }>;
 
 export const objectiveOptions = campaignObjectives;
 

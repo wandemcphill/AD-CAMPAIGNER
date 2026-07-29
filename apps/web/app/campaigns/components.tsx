@@ -24,7 +24,7 @@ import type { Campaign, CampaignStatus, Money, Wallet } from "@fliptrybe/types";
 
 import { useApiSession } from "../lib/use-session";
 import { SessionPanel } from "../ui/session-panel";
-import { campaignNavItems, destinationLabels, objectiveLabels, type ClientDataSource } from "./data";
+import { campaignNavGroups, campaignNavItems, destinationLabels, objectiveLabels, type ClientDataSource } from "./data";
 
 export function CampaignShell({ children, active }: { children: ReactNode; active: string }) {
   const { loading, session } = useApiSession();
@@ -54,24 +54,28 @@ export function CampaignShell({ children, active }: { children: ReactNode; activ
           </div>
         </a>
 
-        <div className="mt-6 px-3 font-mono text-[10px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-          Campaign desk
-        </div>
-        <nav className="mt-2 grid gap-1">
-          {campaignNavItems.map((item) => (
-            <a
-              className={cn(
-                "relative flex h-11 items-center gap-3 rounded-[var(--radius-sm)] border-l-2 px-3 text-sm font-medium transition",
-                active === item.href
-                  ? "border-l-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]"
-                  : "border-l-transparent text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
-              )}
-              href={item.href}
-              key={item.href}
-            >
-              <item.icon className="size-5 stroke-[1.5]" />
-              <span>{item.label}</span>
-            </a>
+        <nav className="mt-6 grid gap-4">
+          {campaignNavGroups.map((group) => (
+            <div className="grid gap-1" key={group.groupTitle}>
+              <p className="px-3 font-mono text-[10px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+                {group.groupTitle}
+              </p>
+              {group.items.map((item) => (
+                <a
+                  className={cn(
+                    "relative flex h-11 items-center gap-3 rounded-[var(--radius-sm)] border-l-2 px-3 text-sm font-medium transition",
+                    active === item.href
+                      ? "border-l-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]"
+                      : "border-l-transparent text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
+                  )}
+                  href={item.href}
+                  key={item.href}
+                >
+                  <item.icon className="size-5 stroke-[1.5]" />
+                  <span>{item.label}</span>
+                </a>
+              ))}
+            </div>
           ))}
         </nav>
 
