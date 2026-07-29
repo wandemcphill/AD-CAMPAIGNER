@@ -2,7 +2,7 @@
 
 import { RefreshCw } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import {
   AdminEmptyState,
@@ -36,6 +36,48 @@ export default function AdminGrowthOverviewPage() {
       />
 
       <AdminErrorNotice message={error} />
+
+      <section className="mt-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="info">Growth marketplace</Badge>
+          <Badge tone="warning">Risk governed</Badge>
+          <Badge tone="neutral">{orders.length} orders</Badge>
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
+              Growth services command
+            </p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
+              Track supplier fulfillment, risk exposure, and order throughput in one place.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+              The operations desk surfaces live order flow and supplier health without leaking the
+              complexity beneath the marketplace.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4" />
+              Refresh desk
+            </Button>
+            <Button>
+              <RefreshCw className="size-4" />
+              Open controls
+            </Button>
+          </div>
+        </div>
+        <div className="mt-6">
+          <SummaryStatStrip
+            items={[
+              { label: "metrics", value: String(metrics.length), detail: "Overview cards" },
+              { label: "orders", value: String(orders.length), detail: "Live growth orders" },
+              { label: "risks", value: String(risks.length), detail: "Risk watch items" },
+              { label: "suppliers", value: String(suppliers.length), detail: "Provider health" }
+            ]}
+          />
+        </div>
+      </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-4">
         {metrics.map((metric) => (

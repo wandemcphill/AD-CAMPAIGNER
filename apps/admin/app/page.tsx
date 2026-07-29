@@ -15,7 +15,7 @@ import {
   Users
 } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel, ThemeToggle } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip, ThemeToggle } from "@fliptrybe/ui";
 
 import { useAdminDashboard } from "./use-admin-dashboard";
 
@@ -35,7 +35,7 @@ export default function AdminPage() {
   );
 
   return (
-    <main className="min-h-screen">
+    <main className="ft-shell min-h-screen">
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[260px_1fr]">
         <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-4 xl:border-r xl:border-b-0">
           <div className="flex items-center gap-3">
@@ -105,6 +105,10 @@ export default function AdminPage() {
               <h1 className="mt-3 text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
                 Operations command
               </h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+                Monitor campaign health, billing rails, moderation, and access desks from one
+                control surface.
+              </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Button variant="secondary">
@@ -117,6 +121,26 @@ export default function AdminPage() {
               </Button>
             </div>
           </header>
+
+          <section className="mt-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="info">Admin command layer</Badge>
+              <Badge tone="neutral">Live telemetry</Badge>
+              <Badge tone={data?.source === "partial" ? "warning" : "success"}>
+                {data?.source === "partial" ? "Partial data" : "Connected"}
+              </Badge>
+            </div>
+            <div className="mt-5">
+              <SummaryStatStrip
+                items={[
+                  { label: "queues", value: String(queues.length), detail: "Service rails" },
+                  { label: "risk items", value: String(moderation.length), detail: "Requires review" },
+                  { label: "audits", value: String(audits.length), detail: "Recorded events" },
+                  { label: "fraud signals", value: String(pendingReviews), detail: "Telemetry detail" }
+                ]}
+              />
+            </div>
+          </section>
 
           <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {metrics.length > 0 ? (

@@ -2,7 +2,7 @@
 
 import { ArrowRight, CheckCircle2, PlugZap, RefreshCw, Rocket, ShieldCheck } from "lucide-react";
 
-import { Badge, Button, MetricStrip, Panel, PlatformChip, cn } from "@fliptrybe/ui";
+import { Badge, Button, MetricStrip, Panel, PlatformChip, SummaryStatStrip, cn } from "@fliptrybe/ui";
 
 import {
   CampaignShell,
@@ -102,6 +102,50 @@ export default function OnboardingPage() {
       />
 
       <ErrorNotice message={error} />
+
+      <section className="mt-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone={session ? "success" : "warning"}>
+            {session ? "Workspace attached" : "Sign in required"}
+          </Badge>
+          <Badge tone="info">Launch readiness</Badge>
+          <Badge tone="neutral">{destinations.length} destinations</Badge>
+        </div>
+        <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+          <div>
+            <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
+              Business setup desk
+            </p>
+            <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
+              Connect the workspace, destinations, billing, and provider checks before launch.
+            </h2>
+            <p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+              The onboarding flow tells the team what is ready, what still needs input, and which
+              setup steps can move a campaign from brief to execution.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button className="border-[var(--ft-border-strong)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)] hover:bg-[var(--ft-bg-muted)]" disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4 stroke-[1.5]" />
+              Refresh
+            </Button>
+            <a className={`${session ? linkButtonClass : secondaryLinkButtonClass} w-full sm:w-auto`} href={session ? "/campaigns/new" : "/login"}>
+              {session ? "Start campaign" : "Sign in"}
+              <ArrowRight className="size-4 stroke-[1.5]" />
+            </a>
+          </div>
+        </div>
+        <div className="mt-6">
+          <SummaryStatStrip
+            items={[
+              { label: "workspace", value: session ? "Ready" : sessionLoading ? "Checking" : "Signed out", detail: session?.workspace.name ?? "Auto-created on sign in" },
+              { label: "destinations", value: loading ? "..." : String(destinations.length), detail: "Available endpoints" },
+              { label: "providers", value: loading ? "..." : String(providers.length), detail: health?.service ?? "Campaign platform" },
+              { label: "readiness", value: `${readySteps}/${stepStates.length}`, detail: "Workspace checks" }
+            ]}
+          />
+        </div>
+      </section>
 
       <section className="mt-6">
         <MetricStrip
