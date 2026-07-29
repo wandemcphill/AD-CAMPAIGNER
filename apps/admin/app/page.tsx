@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Banknote,
@@ -17,9 +17,11 @@ import {
 
 import { Badge, Button, MetricCard, Panel, SummaryStatStrip, ThemeToggle } from "@fliptrybe/ui";
 
+import { useApiSession } from "./lib/use-session";
 import { useAdminDashboard } from "./use-admin-dashboard";
 
 export default function AdminPage() {
+  const { loading: sessionLoading, session } = useApiSession();
   const { data, error, isLoading, refresh } = useAdminDashboard();
   const [telemetryOpen, setTelemetryOpen] = useState(false);
   const [selectedRail, setSelectedRail] = useState<string | null>(null);
@@ -33,6 +35,16 @@ export default function AdminPage() {
     () => rails.find((rail) => rail.name === selectedRail),
     [rails, selectedRail]
   );
+
+  useEffect(() => {
+    if (!sessionLoading && !session) {
+      window.location.replace("/login");
+    }
+  }, [sessionLoading, session]);
+
+  if (sessionLoading || !session) {
+    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
+  }
 
   return (
     <main className="ft-shell min-h-screen">

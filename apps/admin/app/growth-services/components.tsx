@@ -1,7 +1,10 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, type ReactNode } from "react";
 
 import { Badge, Panel, ThemeToggle, cn } from "@fliptrybe/ui";
 
+import { useApiSession } from "../lib/use-session";
 import { SessionPanel } from "../ui/session-panel";
 import {
   adminGrowthEnabled,
@@ -12,6 +15,18 @@ import {
 } from "./data";
 
 export function AdminGrowthShell({ children, active }: { children: ReactNode; active: string }) {
+  const { loading, session } = useApiSession();
+
+  useEffect(() => {
+    if (!loading && !session) {
+      window.location.replace("/login");
+    }
+  }, [loading, session]);
+
+  if (loading || !session) {
+    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
+  }
+
   return (
     <main className="min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-[220px] border-r border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-4 md:block">
