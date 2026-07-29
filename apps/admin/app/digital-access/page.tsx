@@ -89,10 +89,10 @@ export default function AdminDigitalAccessPage() {
         <div className="mt-6">
           <SummaryStatStrip
             items={[
-              { label: "requests", value: loading ? "..." : String(requests.length), detail: "Live queue" },
-              { label: "services", value: loading ? "..." : String(services.length), detail: "Catalog health" },
-              { label: "metrics", value: loading ? "..." : String(metrics.length), detail: "Dashboard stats" },
-              { label: "source", value: source === "api" ? "API" : "Cached", detail: "Telemetry mode" }
+              { label: "requests", value: loading ? "..." : String(requests.length) },
+              { label: "services", value: loading ? "..." : String(services.length) },
+              { label: "metrics", value: loading ? "..." : String(metrics.length) },
+              { label: "source", value: source === "api" ? "API" : "Cached" }
             ]}
           />
         </div>

@@ -92,23 +92,19 @@ export default function GrowthServicesPage() {
             items={[
               {
                 label: "services",
-                value: loading ? "..." : String(activeServices.length),
-                detail: "Enabled catalog"
+                value: loading ? "..." : String(activeServices.length)
               },
               {
                 label: "active orders",
-                value: loading ? "..." : String(activeOrders),
-                detail: "Queued or running"
+                value: loading ? "..." : String(activeOrders)
               },
               {
                 label: "completed",
-                value: loading ? "..." : String(completedOrders),
-                detail: "Delivered orders"
+                value: loading ? "..." : String(completedOrders)
               },
               {
                 label: "risk flags",
-                value: loading ? "..." : String(highRiskServices),
-                detail: "Review required"
+                value: loading ? "..." : String(highRiskServices)
               }
             ]}
           />

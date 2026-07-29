@@ -71,9 +71,9 @@ export default function OtpPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge tone="success">{loading ? "Syncing" : `${services.length} routes`}</Badge>
-            <Badge tone="info">{loading ? "..." : `${orders.length} live orders`}</Badge>
-            <Badge tone="neutral">{loading ? "..." : `${quickStats.length} metrics`}</Badge>
+            <Badge tone="success">{isLoading ? "Syncing" : `${services.length} routes`}</Badge>
+            <Badge tone="info">{isLoading ? "..." : `${orders.length} live orders`}</Badge>
+            <Badge tone="neutral">{isLoading ? "..." : `${quickStats.length} metrics`}</Badge>
           </div>
         </div>
       </section>

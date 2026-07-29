@@ -29,6 +29,7 @@ import {
   Panel,
   PlatformChip,
   ProofItem,
+  SummaryStatStrip,
   TimelineEvent,
   campaignStatusMeta
 } from "@fliptrybe/ui";
@@ -56,7 +57,6 @@ import {
   PageHeader,
   SourceBadge,
   StatusBadge,
-  SummaryStatStrip,
   linkButtonClass,
   secondaryLinkButtonClass
 } from "../components";

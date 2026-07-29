@@ -58,8 +58,8 @@ export default function LoginPage() {
           <SummaryStatStrip
             items={[
               { label: "identity", value: "Username" },
-              { label: "verification", value: "None", detail: "Internal only" },
-              { label: "workspace", value: "Auto-attached", detail: "On sign in" }
+              { label: "verification", value: "None" },
+              { label: "workspace", value: "Auto-attached" }
             ]}
           />
 

@@ -67,8 +67,8 @@ export default function RegisterPage() {
           <SummaryStatStrip
             items={[
               { label: "identity", value: "Username" },
-              { label: "verification", value: "None", detail: "No email / OTP" },
-              { label: "workspace", value: "Auto-created", detail: "On register" }
+              { label: "verification", value: "None" },
+              { label: "workspace", value: "Auto-created" }
             ]}
           />
 

@@ -59,7 +59,7 @@ export default function LoginPage() {
             items={[
               { label: "identity", value: "Username" },
               { label: "verification", value: "None" },
-              { label: "workspace", value: "Auto-attached", detail: "On sign in" }
+              { label: "workspace", value: "Auto-attached" }
             ]}
           />
 

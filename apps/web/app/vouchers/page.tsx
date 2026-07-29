@@ -90,10 +90,10 @@ export default function VouchersPage() {
         <div className="mx-auto mt-5 max-w-7xl">
           <SummaryStatStrip
             items={[
-              { label: "Products", value: String(products.length), detail: "Live catalog" },
-              { label: "Vouchers", value: String(vouchers.length), detail: "Issued records" },
-              { label: "Selected", value: currentProduct?.name ?? "None", detail: "Current product" },
-              { label: "Status", value: busy ? "Issuing" : "Ready", detail: "Wallet action" }
+              { label: "Products", value: String(products.length) },
+              { label: "Vouchers", value: String(vouchers.length) },
+              { label: "Selected", value: currentProduct?.name ?? "None" },
+              { label: "Status", value: busy ? "Issuing" : "Ready" }
             ]}
           />
         </div>

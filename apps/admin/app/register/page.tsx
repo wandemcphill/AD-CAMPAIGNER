@@ -68,7 +68,7 @@ export default function RegisterPage() {
             items={[
               { label: "identity", value: "Username" },
               { label: "verification", value: "None" },
-              { label: "workspace", value: "Auto-created", detail: "On register" }
+              { label: "workspace", value: "Auto-created" }
             ]}
           />
 

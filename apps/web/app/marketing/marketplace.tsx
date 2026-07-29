@@ -74,9 +74,9 @@ export function Marketplace({ reducedMotion }: MarketplaceProps) {
             </label>
             <SummaryStatStrip
               items={[
-                { label: "catalog", value: String(marketplaceTalent.length), detail: "Curated operators" },
-                { label: "visible", value: String(visibleResults.length), detail: "Current matches" },
-                { label: "query", value: query.trim() || "All talent", detail: "Search state" }
+                { label: "catalog", value: String(marketplaceTalent.length) },
+                { label: "visible", value: String(visibleResults.length) },
+                { label: "query", value: query.trim() || "All talent" }
               ]}
             />
           </div>

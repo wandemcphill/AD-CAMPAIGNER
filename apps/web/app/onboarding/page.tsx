@@ -138,10 +138,10 @@ export default function OnboardingPage() {
         <div className="mt-6">
           <SummaryStatStrip
             items={[
-              { label: "workspace", value: session ? "Ready" : sessionLoading ? "Checking" : "Signed out", detail: session?.workspace.name ?? "Auto-created on sign in" },
-              { label: "destinations", value: loading ? "..." : String(destinations.length), detail: "Available endpoints" },
-              { label: "providers", value: loading ? "..." : String(providers.length), detail: health?.service ?? "Campaign platform" },
-              { label: "readiness", value: `${readySteps}/${stepStates.length}`, detail: "Workspace checks" }
+              { label: "workspace", value: session ? "Ready" : sessionLoading ? "Checking" : "Signed out" },
+              { label: "destinations", value: loading ? "..." : String(destinations.length) },
+              { label: "providers", value: loading ? "..." : String(providers.length) },
+              { label: "readiness", value: `${readySteps}/${stepStates.length}` }
             ]}
           />
         </div>

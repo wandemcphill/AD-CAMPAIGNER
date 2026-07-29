@@ -80,10 +80,10 @@ export default function DigitalAccessPage() {
         <div className="mt-6">
           <SummaryStatStrip
             items={[
-              { label: "Open requests", value: loading ? "..." : String(openRequests), detail: "Queued or in fulfillment" },
-              { label: "Fulfilled", value: loading ? "..." : String(fulfilledRequests), detail: "Completed by the desk" },
-              { label: "Catalog", value: loading ? "..." : String(services.length), detail: "Active services" },
-              { label: "Access mode", value: accessEnabled ? "Live" : "Setup", detail: "Rollout state" }
+              { label: "Open requests", value: loading ? "..." : String(openRequests) },
+              { label: "Fulfilled", value: loading ? "..." : String(fulfilledRequests) },
+              { label: "Catalog", value: loading ? "..." : String(services.length) },
+              { label: "Access mode", value: accessEnabled ? "Live" : "Setup" }
             ]}
           />
         </div>

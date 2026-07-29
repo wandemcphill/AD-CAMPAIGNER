@@ -70,10 +70,10 @@ export default function AdminGrowthOverviewPage() {
         <div className="mt-6">
           <SummaryStatStrip
             items={[
-              { label: "metrics", value: String(metrics.length), detail: "Overview cards" },
-              { label: "orders", value: String(orders.length), detail: "Live growth orders" },
-              { label: "risks", value: String(risks.length), detail: "Risk watch items" },
-              { label: "suppliers", value: String(suppliers.length), detail: "Provider health" }
+              { label: "metrics", value: String(metrics.length) },
+              { label: "orders", value: String(orders.length) },
+              { label: "risks", value: String(risks.length) },
+              { label: "suppliers", value: String(suppliers.length) }
             ]}
           />
         </div>

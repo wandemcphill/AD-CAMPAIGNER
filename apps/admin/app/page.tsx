@@ -133,10 +133,10 @@ export default function AdminPage() {
             <div className="mt-5">
               <SummaryStatStrip
                 items={[
-                  { label: "queues", value: String(queues.length), detail: "Service rails" },
-                  { label: "risk items", value: String(moderation.length), detail: "Requires review" },
-                  { label: "audits", value: String(audits.length), detail: "Recorded events" },
-                  { label: "fraud signals", value: String(pendingReviews), detail: "Telemetry detail" }
+                  { label: "queues", value: String(queues.length) },
+                  { label: "risk items", value: String(moderation.length) },
+                  { label: "audits", value: String(audits.length) },
+                  { label: "fraud signals", value: String(pendingReviews) }
                 ]}
               />
             </div>
