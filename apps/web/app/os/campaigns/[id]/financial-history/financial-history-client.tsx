@@ -6,16 +6,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 import type { CampaignBudgetSummary, CampaignLedgerEntry } from "@fliptrybe/types";
 
-import { formatCampaignMoney, formatDateTime, loadCampaignFinancialData } from "../../api";
+import { formatCampaignMoney, formatDateTime, loadCampaignFinancialData } from "../../../../campaigns/api";
 import {
-  CampaignShell,
   EmptyState,
   ErrorNotice,
   LoadingBlock,
   PageHeader,
   linkButtonClass,
   secondaryLinkButtonClass
-} from "../../components";
+} from "../../../../campaigns/components";
 
 type HistoryState = {
   budgetSummary: CampaignBudgetSummary | null;
@@ -80,7 +79,7 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
   }, [refresh]);
 
   return (
-    <CampaignShell active="/campaigns">
+    <>
       <PageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -88,7 +87,7 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
               <RefreshCw className="size-4" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href={`/campaigns/${campaignId}`}>
+            <a className={secondaryLinkButtonClass} href={`/os/campaigns/${campaignId}`}>
               <ArrowLeft className="size-4" />
               Back
             </a>
@@ -153,7 +152,7 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
             <div className="p-5">
               <EmptyState
                 action={
-                  <a className={linkButtonClass} href={`/campaigns/${campaignId}`}>
+                  <a className={linkButtonClass} href={`/os/campaigns/${campaignId}`}>
                     Back to campaign
                   </a>
                 }
@@ -200,6 +199,6 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
           )}
         </Panel>
       </section>
-    </CampaignShell>
+    </>
   );
 }

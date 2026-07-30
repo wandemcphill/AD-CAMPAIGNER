@@ -1,0 +1,48 @@
+{
+  "capturedAt": "2026-06-04T20:12:20.318Z",
+  "postgresTcp5432": false,
+  "prismaMigrateStatus": {
+    "exitStatus": 1,
+    "summary": "Schema engine error against postgresql://fliptrybe:fliptrybe@localhost:5432/fliptrybe_ads"
+  },
+  "prismaValidate": {
+    "exitStatus": 0,
+    "summary": "Prisma schema is valid."
+  },
+  "staticOrganizations": {
+    "url": "http://localhost:4000/v1/organizations",
+    "status": 200,
+    "ok": true,
+    "body": [
+      {
+        "id": "org_demo",
+        "name": "FlipTrybe",
+        "slug": "fliptrybe",
+        "region": "global",
+        "workspaces": [
+          {
+            "id": "workspace_demo",
+            "name": "FlipTrybe Growth HQ"
+          }
+        ]
+      }
+    ],
+    "startedAt": "2026-06-04T20:12:20.320Z",
+    "finishedAt": "2026-06-04T20:12:22.676Z"
+  },
+  "dbBackedCampaignsWithDevHeaders": {
+    "url": "http://localhost:4000/v1/campaigns",
+    "status": 500,
+    "ok": false,
+    "body": {
+      "statusCode": 500,
+      "message": "Internal server error"
+    },
+    "startedAt": "2026-06-04T20:12:22.676Z",
+    "finishedAt": "2026-06-04T20:12:23.168Z"
+  },
+  "authRegister500": {
+    "statusCode": 500,
+    "message": "Internal server error"
+  }
+}

@@ -62,7 +62,7 @@ export const statusTone = {
 } as const;
 
 export const navItems = [
-  { label: "Storefront", href: "/growth-services", icon: Users },
-  { label: "Services", href: "/growth-services/services", icon: ShieldAlert },
-  { label: "Orders", href: "/growth-services/orders", icon: BarChart3 }
+  { label: "Storefront", href: "/os/growth", icon: Users },
+  { label: "Services", href: "/os/growth/services", icon: ShieldAlert },
+  { label: "Orders", href: "/os/growth/orders", icon: BarChart3 }
 ];

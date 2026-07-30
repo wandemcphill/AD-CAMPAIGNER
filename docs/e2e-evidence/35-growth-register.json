@@ -1,0 +1,20 @@
+{
+  "name": "35-growth-register",
+  "method": "POST",
+  "url": "http://localhost:4000/v1/auth/register",
+  "status": 500,
+  "ok": false,
+  "requestBody": {
+    "email": "thread-f-growth-20260604154824@example.test",
+    "password": "TestPass123!",
+    "name": "Thread F Growth Customer",
+    "organizationName": "Thread F Growth Org 20260604154824",
+    "workspaceName": "Thread F Growth Workspace 20260604154824"
+  },
+  "responseBody": {
+    "statusCode": 500,
+    "message": "Internal server error"
+  },
+  "startedAt": "2026-06-04T15:48:28.927Z",
+  "finishedAt": "2026-06-04T15:48:28.945Z"
+}

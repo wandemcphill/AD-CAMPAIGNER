@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req
 } from "@nestjs/common";
@@ -96,6 +97,16 @@ export class TeamsController {
   @Get()
   list(@Req() request: WorkspaceContextRequest) {
     return this.platform.listTeamMembers(workspaceContextFromRequest(request));
+  }
+
+  @Get("projects")
+  projects(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listTeamProjects(workspaceContextFromRequest(request));
+  }
+
+  @Get("approvals")
+  approvals(@Req() request: WorkspaceContextRequest) {
+    return this.platform.listTeamApprovals(workspaceContextFromRequest(request));
   }
 }
 
@@ -731,6 +742,24 @@ export class NotificationsController {
   readAll(@Req() request: WorkspaceContextRequest) {
     return this.managedAds.markAllNotificationsRead(workspaceContextFromRequest(request));
   }
+
+  @Get("preferences")
+  preferences(@Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listNotificationPreferences(workspaceContextFromRequest(request));
+  }
+
+  @Put("preferences/:eventName")
+  updatePreference(
+    @Param("eventName") eventName: string,
+    @Body() body: { inApp?: boolean; email?: boolean; whatsapp?: boolean },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.upsertNotificationPreference(
+      workspaceContextFromRequest(request),
+      eventName,
+      body
+    );
+  }
 }
 
 @Controller("referrals")
@@ -790,6 +819,14 @@ export class MediaController {
   ) {
     return this.managedAds.completeUpload(workspaceContextFromRequest(request), assetId, body);
   }
+
+  @Get("assets")
+  listAssets(@Query("kind") kind: string | undefined, @Req() request: WorkspaceContextRequest) {
+    return this.managedAds.listMediaAssets(
+      workspaceContextFromRequest(request),
+      kind === undefined ? {} : { kind }
+    );
+  }
 }
 
 @Controller("search")
@@ -798,8 +835,8 @@ export class SearchController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get()
-  search(@Query("q") query?: string) {
-    return this.platform.search(query);
+  search(@Query("q") query: string | undefined, @Req() request: WorkspaceContextRequest) {
+    return this.platform.search(query, workspaceContextFromRequest(request));
   }
 }
 

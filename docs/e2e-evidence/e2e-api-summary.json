@@ -1,0 +1,73 @@
+{
+  "stamp": "20260604154824",
+  "apiBase": "http://localhost:4000/v1",
+  "steps": [
+    {
+      "name": "00-health",
+      "method": "GET",
+      "url": "http://localhost:4000/v1/health",
+      "status": 200,
+      "ok": true,
+      "file": "C:/Users/ayomc/Desktop/ADS CAMPAIGNER/docs/e2e-evidence/00-health.json"
+    },
+    {
+      "name": "01-advertiser-register",
+      "method": "POST",
+      "url": "http://localhost:4000/v1/auth/register",
+      "status": 500,
+      "ok": false,
+      "file": "C:/Users/ayomc/Desktop/ADS CAMPAIGNER/docs/e2e-evidence/01-advertiser-register.json"
+    },
+    {
+      "name": "11-admin-register",
+      "method": "POST",
+      "url": "http://localhost:4000/v1/auth/register",
+      "status": 500,
+      "ok": false,
+      "file": "C:/Users/ayomc/Desktop/ADS CAMPAIGNER/docs/e2e-evidence/11-admin-register.json"
+    },
+    {
+      "name": "35-growth-register",
+      "method": "POST",
+      "url": "http://localhost:4000/v1/auth/register",
+      "status": 500,
+      "ok": false,
+      "file": "C:/Users/ayomc/Desktop/ADS CAMPAIGNER/docs/e2e-evidence/35-growth-register.json"
+    },
+    {
+      "name": "36-growth-browse-catalog",
+      "method": "GET",
+      "url": "http://localhost:4000/v1/growth/catalog",
+      "status": 200,
+      "ok": true,
+      "file": "C:/Users/ayomc/Desktop/ADS CAMPAIGNER/docs/e2e-evidence/36-growth-browse-catalog.json"
+    }
+  ],
+  "issues": [
+    {
+      "severity": "High",
+      "step": "01-advertiser-register",
+      "status": 500,
+      "message": "Internal server error"
+    },
+    {
+      "severity": "High",
+      "step": "11-admin-register",
+      "status": 500,
+      "message": "Internal server error"
+    },
+    {
+      "severity": "High",
+      "step": "35-growth-register",
+      "status": 500,
+      "message": "Internal server error"
+    }
+  ],
+  "ids": {
+    "advertiserEmail": "thread-f-advertiser-20260604154824@example.test",
+    "adminEmail": "thread-f-admin-20260604154824@example.test",
+    "growthEmail": "thread-f-growth-20260604154824@example.test"
+  },
+  "screenshots": [],
+  "completedAt": "2026-06-04T15:48:28.998Z"
+}

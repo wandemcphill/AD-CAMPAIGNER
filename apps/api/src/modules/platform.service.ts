@@ -440,6 +440,56 @@ export class PlatformService {
     }));
   }
 
+  async listTeamProjects(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const campaigns = await this.db.campaign.findMany({
+      where: { workspaceId: scope.workspaceId, deletedAt: null },
+      include: {
+        assignments: {
+          where: { status: "ACTIVE", deletedAt: null },
+          include: { assignee: true }
+        }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 20
+    });
+
+    return campaigns
+      .filter((campaign: any) => campaign.assignments.length > 0)
+      .map((campaign: any) => ({
+        id: campaign.id,
+        name: campaign.name,
+        status: campaign.status,
+        members: campaign.assignments.map((assignment: any) => ({
+          id: assignment.id,
+          name: assignment.assignee.displayName ?? assignment.assignee.name,
+          role: assignment.role,
+          dueAt: assignment.dueAt,
+          completedAt: assignment.completedAt
+        }))
+      }));
+  }
+
+  async listTeamApprovals(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const campaigns = await this.db.campaign.findMany({
+      where: {
+        workspaceId: scope.workspaceId,
+        deletedAt: null,
+        status: { in: ["PENDING_REVIEW", "CHANGES_REQUESTED"] }
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 20
+    });
+
+    return campaigns.map((campaign: any) => ({
+      id: campaign.id,
+      title: campaign.name,
+      status: campaign.status,
+      updatedAt: campaign.updatedAt
+    }));
+  }
+
   async quoteCampaign(input: QuoteCampaignDto) {
     if (!legacyMockProvidersAllowed()) {
       rejectLegacyMockProvider("Campaign quoting");
@@ -1530,20 +1580,82 @@ export class PlatformService {
     return this.supportTickets.filter((ticket) => ticket.workspaceId === scope.workspaceId);
   }
 
-  search(query = "") {
-    if (!legacyMockProvidersAllowed()) {
+  async search(query = "", context?: AuthenticatedRequestContext) {
+    const trimmed = query.trim();
+
+    if (!trimmed) {
       return { query, results: [] };
     }
+
+    const scope = requireWorkspaceContext(context);
+    const [campaigns, members, growthOrders, vouchers] = await Promise.all([
+      this.db.campaign.findMany({
+        where: {
+          workspaceId: scope.workspaceId,
+          deletedAt: null,
+          name: { contains: trimmed, mode: "insensitive" }
+        },
+        select: { id: true, name: true, status: true },
+        take: 8
+      }),
+      this.db.teamMember.findMany({
+        where: {
+          deletedAt: null,
+          user: { name: { contains: trimmed, mode: "insensitive" } }
+        },
+        select: { id: true, user: { select: { name: true, displayName: true } } },
+        take: 8
+      }),
+      this.db.growthOrder.findMany({
+        where: {
+          workspaceId: scope.workspaceId,
+          deletedAt: null,
+          serviceName: { contains: trimmed, mode: "insensitive" }
+        },
+        select: { id: true, serviceName: true, status: true },
+        take: 8
+      }),
+      this.db.voucher.findMany({
+        where: {
+          workspaceId: scope.workspaceId,
+          deletedAt: null,
+          serialNumber: { contains: trimmed, mode: "insensitive" }
+        },
+        select: { id: true, serialNumber: true, status: true },
+        take: 8
+      })
+    ]);
 
     return {
       query,
       results: [
-        { type: "campaign", id: "cmp_demo", title: "TikTok LIVE launch boost" },
-        { type: "destination", id: "dest_demo", title: "Instagram Reels promotion" },
-        { type: "support", id: "ticket_demo", title: "Payment verification" }
-      ].filter(
-        (item) => item.title.toLowerCase().includes(query.toLowerCase()) || query.length === 0
-      )
+        ...campaigns.map((c: { id: string; name: string; status: string }) => ({
+          type: "campaign" as const,
+          id: c.id,
+          title: c.name,
+          meta: c.status
+        })),
+        ...members.map(
+          (m: { id: string; user: { name: string; displayName: string | null } }) => ({
+            type: "team" as const,
+            id: m.id,
+            title: m.user.displayName ?? m.user.name,
+            meta: "Team member"
+          })
+        ),
+        ...growthOrders.map((g: { id: string; serviceName: string; status: string }) => ({
+          type: "growth_order" as const,
+          id: g.id,
+          title: g.serviceName,
+          meta: g.status
+        })),
+        ...vouchers.map((v: { id: string; serialNumber: string; status: string }) => ({
+          type: "voucher" as const,
+          id: v.id,
+          title: v.serialNumber,
+          meta: v.status
+        }))
+      ]
     };
   }
 

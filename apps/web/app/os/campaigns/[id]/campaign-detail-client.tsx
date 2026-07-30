@@ -47,9 +47,8 @@ import {
   requestCampaignChanges,
   resumeCampaign,
   stopCampaign
-} from "../api";
+} from "../../../campaigns/api";
 import {
-  CampaignShell,
   EmptyState,
   ErrorNotice,
   Field,
@@ -59,9 +58,9 @@ import {
   StatusBadge,
   linkButtonClass,
   secondaryLinkButtonClass
-} from "../components";
-import { destinationLabels, objectiveLabels, type CampaignAnalyticsOverview } from "../data";
-import { useCampaignDashboardData } from "../use-campaign-dashboard-data";
+} from "../../../campaigns/components";
+import { destinationLabels, objectiveLabels, type CampaignAnalyticsOverview } from "../../../campaigns/data";
+import { useCampaignDashboardData } from "../../../campaigns/use-campaign-dashboard-data";
 
 const processSteps = [
   "Brief Received",
@@ -351,7 +350,7 @@ function CampaignBudgetTransparency({
                 : financial.error ?? `Updated ${formatDateTime(summary.updatedAt)}`}
             </p>
           </div>
-          <a className={secondaryLinkButtonClass} href={`/campaigns/${campaign.id}/financial-history`}>
+          <a className={secondaryLinkButtonClass} href={`/os/campaigns/${campaign.id}/financial-history`}>
             <ReceiptText className="size-4" />
             Financial History
           </a>
@@ -936,7 +935,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
     if (status === "DRAFT") {
       return (
-        <a className={linkButtonClass} href="/campaigns/new">
+        <a className={linkButtonClass} href="/os/campaigns/new">
           <FileText className="size-4" />
           Send Brief to Team
         </a>
@@ -954,7 +953,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
     if (status === "APPROVED") {
       return (
-        <a className={linkButtonClass} href="/billing">
+        <a className={linkButtonClass} href="/os/wallet">
           <WalletCards className="size-4" />
           Check Funding
         </a>
@@ -972,7 +971,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
     if (status === "ACTIVE" || status === "RUNNING") {
       return (
-        <a className={linkButtonClass} href="/reports">
+        <a className={linkButtonClass} href="/os/reports">
           <BarChart3 className="size-4" />
           Monitor Results
         </a>
@@ -981,7 +980,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
     if (status === "COMPLETED") {
       return (
-        <a className={linkButtonClass} href="/reports">
+        <a className={linkButtonClass} href="/os/reports">
           <BarChart3 className="size-4" />
           Review Results
         </a>
@@ -998,7 +997,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
     }
 
     return (
-      <a className={linkButtonClass} href="/campaigns/new">
+      <a className={linkButtonClass} href="/os/campaigns/new">
         <FileText className="size-4" />
         Resubmit Campaign
       </a>
@@ -1006,7 +1005,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
   }
 
   return (
-    <CampaignShell active="/campaigns">
+    <>
       <PageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -1014,7 +1013,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
               <RefreshCw className="size-4" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href="/campaigns">
+            <a className={secondaryLinkButtonClass} href="/os/campaigns">
               <ArrowLeft className="size-4" />
               Back
             </a>
@@ -1039,7 +1038,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
         <section className="mt-6">
           <EmptyState
             action={
-              <a className={secondaryLinkButtonClass} href="/campaigns">
+              <a className={secondaryLinkButtonClass} href="/os/campaigns">
                 View campaigns
               </a>
             }
@@ -1221,6 +1220,6 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
           <ActivityTimeline campaign={campaign} />
         </section>
       )}
-    </CampaignShell>
+    </>
   );
 }

@@ -1,0 +1,117 @@
+{
+  "capturedAt": "2026-06-04T20:07:23.109Z",
+  "routes": [
+    {
+      "label": "Advertiser onboarding",
+      "url": "http://localhost:3100/onboarding",
+      "file": "docs/e2e-evidence/screenshot-advertiser-onboarding.png",
+      "exists": true,
+      "bytes": 141158
+    },
+    {
+      "label": "Advertiser campaigns",
+      "url": "http://localhost:3100/campaigns",
+      "file": "docs/e2e-evidence/screenshot-advertiser-campaigns.png",
+      "exists": true,
+      "bytes": 141164
+    },
+    {
+      "label": "Advertiser campaign creation",
+      "url": "http://localhost:3100/campaigns/new",
+      "file": "docs/e2e-evidence/screenshot-advertiser-campaign-new.png",
+      "exists": true,
+      "bytes": 103198
+    },
+    {
+      "label": "Advertiser billing/wallet",
+      "url": "http://localhost:3100/billing",
+      "file": "docs/e2e-evidence/screenshot-advertiser-billing.png",
+      "exists": true,
+      "bytes": 134343
+    },
+    {
+      "label": "Advertiser reports",
+      "url": "http://localhost:3100/reports",
+      "file": "docs/e2e-evidence/screenshot-advertiser-reports.png",
+      "exists": true,
+      "bytes": 129067
+    },
+    {
+      "label": "Advertiser financial history",
+      "url": "http://localhost:3100/campaigns/thread-f-placeholder/financial-history",
+      "file": "docs/e2e-evidence/screenshot-advertiser-financial-history.png",
+      "exists": true,
+      "bytes": 47662
+    },
+    {
+      "label": "Operator dashboard",
+      "url": "http://localhost:3101/campaign-ops",
+      "file": "docs/e2e-evidence/screenshot-operator-dashboard.png",
+      "exists": true,
+      "bytes": 150170
+    },
+    {
+      "label": "Operator review queue",
+      "url": "http://localhost:3101/campaign-ops/queue",
+      "file": "docs/e2e-evidence/screenshot-operator-queue.png",
+      "exists": true,
+      "bytes": 105930
+    },
+    {
+      "label": "Operator placement/report detail",
+      "url": "http://localhost:3101/campaign-ops/detail?campaignId=campaign_123",
+      "file": "docs/e2e-evidence/screenshot-operator-placement-reporting-detail.png",
+      "exists": true,
+      "bytes": 75924
+    },
+    {
+      "label": "Operator reports queue",
+      "url": "http://localhost:3101/campaign-ops/reports",
+      "file": "docs/e2e-evidence/screenshot-operator-reports.png",
+      "exists": true,
+      "bytes": 86221
+    },
+    {
+      "label": "Operator activity/audit",
+      "url": "http://localhost:3101/campaign-ops/activity",
+      "file": "docs/e2e-evidence/screenshot-operator-activity.png",
+      "exists": true,
+      "bytes": 85033
+    },
+    {
+      "label": "Growth catalog",
+      "url": "http://localhost:3100/growth-services",
+      "file": "docs/e2e-evidence/screenshot-growth-catalog.png",
+      "exists": true,
+      "bytes": 150999
+    },
+    {
+      "label": "Growth order tracking",
+      "url": "http://localhost:3100/growth-services/orders",
+      "file": "docs/e2e-evidence/screenshot-growth-orders.png",
+      "exists": true,
+      "bytes": 80674
+    },
+    {
+      "label": "Admin growth marketplace",
+      "url": "http://localhost:3101/growth-services",
+      "file": "docs/e2e-evidence/screenshot-admin-growth-marketplace.png",
+      "exists": true,
+      "bytes": 103592
+    },
+    {
+      "label": "Admin growth orders",
+      "url": "http://localhost:3101/growth-services/orders",
+      "file": "docs/e2e-evidence/screenshot-admin-growth-orders.png",
+      "exists": true,
+      "bytes": 86760
+    },
+    {
+      "label": "Admin overview/financial review",
+      "url": "http://localhost:3101/",
+      "file": "docs/e2e-evidence/screenshot-admin-overview-financial-review.png",
+      "exists": true,
+      "bytes": 153765
+    }
+  ]
+}

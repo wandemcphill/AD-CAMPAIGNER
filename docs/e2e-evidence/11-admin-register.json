@@ -1,0 +1,20 @@
+{
+  "name": "11-admin-register",
+  "method": "POST",
+  "url": "http://localhost:4000/v1/auth/register",
+  "status": 500,
+  "ok": false,
+  "requestBody": {
+    "email": "thread-f-admin-20260604154824@example.test",
+    "password": "TestPass123!",
+    "name": "Thread F Admin Operator",
+    "organizationName": "Thread F Admin Org 20260604154824",
+    "workspaceName": "Thread F Admin Workspace 20260604154824"
+  },
+  "responseBody": {
+    "statusCode": 500,
+    "message": "Internal server error"
+  },
+  "startedAt": "2026-06-04T15:48:28.342Z",
+  "finishedAt": "2026-06-04T15:48:28.919Z"
+}

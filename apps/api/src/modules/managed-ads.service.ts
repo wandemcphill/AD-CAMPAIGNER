@@ -3092,6 +3092,63 @@ export class ManagedAdsService {
     return { ok: true };
   }
 
+  async listNotificationPreferences(context?: AuthenticatedRequestContext) {
+    const scope = requireScope(context);
+    return this.db.notificationPreference.findMany({
+      where: { workspaceId: scope.workspaceId, userId: scope.userId },
+      orderBy: { eventName: "asc" }
+    });
+  }
+
+  async upsertNotificationPreference(
+    context: AuthenticatedRequestContext | undefined,
+    eventName: string,
+    input: { inApp?: boolean; email?: boolean; whatsapp?: boolean }
+  ) {
+    const scope = requireScope(context);
+    const trimmedEventName = eventName.trim();
+    if (!trimmedEventName) {
+      throw new BadRequestException("A notification event name is required.");
+    }
+
+    return this.db.notificationPreference.upsert({
+      where: {
+        workspaceId_userId_eventName: {
+          workspaceId: scope.workspaceId,
+          userId: scope.userId,
+          eventName: trimmedEventName
+        }
+      },
+      create: {
+        workspaceId: scope.workspaceId,
+        userId: scope.userId,
+        eventName: trimmedEventName,
+        inApp: input.inApp ?? true,
+        email: input.email ?? true,
+        whatsapp: input.whatsapp ?? false
+      },
+      update: {
+        ...(input.inApp === undefined ? {} : { inApp: input.inApp }),
+        ...(input.email === undefined ? {} : { email: input.email }),
+        ...(input.whatsapp === undefined ? {} : { whatsapp: input.whatsapp })
+      }
+    });
+  }
+
+  async listMediaAssets(context: AuthenticatedRequestContext | undefined, query: { kind?: string } = {}) {
+    const scope = requireScope(context);
+    return this.db.mediaAsset.findMany({
+      where: {
+        workspaceId: scope.workspaceId,
+        deletedAt: null,
+        status: { in: ["UPLOADED", "READY"] },
+        ...(query.kind ? { kind: query.kind as any } : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+  }
+
   private async assertCampaignPermission(tx: DbClient, scope: AuthenticatedRequestContext, permission: Permission) {
     await this.assertCampaignPermissions(tx, scope, [permission]);
   }

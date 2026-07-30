@@ -418,6 +418,53 @@ enum VtuOrderStatus {
   REFUNDED
 }
 
+// ─── Phase 2: Virtual Numbers (International SMS) ────────────────────────────
+
+enum NumberCapability {
+  SMS
+}
+
+enum NumberRentalKind {
+  TEMPORARY
+  STANDARD
+  EXTENDED
+  LONG_TERM
+}
+
+enum VirtualNumberStatus {
+  RESERVED
+  PROVISIONING
+  ACTIVE
+  EXPIRING
+  EXPIRED
+  RELEASED
+  FAILED
+  SUSPENDED
+}
+
+enum VirtualNumberOrderKind {
+  PURCHASE
+  RENEWAL
+}
+
+enum VirtualNumberOrderStatus {
+  QUOTED
+  CHARGED
+  PROVISIONING
+  FULFILLED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum NumberCompatibilityLevel {
+  TESTED_WORKING
+  LIKELY_WORKS
+  VARIES
+  NOT_SUPPORTED
+  UNKNOWN
+}
+
 enum DigitalAccessRequestStatus {
   PENDING    @map("pending")
   PROCESSING @map("processing")
@@ -502,6 +549,9 @@ model Workspace {
   growthOrders               GrowthOrder[]
   vtuOrders                  VtuOrder[]
   vtuWalletCharges           VtuWalletCharge[]
+  virtualNumbers             VirtualNumber[]
+  virtualNumberOrders        VirtualNumberOrder[]
+  virtualNumberWalletCharges VirtualNumberWalletCharge[]
   digitalAccessRequests      DigitalAccessRequest[]
   digitalAccessWalletCharges DigitalAccessWalletCharge[]
   companyProfiles            CompanyProfile[]
@@ -725,6 +775,7 @@ model Wallet {
   workspace            Workspace                   @relation(fields: [workspaceId], references: [id])
   entries              LedgerEntry[]
   vtuCharges           VtuWalletCharge[]
+  virtualNumberCharges VirtualNumberWalletCharge[]
   digitalAccessCharges DigitalAccessWalletCharge[]
   campaignBudgetHolds  CampaignBudgetHold[]
   paymentIntents       PaymentIntent[]
@@ -1517,6 +1568,161 @@ model VtuWalletCharge {
 
   @@unique([workspaceId, orderId])
   @@index([walletId, createdAt])
+}
+
+// ─── Phase 2: Virtual Numbers (International SMS) ────────────────────────────
+
+model NumberCountry {
+  isoCode    String  @id
+  name       String
+  dialPrefix String
+  flagEmoji  String
+  enabled    Boolean @default(false)
+  sortOrder  Int     @default(100)
+}
+
+model VirtualNumberProduct {
+  id                 String           @id @default(uuid())
+  countryCode        String
+  capability         NumberCapability @default(SMS)
+  rentalKind         NumberRentalKind
+  durationDays       Int
+  displayName        String
+  active             Boolean          @default(false)
+  preferredProviders String[]         @default([])
+  metadata           Json             @default("{}")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([countryCode, capability, durationDays])
+  @@index([countryCode, active])
+}
+
+model VirtualNumber {
+  id                String              @id @default(uuid())
+  workspaceId       String
+  userId            String?
+  productId         String
+  providerName      String
+  providerNumberId  String
+  e164              String
+  countryCode       String
+  status            VirtualNumberStatus @default(RESERVED)
+  provisionedAt     DateTime?
+  activatedAt       DateTime?
+  expiresAt         DateTime?
+  expiryWarnedAt    DateTime?
+  releasedAt        DateTime?
+  renewalCount      Int                 @default(0)
+  messageCount      Int                 @default(0)
+  lastMessageAt     DateTime?
+  lastPolledAt      DateTime?
+  supplierCostMinor Int                 @default(0)
+  supplierCurrency  String              @default("USD")
+  metadata          Json                @default("{}")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id])
+  messages          VirtualNumberMessage[]
+
+  @@unique([providerName, providerNumberId])
+  @@index([workspaceId, status, expiresAt])
+  @@index([status, expiresAt])
+}
+
+model VirtualNumberMessage {
+  id                 String        @id @default(uuid())
+  virtualNumberId    String
+  providerMessageId  String?
+  senderRaw          String?
+  senderMasked       String
+  bodyEncrypted      String
+  bodyRedacted       String
+  receivedAt         DateTime
+  providerReceivedAt DateTime?
+  providerStatus     String?
+  retainUntil        DateTime
+  metadata           Json          @default("{}")
+  createdAt          DateTime      @default(now())
+  virtualNumber      VirtualNumber @relation(fields: [virtualNumberId], references: [id])
+
+  @@unique([virtualNumberId, providerMessageId])
+  @@index([virtualNumberId, receivedAt])
+  @@index([retainUntil])
+}
+
+model VirtualNumberOrder {
+  id                  String                    @id @default(uuid())
+  workspaceId         String
+  userId              String?
+  productId           String
+  virtualNumberId     String?
+  kind                VirtualNumberOrderKind
+  status              VirtualNumberOrderStatus  @default(QUOTED)
+  amountMinor         Int
+  currency            String                    @default("NGN")
+  supplierCostMinor   Int                       @default(0)
+  supplierCurrency    String                    @default("USD")
+  fxRateId            String?
+  fxRateMicrosApplied BigInt?
+  providerName        String?
+  providerReference   String?
+  idempotencyKey      String                    @unique
+  riskScore           Int                       @default(0)
+  attestationAccepted Boolean                   @default(false)
+  requestIpAddress    String?
+  requestUserAgent    String?
+  requestDeviceId     String?
+  attemptCount        Int                       @default(0)
+  failureReason       String?
+  metadata            Json                      @default("{}")
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  workspace           Workspace                 @relation(fields: [workspaceId], references: [id])
+  walletCharges       VirtualNumberWalletCharge[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([providerName, providerReference])
+}
+
+model VirtualNumberWalletCharge {
+  id                  String    @id @default(uuid())
+  workspaceId         String
+  walletId            String
+  orderId             String
+  idempotencyKey      String    @unique
+  amountMinor         Int
+  currency            String    @default("NGN")
+  status              String    @default("CHARGED")
+  debitLedgerEntryId  String?
+  refundLedgerEntryId String?
+  metadata            Json      @default("{}")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  workspace           Workspace          @relation(fields: [workspaceId], references: [id])
+  wallet              Wallet             @relation(fields: [walletId], references: [id])
+  virtualNumberOrder  VirtualNumberOrder @relation(fields: [orderId], references: [id])
+
+  @@unique([workspaceId, orderId])
+  @@index([walletId, createdAt])
+}
+
+model NumberCompatibility {
+  id             String                   @id @default(uuid())
+  serviceKey     String
+  countryCode    String?
+  providerName   String?
+  numberType     String?
+  level          NumberCompatibilityLevel @default(UNKNOWN)
+  successRateBps Int?
+  sampleSize     Int                      @default(0)
+  lastTestedAt   DateTime?
+  evidence       String?
+  blocked        Boolean                  @default(false)
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@unique([serviceKey, countryCode, providerName, numberType])
 }
 
 model DigitalAccessCategory {

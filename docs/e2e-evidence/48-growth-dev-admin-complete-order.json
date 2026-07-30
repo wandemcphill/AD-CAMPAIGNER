@@ -1,0 +1,52 @@
+{
+  "name": "48-growth-dev-admin-complete-order",
+  "method": "PATCH",
+  "url": "http://localhost:4000/v1/admin/growth/orders/growth_kq8uwja86a",
+  "status": 200,
+  "ok": true,
+  "requestHeaders": {
+    "x-user-id": "thread-f-growth-user-20260604164650",
+    "x-workspace-id": "thread-f-growth-workspace-20260604164650",
+    "x-organization-id": "thread-f-growth-org-20260604164650",
+    "x-user-email": "thread-f-growth-20260604164650@example.test",
+    "x-user-name": "Thread F Growth Customer"
+  },
+  "requestBody": {
+    "status": "COMPLETED",
+    "quantityDelivered": 100,
+    "adminNote": "Completed during Thread F validation."
+  },
+  "responseBody": {
+    "id": "growth_kq8uwja86a",
+    "workspaceId": "thread-f-growth-workspace-20260604164650",
+    "serviceCode": "instagram-followers",
+    "serviceName": "Instagram Followers",
+    "platform": "INSTAGRAM",
+    "serviceKind": "FOLLOWERS",
+    "destinationKind": "INSTAGRAM_PROFILE",
+    "destinationUrl": "https://instagram.com/threadfvalidation",
+    "quantityOrdered": 100,
+    "quantityDelivered": 100,
+    "status": "COMPLETED",
+    "amount": {
+      "amountMinor": 3675,
+      "currency": "NGN"
+    },
+    "supplierCost": {
+      "amountMinor": 2500,
+      "currency": "NGN"
+    },
+    "grossMargin": {
+      "amountMinor": 1175,
+      "currency": "NGN"
+    },
+    "expectedCompletionAt": "2026-06-04T18:46:54.259Z",
+    "createdAt": "2026-06-04T16:46:54.259Z",
+    "updatedAt": "2026-06-04T16:46:54.780Z",
+    "supplierReference": "mock_smm_2a9867o4g9",
+    "submittedAt": "2026-06-04T16:46:54.259Z",
+    "adminNote": "Completed during Thread F validation.",
+    "completedAt": "2026-06-04T16:46:54.780Z"
+  },
+  "capturedAt": "2026-06-04T16:46:54.777Z"
+}

@@ -1,0 +1,404 @@
+{
+  "name": "50-growth-dev-admin-marketplace-management",
+  "method": "GET",
+  "url": "http://localhost:4000/v1/admin/growth/services",
+  "status": 200,
+  "ok": true,
+  "requestHeaders": {
+    "x-user-id": "thread-f-growth-user-20260604164650",
+    "x-workspace-id": "thread-f-growth-workspace-20260604164650",
+    "x-organization-id": "thread-f-growth-org-20260604164650",
+    "x-user-email": "thread-f-growth-20260604164650@example.test",
+    "x-user-name": "Thread F Growth Customer"
+  },
+  "requestBody": null,
+  "responseBody": [
+    {
+      "code": "tiktok-views",
+      "name": "TikTok Views",
+      "platform": "TIKTOK",
+      "category": "TikTok",
+      "serviceKind": "VIEWS",
+      "destinationKind": "TIKTOK_PROFILE",
+      "description": "View delivery for public TikTok videos and profile-linked posts.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 180000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 100,
+      "maximumQuantity": 100000,
+      "quantityStep": 100,
+      "estimatedDeliveryMinutes": 240,
+      "expectedCompletion": "4-24 hours",
+      "marginBps": 3500,
+      "supportsRefill": false,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "LOWEST_COST",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "justanotherpanel",
+          "peakerr"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "HIGH",
+        "accountRisk": "MEDIUM",
+        "refundRisk": "MEDIUM",
+        "reputationRisk": "HIGH",
+        "summary": "Artificial view delivery can conflict with platform authenticity expectations.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "tiktok-likes",
+      "name": "TikTok Likes",
+      "platform": "TIKTOK",
+      "category": "TikTok",
+      "serviceKind": "LIKES",
+      "destinationKind": "TIKTOK_PROFILE",
+      "description": "Like delivery for public TikTok posts.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 320000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 50,
+      "maximumQuantity": 50000,
+      "quantityStep": 50,
+      "estimatedDeliveryMinutes": 360,
+      "expectedCompletion": "6-36 hours",
+      "marginBps": 4000,
+      "supportsRefill": true,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "LOWEST_COST",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "smmraja",
+          "justanotherpanel"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "HIGH",
+        "accountRisk": "HIGH",
+        "refundRisk": "MEDIUM",
+        "reputationRisk": "HIGH",
+        "summary": "Artificial likes can be removed by platform integrity systems or trigger review.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "tiktok-followers",
+      "name": "TikTok Followers",
+      "platform": "TIKTOK",
+      "category": "TikTok",
+      "serviceKind": "FOLLOWERS",
+      "destinationKind": "TIKTOK_PROFILE",
+      "description": "Follower delivery for public TikTok profiles.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 620000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 100,
+      "maximumQuantity": 25000,
+      "quantityStep": 100,
+      "estimatedDeliveryMinutes": 720,
+      "expectedCompletion": "12-72 hours",
+      "marginBps": 4500,
+      "supportsRefill": true,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "PREFERRED_FIRST",
+        "preferredSupplier": "smdpanel",
+        "fallbackSuppliers": [
+          "justanotherpanel",
+          "peakerr"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "CRITICAL",
+        "accountRisk": "HIGH",
+        "refundRisk": "HIGH",
+        "reputationRisk": "HIGH",
+        "summary": "Follower growth services carry the highest integrity, drop, and customer dispute risk.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "instagram-followers",
+      "name": "Instagram Followers",
+      "platform": "INSTAGRAM",
+      "category": "Instagram",
+      "serviceKind": "FOLLOWERS",
+      "destinationKind": "INSTAGRAM_PROFILE",
+      "description": "Follower delivery for public Instagram profiles.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 650000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 100,
+      "maximumQuantity": 25000,
+      "quantityStep": 100,
+      "estimatedDeliveryMinutes": 720,
+      "expectedCompletion": "12-72 hours",
+      "marginBps": 4500,
+      "supportsRefill": true,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "PREFERRED_FIRST",
+        "preferredSupplier": "justanotherpanel",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "peakerr"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "CRITICAL",
+        "accountRisk": "HIGH",
+        "refundRisk": "HIGH",
+        "reputationRisk": "HIGH",
+        "summary": "Artificial follower delivery can be removed and can expose accounts to integrity review.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "instagram-likes",
+      "name": "Instagram Likes",
+      "platform": "INSTAGRAM",
+      "category": "Instagram",
+      "serviceKind": "LIKES",
+      "destinationKind": "INSTAGRAM_PROFILE",
+      "description": "Like delivery for public Instagram posts or reels.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 300000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 50,
+      "maximumQuantity": 50000,
+      "quantityStep": 50,
+      "estimatedDeliveryMinutes": 360,
+      "expectedCompletion": "6-36 hours",
+      "marginBps": 4000,
+      "supportsRefill": true,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "LOWEST_COST",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "smmraja",
+          "justanotherpanel"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "HIGH",
+        "accountRisk": "HIGH",
+        "refundRisk": "MEDIUM",
+        "reputationRisk": "HIGH",
+        "summary": "Artificial likes can conflict with authenticity rules and may drop after delivery.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "youtube-views",
+      "name": "YouTube Views",
+      "platform": "YOUTUBE",
+      "category": "YouTube",
+      "serviceKind": "VIEWS",
+      "destinationKind": "YOUTUBE_CHANNEL",
+      "description": "View delivery for public YouTube videos.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 450000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 100,
+      "maximumQuantity": 100000,
+      "quantityStep": 100,
+      "estimatedDeliveryMinutes": 1440,
+      "expectedCompletion": "1-5 days",
+      "marginBps": 3500,
+      "supportsRefill": false,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "LOWEST_COST",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "justanotherpanel",
+          "peakerr"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "CRITICAL",
+        "accountRisk": "HIGH",
+        "refundRisk": "HIGH",
+        "reputationRisk": "HIGH",
+        "summary": "Invalid or incentivized views can be filtered and may affect channel standing.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "youtube-subscribers",
+      "name": "YouTube Subscribers",
+      "platform": "YOUTUBE",
+      "category": "YouTube",
+      "serviceKind": "CHANNEL_MEMBERS",
+      "destinationKind": "YOUTUBE_CHANNEL",
+      "description": "Subscriber delivery for public YouTube channels.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 900000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 50,
+      "maximumQuantity": 10000,
+      "quantityStep": 50,
+      "estimatedDeliveryMinutes": 2880,
+      "expectedCompletion": "2-7 days",
+      "marginBps": 5000,
+      "supportsRefill": true,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "MANUAL_REVIEW",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "justanotherpanel"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "CRITICAL",
+        "accountRisk": "HIGH",
+        "refundRisk": "HIGH",
+        "reputationRisk": "HIGH",
+        "summary": "Subscriber services are highly exposed to platform spam and fake engagement enforcement.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "telegram-members",
+      "name": "Telegram Members",
+      "platform": "TELEGRAM",
+      "category": "Telegram",
+      "serviceKind": "CHANNEL_MEMBERS",
+      "destinationKind": "TELEGRAM_CHANNEL",
+      "description": "Member delivery for public Telegram channels or groups.",
+      "enabled": true,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 420000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 100,
+      "maximumQuantity": 50000,
+      "quantityStep": 100,
+      "estimatedDeliveryMinutes": 1440,
+      "expectedCompletion": "1-5 days",
+      "marginBps": 5000,
+      "supportsRefill": true,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "PREFERRED_FIRST",
+        "preferredSupplier": "peakerr",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "justanotherpanel"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "HIGH",
+        "accountRisk": "MEDIUM",
+        "refundRisk": "MEDIUM",
+        "reputationRisk": "HIGH",
+        "summary": "Member adds can create spam complaints and drop-off when groups moderate aggressively.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees."
+        ]
+      }
+    },
+    {
+      "code": "website-traffic",
+      "name": "Website Traffic",
+      "platform": "WEBSITE",
+      "category": "Traffic",
+      "serviceKind": "VIEWS",
+      "destinationKind": "WEBSITE",
+      "description": "Traffic delivery for public websites and landing pages.",
+      "enabled": false,
+      "pricingModel": "PER_1000",
+      "baseRate": {
+        "amountMinor": 250000,
+        "currency": "NGN"
+      },
+      "minimumQuantity": 500,
+      "maximumQuantity": 250000,
+      "quantityStep": 500,
+      "estimatedDeliveryMinutes": 2880,
+      "expectedCompletion": "2-7 days",
+      "marginBps": 3500,
+      "supportsRefill": false,
+      "supportsCancel": true,
+      "supplierRouting": {
+        "strategy": "MANUAL_REVIEW",
+        "fallbackSuppliers": [
+          "smdpanel",
+          "peakerr"
+        ]
+      },
+      "risk": {
+        "platformPolicyRisk": "HIGH",
+        "accountRisk": "MEDIUM",
+        "refundRisk": "HIGH",
+        "reputationRisk": "HIGH",
+        "summary": "Low-quality traffic can affect analytics, ads attribution, and customer trust.",
+        "mitigations": [
+          "Require public destinations and reject private, restricted, or misleading links.",
+          "Cap order sizes, monitor delivery deltas, and pause services with abnormal failure rates.",
+          "Show customers that outcomes are delivery-based, not engagement quality or account safety guarantees.",
+          "Disable by default until traffic source quality, bot filtering, and analytics exclusions are approved."
+        ]
+      }
+    }
+  ],
+  "capturedAt": "2026-06-04T16:46:56.446Z"
+}

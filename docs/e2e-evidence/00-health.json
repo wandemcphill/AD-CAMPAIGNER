@@ -1,0 +1,28 @@
+{
+  "name": "00-health",
+  "method": "GET",
+  "url": "http://localhost:4000/v1/health",
+  "status": 200,
+  "ok": true,
+  "requestBody": null,
+  "responseBody": {
+    "status": "ok",
+    "service": "fliptrybe-api",
+    "checkedAt": "2026-06-04T15:48:26.220Z",
+    "providers": {
+      "ads": "mock-ads",
+      "ai": "mock-ai",
+      "payments": "mock-payments",
+      "smm": "mock-smm",
+      "storage": "mock-storage"
+    },
+    "operations": {
+      "smmSuppliers": [
+        "mock-smm"
+      ],
+      "smmPricingRules": 7
+    }
+  },
+  "startedAt": "2026-06-04T15:48:24.194Z",
+  "finishedAt": "2026-06-04T15:48:26.300Z"
+}

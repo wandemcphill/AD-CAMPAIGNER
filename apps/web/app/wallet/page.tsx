@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
-export default function WalletPage() {
-  redirect("/billing");
+export default function Page() {
+  redirect("/os/wallet");
 }

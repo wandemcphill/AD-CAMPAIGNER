@@ -3,14 +3,8 @@
   "configurations": [
     {
       "name": "web",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "pnpm@10.18.3", "--filter", "@fliptrybe/web", "dev"],
-      "port": 3000
-    },
-    {
-      "name": "fliptrybe-uiux-mock",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "C:\\Users\\ayomc\\Downloads\\New folder"],
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@fliptrybe/web", "dev"],
       "port": 3000
     }
   ]

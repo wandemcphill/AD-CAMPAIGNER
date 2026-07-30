@@ -1,0 +1,308 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Copy, Eye, Plus, RefreshCw, Share2, Sparkles, Ticket } from "lucide-react";
+
+import { Badge, Button, Panel, SummaryStatStrip, cn } from "@fliptrybe/ui";
+
+import {
+  createVoucher,
+  loadVoucherProducts,
+  loadVouchers,
+  redeemVoucher,
+  revealVoucher,
+  shareVoucher,
+  type VoucherProduct,
+  type VoucherRecord
+} from "../../vouchers/api";
+import { VoucherCard } from "../../vouchers/voucher-card";
+import { EmptyState, ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
+
+function statusTone(status: string): "neutral" | "success" | "warning" | "info" {
+  const normalized = status.toUpperCase();
+
+  if (normalized === "REDEEMED") return "success";
+  if (normalized === "REVEALED") return "warning";
+  if (normalized === "SEALED" || normalized === "CREATED") return "info";
+
+  return "neutral";
+}
+
+export default function VouchersPage() {
+  const [products, setProducts] = useState<VoucherProduct[]>([]);
+  const [vouchers, setVouchers] = useState<VoucherRecord[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [shareLink, setShareLink] = useState<string>();
+  const [copied, setCopied] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setError(undefined);
+    try {
+      const [productList, voucherList] = await Promise.all([loadVoucherProducts(), loadVouchers()]);
+      setProducts(productList);
+      setVouchers(voucherList);
+      setSelectedProduct((current) => current || productList[0]?.id || "");
+    } catch {
+      setError("We could not load vouchers right now. Refresh to try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const currentProduct = useMemo(
+    () => products.find((product) => product.id === selectedProduct) ?? products[0],
+    [products, selectedProduct]
+  );
+
+  async function run(key: string, action: () => Promise<unknown>, failure: string) {
+    setBusy(key);
+    setError(undefined);
+    try {
+      await action();
+      await refresh();
+    } catch {
+      setError(failure);
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function issueVoucher() {
+    if (!currentProduct) return;
+
+    await run(
+      "issue",
+      () => createVoucher({ productId: currentProduct.id, giftNote: "Shared from FlipTrybe" }),
+      "We could not issue that voucher. No credit has been deducted."
+    );
+  }
+
+  async function onShare(voucherId: string) {
+    setBusy(`share-${voucherId}`);
+    setError(undefined);
+    try {
+      const result = await shareVoucher(voucherId);
+      setShareLink(result.claimUrl);
+      setCopied(false);
+    } catch {
+      setError("We could not create a share link for this voucher.");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function copyShareLink() {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setCopied(true);
+    } catch {
+      setError("Copying failed — select the link and copy it manually.");
+    }
+  }
+
+  const sealedCount = vouchers.filter(
+    (voucher) => voucher.status === "SEALED" || voucher.status === "CREATED"
+  ).length;
+  const redeemedCount = vouchers.filter((voucher) => voucher.status === "REDEEMED").length;
+
+  return (
+    <>
+      <PageHeader
+        action={
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+              <RefreshCw className="size-4 stroke-[1.5]" />
+              Refresh
+            </Button>
+            <Button disabled={!currentProduct || busy === "issue"} onClick={() => void issueVoucher()}>
+              <Plus className="size-4 stroke-[1.5]" />
+              {busy === "issue" ? "Issuing..." : "Issue voucher"}
+            </Button>
+          </div>
+        }
+        eyebrow={
+          <>
+            <Badge tone="info">Voucher engine</Badge>
+            <Badge tone="neutral">Sealed credit</Badge>
+          </>
+        }
+        title="Campaign Credit Cards"
+      />
+
+      <ErrorNotice message={error} />
+
+      <section className="mt-6">
+        <SummaryStatStrip
+          items={[
+            { label: "vouchers issued", value: loading ? "..." : vouchers.length },
+            { label: "still sealed", value: loading ? "..." : sealedCount },
+            { label: "redeemed", value: loading ? "..." : redeemedCount },
+            { label: "products available", value: loading ? "..." : products.length }
+          ]}
+        />
+      </section>
+
+      {shareLink ? (
+        <section className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-accent)]/40 bg-[var(--ft-accent-subtle)] p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
+            <Share2 className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+            Share link ready
+          </div>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              className="h-10 flex-1 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 font-mono text-xs text-[var(--ft-text-primary)] outline-none"
+              readOnly
+              value={shareLink}
+            />
+            <Button onClick={() => void copyShareLink()} variant="secondary">
+              {copied ? <Check className="size-4 stroke-[1.5]" /> : <Copy className="size-4 stroke-[1.5]" />}
+              {copied ? "Copied" : "Copy link"}
+            </Button>
+            <Button onClick={() => setShareLink(undefined)} variant="ghost">
+              Dismiss
+            </Button>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+            The recipient can claim this voucher while the PIN stays sealed.
+          </p>
+        </section>
+      ) : null}
+
+      <section className="mt-6 grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Panel className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Products</h2>
+              <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                Choose what the next sealed voucher should carry.
+              </p>
+            </div>
+            <Ticket className="size-5 shrink-0 stroke-[1.5] text-[var(--ft-accent)]" />
+          </div>
+
+          <div className="mt-5 grid gap-2">
+            {loading ? (
+              <LoadingBlock label="Loading products" />
+            ) : products.length === 0 ? (
+              <div className="rounded-[var(--radius-sm)] border border-dashed border-[var(--ft-border)] p-6 text-center text-sm text-[var(--ft-text-muted)]">
+                No voucher products are available yet.
+              </div>
+            ) : (
+              products.map((product) => (
+                <button
+                  className={cn(
+                    "rounded-[var(--radius-sm)] border px-4 py-3 text-left transition",
+                    selectedProduct === product.id
+                      ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)]"
+                      : "border-[var(--ft-border)] bg-[var(--ft-bg-surface)] hover:border-[var(--ft-accent)]"
+                  )}
+                  key={product.id}
+                  onClick={() => setSelectedProduct(product.id)}
+                  type="button"
+                >
+                  <div className="font-medium text-[var(--ft-text-primary)]">{product.name}</div>
+                  <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                    {product.category} · {product.handler}
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+
+          <p className="mt-5 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm leading-6 text-[var(--ft-text-secondary)]">
+            Issue a voucher, share it while sealed, then reveal and redeem from this same view.
+          </p>
+        </Panel>
+
+        <div className="grid gap-5">
+          {loading ? (
+            <Panel className="p-4">
+              <LoadingBlock label="Loading vouchers" />
+            </Panel>
+          ) : vouchers.length === 0 ? (
+            <Panel className="p-4">
+              <EmptyState
+                action={
+                  <Button
+                    disabled={!currentProduct || busy === "issue"}
+                    onClick={() => void issueVoucher()}
+                  >
+                    <Plus className="size-4 stroke-[1.5]" />
+                    Issue voucher
+                  </Button>
+                }
+                copy="Issue a sealed voucher and it will appear here instantly."
+                icon={Sparkles}
+                title="No vouchers yet"
+              />
+            </Panel>
+          ) : (
+            vouchers.map((voucher) => (
+              <div className="grid gap-3" key={voucher.id}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={statusTone(voucher.status)}>{voucher.status.toLowerCase()}</Badge>
+                  <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    {voucher.serialNumber}
+                  </span>
+                  <span className="text-sm text-[var(--ft-text-secondary)]">
+                    {voucher.product.name}
+                  </span>
+                </div>
+                <VoucherCard voucher={voucher} />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    disabled={busy === `share-${voucher.id}`}
+                    onClick={() => void onShare(voucher.id)}
+                    variant="secondary"
+                  >
+                    <Share2 className="size-4 stroke-[1.5]" />
+                    {busy === `share-${voucher.id}` ? "Creating link..." : "Share"}
+                  </Button>
+                  <Button
+                    disabled={busy === `reveal-${voucher.id}`}
+                    onClick={() =>
+                      void run(
+                        `reveal-${voucher.id}`,
+                        () => revealVoucher(voucher.id),
+                        "We could not reveal this voucher PIN."
+                      )
+                    }
+                    variant="secondary"
+                  >
+                    <Eye className="size-4 stroke-[1.5]" />
+                    {busy === `reveal-${voucher.id}` ? "Revealing..." : "Reveal PIN"}
+                  </Button>
+                  <Button
+                    disabled={busy === `redeem-${voucher.id}` || voucher.status === "REDEEMED"}
+                    onClick={() =>
+                      void run(
+                        `redeem-${voucher.id}`,
+                        () => redeemVoucher(voucher.id, { redeemedBy: "Studio" }),
+                        "We could not redeem this voucher. No credit has moved."
+                      )
+                    }
+                  >
+                    <Sparkles className="size-4 stroke-[1.5]" />
+                    {voucher.status === "REDEEMED"
+                      ? "Redeemed"
+                      : busy === `redeem-${voucher.id}`
+                        ? "Redeeming..."
+                        : "Redeem"}
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+    </>
+  );
+}

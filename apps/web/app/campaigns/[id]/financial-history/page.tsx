@@ -1,7 +1,7 @@
-import { CampaignFinancialHistoryClient } from "./financial-history-client";
+import { redirect } from "next/navigation";
 
 export default async function CampaignFinancialHistoryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  return <CampaignFinancialHistoryClient campaignId={id} />;
+  redirect(`/os/campaigns/${id}/financial-history`);
 }

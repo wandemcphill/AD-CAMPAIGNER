@@ -66,9 +66,9 @@ export const categories: AccessCategory[] = [
 ];
 
 export const navItems = [
-  { label: "Hub", href: "/digital-access", icon: Sparkles },
-  { label: "Services", href: "/digital-access/services", icon: ShieldCheck },
-  { label: "Requests", href: "/digital-access/requests", icon: KeyRound }
+  { label: "Hub", href: "/os/digital-access", icon: Sparkles },
+  { label: "Services", href: "/os/digital-access/services", icon: ShieldCheck },
+  { label: "Requests", href: "/os/digital-access/requests", icon: KeyRound }
 ];
 
 export const statusTone = {

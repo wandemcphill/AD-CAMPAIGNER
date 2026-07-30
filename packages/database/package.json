@@ -14,7 +14,8 @@
     "prisma": "prisma",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
-    "seed:vtu": "tsx prisma/seed-vtu.ts"
+    "seed:vtu": "tsx prisma/seed-vtu.ts",
+    "seed:marketplace": "tsx prisma/seed-marketplace.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

@@ -229,7 +229,7 @@ describe("PlatformService", () => {
       expect(service.listLivePromotions(workspaceA)).toEqual([]);
       expect(service.listNotifications(workspaceA)).toEqual([]);
       expect(service.listAuditLogs(workspaceA)).toEqual([]);
-      expect(service.search()).toEqual({ query: "", results: [] });
+      expect(await service.search()).toEqual({ query: "", results: [] });
       expect(service.getHealth().providers.smm).toBe("smm-router:none");
       await expect(service.createSmmOrder(workspaceA, { quantity: 100 })).rejects.toThrow(
         "No SMM supplier could quote this service."
