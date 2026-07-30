@@ -12,6 +12,7 @@ import {
   Radar,
   RefreshCcw,
   ShieldCheck,
+  Smartphone,
   Users
 } from "lucide-react";
 
@@ -69,7 +70,8 @@ export default function AdminPage() {
               { label: "Payments", href: "/campaign-ops/reports", icon: Banknote },
               { label: "Growth", href: "/growth-services", icon: Boxes },
               { label: "Audit", href: "/campaign-ops/activity", icon: FileSearch },
-              { label: "Access", href: "/digital-access", icon: LockKeyhole }
+              { label: "Access", href: "/digital-access", icon: LockKeyhole },
+              { label: "VTU", href: "/vtu", icon: Smartphone }
             ].map((item) => (
               <a
                 className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"

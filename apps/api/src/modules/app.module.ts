@@ -39,6 +39,10 @@ import { AuthorizationGuard } from "./authorization.guard";
 import { RealtimeGateway } from "./realtime.gateway";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
+import { VtuModule } from "./vtu/vtu.module";
+import { PersonasModule } from "./personas/personas.module";
+import { AutomationModule } from "./automation/automation.module";
+import { MarketplaceModule } from "./marketplace/marketplace.module";
 
 @Module({
   imports: [
@@ -56,7 +60,11 @@ import { VouchersModule } from "./vouchers/vouchers.module";
       }
     ]),
     DigitalAccessModule,
-    VouchersModule
+    VouchersModule,
+    VtuModule,
+    PersonasModule,
+    AutomationModule,
+    MarketplaceModule
   ],
   controllers: [
     HealthController,

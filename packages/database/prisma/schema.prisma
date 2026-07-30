@@ -365,35 +365,57 @@ enum GrowthRefundReviewStatus {
   REJECTED
 }
 
-enum OtpProviderTier {
+enum ProviderDomain {
+  VIRTUAL_NUMBER
+  VTU
+}
+
+enum ProviderTier {
   PREMIUM
   BUDGET
 }
 
-enum OtpProviderStatus {
+enum ProviderStatus {
   HEALTHY
   DEGRADED
   DOWN
   DISABLED
 }
 
-enum OtpOrderStatus {
-  QUOTED
-  CHARGED
-  ALLOCATING
-  WAITING
-  RECEIVED
-  COMPLETED
-  EXPIRED
-  REFUNDED
-  FAILED
-  CANCELLED
+enum FxRateSource {
+  MANUAL
+  CBN
+  PROVIDER_FEED
 }
 
-enum OtpWalletChargeStatus {
+enum VtuProductType {
+  AIRTIME
+  DATA
+}
+
+enum VtuNetwork {
+  MTN
+  GLO
+  AIRTEL
+  NINE_MOBILE
+}
+
+enum VtuPlanType {
+  SME
+  CG
+  GIFTING
+  CORPORATE
+}
+
+enum VtuOrderStatus {
+  QUOTED
   CHARGED
-  REFUNDED
+  SUBMITTED
+  DELIVERED
   FAILED
+  AMBIGUOUS
+  REVERSED
+  REFUNDED
 }
 
 enum DigitalAccessRequestStatus {
@@ -440,6 +462,8 @@ model User {
   campaignLedgerEntries CampaignLedgerEntry[]     @relation("CampaignLedgerEntryActor")
   notifications         Notification[]           @relation("NotificationRecipient")
   notificationPrefs     NotificationPreference[]
+  createdPersonas       Persona[]                @relation("PersonaCreator")
+  createdWorkflows      AutomationWorkflow[]     @relation("AutomationWorkflowCreator")
 
   @@index([status])
   @@index([deletedAt])
@@ -476,8 +500,8 @@ model Workspace {
   paymentIntents             PaymentIntent[]
   smmOrders                  SmmOrder[]
   growthOrders               GrowthOrder[]
-  otpOrders                  OtpOrder[]
-  otpWalletCharges           OtpWalletCharge[]
+  vtuOrders                  VtuOrder[]
+  vtuWalletCharges           VtuWalletCharge[]
   digitalAccessRequests      DigitalAccessRequest[]
   digitalAccessWalletCharges DigitalAccessWalletCharge[]
   companyProfiles            CompanyProfile[]
@@ -492,6 +516,8 @@ model Workspace {
   referralAccounts           ReferralAccount[]
   auditLogs                  AuditLog[]
   adAccounts                 AdAccount[]
+  personas                   Persona[]
+  automationWorkflows        AutomationWorkflow[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -698,7 +724,7 @@ model Wallet {
   updatedAt            DateTime                    @updatedAt
   workspace            Workspace                   @relation(fields: [workspaceId], references: [id])
   entries              LedgerEntry[]
-  otpCharges           OtpWalletCharge[]
+  vtuCharges           VtuWalletCharge[]
   digitalAccessCharges DigitalAccessWalletCharge[]
   campaignBudgetHolds  CampaignBudgetHold[]
   paymentIntents       PaymentIntent[]
@@ -1312,168 +1338,185 @@ model GrowthOrder {
   @@index([deletedAt])
 }
 
-model OtpService {
-  id                    String          @id @default(uuid())
-  code                  String
-  name                  String
-  countryCode           String
-  providerTier          OtpProviderTier
-  category              String          @default("general")
-  visible               Boolean         @default(false)
-  requiresAdminApproval Boolean         @default(true)
-  metadata              Json            @default("{}")
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
-  deletedAt             DateTime?
+// ─── Phase 0: Provider registry + FX + Pricing ───────────────────────────────
 
-  @@unique([code, countryCode, providerTier])
-  @@index([countryCode, visible])
-  @@index([providerTier, visible])
-  @@index([deletedAt])
-}
-
-model OtpProviderConfig {
-  id               String            @id @default(uuid())
-  providerName     String            @unique
-  tier             OtpProviderTier
-  status           OtpProviderStatus @default(DISABLED)
-  priority         Int               @default(100)
-  markupBps        Int               @default(5500)
-  enabledCountries String[]          @default([])
-  enabledServices  String[]          @default([])
-  metadata         Json              @default("{}")
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  deletedAt        DateTime?
-
-  @@index([tier, status])
-  @@index([deletedAt])
-}
-
-model OtpOrder {
-  id                  String              @id @default(uuid())
-  workspaceId         String
-  serviceCode         String
-  serviceName         String
-  countryCode         String
-  providerTier        OtpProviderTier
-  providerName        String?
-  providerReference   String?
-  status              OtpOrderStatus      @default(QUOTED)
-  phoneNumberMasked   String?
-  expiresAt           DateTime?
-  amountMinor         Int
-  currency            String              @default("NGN")
-  supplierCostMinor   Int
-  supplierCurrency    String              @default("USD")
-  idempotencyKey      String              @unique
-  attestationAccepted Boolean             @default(false)
-  riskScore           Int                 @default(0)
-  requestIpAddress    String?
-  requestUserAgent    String?
-  requestDeviceId     String?
-  metadata            Json                @default("{}")
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+model ProviderConfig {
+  id                  String         @id @default(uuid())
+  name                String         @unique
+  domain              ProviderDomain
+  tier                ProviderTier   @default(BUDGET)
+  status              ProviderStatus @default(DISABLED)
+  priority            Int            @default(100)
+  enabledCountries    String[]       @default([])
+  enabledNetworks     String[]       @default([])
+  enabledProductTypes String[]       @default([])
+  credentialsRef      String?
+  metadata            Json           @default("{}")
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
   deletedAt           DateTime?
-  workspace           Workspace           @relation(fields: [workspaceId], references: [id])
-  messages            OtpMessage[]
-  walletCharges       OtpWalletCharge[]
-  routingAttempts     OtpRoutingAttempt[]
 
-  @@index([workspaceId, status, createdAt])
-  @@index([providerName, providerReference])
-  @@index([serviceCode, countryCode])
+  @@index([domain, status, priority])
   @@index([deletedAt])
 }
 
-model OtpMessage {
-  id                   String    @id @default(uuid())
-  otpOrderId           String
-  status               String    @default("RECEIVED")
-  redactedMessage      String
-  messageTextEncrypted String?
-  receivedAt           DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  otpOrder             OtpOrder  @relation(fields: [otpOrderId], references: [id])
-
-  @@index([otpOrderId, receivedAt])
-}
-
-model OtpProviderHealth {
-  id             String            @id @default(uuid())
+model ProviderHealth {
+  id             String         @id @default(uuid())
   providerName   String
-  tier           OtpProviderTier
-  status         OtpProviderStatus
+  domain         ProviderDomain
+  status         ProviderStatus
   latencyMs      Int
   successRateBps Int
   balanceMinor   Int?
   currency       String?
   reason         String?
-  checkedAt      DateTime          @default(now())
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  metadata       Json           @default("{}")
+  checkedAt      DateTime       @default(now())
 
   @@index([providerName, checkedAt])
-  @@index([tier, status, checkedAt])
+  @@index([domain, status, checkedAt])
 }
 
-model OtpWalletCharge {
-  id                  String                @id @default(uuid())
-  workspaceId         String
-  walletId            String
-  otpOrderId          String
-  idempotencyKey      String                @unique
-  amountMinor         Int
-  currency            String                @default("NGN")
-  status              OtpWalletChargeStatus @default(CHARGED)
-  debitLedgerEntryId  String?
-  refundLedgerEntryId String?
-  providerName        String?
-  providerReference   String?
-  metadata            Json                  @default("{}")
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  workspace           Workspace             @relation(fields: [workspaceId], references: [id])
-  wallet              Wallet                @relation(fields: [walletId], references: [id])
-  otpOrder            OtpOrder              @relation(fields: [otpOrderId], references: [id])
-
-  @@unique([workspaceId, otpOrderId])
-  @@index([workspaceId, status, createdAt])
-  @@index([walletId, createdAt])
-  @@index([providerName, providerReference])
-}
-
-model OtpRoutingAttempt {
-  id           String          @id @default(uuid())
-  otpOrderId   String
+model ProviderRoutingAttempt {
+  id           String         @id @default(uuid())
+  domain       ProviderDomain
+  orderType    String
+  orderId      String
   providerName String
-  providerTier OtpProviderTier
   score        Int
   status       String
   reason       String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  otpOrder     OtpOrder        @relation(fields: [otpOrderId], references: [id])
+  createdAt    DateTime       @default(now())
 
-  @@index([otpOrderId, createdAt])
+  @@index([orderType, orderId, createdAt])
   @@index([providerName, status, createdAt])
 }
 
-model OtpPricingRule {
-  id                 String          @id @default(uuid())
-  tier               OtpProviderTier
-  markupBps          Int
-  minimumMarginMinor Int
-  platformFeeMinor   Int
-  customerCurrency   String          @default("NGN")
-  usdToNgnRate       Int             @default(1600)
-  active             Boolean         @default(true)
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+model FxRate {
+  id            String       @id @default(uuid())
+  baseCurrency  String       @default("USD")
+  quoteCurrency String       @default("NGN")
+  rateMicros    BigInt
+  bufferBps     Int          @default(0)
+  source        FxRateSource @default(MANUAL)
+  effectiveFrom DateTime     @default(now())
+  effectiveTo   DateTime?
+  setByUserId   String?
+  note          String?
+  createdAt     DateTime     @default(now())
 
-  @@index([tier, active])
+  @@index([baseCurrency, quoteCurrency, effectiveFrom])
+}
+
+model PricingRule {
+  id                 String         @id @default(uuid())
+  domain             ProviderDomain
+  countryCode        String?
+  network            String?
+  productType        String?
+  providerName       String?
+  durationDays       Int?
+  markupBps          Int            @default(0)
+  discountBps        Int            @default(0)
+  minimumMarginMinor Int            @default(0)
+  platformFeeMinor   Int            @default(0)
+  customerCurrency   String         @default("NGN")
+  active             Boolean        @default(true)
+  specificity        Int            @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([domain, active, specificity])
+}
+
+// ─── Phase 1: VTU (Airtime & Data) ───────────────────────────────────────────
+
+model VtuProviderRoute {
+  id          String         @id @default(uuid())
+  productType VtuProductType
+  network     VtuNetwork?
+  provider    String
+  priority    Int
+  active      Boolean        @default(true)
+  note        String?
+  updatedAt   DateTime       @updatedAt
+  updatedBy   String?
+
+  @@index([productType, network, active, priority])
+}
+
+model VtuDataPlan {
+  id             String      @id @default(uuid())
+  providerName   String
+  providerPlanId String
+  network        VtuNetwork
+  planType       VtuPlanType
+  displayName    String
+  sizeMb         Int
+  validityDays   Int
+  costMinor      Int
+  currency       String      @default("NGN")
+  active         Boolean     @default(true)
+  lastSyncedAt   DateTime    @default(now())
+
+  @@unique([providerName, providerPlanId])
+  @@index([network, planType, active])
+}
+
+model VtuOrder {
+  id                String         @id @default(uuid())
+  workspaceId       String
+  userId            String?
+  productType       VtuProductType
+  network           VtuNetwork
+  msisdnMasked      String
+  msisdnEncrypted   String
+  planId            String?
+  faceValueMinor    Int?
+  amountMinor       Int
+  costMinor         Int
+  currency          String         @default("NGN")
+  providerName      String?
+  providerReference String?
+  status            VtuOrderStatus @default(QUOTED)
+  idempotencyKey    String         @unique
+  attemptCount      Int            @default(0)
+  failureReason     String?
+  reconciledAt      DateTime?
+  requestIpAddress  String?
+  requestUserAgent  String?
+  requestDeviceId   String?
+  metadata          Json           @default("{}")
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  workspace         Workspace      @relation(fields: [workspaceId], references: [id])
+  walletCharges     VtuWalletCharge[]
+
+  @@index([workspaceId, status, createdAt])
+  @@index([providerName, providerReference])
+  @@index([status, createdAt])
+}
+
+model VtuWalletCharge {
+  id                  String    @id @default(uuid())
+  workspaceId         String
+  walletId            String
+  orderId             String
+  idempotencyKey      String    @unique
+  amountMinor         Int
+  currency            String    @default("NGN")
+  status              String    @default("CHARGED")
+  debitLedgerEntryId  String?
+  refundLedgerEntryId String?
+  metadata            Json      @default("{}")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  workspace           Workspace @relation(fields: [workspaceId], references: [id])
+  wallet              Wallet    @relation(fields: [walletId], references: [id])
+  vtuOrder            VtuOrder  @relation(fields: [orderId], references: [id])
+
+  @@unique([workspaceId, orderId])
+  @@index([walletId, createdAt])
 }
 
 model DigitalAccessCategory {
@@ -1720,4 +1763,118 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([entityType, entityId])
+}
+
+enum PersonaType {
+  SYNTHETIC
+  VERIFIED
+  CAST
+}
+
+enum PersonaStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Persona {
+  id              String        @id @default(uuid())
+  workspaceId     String
+  createdByUserId String
+  name            String
+  role            String
+  type            PersonaType
+  status          PersonaStatus @default(DRAFT)
+  description     String?
+  hasVoice        Boolean       @default(false)
+  hasMotion       Boolean       @default(false)
+  consentedAt     DateTime?
+  metadata        Json          @default("{}")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+  workspace       Workspace     @relation(fields: [workspaceId], references: [id])
+  createdBy       User          @relation("PersonaCreator", fields: [createdByUserId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([deletedAt])
+}
+
+enum AutomationTriggerKind {
+  BUDGET_THRESHOLD
+  PERFORMANCE_THRESHOLD
+  SCHEDULE
+  WALLET_BALANCE
+  CREATIVE_AGE
+}
+
+enum AutomationWorkflowStatus {
+  ACTIVE
+  PAUSED
+  DRAFT
+}
+
+model AutomationWorkflow {
+  id              String                   @id @default(uuid())
+  workspaceId     String
+  createdByUserId String
+  name            String
+  triggerKind     AutomationTriggerKind
+  triggerSummary  String
+  actionSummary   String
+  status          AutomationWorkflowStatus @default(DRAFT)
+  config          Json                     @default("{}")
+  runCount        Int                      @default(0)
+  lastRunAt       DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+  deletedAt       DateTime?
+  workspace       Workspace                @relation(fields: [workspaceId], references: [id])
+  createdBy       User                     @relation("AutomationWorkflowCreator", fields: [createdByUserId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([deletedAt])
+}
+
+model MarketplaceAgency {
+  id           String   @id @default(uuid())
+  name         String
+  specialty    String
+  location     String
+  verified     Boolean  @default(false)
+  ratingBps    Int      @default(0)
+  reviewCount  Int      @default(0)
+  campaignCount Int     @default(0)
+  teamSize     Int      @default(0)
+  description  String
+  packages     String[] @default([])
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@index([isActive, specialty])
+  @@index([deletedAt])
+}
+
+model MarketplaceCreator {
+  id              String   @id @default(uuid())
+  name            String
+  niche           String
+  verified        Boolean  @default(false)
+  followerCount   Int      @default(0)
+  engagementBps   Int      @default(0)
+  rateMinor       Int      @default(0)
+  currency        String   @default("NGN")
+  languages       String[] @default([])
+  platforms       String[] @default([])
+  pastCampaigns   Int      @default(0)
+  bio             String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  @@index([isActive, niche])
+  @@index([deletedAt])
 }

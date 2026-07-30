@@ -15,7 +15,8 @@ export const queueNames = [
   "media-processing",
   "payments",
   "audit-events",
-  "digital-access-automation"
+  "digital-access-automation",
+  "vtu-fulfilment"
 ] as const;
 
 export type QueueName = (typeof queueNames)[number];
@@ -60,6 +61,19 @@ export interface AuditEventJob {
   entityId: string;
 }
 
+export type VtuFulfilmentJobName =
+  | "submit"
+  | "poll_status"
+  | "reconcile"
+  | "plan_catalog_sync"
+  | "provider_health"
+  | "ops_review";
+
+export interface VtuFulfilmentJob {
+  orderId?: string;
+  providerName?: string;
+}
+
 export interface QueueRuntimePolicy {
   concurrency: number;
   retryPolicy: SmmRetryPolicy;
@@ -99,6 +113,7 @@ export type QueuePayloads = {
   payments: PaymentJob;
   "audit-events": AuditEventJob;
   "digital-access-automation": DigitalAccessAutomationJob;
+  "vtu-fulfilment": VtuFulfilmentJob;
 };
 
 export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
@@ -155,6 +170,12 @@ export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
     retryPolicy: { attempts: 6, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.1 },
     removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
     removeOnFail: { ageSeconds: 2_592_000, count: 50_000 }
+  },
+  "vtu-fulfilment": {
+    concurrency: 10,
+    retryPolicy: { attempts: 5, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
+    removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
+    removeOnFail: { ageSeconds: 2_592_000, count: 20_000 }
   }
 };
 

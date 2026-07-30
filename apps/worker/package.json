@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fliptrybe/database": "workspace:*",
     "@fliptrybe/events": "workspace:*",
     "@fliptrybe/providers": "workspace:*",
     "@fliptrybe/service-smm": "workspace:*",

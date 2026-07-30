@@ -31,6 +31,25 @@ export class QueueProducerService implements OnModuleDestroy {
     });
   }
 
+  async enqueueVtuOpsReview(orderId: string): Promise<QueueProducerResult> {
+    return this.enqueue("vtu-fulfilment", "ops_review", { orderId }, {
+      jobId: `vtu_ops_${orderId}`,
+      attempts: 1,
+      removeOnComplete: { age: 604_800 },
+      removeOnFail: { age: 2_592_000, count: 10_000 }
+    });
+  }
+
+  async enqueueVtuPollStatus(orderId: string): Promise<QueueProducerResult> {
+    return this.enqueue("vtu-fulfilment", "poll_status", { orderId }, {
+      jobId: `vtu_poll_${orderId}`,
+      attempts: 8,
+      backoff: { type: "exponential", delay: 15_000 },
+      removeOnComplete: { age: 604_800 },
+      removeOnFail: { age: 2_592_000, count: 10_000 }
+    });
+  }
+
   async onModuleDestroy() {
     await Promise.all([...this.queues.values()].map((queue) => queue.close()));
 

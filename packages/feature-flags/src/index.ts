@@ -5,7 +5,11 @@ export const featureFlags = {
   globalSearch: true,
   realtimeCampaignUpdates: true,
   digitalAccess: false,
-  digitalAccessAdmin: false
+  digitalAccessAdmin: false,
+  virtualNumbers: false,
+  virtualNumbersAdmin: false,
+  vtu: true,
+  vtuAdmin: true
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

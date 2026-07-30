@@ -267,5 +267,20 @@ export function processQueueJob(
         processedAt
       };
     }
+    case "vtu-fulfilment": {
+      const data = job.data as QueuePayloads["vtu-fulfilment"];
+      return {
+        queue,
+        status: "processed",
+        detail: `VTU ${job.name} accepted${data.orderId ? ` for order ${data.orderId}` : ""}`,
+        details: {
+          jobName: job.name,
+          ...(data.orderId === undefined ? {} : { orderId: data.orderId }),
+          ...(data.providerName === undefined ? {} : { providerName: data.providerName }),
+          sideEffects: false
+        },
+        processedAt
+      };
+    }
   }
 }
