@@ -36,21 +36,27 @@ interface FailoverDrillResult {
 
 function buildAdapter(providerName: string): VirtualNumberProviderAdapter {
   switch (providerName) {
-    case "smspool":
-      return createSmsPoolAdapter({
-        apiKey: process.env["SMSPOOL_API_KEY"] ?? "",
-        baseUrl: process.env["SMSPOOL_BASE_URL"]
-      });
-    case "5sim":
-      return createFiveSimRentalAdapter({
-        apiToken: process.env["FIVESIM_API_TOKEN"] ?? "",
-        baseUrl: process.env["FIVESIM_BASE_URL"]
-      });
-    case "smspva":
-      return createSmsPvaAdapter({
-        apiKey: process.env["SMSPVA_API_KEY"] ?? "",
-        baseUrl: process.env["SMSPVA_BASE_URL"]
-      });
+    case "smspool": {
+      const smsPoolCfg: Parameters<typeof createSmsPoolAdapter>[0] = {
+        apiKey: process.env["SMSPOOL_API_KEY"] ?? ""
+      };
+      if (process.env["SMSPOOL_BASE_URL"]) smsPoolCfg.baseUrl = process.env["SMSPOOL_BASE_URL"];
+      return createSmsPoolAdapter(smsPoolCfg);
+    }
+    case "5sim": {
+      const fiveSimCfg: Parameters<typeof createFiveSimRentalAdapter>[0] = {
+        apiToken: process.env["FIVESIM_API_TOKEN"] ?? ""
+      };
+      if (process.env["FIVESIM_BASE_URL"]) fiveSimCfg.baseUrl = process.env["FIVESIM_BASE_URL"];
+      return createFiveSimRentalAdapter(fiveSimCfg);
+    }
+    case "smspva": {
+      const smsPvaCfg: Parameters<typeof createSmsPvaAdapter>[0] = {
+        apiKey: process.env["SMSPVA_API_KEY"] ?? ""
+      };
+      if (process.env["SMSPVA_BASE_URL"]) smsPvaCfg.baseUrl = process.env["SMSPVA_BASE_URL"];
+      return createSmsPvaAdapter(smsPvaCfg);
+    }
     default:
       return createMockVirtualNumberAdapter(providerName);
   }

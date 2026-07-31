@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, Briefcase, Globe, Search, Star, Store, Zap } from "lucide-react";
+import { ArrowRight, Briefcase, FileText, Globe, Search, Star, Store, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { Badge } from "@fliptrybe/ui";
@@ -74,11 +74,12 @@ export default function MarketplacePage() {
       </motion.div>
 
       {/* Quick nav */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { icon: Briefcase, label: "Agencies", href: "/os/marketplace/agencies", desc: "Verified marketing agencies" },
           { icon: Globe, label: "Creators", href: "/os/marketplace/creators", desc: "Influencers & content creators" },
           { icon: Zap, label: "Growth Services", href: "/os/growth", desc: "AI-curated growth products" },
+          { icon: FileText, label: "My Applications", href: "/os/marketplace/applications", desc: "Track your agency/creator applications" },
         ].map((item) => (
           <a
             className="group rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 transition hover:border-[var(--ft-accent)]/30"

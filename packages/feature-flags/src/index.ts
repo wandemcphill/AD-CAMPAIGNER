@@ -10,6 +10,8 @@ export const featureFlags = {
   virtualNumbersAdmin: true,
   vtu: true,
   vtuAdmin: true,
+  billsElectricity: false,
+  billsCable: false,
   workflowAutomation: true,
   rewards: true,
   rewardsAdmin: true

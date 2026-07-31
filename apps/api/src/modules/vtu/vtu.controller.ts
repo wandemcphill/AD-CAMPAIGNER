@@ -7,8 +7,12 @@ import {
 import { RequirePermissions } from "../authorization.decorators";
 import type {
   AdminVtuRouteUpdateDto,
+  BillsOrderQueryDto,
+  BuyCableDto,
+  BuyElectricityDto,
   BuyAirtimeDto,
   BuyDataDto,
+  ValidateMeterDto,
   VtuOrderQueryDto
 } from "./vtu.dtos";
 import { VtuService } from "./vtu.service";
@@ -39,6 +43,35 @@ export class VtuController {
   buyData(@Body() body: BuyDataDto, @Req() request: WorkspaceContextRequest) {
     return this.vtu.buyData(workspaceContextFromRequest(request), body);
   }
+
+  // Phase 5 — Bills & Cable
+
+  @Post("electricity/validate")
+  @RequirePermissions("campaign:create")
+  validateMeter(@Body() body: ValidateMeterDto) {
+    return this.vtu.validateMeter(body);
+  }
+
+  @Post("electricity")
+  @RequirePermissions("campaign:create")
+  buyElectricity(@Body() body: BuyElectricityDto, @Req() request: WorkspaceContextRequest) {
+    return this.vtu.buyElectricity(workspaceContextFromRequest(request), body);
+  }
+
+  @Post("cable")
+  @RequirePermissions("campaign:create")
+  buyCable(@Body() body: BuyCableDto, @Req() request: WorkspaceContextRequest) {
+    return this.vtu.buyCable(workspaceContextFromRequest(request), body);
+  }
+
+  @Get("bills/orders")
+  @RequirePermissions("analytics:read")
+  listBillsOrders(
+    @Query() query: BillsOrderQueryDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.vtu.listBillsOrders(workspaceContextFromRequest(request), query);
+  }
 }
 
 @Controller("admin/vtu")
@@ -67,5 +100,12 @@ export class AdminVtuController {
     @Req() request: WorkspaceContextRequest
   ) {
     return this.vtu.adminResolveOrder(id, body.resolution, workspaceContextFromRequest(request));
+  }
+
+  @Get("bills/orders")
+  adminBillsOrders(
+    @Query() query: { status?: string; productType?: string; days?: number; limit?: number }
+  ) {
+    return this.vtu.adminBillsOrders(query);
   }
 }

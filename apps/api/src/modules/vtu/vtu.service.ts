@@ -19,8 +19,16 @@ import {
 
 import { PrismaService } from "../prisma.service";
 import { QueueProducerService } from "../queue-producer.service";
+import { featureFlags } from "@fliptrybe/feature-flags";
 import type { AuthenticatedRequestContext } from "../request-context";
-import type { BuyAirtimeDto, BuyDataDto } from "./vtu.dtos";
+import type {
+  BuyAirtimeDto,
+  BuyDataDto,
+  BillsOrderQueryDto,
+  BuyCableDto,
+  BuyElectricityDto,
+  ValidateMeterDto
+} from "./vtu.dtos";
 
 type DbClient = DatabaseClient | Prisma.TransactionClient;
 
@@ -481,6 +489,273 @@ export class VtuService {
     });
 
     return updated;
+  }
+
+  // ─── Bills adapter selector ──────────────────────────────────────────────────
+  // Bills (electricity/cable) don't route by VtuNetwork (mobile carrier); they use a
+  // separate routing query with no network filter. VTpass is primary for all Nigerian
+  // DISCOs; ClubKonnect is configured as fallback via VtuProviderRoute rows with
+  // productType=ELECTRICITY / productType=CABLE and no network.
+
+  private async selectBillsAdapter(
+    productType: "ELECTRICITY" | "CABLE",
+    db: DbClient = this.db
+  ): Promise<VtuProviderAdapter> {
+    const routes = await db.vtuProviderRoute.findMany({
+      where: { productType: productType as never, network: null, active: true },
+      orderBy: { priority: "asc" }
+    });
+
+    if (routes.length === 0) {
+      // Fall back to vtpass which is the standard Nigerian bills provider
+      return this.buildAdapter("vtpass");
+    }
+
+    const healthRows = await db.providerHealth.findMany({
+      where: { providerName: { in: routes.map((r) => r.provider) }, domain: "VTU" },
+      orderBy: { checkedAt: "desc" },
+      distinct: ["providerName"]
+    });
+    const latestStatus = new Map(healthRows.map((h) => [h.providerName, h.status]));
+
+    const healthy = routes.find((r) => {
+      const status = latestStatus.get(r.provider);
+      return status !== "DOWN" && status !== "DISABLED";
+    });
+
+    return this.buildAdapter(healthy?.provider ?? "vtpass");
+  }
+
+  // ─── Meter validation (pre-flight, free) ────────────────────────────────────
+
+  async validateMeter(dto: ValidateMeterDto) {
+    if (!featureFlags.billsElectricity) {
+      throw new BadRequestException("Electricity bills are not yet available.");
+    }
+
+    const adapter = await this.selectBillsAdapter("ELECTRICITY");
+    if (!adapter.validateMeter) {
+      throw new BadRequestException("Selected provider does not support meter validation.");
+    }
+
+    return adapter.validateMeter({
+      disco: dto.disco,
+      meterNumber: dto.meterNumber,
+      meterType: dto.meterType
+    });
+  }
+
+  // ─── Electricity purchase ────────────────────────────────────────────────────
+
+  async buyElectricity(ctx: AuthenticatedRequestContext, dto: BuyElectricityDto) {
+    if (!featureFlags.billsElectricity) {
+      throw new BadRequestException("Electricity bills are not yet available.");
+    }
+
+    const { workspaceId } = ctx;
+    if (!dto.disco) throw new BadRequestException("disco is required.");
+    if (!dto.meterNumber.match(/^\d{10,13}$/)) {
+      throw new BadRequestException("Invalid meter number format (10-13 digits).");
+    }
+    if (dto.amountMinor < 50_000) {
+      throw new BadRequestException("Minimum electricity purchase is ₦500.");
+    }
+
+    const adapter = await this.selectBillsAdapter("ELECTRICITY");
+    if (!adapter.purchaseElectricity) {
+      throw new BadRequestException("Selected provider does not support electricity purchase.");
+    }
+
+    // Step 1: validate meter before charging wallet
+    if (adapter.validateMeter) {
+      const validation = await adapter.validateMeter({
+        disco: dto.disco,
+        meterNumber: dto.meterNumber,
+        meterType: dto.meterType
+      });
+      if (!validation.valid) {
+        throw new BadRequestException(
+          `Meter validation failed. Verify the meter number and DISCO code.`
+        );
+      }
+      if (validation.minAmountMinor && dto.amountMinor < validation.minAmountMinor) {
+        throw new BadRequestException(
+          `Minimum purchase for this meter is ₦${(validation.minAmountMinor / 100).toFixed(0)}.`
+        );
+      }
+    }
+
+    // Bills are pass-through (no markup for electricity — regulatory)
+    const chargeMinor = dto.amountMinor;
+    const orderId = uid("vtu");
+    const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
+    const meterMasked = dto.meterNumber.slice(0, 3) + "****" + dto.meterNumber.slice(-2);
+
+    const order = await this.db.$transaction(async (tx) => {
+      const wallet = await this.getWallet(workspaceId, tx);
+      const entries = (await tx.ledgerEntry.findMany({
+        where: { walletId: wallet.id }
+      })) as DbLedgerEntryRow[];
+      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+      if (available.amountMinor < chargeMinor) {
+        throw new ForbiddenException(
+          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+        );
+      }
+
+      const newOrder = await tx.vtuOrder.create({
+        data: {
+          id: orderId,
+          workspaceId,
+          productType: "ELECTRICITY",
+          msisdnMasked: meterMasked,
+          msisdnEncrypted: dto.meterNumber,
+          amountMinor: chargeMinor,
+          costMinor: chargeMinor,
+          currency: "NGN",
+          providerName: adapter.name,
+          providerReference: reference,
+          status: "SUBMITTED",
+          idempotencyKey: `vtu_order_${orderId}`,
+          metadata: { disco: dto.disco, meterType: dto.meterType }
+        }
+      });
+
+      await this.debitWallet(
+        wallet.id,
+        workspaceId,
+        chargeMinor,
+        `Electricity ${dto.disco.toUpperCase()} ₦${(chargeMinor / 100).toFixed(0)} → ${meterMasked}`,
+        orderId,
+        tx
+      );
+
+      return newOrder;
+    });
+
+    // Submit outside the transaction — network timeout must not roll back the debit.
+    try {
+      const result = await adapter.purchaseElectricity({
+        disco: dto.disco,
+        meterNumber: dto.meterNumber,
+        meterType: dto.meterType,
+        amountMinor: dto.amountMinor,
+        reference: order.providerReference!
+      });
+
+      const finalStatus =
+        result.status === "DELIVERED"
+          ? "DELIVERED"
+          : result.status === "SUBMITTED"
+            ? "SUBMITTED"
+            : "AMBIGUOUS";
+
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: {
+          status: finalStatus,
+          ...(result.token ? { token: result.token } : {}),
+          ...(result.units
+            ? { metadata: { disco: dto.disco, meterType: dto.meterType, units: result.units } }
+            : {})
+        }
+      });
+
+      if (finalStatus === "AMBIGUOUS") {
+        await this.queue.enqueueVtuOpsReview(order.id);
+      } else if (finalStatus === "SUBMITTED") {
+        await this.queue.enqueueVtuPollStatus(order.id);
+      }
+    } catch (err) {
+      this.logger.error(`VTU electricity submit error for ${order.id}: ${String(err)}`);
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: { status: "AMBIGUOUS" }
+      });
+      await this.queue.enqueueVtuOpsReview(order.id);
+    }
+
+    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } });
+  }
+
+  // ─── Cable subscription ──────────────────────────────────────────────────────
+
+  async buyCable(ctx: AuthenticatedRequestContext, dto: BuyCableDto) {
+    if (!featureFlags.billsCable) {
+      throw new BadRequestException("Cable subscriptions are not yet available.");
+    }
+
+    const { workspaceId } = ctx;
+    if (!dto.provider) throw new BadRequestException("provider is required.");
+    if (!dto.smartCardNumber) throw new BadRequestException("smartCardNumber is required.");
+    if (!dto.packageCode) throw new BadRequestException("packageCode is required.");
+
+    const adapter = await this.selectBillsAdapter("CABLE");
+    if (!adapter.purchaseCable) {
+      throw new BadRequestException("Selected provider does not support cable purchase.");
+    }
+
+    // Look up the cable package cost from provider catalog (VtuDataPlan reused for cable bundles)
+    // If no catalog entry found, caller must specify amountMinor separately (not yet implemented
+    // in DTOs — for now we require a catalog-backed amount to prevent overcharging).
+    // NOTE: cable package catalog sync is a follow-up worker job; for now throw if no catalog.
+    throw new BadRequestException(
+      "Cable subscription requires package catalog. Contact support to enable cable for your account."
+    );
+  }
+
+  // ─── Bills order list ────────────────────────────────────────────────────────
+
+  async listBillsOrders(ctx: AuthenticatedRequestContext, query: BillsOrderQueryDto) {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(50, Math.max(1, query.limit ?? 20));
+    const where = {
+      workspaceId: ctx.workspaceId,
+      productType: query.productType
+        ? { in: [query.productType] as never[] }
+        : { in: ["ELECTRICITY", "CABLE"] as never[] },
+      ...(query.status ? { status: query.status as never } : {})
+    };
+
+    const [orders, total] = await Promise.all([
+      this.db.vtuOrder.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit
+      }),
+      this.db.vtuOrder.count({ where })
+    ]);
+
+    return { orders, total, page, limit };
+  }
+
+  // ─── Admin: bills ops queue ──────────────────────────────────────────────────
+
+  async adminBillsOrders(query: {
+    status?: string;
+    productType?: string;
+    days?: number;
+    limit?: number;
+  }) {
+    const limit = Math.min(200, query.limit ?? 50);
+    const since = query.days
+      ? new Date(Date.now() - query.days * 86_400_000)
+      : new Date(Date.now() - 30 * 86_400_000);
+
+    return this.db.vtuOrder.findMany({
+      where: {
+        productType: query.productType
+          ? { in: [query.productType as never] }
+          : { in: ["ELECTRICITY", "CABLE"] as never[] },
+        ...(query.status ? { status: query.status as never } : {}),
+        createdAt: { gte: since }
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      include: { workspace: { select: { id: true, name: true } } }
+    });
   }
 
   // ─── Admin: ops resolve ──────────────────────────────────────────────────────

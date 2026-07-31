@@ -15,6 +15,7 @@ import {
   RefreshCcw,
   ShieldCheck,
   Smartphone,
+  Store,
   Users
 } from "lucide-react";
 
@@ -75,7 +76,8 @@ export default function AdminPage() {
               { label: "Access", href: "/digital-access", icon: LockKeyhole },
               { label: "VTU", href: "/vtu", icon: Smartphone },
               { label: "Digital Products", href: "/digital-products", icon: Globe },
-              { label: "Rewards", href: "/rewards", icon: Gift }
+              { label: "Rewards", href: "/rewards", icon: Gift },
+              { label: "Marketplace", href: "/marketplace/applications", icon: Store }
             ].map((item) => (
               <a
                 className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"

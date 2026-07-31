@@ -83,8 +83,10 @@ export async function processPollStatus(job: Job<VtuFulfilmentJob>): Promise<str
     const snapshot = await adapter.getOrderStatus(order.providerReference);
 
     if (snapshot.status === "DELIVERED") {
-      await db.vtuOrder.update({ where: { id: orderId }, data: { status: "DELIVERED" } });
-      return `poll_status: order ${orderId} DELIVERED`;
+      const updateData: Record<string, unknown> = { status: "DELIVERED" };
+      if (snapshot.token) updateData["token"] = snapshot.token;
+      await db.vtuOrder.update({ where: { id: orderId }, data: updateData });
+      return `poll_status: order ${orderId} DELIVERED${snapshot.token ? " (token received)" : ""}`;
     }
 
     if (snapshot.status === "FAILED") {

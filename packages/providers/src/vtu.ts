@@ -28,6 +28,9 @@ export interface VtuOrderSnapshot {
   providerReference: string;
   status: VtuSubmitStatus;
   failureReason?: string;
+  // Present for electricity orders when status = DELIVERED
+  token?: string;
+  units?: string;
 }
 
 export interface VtuProviderBalance {

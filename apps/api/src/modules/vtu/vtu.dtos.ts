@@ -23,3 +23,35 @@ export interface AdminVtuRouteUpdateDto {
   priority?: number;
   enabled?: boolean;
 }
+
+// Phase 5 — Bills & Cable
+
+export type MeterType = "PREPAID" | "POSTPAID";
+
+export interface ValidateMeterDto {
+  disco: string;
+  meterNumber: string;
+  meterType: MeterType;
+}
+
+export interface BuyElectricityDto {
+  disco: string;
+  meterNumber: string;
+  meterType: MeterType;
+  /** Amount to purchase in NGN kobo (minor units). Minimum ₦500 = 50_000 */
+  amountMinor: number;
+}
+
+export interface BuyCableDto {
+  /** e.g. "dstv", "gotv", "startimes" */
+  provider: string;
+  smartCardNumber: string;
+  packageCode: string;
+}
+
+export interface BillsOrderQueryDto {
+  page?: number;
+  limit?: number;
+  productType?: "ELECTRICITY" | "CABLE";
+  status?: string;
+}

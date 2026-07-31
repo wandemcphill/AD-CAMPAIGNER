@@ -67,9 +67,17 @@ export default function CreatorMarketplacePage() {
           </div>
           <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Discover creators with real audiences and proven engagement</p>
         </div>
-        <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
-          <RefreshCw className="size-4" /> Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <a href="/os/marketplace/applications">
+            <Button variant="secondary">My Applications</Button>
+          </a>
+          <a href="/os/marketplace/creators/apply">
+            <Button>Apply as Creator</Button>
+          </a>
+          <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
+            <RefreshCw className="size-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
       <ErrorNotice message={error} />
@@ -94,6 +102,11 @@ export default function CreatorMarketplacePage() {
       ) : filtered.length === 0 ? (
         <div className="mt-6">
           <EmptyState
+            action={
+              <a href="/os/marketplace/creators/apply">
+                <Button variant="secondary">Apply as Creator</Button>
+              </a>
+            }
             copy="No creators have been listed in this marketplace yet. This catalog is curated separately and hasn't been seeded."
             icon={Globe}
             title="No creators listed yet"

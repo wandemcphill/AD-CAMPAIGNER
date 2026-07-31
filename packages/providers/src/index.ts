@@ -1794,6 +1794,81 @@ export function createCloudinaryStorageProvider(
   };
 }
 
+// ─── FX Provider Abstraction ──────────────────────────────────────────────────
+
+export interface FxRate {
+  baseCurrency: string;
+  quoteCurrency: string;
+  rateMicros: bigint;
+  timestamp: Date;
+  provider: string;
+}
+
+export interface FxRateValidationError {
+  field: string;
+  message: string;
+}
+
+export interface FxProvider {
+  readonly name: string;
+
+  // Fetch live rates for one or more currency pairs
+  getRate(
+    baseCurrency: string,
+    quoteCurrency: string
+  ): Promise<FxRate>;
+
+  getRates(
+    baseCurrency: string,
+    quoteCurrencies: string[]
+  ): Promise<FxRate[]>;
+
+  // List supported currencies
+  getSupportedCurrencies(): Promise<string[]>;
+
+  // Health check
+  healthCheck(): Promise<{ healthy: boolean; message?: string }>;
+}
+
+export function createMockFxProvider(): FxProvider {
+  const rates = new Map([
+    ["USD-NGN", 1550000000n], // ₦1,550/USD
+    ["USD-GBP", 790000000n],  // £0.79/USD
+    ["USD-EUR", 920000000n],  // €0.92/USD
+    ["GBP-NGN", 1961013001n], // ₦1,961.013/GBP
+    ["EUR-NGN", 1685913043n]  // ₦1,685.913/EUR
+  ]);
+
+  return {
+    name: "mock-fx",
+    async getRate(baseCurrency, quoteCurrency) {
+      const key = `${baseCurrency}-${quoteCurrency}`;
+      const rateMicros = rates.get(key);
+      if (!rateMicros) {
+        throw new Error(`Unsupported pair: ${key}`);
+      }
+      return {
+        baseCurrency,
+        quoteCurrency,
+        rateMicros,
+        timestamp: new Date(),
+        provider: "mock-fx"
+      };
+    },
+    async getRates(baseCurrency, quoteCurrencies) {
+      return Promise.all(
+        quoteCurrencies.map((qc) => this.getRate(baseCurrency, qc))
+      );
+    },
+    async getSupportedCurrencies() {
+      return ["USD", "NGN", "GBP", "EUR"];
+    },
+    async healthCheck() {
+      return { healthy: true };
+    }
+  };
+}
+
 export * from './router.js';
 export * from './vtu.js';
 export * from './virtual-numbers.js';

@@ -388,9 +388,18 @@ enum FxRateSource {
   PROVIDER_FEED
 }
 
+enum FxQuoteStatus {
+  ACTIVE
+  EXPIRED
+  USED
+  CANCELLED
+}
+
 enum VtuProductType {
   AIRTIME
   DATA
+  ELECTRICITY
+  CABLE
 }
 
 enum VtuNetwork {
@@ -1529,6 +1538,42 @@ model FxRate {
   @@index([baseCurrency, quoteCurrency, effectiveFrom])
 }
 
+model FxRateCache {
+  id                 String   @id @default(uuid())
+  baseCurrency       String   @default("USD")
+  quoteCurrency      String   @default("NGN")
+  providerName       String
+  providerRateMicros BigInt
+  providerTimestamp  DateTime
+  validationStatus   String   @default("VALID")
+  age_seconds        Int      @default(0)
+  lastUpdatedAt      DateTime @default(now())
+  lastSuccessAt      DateTime @default(now())
+
+  @@unique([baseCurrency, quoteCurrency, providerName])
+  @@index([baseCurrency, quoteCurrency, lastSuccessAt])
+}
+
+model FxQuote {
+  id                 String        @id @default(uuid())
+  baseCurrency       String        @default("USD")
+  quoteCurrency      String        @default("NGN")
+  sourceAmountMinor  BigInt
+  providerRateMicros BigInt
+  spreadBps          Int
+  bufferBps          Int
+  customerRateMicros BigInt
+  resultAmountMinor  BigInt
+  status             FxQuoteStatus @default(ACTIVE)
+  expiresAt          DateTime
+  usedAt             DateTime?
+  transactionId      String?
+  createdAt          DateTime      @default(now())
+
+  @@index([baseCurrency, quoteCurrency, expiresAt, status])
+  @@index([transactionId])
+}
+
 model PricingRule {
   id                 String         @id @default(uuid())
   domain             ProviderDomain
@@ -1589,9 +1634,10 @@ model VtuOrder {
   workspaceId       String
   userId            String?
   productType       VtuProductType
-  network           VtuNetwork
+  network           VtuNetwork?
   msisdnMasked      String
   msisdnEncrypted   String
+  token             String?
   planId            String?
   faceValueMinor    Int?
   amountMinor       Int
