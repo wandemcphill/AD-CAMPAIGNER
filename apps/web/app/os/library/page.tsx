@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Download, Film, FileText, Image, RefreshCw, Search, Upload } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -10,6 +10,8 @@ import { TabBar } from "@fliptrybe/ui/components";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import {
   assetDimensions,
+  completeUpload,
+  createUploadIntent,
   formatByteSize,
   loadMediaAssets,
   type MediaAssetKind,
@@ -32,12 +34,18 @@ const catIcon: Record<MediaAssetKind, typeof Image> = {
   OTHER: FileText
 };
 
+const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime", "application/pdf"];
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 export default function CreativeLibraryPage() {
   const [cat, setCat] = useState("all");
   const [search, setSearch] = useState("");
   const [assets, setAssets] = useState<MediaAssetRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     setError(undefined);
@@ -54,6 +62,55 @@ export default function CreativeLibraryPage() {
     setLoading(true);
     void refresh();
   }, [cat]);
+
+  async function handleFileSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!fileInputRef.current) fileInputRef.current = event.target;
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!ACCEPTED_MIME_TYPES.includes(file.type)) {
+      setUploadError("Unsupported file type. Upload PNG, JPG, MP4, MOV, or PDF.");
+      return;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setUploadError("File is too large. Maximum size is 50 MB.");
+      return;
+    }
+
+    setUploadError(undefined);
+    setUploading(true);
+
+    try {
+      const intent = await createUploadIntent(file.type, file.name, file.size);
+
+      // Upload directly to the storage provider using the signed URL
+      const formData = new FormData();
+      if (intent.fields) {
+        for (const [key, value] of Object.entries(intent.fields)) {
+          formData.append(key, value);
+        }
+      }
+      formData.append("file", file);
+
+      const uploadResponse = await fetch(intent.uploadUrl, { method: "POST", body: formData });
+      if (!uploadResponse.ok && uploadResponse.status !== 200 && uploadResponse.status !== 201) {
+        throw new Error(`Storage upload failed (${uploadResponse.status}).`);
+      }
+
+      const providerPayload = uploadResponse.headers.get("content-type")?.includes("json")
+        ? (await uploadResponse.json() as Record<string, unknown>)
+        : { assetId: intent.assetId };
+
+      await completeUpload(intent.assetId, { assetId: intent.assetId, ...providerPayload });
+      await refresh();
+    } catch (caught) {
+      setUploadError(caught instanceof Error ? caught.message : "Upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const filtered = assets.filter((asset) => {
     if (!search) return true;
@@ -73,13 +130,30 @@ export default function CreativeLibraryPage() {
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
             <RefreshCw className="size-4" /> Refresh
           </Button>
-          <Button disabled title="Upload flow is not wired into this view yet">
-            <Upload className="size-4" /> Upload
-          </Button>
+          <label className="contents">
+            <Button
+              aria-label="Upload asset"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              variant="primary"
+            >
+              <Upload className="size-4" />
+              {uploading ? "Uploading…" : "Upload"}
+            </Button>
+            <input
+              accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,application/pdf"
+              aria-hidden
+              className="sr-only"
+              onChange={(e) => void handleFileSelected(e)}
+              ref={fileInputRef}
+              type="file"
+            />
+          </label>
         </div>
       </div>
 
       <ErrorNotice message={error} />
+      <ErrorNotice message={uploadError} />
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <TabBar items={CATEGORY_TABS} onChange={setCat} value={cat} />

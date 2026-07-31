@@ -282,5 +282,45 @@ export function processQueueJob(
         processedAt
       };
     }
+    case "virtual-numbers": {
+      const data = job.data as QueuePayloads["virtual-numbers"];
+      return {
+        queue,
+        status: "processed",
+        detail: `Virtual Numbers ${job.name} accepted${data.numberId ? ` for number ${data.numberId}` : ""}`,
+        details: {
+          jobName: job.name,
+          ...(data.numberId === undefined ? {} : { numberId: data.numberId }),
+          ...(data.providerName === undefined ? {} : { providerName: data.providerName }),
+          sideEffects: false
+        },
+        processedAt
+      };
+    }
+    case "workflow-automation": {
+      // Handled by processWorkflowAutomationJob in main.ts — this stub satisfies the type-switch.
+      return {
+        queue,
+        status: "skipped",
+        detail: "workflow-automation is handled by its dedicated processor",
+        processedAt
+      };
+    }
+    case "reward-engine": {
+      const data = job.data as QueuePayloads["reward-engine"];
+      return {
+        queue,
+        status: "processed",
+        detail: `Reward engine ${job.name} accepted`,
+        details: {
+          jobName: job.name,
+          ...(data.completionId === undefined ? {} : { completionId: data.completionId }),
+          ...(data.entitlementId === undefined ? {} : { entitlementId: data.entitlementId }),
+          ...(data.campaignId === undefined ? {} : { campaignId: data.campaignId }),
+          sideEffects: false
+        },
+        processedAt
+      };
+    }
   }
 }

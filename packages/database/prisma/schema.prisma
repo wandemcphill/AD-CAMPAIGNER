@@ -479,6 +479,52 @@ enum DigitalAccessWalletChargeStatus {
   FAILED
 }
 
+enum RewardCampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum RewardTaskType {
+  QR_SCAN
+  REFERRAL
+  FLIPTRYBE_LINK_VISIT
+  TIKTOK_IDENTITY_BIND
+  TIKTOK_VIDEO_PUBLISH
+  CONTENT_MILESTONE
+  MANUAL_PROOF
+}
+
+enum TaskCompletionStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum RewardEntitlementStatus {
+  RESERVED
+  FULFILLMENT_PENDING
+  FULFILLED
+  FAILED
+  REVERSED
+}
+
+enum VerificationMethod {
+  AUTOMATIC
+  MANUAL_REVIEW
+  WEBHOOK
+}
+
+enum RewardFulfillmentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  AMBIGUOUS
+}
+
 model User {
   id                    String                   @id @default(uuid())
   email                 String?                  @unique
@@ -489,6 +535,8 @@ model User {
   status                UserStatus               @default(ACTIVE)
   passwordHash          String?
   emailVerifiedAt       DateTime?
+  totpSecretEncrypted   String?
+  totpEnabledAt         DateTime?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   deletedAt             DateTime?
@@ -511,6 +559,15 @@ model User {
   notificationPrefs     NotificationPreference[]
   createdPersonas       Persona[]                @relation("PersonaCreator")
   createdWorkflows      AutomationWorkflow[]     @relation("AutomationWorkflowCreator")
+  twoFactorBackupCodes  TwoFactorBackupCode[]
+  apiKeys               ApiKey[]                 @relation("ApiKeyCreator")
+  outgoingWebhookSubs   OutgoingWebhookSubscription[] @relation("OutgoingWebhookSubscriptionCreator")
+  marketplaceAgencyApplications  MarketplaceAgencyApplication[]  @relation("MarketplaceAgencyApplicant")
+  marketplaceCreatorApplications MarketplaceCreatorApplication[] @relation("MarketplaceCreatorApplicant")
+  reviewedAgencyApplications     MarketplaceAgencyApplication[]  @relation("MarketplaceAgencyReviewer")
+  reviewedCreatorApplications    MarketplaceCreatorApplication[] @relation("MarketplaceCreatorReviewer")
+  invitedTeamMembers    TeamMember[]             @relation("TeamMemberInviter")
+  rewardParticipations  RewardParticipant[]      @relation("RewardParticipant")
 
   @@index([status])
   @@index([deletedAt])
@@ -568,6 +625,11 @@ model Workspace {
   adAccounts                 AdAccount[]
   personas                   Persona[]
   automationWorkflows        AutomationWorkflow[]
+  apiKeys                    ApiKey[]
+  outgoingWebhookSubscriptions OutgoingWebhookSubscription[]
+  marketplaceAgencyApplications  MarketplaceAgencyApplication[]
+  marketplaceCreatorApplications MarketplaceCreatorApplication[]
+  rewardCampaigns                RewardCampaign[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -579,11 +641,13 @@ model TeamMember {
   organizationId String
   role           OrganizationRole
   permissions    String[]         @default([])
+  invitedByUserId String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   deletedAt      DateTime?
   user           User             @relation(fields: [userId], references: [id])
   organization   Organization     @relation(fields: [organizationId], references: [id])
+  invitedBy      User?            @relation("TeamMemberInviter", fields: [invitedByUserId], references: [id])
 
   @@unique([userId, organizationId])
   @@index([organizationId, role])
@@ -619,6 +683,7 @@ model Campaign {
   provider          String                  @default("MOCK")
   providerReference String?
   companyProfileId  String?
+  personaId         String?
   adAccountId       String?
   riskAction        CampaignRiskAction?
   riskScore         Int?
@@ -638,6 +703,7 @@ model Campaign {
   deletedAt         DateTime?
   workspace         Workspace               @relation(fields: [workspaceId], references: [id])
   companyProfile    CompanyProfile?         @relation(fields: [companyProfileId], references: [id])
+  persona           Persona?                @relation(fields: [personaId], references: [id])
   destination       Destination?
   livePromotion     LivePromotion?
   analytics         AnalyticsMetric[]
@@ -660,6 +726,7 @@ model Campaign {
   @@index([adAccountId, status])
   @@index([riskAction, status])
   @@index([companyProfileId, status])
+  @@index([personaId])
   @@index([provider, providerReference])
   @@index([startsAt])
   @@index([deletedAt])
@@ -855,7 +922,9 @@ model VoucherProduct {
   metadata          Json                    @default("{}")
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
-  vouchers          Voucher[]
+  vouchers             Voucher[]
+  rewardCampaigns      RewardCampaign[]
+  rewardEntitlements   RewardEntitlement[]
 
   @@index([category, active])
   @@index([handler, active])
@@ -2001,6 +2070,7 @@ model Persona {
   deletedAt       DateTime?
   workspace       Workspace     @relation(fields: [workspaceId], references: [id])
   createdBy       User          @relation("PersonaCreator", fields: [createdByUserId], references: [id])
+  campaigns       Campaign[]
 
   @@index([workspaceId, status])
   @@index([deletedAt])
@@ -2083,4 +2153,307 @@ model MarketplaceCreator {
 
   @@index([isActive, niche])
   @@index([deletedAt])
+}
+
+// ─── Two-factor authentication ─────────────────────────────────────────────
+
+model TwoFactorBackupCode {
+  id        String    @id @default(uuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, usedAt])
+}
+
+// ─── Developer API keys ─────────────────────────────────────────────────────
+
+enum ApiKeyEnvironment {
+  TEST
+  PRODUCTION
+}
+
+model ApiKey {
+  id              String            @id @default(uuid())
+  workspaceId     String
+  createdByUserId String
+  name            String
+  environment     ApiKeyEnvironment @default(TEST)
+  keyPrefix       String
+  keyHash         String            @unique
+  scopes          String[]          @default([])
+  lastUsedAt      DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id])
+  createdBy       User              @relation("ApiKeyCreator", fields: [createdByUserId], references: [id])
+
+  @@index([workspaceId, revokedAt])
+}
+
+// ─── Outgoing webhooks ───────────────────────────────────────────────────────
+
+model OutgoingWebhookSubscription {
+  id              String    @id @default(uuid())
+  workspaceId     String
+  createdByUserId String
+  targetUrl       String
+  events          String[]  @default([])
+  signingSecret   String
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  workspace       Workspace @relation(fields: [workspaceId], references: [id])
+  createdBy       User      @relation("OutgoingWebhookSubscriptionCreator", fields: [createdByUserId], references: [id])
+  deliveries      OutgoingWebhookDelivery[]
+
+  @@index([workspaceId, isActive])
+}
+
+model OutgoingWebhookDelivery {
+  id             String                       @id @default(uuid())
+  subscriptionId String
+  eventName      String
+  payload        Json                         @default("{}")
+  status         String                       @default("PENDING")
+  attempts       Int                          @default(0)
+  responseStatus Int?
+  lastAttemptAt  DateTime?
+  createdAt      DateTime                     @default(now())
+  subscription   OutgoingWebhookSubscription  @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId, createdAt])
+  @@index([eventName, status])
+}
+
+// ─── Marketplace listing applications ──────────────────────────────────────
+
+enum MarketplaceApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model MarketplaceAgencyApplication {
+  id              String                        @id @default(uuid())
+  workspaceId     String
+  applicantUserId String
+  status          MarketplaceApplicationStatus @default(PENDING)
+  name            String
+  specialty       String
+  location        String
+  description     String
+  packages        String[]                     @default([])
+  reviewedByUserId String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  resultingListingId String?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  workspace       Workspace                    @relation(fields: [workspaceId], references: [id])
+  applicant       User                         @relation("MarketplaceAgencyApplicant", fields: [applicantUserId], references: [id])
+  reviewer        User?                        @relation("MarketplaceAgencyReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([status, createdAt])
+}
+
+model MarketplaceCreatorApplication {
+  id              String                        @id @default(uuid())
+  workspaceId     String
+  applicantUserId String
+  status          MarketplaceApplicationStatus @default(PENDING)
+  name            String
+  niche           String
+  bio             String
+  followerCount   Int                          @default(0)
+  languages       String[]                     @default([])
+  platforms       String[]                     @default([])
+  rateMinor       Int                          @default(0)
+  reviewedByUserId String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  resultingListingId String?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  workspace       Workspace                    @relation(fields: [workspaceId], references: [id])
+  applicant       User                         @relation("MarketplaceCreatorApplicant", fields: [applicantUserId], references: [id])
+  reviewer        User?                        @relation("MarketplaceCreatorReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([status, createdAt])
+}
+
+// ─── Reward Engine ──────────────────────────────────────────────────────────────
+
+model RewardCampaign {
+  id               String               @id @default(uuid())
+  workspaceId      String
+  name             String
+  description      String?
+  status           RewardCampaignStatus  @default(DRAFT)
+  totalSlots       Int
+  claimedSlots     Int                   @default(0)
+  rewardProductId  String
+  rewardValueMinor Int
+  currency         String                @default("NGN")
+  eligibilityRules Json                  @default("{}")
+  startsAt         DateTime
+  endsAt           DateTime?
+  metadata         Json                  @default("{}")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  workspace        Workspace             @relation(fields: [workspaceId], references: [id])
+  rewardProduct    VoucherProduct        @relation(fields: [rewardProductId], references: [id])
+  tasks            RewardTask[]
+  participants     RewardParticipant[]
+  entitlements     RewardEntitlement[]
+  qrCodes          RewardQrCode[]
+  leaderboard      RewardLeaderboardEntry[]
+
+  @@index([workspaceId, status])
+  @@index([status, startsAt, endsAt])
+}
+
+model RewardTask {
+  id                 String         @id @default(uuid())
+  campaignId         String
+  taskType           RewardTaskType
+  label              String
+  description        String?
+  verificationConfig Json           @default("{}")
+  sortOrder          Int            @default(0)
+  required           Boolean        @default(true)
+  metadata           Json           @default("{}")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  campaign           RewardCampaign @relation(fields: [campaignId], references: [id])
+  completions        TaskCompletion[]
+  qrCodes            RewardQrCode[]
+
+  @@index([campaignId, sortOrder])
+}
+
+model RewardParticipant {
+  id           String              @id @default(uuid())
+  campaignId   String
+  userId       String
+  joinedAt     DateTime            @default(now())
+  completedAt  DateTime?
+  metadata     Json                @default("{}")
+  campaign     RewardCampaign      @relation(fields: [campaignId], references: [id])
+  user         User                @relation("RewardParticipant", fields: [userId], references: [id])
+  completions  TaskCompletion[]
+  entitlements RewardEntitlement[]
+
+  @@unique([campaignId, userId])
+  @@index([userId, joinedAt])
+}
+
+model TaskCompletion {
+  id                 String               @id @default(uuid())
+  taskId             String
+  participantId      String
+  status             TaskCompletionStatus @default(PENDING_VERIFICATION)
+  proofPayload       Json                 @default("{}")
+  verifiedAt         DateTime?
+  verifiedBy         String?
+  rejectionReason    String?
+  idempotencyKey     String               @unique
+  metadata           Json                 @default("{}")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  task               RewardTask           @relation(fields: [taskId], references: [id])
+  participant        RewardParticipant    @relation(fields: [participantId], references: [id])
+  verificationEvents VerificationEvent[]
+
+  @@unique([taskId, participantId])
+  @@index([participantId, status])
+  @@index([status, createdAt])
+}
+
+model RewardEntitlement {
+  id               String                  @id @default(uuid())
+  campaignId       String
+  participantId    String
+  status           RewardEntitlementStatus  @default(RESERVED)
+  rewardProductId  String
+  rewardValueMinor Int
+  currency         String                  @default("NGN")
+  idempotencyKey   String                  @unique
+  reservedAt       DateTime                @default(now())
+  fulfilledAt      DateTime?
+  metadata         Json                    @default("{}")
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  campaign         RewardCampaign          @relation(fields: [campaignId], references: [id])
+  participant      RewardParticipant       @relation(fields: [participantId], references: [id])
+  rewardProduct    VoucherProduct          @relation(fields: [rewardProductId], references: [id])
+  fulfillment      RewardFulfillment?
+
+  @@unique([campaignId, participantId])
+  @@index([status, campaignId])
+}
+
+model RewardFulfillment {
+  id             String                  @id @default(uuid())
+  entitlementId  String                  @unique
+  handler        VoucherProductHandler
+  ledgerEntryId  String?
+  vtuOrderId     String?
+  providerRef    String?
+  status         RewardFulfillmentStatus @default(PENDING)
+  failureReason  String?
+  idempotencyKey String                  @unique
+  metadata       Json                    @default("{}")
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  entitlement    RewardEntitlement       @relation(fields: [entitlementId], references: [id])
+
+  @@index([status, createdAt])
+}
+
+model VerificationEvent {
+  id           String             @id @default(uuid())
+  completionId String
+  method       VerificationMethod
+  success      Boolean
+  providerRef  String?
+  payload      Json               @default("{}")
+  createdAt    DateTime           @default(now())
+  completion   TaskCompletion     @relation(fields: [completionId], references: [id])
+
+  @@index([completionId, createdAt])
+}
+
+model RewardQrCode {
+  id         String         @id @default(uuid())
+  campaignId String
+  taskId     String
+  token      String         @unique
+  maxScans   Int            @default(1)
+  scanCount  Int            @default(0)
+  expiresAt  DateTime
+  metadata   Json           @default("{}")
+  createdAt  DateTime       @default(now())
+  campaign   RewardCampaign @relation(fields: [campaignId], references: [id])
+  task       RewardTask     @relation(fields: [taskId], references: [id])
+
+  @@index([campaignId, taskId])
+}
+
+model RewardLeaderboardEntry {
+  id             String         @id @default(uuid())
+  campaignId     String
+  userId         String
+  displayName    String
+  tasksCompleted Int            @default(0)
+  rank           Int
+  updatedAt      DateTime       @updatedAt
+  campaign       RewardCampaign @relation(fields: [campaignId], references: [id])
+
+  @@unique([campaignId, userId])
+  @@index([campaignId, rank])
 }

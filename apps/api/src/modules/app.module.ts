@@ -40,9 +40,12 @@ import { RealtimeGateway } from "./realtime.gateway";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 import { VtuModule } from "./vtu/vtu.module";
+import { VirtualNumbersModule } from "./virtual-numbers/virtual-numbers.module";
+import { FxModule } from "./fx/fx.module";
 import { PersonasModule } from "./personas/personas.module";
 import { AutomationModule } from "./automation/automation.module";
 import { MarketplaceModule } from "./marketplace/marketplace.module";
+import { RewardsModule } from "./rewards/rewards.module";
 
 @Module({
   imports: [
@@ -62,9 +65,12 @@ import { MarketplaceModule } from "./marketplace/marketplace.module";
     DigitalAccessModule,
     VouchersModule,
     VtuModule,
+    VirtualNumbersModule,
+    FxModule,
     PersonasModule,
     AutomationModule,
-    MarketplaceModule
+    MarketplaceModule,
+    RewardsModule
   ],
   controllers: [
     HealthController,

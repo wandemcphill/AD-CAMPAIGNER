@@ -75,6 +75,12 @@ export default function AirtimeDataPage() {
   useEffect(() => {
     setLoading(true);
     void Promise.all([refreshOrders(), refreshPlans(network)]).finally(() => setLoading(false));
+    // Deep-link support for the "Data" nav item (?tab=data) — read once on mount via
+    // window.location instead of useSearchParams to avoid the Suspense-boundary
+    // requirement that hook carries in the App Router.
+    if (new URLSearchParams(window.location.search).get("tab") === "data") {
+      setTab("data");
+    }
     // Intentionally run once on mount; the second effect below reacts to network changes.
   }, []);
 

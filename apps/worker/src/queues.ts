@@ -16,7 +16,10 @@ export const queueNames = [
   "payments",
   "audit-events",
   "digital-access-automation",
-  "vtu-fulfilment"
+  "vtu-fulfilment",
+  "virtual-numbers",
+  "workflow-automation",
+  "reward-engine"
 ] as const;
 
 export type QueueName = (typeof queueNames)[number];
@@ -74,6 +77,40 @@ export interface VtuFulfilmentJob {
   providerName?: string;
 }
 
+export type VirtualNumbersJobName =
+  | "poll_messages"
+  | "lifecycle_sweep"
+  | "expiry_warning"
+  | "release"
+  | "reconcile"
+  | "retention_purge"
+  | "provider_health";
+
+export interface VirtualNumbersJob {
+  numberId?: string;
+  providerName?: string;
+}
+
+export type WorkflowAutomationJobName = "evaluate_schedule" | "evaluate_thresholds";
+
+export interface WorkflowAutomationJob {
+  workflowId?: string;
+  workspaceId?: string;
+}
+
+export type RewardEngineJobName =
+  | "verify_task"
+  | "fulfill"
+  | "campaign_lifecycle"
+  | "leaderboard_refresh"
+  | "ops_review";
+
+export interface RewardEngineJob {
+  completionId?: string;
+  entitlementId?: string;
+  campaignId?: string;
+}
+
 export interface QueueRuntimePolicy {
   concurrency: number;
   retryPolicy: SmmRetryPolicy;
@@ -114,6 +151,9 @@ export type QueuePayloads = {
   "audit-events": AuditEventJob;
   "digital-access-automation": DigitalAccessAutomationJob;
   "vtu-fulfilment": VtuFulfilmentJob;
+  "virtual-numbers": VirtualNumbersJob;
+  "workflow-automation": WorkflowAutomationJob;
+  "reward-engine": RewardEngineJob;
 };
 
 export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
@@ -172,6 +212,24 @@ export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
     removeOnFail: { ageSeconds: 2_592_000, count: 50_000 }
   },
   "vtu-fulfilment": {
+    concurrency: 10,
+    retryPolicy: { attempts: 5, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
+    removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
+    removeOnFail: { ageSeconds: 2_592_000, count: 20_000 }
+  },
+  "virtual-numbers": {
+    concurrency: 10,
+    retryPolicy: { attempts: 5, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
+    removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
+    removeOnFail: { ageSeconds: 2_592_000, count: 20_000 }
+  },
+  "workflow-automation": {
+    concurrency: 4,
+    retryPolicy: { attempts: 3, baseDelayMs: 30_000, maxDelayMs: 300_000, jitterRatio: 0.2 },
+    removeOnComplete: { ageSeconds: 86_400, count: 5_000 },
+    removeOnFail: { ageSeconds: 604_800, count: 10_000 }
+  },
+  "reward-engine": {
     concurrency: 10,
     retryPolicy: { attempts: 5, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
     removeOnComplete: { ageSeconds: 604_800, count: 20_000 },

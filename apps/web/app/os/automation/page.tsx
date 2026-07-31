@@ -175,8 +175,8 @@ export default function AutomationPage() {
             <h1 className="text-xl font-bold">Automation</h1>
           </div>
           <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-            Define rules for campaigns to follow. There's no execution engine running these yet —
-            this defines workflows, it doesn't run them automatically.
+            Active workflows are evaluated automatically — schedule triggers every 5 minutes,
+            budget and wallet thresholds every 15 minutes.
           </p>
         </div>
         <div className="flex gap-2">

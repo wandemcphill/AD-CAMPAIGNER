@@ -7,6 +7,20 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./modules/app.module";
 import { validateEnvironment } from "./env.validation";
 
+// Prisma BigInt fields (FxRate.rateMicros, VirtualNumberOrder.fxRateMicrosApplied)
+// crash JSON.stringify by default — Node throws "Do not know how to serialize a
+// BigInt". Serializing to a string (not Number) avoids precision loss for values
+// beyond Number.MAX_SAFE_INTEGER, which rateMicros can approach at large FX rates.
+declare global {
+  interface BigInt {
+    toJSON(): string;
+  }
+}
+// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type -- augmenting a built-in prototype
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function toJSON(this: bigint) {
+  return this.toString();
+};
+
 async function bootstrap() {
   validateEnvironment();
 

@@ -54,6 +54,7 @@ const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice
 const campaignInclude = {
   destination: true,
   companyProfile: true,
+  persona: true,
   creatives: { include: { mediaAsset: true }, orderBy: { sortOrder: "asc" } },
   notes: { orderBy: { createdAt: "desc" } },
   statusHistory: { orderBy: { createdAt: "asc" } },
@@ -1153,6 +1154,7 @@ export class ManagedAdsService {
           workspaceId: scope.workspaceId,
           creatorUserId: scope.userId,
           companyProfileId: input.companyProfileId,
+          personaId: input.personaId ? String(input.personaId) : undefined,
           adAccountId,
           name: String(input.name ?? input.title ?? "Managed ads campaign"),
           objective,
@@ -4270,6 +4272,7 @@ export class ManagedAdsService {
       approvedAt: iso(campaign.approvedAt),
       cancelledAt: iso(campaign.cancelledAt),
       companyProfile: campaign.companyProfile,
+      persona: campaign.persona ?? null,
       creatives: campaign.creatives ?? [],
       notes,
       statusHistory: campaign.statusHistory ?? [],

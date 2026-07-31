@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Inject,
@@ -72,6 +73,16 @@ export class AuthController {
     return this.auth.logout(headers);
   }
 
+  @Get("sessions")
+  sessions(@Headers() headers: HeaderBag) {
+    return this.auth.listSessions(headers);
+  }
+
+  @Delete("sessions/:id")
+  revokeSession(@Param("id") id: string, @Headers() headers: HeaderBag) {
+    return this.auth.revokeSession(headers, id);
+  }
+
   @Post("exchange")
   exchange(@Headers() headers: HeaderBag) {
     return this.auth.issueSession(headers);
@@ -107,6 +118,25 @@ export class TeamsController {
   @Get("approvals")
   approvals(@Req() request: WorkspaceContextRequest) {
     return this.platform.listTeamApprovals(workspaceContextFromRequest(request));
+  }
+
+  @Post("invite")
+  invite(@Body() body: { username: string; role: string }, @Req() request: WorkspaceContextRequest) {
+    return this.platform.inviteTeamMember(body, workspaceContextFromRequest(request));
+  }
+
+  @Patch(":id/role")
+  updateRole(
+    @Param("id") id: string,
+    @Body() body: { role: string },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.platform.updateTeamMemberRole(id, body.role, workspaceContextFromRequest(request));
+  }
+
+  @Delete(":id")
+  remove(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.platform.removeTeamMember(id, workspaceContextFromRequest(request));
   }
 }
 

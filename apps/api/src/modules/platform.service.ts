@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException
@@ -438,6 +440,134 @@ export class PlatformService {
       role: member.role,
       permissions: member.permissions
     }));
+  }
+
+  async inviteTeamMember(
+    input: { username: string; role: string },
+    context?: AuthenticatedRequestContext
+  ) {
+    const scope = requireWorkspaceContext(context);
+    const username = input.username?.trim();
+
+    if (!username) {
+      throw new BadRequestException("A username is required.");
+    }
+
+    const validRoles = ["ADMIN", "MANAGER", "MARKETER", "FINANCE", "SUPPORT", "VIEWER"];
+    if (!validRoles.includes(input.role)) {
+      throw new BadRequestException("A valid role is required.");
+    }
+
+    const workspace = await this.db.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null }
+    });
+    if (!workspace) {
+      throw new NotFoundException("Workspace was not found.");
+    }
+
+    const invitee = await this.db.user.findFirst({
+      where: { username, deletedAt: null, status: "ACTIVE" }
+    });
+    if (!invitee) {
+      throw new NotFoundException("No active user was found with that username.");
+    }
+
+    const existing = await this.db.teamMember.findFirst({
+      where: { userId: invitee.id, organizationId: workspace.organizationId, deletedAt: null }
+    });
+    if (existing) {
+      throw new ConflictException("That user is already a member of this workspace.");
+    }
+
+    const member = await this.db.teamMember.create({
+      data: {
+        userId: invitee.id,
+        organizationId: workspace.organizationId,
+        role: input.role,
+        invitedByUserId: scope.userId
+      },
+      include: { user: true }
+    });
+
+    await this.db.notification.create({
+      data: {
+        workspaceId: scope.workspaceId,
+        recipientUserId: invitee.id,
+        channel: "IN_APP",
+        title: "You were added to a workspace",
+        body: `You've been added to ${workspace.name} as ${input.role.toLowerCase()}.`,
+        entityType: "TeamMember",
+        entityId: member.id
+      }
+    });
+
+    return {
+      id: member.id,
+      name: member.user.displayName ?? member.user.name,
+      role: member.role,
+      permissions: member.permissions
+    };
+  }
+
+  async updateTeamMemberRole(
+    memberId: string,
+    role: string,
+    context?: AuthenticatedRequestContext
+  ) {
+    const scope = requireWorkspaceContext(context);
+    const validRoles = ["ADMIN", "MANAGER", "MARKETER", "FINANCE", "SUPPORT", "VIEWER"];
+    if (!validRoles.includes(role)) {
+      throw new BadRequestException("A valid role is required.");
+    }
+
+    const workspace = await this.db.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null }
+    });
+    if (!workspace) {
+      throw new NotFoundException("Workspace was not found.");
+    }
+
+    const member = await this.db.teamMember.findFirst({
+      where: { id: memberId, organizationId: workspace.organizationId, deletedAt: null }
+    });
+    if (!member) {
+      throw new NotFoundException("Team member was not found.");
+    }
+    if (member.role === "OWNER") {
+      throw new ForbiddenException("The workspace owner's role cannot be changed here.");
+    }
+
+    return this.db.teamMember.update({
+      where: { id: member.id },
+      data: { role }
+    });
+  }
+
+  async removeTeamMember(memberId: string, context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const workspace = await this.db.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null }
+    });
+    if (!workspace) {
+      throw new NotFoundException("Workspace was not found.");
+    }
+
+    const member = await this.db.teamMember.findFirst({
+      where: { id: memberId, organizationId: workspace.organizationId, deletedAt: null }
+    });
+    if (!member) {
+      throw new NotFoundException("Team member was not found.");
+    }
+    if (member.role === "OWNER") {
+      throw new ForbiddenException("The workspace owner cannot be removed.");
+    }
+
+    await this.db.teamMember.update({
+      where: { id: member.id },
+      data: { deletedAt: new Date() }
+    });
+
+    return { ok: true };
   }
 
   async listTeamProjects(context?: AuthenticatedRequestContext) {

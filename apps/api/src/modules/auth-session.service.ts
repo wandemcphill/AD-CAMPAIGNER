@@ -12,6 +12,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
 
@@ -26,6 +27,8 @@ import {
   type HeaderBag,
   type RequestMetadataContext
 } from "./request-context";
+import { decryptTotpSecret, hashBackupCode } from "./security/totp-crypto";
+import { verifyTotp } from "./security/totp";
 
 type SessionHeaderContext = Partial<AuthenticatedRequestContext> & {
   userId?: string;
@@ -79,6 +82,7 @@ interface LoginInput {
   username: string;
   password: string;
   workspaceId?: string;
+  totpCode?: string;
 }
 
 function base64UrlJson(value: Record<string, unknown>) {
@@ -290,11 +294,13 @@ function parseLoginInput(body: unknown): LoginInput {
   const username = normalizeUsername(requireString(record, "username"));
   const password = normalizePassword(record.password);
   const workspaceId = optionalString(record, "workspaceId");
+  const totpCode = optionalString(record, "totpCode");
 
   return {
     username,
     password,
-    ...(workspaceId === undefined ? {} : { workspaceId })
+    ...(workspaceId === undefined ? {} : { workspaceId }),
+    ...(totpCode === undefined ? {} : { totpCode })
   };
 }
 
@@ -420,7 +426,9 @@ export class AuthSessionService {
         status: true,
         passwordHash: true,
         defaultWorkspaceId: true,
-        deletedAt: true
+        deletedAt: true,
+        totpSecretEncrypted: true,
+        totpEnabledAt: true
       }
     });
 
@@ -437,9 +445,38 @@ export class AuthSessionService {
       throw new UnauthorizedException("User account is not active.");
     }
 
+    if (user.totpEnabledAt && user.totpSecretEncrypted) {
+      await this.verifyLoginTwoFactor(user.id, user.totpSecretEncrypted, input.totpCode);
+    }
+
     const scope = await this.resolveUserLoginScope(user, input.workspaceId);
 
     return this.issueSignedSession(scope, metadataContextFromHeaders(headers));
+  }
+
+  private async verifyLoginTwoFactor(userId: string, secretEncrypted: string, code: string | undefined) {
+    if (!code) {
+      throw new UnauthorizedException("TWO_FACTOR_REQUIRED");
+    }
+
+    const secret = decryptTotpSecret(secretEncrypted);
+    if (verifyTotp(secret, code)) {
+      return;
+    }
+
+    const codeHash = hashBackupCode(code);
+    const backupCode = await this.db.twoFactorBackupCode.findFirst({
+      where: { userId, codeHash, usedAt: null }
+    });
+
+    if (!backupCode) {
+      throw new UnauthorizedException("Two-factor code is invalid.");
+    }
+
+    await this.db.twoFactorBackupCode.update({
+      where: { id: backupCode.id },
+      data: { usedAt: new Date() }
+    });
   }
 
   async logout(headers: HeaderBag) {
@@ -460,6 +497,48 @@ export class AuthSessionService {
       },
       data: { revokedAt: new Date() }
     });
+
+    return { ok: true };
+  }
+
+  async listSessions(headers: HeaderBag) {
+    const context = authenticatedContextFromHeaders(headers);
+
+    if (!context.userId) {
+      throw new UnauthorizedException("Authenticated user context is required.");
+    }
+
+    const sessions = await this.db.session.findMany({
+      where: { userId: context.userId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: "desc" }
+    });
+
+    return sessions.map((session: { id: string; deviceName: string | null; ipAddress: string | null; userAgent: string | null; createdAt: Date; expiresAt: Date }) => ({
+      id: session.id,
+      deviceName: session.deviceName,
+      ipAddress: session.ipAddress,
+      userAgent: session.userAgent,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      isCurrent: session.id === context.sessionId
+    }));
+  }
+
+  async revokeSession(headers: HeaderBag, sessionId: string) {
+    const context = authenticatedContextFromHeaders(headers);
+
+    if (!context.userId) {
+      throw new UnauthorizedException("Authenticated user context is required.");
+    }
+
+    const result = await this.db.session.updateMany({
+      where: { id: sessionId, userId: context.userId, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+
+    if (result.count === 0) {
+      throw new NotFoundException("Session was not found or is already revoked.");
+    }
 
     return { ok: true };
   }

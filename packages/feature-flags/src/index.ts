@@ -6,10 +6,13 @@ export const featureFlags = {
   realtimeCampaignUpdates: true,
   digitalAccess: false,
   digitalAccessAdmin: false,
-  virtualNumbers: false,
+  virtualNumbers: true,
   virtualNumbersAdmin: false,
   vtu: true,
-  vtuAdmin: true
+  vtuAdmin: true,
+  workflowAutomation: true,
+  rewards: false,
+  rewardsAdmin: false
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

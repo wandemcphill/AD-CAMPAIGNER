@@ -1796,3 +1796,4 @@ export function createCloudinaryStorageProvider(
 
 export * from './router.js';
 export * from './vtu.js';
+export * from './virtual-numbers.js';

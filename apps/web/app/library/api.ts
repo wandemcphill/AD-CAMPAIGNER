@@ -25,6 +25,29 @@ export async function loadMediaAssets(kind?: string) {
   return apiRequest<MediaAssetRecord[]>(`/media/assets${query}`);
 }
 
+export type UploadIntentResponse = {
+  assetId: string;
+  uploadUrl: string;
+  fields: Record<string, string>;
+  expiresAt: string;
+  maxBytes: number;
+  allowedMimeTypes: string[];
+};
+
+export async function createUploadIntent(contentType: string, filename: string, byteSize: number) {
+  return apiRequest<UploadIntentResponse>("/media/upload-intents", {
+    method: "POST",
+    body: JSON.stringify({ contentType, mimeType: contentType, filename, sizeBytes: byteSize, purpose: "creative" })
+  });
+}
+
+export async function completeUpload(assetId: string, providerResponse: Record<string, unknown>) {
+  return apiRequest<MediaAssetRecord>(`/media/uploads/${encodeURIComponent(assetId)}/complete`, {
+    method: "POST",
+    body: JSON.stringify(providerResponse)
+  });
+}
+
 export function formatByteSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

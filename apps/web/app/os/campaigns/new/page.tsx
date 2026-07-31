@@ -49,6 +49,7 @@ import {
 import { destinationLabels, objectiveLabels, objectiveOptions } from "../../../campaigns/data";
 import { useCampaignBuilderData } from "../../../campaigns/use-campaign-dashboard-data";
 import { useApiSession } from "../../../lib/use-session";
+import { loadPersonas, type PersonaRecord } from "../../../personas/api";
 
 type CampaignFormState = {
   ageRange: string;
@@ -65,6 +66,7 @@ type CampaignFormState = {
   language: string;
   name: string;
   objective: CampaignObjective;
+  personaId: string;
   placement: string;
   primaryCopy: string;
   promotion: string;
@@ -207,6 +209,7 @@ function createInitialForm(): CampaignFormState {
     language: "English",
     name: "Creator growth sprint",
     objective: "ENGAGEMENT",
+    personaId: "",
     placement: "Any recommended placement",
     primaryCopy: "Tell us what you want to promote. We handle strategy, setup, and reporting.",
     promotion: "A focused campaign to grow reach and engagement for Fliptrybe's creator services.",
@@ -384,6 +387,7 @@ function toCreatePayload(form: CampaignFormState) {
     ...(brief ? { brief } : {}),
     ...(form.targetRegion.trim() ? { targetCountry: form.targetRegion.trim() } : {}),
     ...(targetingNotes ? { targetingNotes } : {}),
+    ...(form.personaId ? { personaId: form.personaId } : {}),
     placementPlan: {
       creativeZones: creativeZonesFor(form.destinationKind).map((zone) => zone.label),
       preference: form.placement,
@@ -488,6 +492,13 @@ export default function NewCampaignPage() {
   const [createdCampaign, setCreatedCampaign] = useState<Campaign>();
   const [formError, setFormError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const [personas, setPersonas] = useState<PersonaRecord[]>([]);
+
+  useEffect(() => {
+    loadPersonas()
+      .then((list) => setPersonas(list.filter((p) => p.status === "ACTIVE")))
+      .catch(() => {});
+  }, []);
   const estimatedBudget = useMemo(
     () => ({ amountMinor: amountToMinor(form.budget), currency: form.currency }),
     [form.budget, form.currency]
@@ -1063,6 +1074,26 @@ export default function NewCampaignPage() {
                         value={form.interests}
                       />
                     </label>
+                    {personas.length > 0 ? (
+                      <label className={labelClass}>
+                        Persona (optional)
+                        <select
+                          className={inputClass}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, personaId: event.target.value }))
+                          }
+                          value={form.personaId}
+                        >
+                          <option value="">No persona — use audience signals only</option>
+                          {personas.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} · {p.role}
+                            </option>
+                          ))}
+                        </select>
+                        <span className={helperClass}>Attach an active persona to inform creative voice and audience fit.</span>
+                      </label>
+                    ) : null}
                     <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
                       <div className="flex items-center gap-2 text-sm font-medium text-[var(--ft-text-primary)]">
                         <Users className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />

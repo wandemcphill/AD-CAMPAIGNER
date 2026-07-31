@@ -50,6 +50,55 @@ export class QueueProducerService implements OnModuleDestroy {
     });
   }
 
+  async enqueueRewardVerification(completionId: string): Promise<QueueProducerResult> {
+    return this.enqueue("reward-engine", "verify_task", { completionId }, {
+      jobId: `reward_verify_${completionId}`,
+      attempts: 5,
+      backoff: { type: "exponential", delay: 10_000 },
+      removeOnComplete: { age: 604_800 },
+      removeOnFail: { age: 2_592_000, count: 20_000 }
+    });
+  }
+
+  async enqueueRewardFulfillment(entitlementId: string): Promise<QueueProducerResult> {
+    return this.enqueue("reward-engine", "fulfill", { entitlementId }, {
+      jobId: `reward_fulfill_${entitlementId}`,
+      attempts: 5,
+      backoff: { type: "exponential", delay: 10_000 },
+      removeOnComplete: { age: 604_800 },
+      removeOnFail: { age: 2_592_000, count: 20_000 }
+    });
+  }
+
+  async enqueueRewardOpsReview(entitlementId: string): Promise<QueueProducerResult> {
+    return this.enqueue("reward-engine", "ops_review", { entitlementId }, {
+      jobId: `reward_ops_${entitlementId}`,
+      attempts: 1,
+      removeOnComplete: { age: 604_800 },
+      removeOnFail: { age: 2_592_000, count: 10_000 }
+    });
+  }
+
+  async enqueueRewardCampaignLifecycle(campaignId: string): Promise<QueueProducerResult> {
+    return this.enqueue("reward-engine", "campaign_lifecycle", { campaignId }, {
+      jobId: `reward_lifecycle_${campaignId}_${Date.now()}`,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 15_000 },
+      removeOnComplete: { age: 86_400 },
+      removeOnFail: { age: 604_800, count: 5_000 }
+    });
+  }
+
+  async enqueueLeaderboardRefresh(campaignId: string): Promise<QueueProducerResult> {
+    return this.enqueue("reward-engine", "leaderboard_refresh", { campaignId }, {
+      jobId: `reward_leaderboard_${campaignId}`,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5_000 },
+      removeOnComplete: { age: 86_400 },
+      removeOnFail: { age: 604_800, count: 5_000 }
+    });
+  }
+
   async onModuleDestroy() {
     await Promise.all([...this.queues.values()].map((queue) => queue.close()));
 
