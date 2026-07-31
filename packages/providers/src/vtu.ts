@@ -386,7 +386,7 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
         }
 
         return { valid: false };
-      } catch (err) {
+      } catch {
         return { valid: false };
       }
     },
@@ -709,14 +709,9 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
 
     // Phase 5 — Bills & Cable (ClubKonnect has limited bill support; primarily used for failover)
 
-    async validateMeter(input): Promise<VtuMeterValidation> {
-      try {
-        // ClubKonnect doesn't expose a direct validate endpoint; assume validation happens at purchase
-        // Return basic response for compatibility
-        return { valid: true };
-      } catch {
-        return { valid: false };
-      }
+    validateMeter(_input): Promise<VtuMeterValidation> {
+      // ClubKonnect doesn't expose a direct validate endpoint; assume validation happens at purchase
+      return Promise.resolve({ valid: true });
     },
 
     async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {

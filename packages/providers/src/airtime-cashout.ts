@@ -28,10 +28,6 @@ interface AirtimeToCashVerifyData {
   sessionId: string;
 }
 
-interface AirtimeToCashQuotaData {
-  message: string;
-}
-
 interface AirtimeToCashTransferData {
   amountConverted: string;
   recipient: string;
@@ -56,8 +52,8 @@ export function createAirtimeToCashAdapter(
   return {
     name: 'airtimetocash',
 
-    async getSupportedNetworks() {
-      return ['MTN', 'AIRTEL', 'GLO', '9MOBILE'];
+    getSupportedNetworks(): Promise<string[]> {
+      return Promise.resolve(['MTN', 'AIRTEL', 'GLO', '9MOBILE']);
     },
 
     async requestOtp(phone, network) {
@@ -139,13 +135,13 @@ export function createAirtimeToCashAdapter(
       };
     },
 
-    async getQuote(input) {
-      return {
+    getQuote(input) {
+      return Promise.resolve({
         amountMinor: input.amountMinor,
         feeMinor: Math.round(input.amountMinor * 0.04),
         payoutMinor: input.amountMinor - Math.round(input.amountMinor * 0.04),
         currency: 'NGN'
-      };
+      });
     },
 
     async initiateCashout(input) {
@@ -179,12 +175,12 @@ export function createAirtimeToCashAdapter(
       };
     },
 
-    async getTransactionStatus(reference) {
-      return {
-        status: 'COMPLETED',
+    getTransactionStatus(_reference) {
+      return Promise.resolve({
+        status: 'COMPLETED' as const,
         payout: Math.floor(Math.random() * 50000) + 5000,
         payoutCurrency: 'NGN'
-      };
+      });
     },
 
     async checkHealth() {
@@ -226,67 +222,65 @@ export function createMockAirtimeCashoutAdapter(
   return {
     name,
 
-    async getSupportedNetworks() {
-      return ['MTN', 'AIRTEL', 'GLO', '9MOBILE'];
+    getSupportedNetworks(): Promise<string[]> {
+      return Promise.resolve(['MTN', 'AIRTEL', 'GLO', '9MOBILE']);
     },
 
-    async requestOtp(phone, network) {
-      return {
+    requestOtp(_phone, _network) {
+      return Promise.resolve({
         sessionId: `SESSION-${Math.random().toString(36).slice(2, 12)}`,
         message: 'OTP sent successfully'
-      };
+      });
     },
 
-    async verifyOtp(input) {
+    verifyOtp(input) {
       if (input.otp === '000000') {
-        return {
-          verified: false
-        };
+        return Promise.resolve({ verified: false });
       }
-      return {
+      return Promise.resolve({
         verified: true,
         airtimeBalance: Math.floor(Math.random() * 100000) + 5000,
         balanceCurrency: 'NGN',
         ...(input.sessionId ? { sessionId: input.sessionId } : {})
-      };
+      });
     },
 
-    async getBalance(phone, network) {
-      return {
+    getBalance(_phone, _network) {
+      return Promise.resolve({
         balanceMinor: Math.floor(Math.random() * 100000) + 5000,
         currency: 'NGN'
-      };
+      });
     },
 
-    async getQuote(input) {
-      return {
+    getQuote(input) {
+      return Promise.resolve({
         amountMinor: input.amountMinor,
         feeMinor: Math.round(input.amountMinor * 0.04),
         payoutMinor: input.amountMinor - Math.round(input.amountMinor * 0.04),
         currency: 'NGN'
-      };
+      });
     },
 
-    async initiateCashout(input) {
-      return {
+    initiateCashout(input) {
+      return Promise.resolve({
         providerReference: `MOCK-${input.reference}`,
         status: 'PROCESSING' as const
-      };
+      });
     },
 
-    async getTransactionStatus(reference) {
-      return {
-        status: 'COMPLETED',
+    getTransactionStatus(_reference) {
+      return Promise.resolve({
+        status: 'COMPLETED' as const,
         payout: Math.floor(Math.random() * 50000) + 5000,
         payoutCurrency: 'NGN'
-      };
+      });
     },
 
-    async checkHealth() {
-      return {
-        status: 'HEALTHY',
+    checkHealth() {
+      return Promise.resolve({
+        status: 'HEALTHY' as const,
         latencyMs: 30
-      };
+      });
     }
   };
 }

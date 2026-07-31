@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import type {
   Campaign,
   CampaignObjective,
@@ -1826,7 +1827,7 @@ export interface SettlementTransferRequest {
   fxRateMicros: bigint;
   beneficiaryName: string | undefined;
   beneficiaryReference: string; // Bank account, Wise email, payment ID, etc.
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SettlementProvider {
@@ -1892,30 +1893,30 @@ export function createMockFxProvider(): FxProvider {
 
   return {
     name: "mock-fx",
-    async getRate(baseCurrency, quoteCurrency) {
+    getRate(baseCurrency, quoteCurrency): Promise<FxRate> {
       const key = `${baseCurrency}-${quoteCurrency}`;
       const rateMicros = rates.get(key);
       if (!rateMicros) {
-        throw new Error(`Unsupported pair: ${key}`);
+        return Promise.reject(new Error(`Unsupported pair: ${key}`));
       }
-      return {
+      return Promise.resolve({
         baseCurrency,
         quoteCurrency,
         rateMicros,
         timestamp: new Date(),
         provider: "mock-fx"
-      };
+      });
     },
-    async getRates(baseCurrency, quoteCurrencies) {
+    getRates(baseCurrency, quoteCurrencies): Promise<FxRate[]> {
       return Promise.all(
         quoteCurrencies.map((qc) => this.getRate(baseCurrency, qc))
       );
     },
-    async getSupportedCurrencies() {
-      return ["USD", "NGN", "GBP", "EUR"];
+    getSupportedCurrencies(): Promise<string[]> {
+      return Promise.resolve(["USD", "NGN", "GBP", "EUR"]);
     },
-    async healthCheck() {
-      return { healthy: true };
+    healthCheck(): Promise<{ healthy: boolean; message?: string }> {
+      return Promise.resolve({ healthy: true });
     }
   };
 }
@@ -1927,10 +1928,10 @@ export function createMockSettlementProvider(): SettlementProvider {
 
   return {
     name: "mock-settlement",
-    async createTransfer(request: SettlementTransferRequest): Promise<SettlementTransfer> {
+    createTransfer(request: SettlementTransferRequest): Promise<SettlementTransfer> {
       // Check idempotency
       if (idempotencyCache.has(request.idempotencyKey)) {
-        return idempotencyCache.get(request.idempotencyKey)!;
+        return Promise.resolve(idempotencyCache.get(request.idempotencyKey)!);
       }
 
       // Simulate provider reference (would be real ID from provider API)
@@ -1941,7 +1942,7 @@ export function createMockSettlementProvider(): SettlementProvider {
       let errorReason: string | undefined;
 
       if (request.metadata?.["simulation"]) {
-        const sim = request.metadata["simulation"] as string;
+        const sim = String(request.metadata["simulation"]);
         if (sim === "success") status = "COMPLETED";
         else if (sim === "failure") {
           status = "FAILED";
@@ -1973,13 +1974,13 @@ export function createMockSettlementProvider(): SettlementProvider {
       transfers.set(providerReference, transfer);
       idempotencyCache.set(request.idempotencyKey, transfer);
 
-      return transfer;
+      return Promise.resolve(transfer);
     },
 
-    async getTransferStatus(providerReference: string): Promise<SettlementTransfer> {
+    getTransferStatus(providerReference: string): Promise<SettlementTransfer> {
       const transfer = transfers.get(providerReference);
       if (!transfer) {
-        throw new Error(`Transfer not found: ${providerReference}`);
+        return Promise.reject(new Error(`Transfer not found: ${providerReference}`));
       }
 
       // Simulate status progression: PROCESSING → COMPLETED
@@ -1993,11 +1994,11 @@ export function createMockSettlementProvider(): SettlementProvider {
         }
       }
 
-      return transfer;
+      return Promise.resolve(transfer);
     },
 
-    async healthCheck() {
-      return { healthy: true };
+    healthCheck(): Promise<{ healthy: boolean; message?: string }> {
+      return Promise.resolve({ healthy: true });
     }
   };
 }
@@ -2073,7 +2074,7 @@ interface FincraPayoutStatusResponse {
 }
 
 const FINCRA_SANDBOX_URL = "https://sandboxapi.fincra.com";
-const FINCRA_PRODUCTION_URL = "https://api.fincra.com";
+export const FINCRA_PRODUCTION_URL = "https://api.fincra.com";
 
 const FINCRA_SUPPORTED_CURRENCIES = [
   "NGN", "USD", "EUR", "GBP", "GHS", "KES", "UGX", "TZS", "ZMW", "XAF", "XOF", "ZAR", "EGP"
@@ -2100,7 +2101,7 @@ async function fincraRequest<T>(
   apiKey: string,
   method: string,
   path: string,
-  body: any | undefined,
+  body: object | undefined,
   fetcher: FincraFetcher
 ): Promise<T> {
   const url = `${baseUrl}${path}`;
@@ -2164,8 +2165,8 @@ export function createFincraFxProvider(
       );
     },
 
-    async getSupportedCurrencies(): Promise<string[]> {
-      return FINCRA_SUPPORTED_CURRENCIES;
+    getSupportedCurrencies(): Promise<string[]> {
+      return Promise.resolve(FINCRA_SUPPORTED_CURRENCIES);
     },
 
     async healthCheck(): Promise<{ healthy: boolean; message?: string }> {
@@ -2223,7 +2224,7 @@ export function createFincraSettlementProvider(
       const [firstName = "", ...lastParts] = (request.beneficiaryName ?? "").split(" ");
       const lastName = lastParts.join(" ") || firstName;
 
-      const payoutBody: Record<string, any> = {
+      const payoutBody: Record<string, unknown> = {
         business: config.businessId,
         sourceCurrency: request.sourceCurrency,
         destinationCurrency: request.destinationCurrency,
@@ -2306,10 +2307,7 @@ export function verifyFincraWebhook(
   signature: string,
   webhookEncryptionKey: string
 ): boolean {
-  // Uses Node.js crypto — import at call site
-  // crypto.createHmac("SHA512", webhookEncryptionKey).update(body).digest("hex") === signature
-  const crypto = require("crypto") as typeof import("crypto");
-  const hash = crypto.createHmac("SHA512", webhookEncryptionKey).update(body).digest("hex");
+  const hash = createHmac("SHA512", webhookEncryptionKey).update(body).digest("hex");
   return hash === signature;
 }
 

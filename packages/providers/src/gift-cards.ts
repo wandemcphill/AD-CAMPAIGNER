@@ -3,9 +3,7 @@
 
 import type {
   GiftCardSellProvider,
-  GiftCardSellRate,
-  GiftCardPurchaseProvider,
-  GiftCardProduct
+  GiftCardPurchaseProvider
 } from './index.js';
 
 // ─── Reloadly Gift Card Purchase Adapter ──────────────────────────────────────
@@ -387,7 +385,7 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
                 break;
               } else if (typeof cardTypeRates.NGN === 'object') {
                 // Pick the best (highest) rate among receipt types
-                const rates = Object.values(cardTypeRates.NGN) as number[];
+                const rates = Object.values(cardTypeRates.NGN as Record<string, number>);
                 rateMinor = Math.floor(Math.max(...rates) * 100);
                 break;
               }
@@ -448,13 +446,13 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
       };
     },
 
-    async getTransactionStatus(reference) {
+    getTransactionStatus(_reference) {
       // Sogo webhooks drive status updates, not polling
       // This endpoint would require a GET /transactions/{id} endpoint
       // which may not be documented. For now, return PROCESSING and rely on webhooks.
-      return {
+      return Promise.resolve({
         status: 'PROCESSING' as const
-      };
+      });
     },
 
     async checkHealth() {
@@ -486,41 +484,41 @@ export function createMockGiftCardSellProvider(
   return {
     name,
 
-    async listSupportedBrands() {
-      return ['Apple', 'Amazon', 'Steam', 'Google Play', 'PlayStation', 'Xbox'];
+    listSupportedBrands(): Promise<string[]> {
+      return Promise.resolve(['Apple', 'Amazon', 'Steam', 'Google Play', 'PlayStation', 'Xbox']);
     },
 
-    async getRate(brand, region, denomination) {
-      return {
+    getRate(brand, region, denomination) {
+      return Promise.resolve({
         brand,
         region,
         denomination,
         currency: 'USD',
         rateMinor: Math.floor(denomination * 100 * 0.92),
         rateTimestamp: new Date()
-      };
+      });
     },
 
-    async submitCard(input) {
-      return {
+    submitCard(input) {
+      return Promise.resolve({
         providerReference: `MOCK${input.reference.slice(0, 16).toUpperCase()}`,
         status: 'PROCESSING' as const
-      };
+      });
     },
 
-    async getTransactionStatus(reference) {
-      return {
-        status: 'PAID',
+    getTransactionStatus(_reference) {
+      return Promise.resolve({
+        status: 'PAID' as const,
         payout: Math.floor(Math.random() * 50000) + 10000,
         payoutCurrency: 'NGN'
-      };
+      });
     },
 
-    async checkHealth() {
-      return {
-        status: 'HEALTHY',
+    checkHealth() {
+      return Promise.resolve({
+        status: 'HEALTHY' as const,
         latencyMs: 50
-      };
+      });
     }
   };
 }
@@ -533,8 +531,8 @@ export function createMockGiftCardPurchaseAdapter(
   return {
     name,
 
-    async getProducts() {
-      return [
+    getProducts() {
+      return Promise.resolve([
         {
           productId: 'steam-100',
           brand: 'Steam',
@@ -557,7 +555,7 @@ export function createMockGiftCardPurchaseAdapter(
           wholesalePrice: 47,
           available: true
         }
-      ];
+      ]);
     },
 
     async getProduct(productId) {
@@ -576,26 +574,26 @@ export function createMockGiftCardPurchaseAdapter(
       };
     },
 
-    async purchase(input) {
-      return {
+    purchase(input) {
+      return Promise.resolve({
         supplierOrderId: `MOCK-${input.reference}`,
         status: 'PROCESSING' as const
-      };
+      });
     },
 
-    async getOrderStatus(orderId) {
-      return {
+    getOrderStatus(_orderId) {
+      return Promise.resolve({
         status: 'DELIVERED' as const,
         codes: ['AAAA-BBBB-CCCC-DDDD']
-      };
+      });
     },
 
-    async checkHealth() {
-      return {
-        status: 'HEALTHY',
+    checkHealth() {
+      return Promise.resolve({
+        status: 'HEALTHY' as const,
         latencyMs: 50,
         balance: 50000
-      };
+      });
     }
   };
 }
