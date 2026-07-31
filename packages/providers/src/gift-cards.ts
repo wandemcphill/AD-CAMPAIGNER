@@ -385,7 +385,7 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
                 break;
               } else if (typeof cardTypeRates.NGN === 'object') {
                 // Pick the best (highest) rate among receipt types
-                const rates = Object.values(cardTypeRates.NGN as Record<string, number>);
+                const rates = Object.values(cardTypeRates.NGN);
                 rateMinor = Math.floor(Math.max(...rates) * 100);
                 break;
               }
@@ -446,7 +446,7 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
       };
     },
 
-    getTransactionStatus(_reference) {
+    getTransactionStatus() {
       // Sogo webhooks drive status updates, not polling
       // This endpoint would require a GET /transactions/{id} endpoint
       // which may not be documented. For now, return PROCESSING and rely on webhooks.
@@ -506,7 +506,7 @@ export function createMockGiftCardSellProvider(
       });
     },
 
-    getTransactionStatus(_reference) {
+    getTransactionStatus() {
       return Promise.resolve({
         status: 'PAID' as const,
         payout: Math.floor(Math.random() * 50000) + 10000,
@@ -581,7 +581,7 @@ export function createMockGiftCardPurchaseAdapter(
       });
     },
 
-    getOrderStatus(_orderId) {
+    getOrderStatus() {
       return Promise.resolve({
         status: 'DELIVERED' as const,
         codes: ['AAAA-BBBB-CCCC-DDDD']

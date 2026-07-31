@@ -1941,8 +1941,8 @@ export function createMockSettlementProvider(): SettlementProvider {
       let status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" = "PROCESSING";
       let errorReason: string | undefined;
 
-      if (request.metadata?.["simulation"]) {
-        const sim = String(request.metadata["simulation"]);
+      const sim = request.metadata?.["simulation"];
+      if (typeof sim === "string") {
         if (sim === "success") status = "COMPLETED";
         else if (sim === "failure") {
           status = "FAILED";

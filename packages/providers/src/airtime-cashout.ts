@@ -175,7 +175,7 @@ export function createAirtimeToCashAdapter(
       };
     },
 
-    getTransactionStatus(_reference) {
+    getTransactionStatus() {
       return Promise.resolve({
         status: 'COMPLETED' as const,
         payout: Math.floor(Math.random() * 50000) + 5000,
@@ -226,7 +226,7 @@ export function createMockAirtimeCashoutAdapter(
       return Promise.resolve(['MTN', 'AIRTEL', 'GLO', '9MOBILE']);
     },
 
-    requestOtp(_phone, _network) {
+    requestOtp() {
       return Promise.resolve({
         sessionId: `SESSION-${Math.random().toString(36).slice(2, 12)}`,
         message: 'OTP sent successfully'
@@ -245,7 +245,7 @@ export function createMockAirtimeCashoutAdapter(
       });
     },
 
-    getBalance(_phone, _network) {
+    getBalance() {
       return Promise.resolve({
         balanceMinor: Math.floor(Math.random() * 100000) + 5000,
         currency: 'NGN'
@@ -268,7 +268,7 @@ export function createMockAirtimeCashoutAdapter(
       });
     },
 
-    getTransactionStatus(_reference) {
+    getTransactionStatus() {
       return Promise.resolve({
         status: 'COMPLETED' as const,
         payout: Math.floor(Math.random() * 50000) + 5000,

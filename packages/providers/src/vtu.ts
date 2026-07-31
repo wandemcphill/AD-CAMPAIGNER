@@ -709,7 +709,7 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
 
     // Phase 5 — Bills & Cable (ClubKonnect has limited bill support; primarily used for failover)
 
-    validateMeter(_input): Promise<VtuMeterValidation> {
+    validateMeter(): Promise<VtuMeterValidation> {
       // ClubKonnect doesn't expose a direct validate endpoint; assume validation happens at purchase
       return Promise.resolve({ valid: true });
     },
