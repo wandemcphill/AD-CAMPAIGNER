@@ -1,9 +1,12 @@
+import { createHmac, timingSafeEqual } from "crypto";
+
 import {
   BadRequestException,
   ConflictException,
   Injectable,
   Logger,
-  NotFoundException
+  NotFoundException,
+  UnauthorizedException
 } from "@nestjs/common";
 import type { DatabaseClient } from "@fliptrybe/database";
 
@@ -70,14 +73,14 @@ export class RewardsService {
       data: {
         workspaceId: ctx.workspaceId,
         name: dto.name,
-        description: dto.description,
+        description: dto.description ?? null,
         totalSlots: dto.totalSlots,
         rewardProductId: dto.rewardProductId,
         rewardValueMinor: dto.rewardValueMinor,
         currency: dto.currency ?? "NGN",
         eligibilityRules: (dto.eligibilityRules ?? {}) as any,
         startsAt: new Date(dto.startsAt),
-        endsAt: dto.endsAt ? new Date(dto.endsAt) : undefined
+        endsAt: dto.endsAt ? new Date(dto.endsAt) : null
       },
       include: { rewardProduct: true, tasks: true }
     });
@@ -165,7 +168,7 @@ export class RewardsService {
         campaignId,
         taskType: dto.taskType,
         label: dto.label,
-        description: dto.description,
+        description: dto.description ?? null,
         verificationConfig: (dto.verificationConfig ?? {}) as any,
         sortOrder: dto.sortOrder ?? 0,
         required: dto.required ?? true
@@ -247,7 +250,7 @@ export class RewardsService {
     } else {
       await this.db.taskCompletion.update({
         where: { id: completion.id },
-        data: { status: "REJECTED", rejectionReason: result.rejectionReason }
+        data: { status: "REJECTED", rejectionReason: result.rejectionReason ?? null }
       });
     }
 
@@ -264,6 +267,81 @@ export class RewardsService {
     return this.submitTaskCompletion(ctx, qrCode.taskId, {
       proofPayload: { token: dto.token }
     });
+  }
+
+  // ─── TikTok webhook ───────────────────────────────────────────────────────
+
+  async handleTikTokVideoWebhook(rawBody: Buffer, signature: string | undefined): Promise<{ received: boolean }> {
+    const secret = process.env.TIKTOK_WEBHOOK_SECRET;
+    if (secret) {
+      if (!signature) throw new UnauthorizedException("Missing TikTok webhook signature.");
+      const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`;
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+        throw new UnauthorizedException("Invalid TikTok webhook signature.");
+      }
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = JSON.parse(rawBody.toString("utf8")) as Record<string, unknown>;
+    } catch {
+      throw new BadRequestException("Invalid webhook payload.");
+    }
+
+    const event = payload["event"] as string | undefined;
+    if (event !== "video.publish.completed") {
+      return { received: true };
+    }
+
+    const data = (payload["data"] ?? {}) as Record<string, unknown>;
+    const videoId = data["video_id"] as string | undefined;
+    const openId = data["open_id"] as string | undefined;
+
+    if (!videoId) {
+      this.logger.warn("TikTok webhook missing video_id", payload);
+      return { received: true };
+    }
+
+    // Find all PENDING_VERIFICATION TIKTOK_VIDEO_PUBLISH completions matching this video
+    const pending = await this.db.taskCompletion.findMany({
+      where: {
+        status: "PENDING_VERIFICATION",
+        task: { taskType: "TIKTOK_VIDEO_PUBLISH" }
+      },
+      include: { task: { select: { campaignId: true } }, participant: { select: { id: true } } }
+    });
+
+    const matches = pending.filter((c) => {
+      const proof = c.proofPayload as Record<string, unknown>;
+      const videoMatch = proof["videoId"] === videoId;
+      const openIdMatch = !openId || proof["tiktokOpenId"] === openId;
+      return videoMatch && openIdMatch;
+    });
+
+    await Promise.all(
+      matches.map(async (completion) => {
+        await this.db.taskCompletion.update({
+          where: { id: completion.id },
+          data: { status: "VERIFIED", verifiedAt: new Date(), metadata: { videoId, openId } as any }
+        });
+
+        await this.db.verificationEvent.create({
+          data: {
+            completionId: completion.id,
+            method: "WEBHOOK",
+            success: true,
+            payload: { event, videoId, openId } as any
+          }
+        });
+
+        await this.checkQualificationAndReserve(completion.participant.id, completion.task.campaignId);
+      })
+    );
+
+    this.logger.log(`TikTok video.publish.completed: matched ${matches.length} pending completions for videoId=${videoId}`);
+    return { received: true };
   }
 
   // ─── Qualification check + slot reservation ────────────────────────────────
@@ -480,9 +558,9 @@ export class RewardsService {
       where: { id: completionId },
       data: {
         status: dto.resolution === "VERIFIED" ? "VERIFIED" : "REJECTED",
-        verifiedAt: dto.resolution === "VERIFIED" ? new Date() : undefined,
+        verifiedAt: dto.resolution === "VERIFIED" ? new Date() : null,
         verifiedBy: resolverUserId,
-        rejectionReason: dto.rejectionReason
+        rejectionReason: dto.rejectionReason ?? null
       }
     });
 

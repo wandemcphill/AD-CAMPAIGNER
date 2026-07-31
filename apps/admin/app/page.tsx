@@ -7,6 +7,7 @@ import {
   Bell,
   Boxes,
   FileSearch,
+  Gift,
   Globe,
   LockKeyhole,
   Network,
@@ -73,7 +74,8 @@ export default function AdminPage() {
               { label: "Audit", href: "/campaign-ops/activity", icon: FileSearch },
               { label: "Access", href: "/digital-access", icon: LockKeyhole },
               { label: "VTU", href: "/vtu", icon: Smartphone },
-              { label: "Digital Products", href: "/digital-products", icon: Globe }
+              { label: "Digital Products", href: "/digital-products", icon: Globe },
+              { label: "Rewards", href: "/rewards", icon: Gift }
             ].map((item) => (
               <a
                 className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"

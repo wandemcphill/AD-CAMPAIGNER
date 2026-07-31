@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
 
 import {
   workspaceContextFromRequest,
   type WorkspaceContextRequest
 } from "../request-context";
-import { RequirePermissions } from "../authorization.decorators";
+import { Public, RequirePermissions } from "../authorization.decorators";
 import type {
   AddRewardTaskDto,
   AdminResolveCompletionDto,
@@ -88,6 +88,17 @@ export class RewardsController {
   @Get("my/progress")
   getMyProgress(@Req() request: WorkspaceContextRequest) {
     return this.rewards.getMyProgress(workspaceContextFromRequest(request));
+  }
+
+  @Post("webhooks/tiktok")
+  @Public()
+  handleTikTokWebhook(
+    @Req() request: WorkspaceContextRequest,
+    @Headers("x-tiktok-signature") signature: string | undefined
+  ) {
+    const req = request as unknown as { rawBody?: Buffer; body?: unknown };
+    const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
+    return this.rewards.handleTikTokVideoWebhook(raw, signature);
   }
 }
 

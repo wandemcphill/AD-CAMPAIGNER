@@ -46,6 +46,10 @@ import { PersonasModule } from "./personas/personas.module";
 import { AutomationModule } from "./automation/automation.module";
 import { MarketplaceModule } from "./marketplace/marketplace.module";
 import { RewardsModule } from "./rewards/rewards.module";
+import { SecurityModule } from "./security/security.module";
+import { ApiKeysModule } from "./api-keys/api-keys.module";
+import { ProvidersModule } from "./providers/providers.module";
+import { WebhooksModule } from "./webhooks/webhooks.module";
 
 @Module({
   imports: [
@@ -70,7 +74,11 @@ import { RewardsModule } from "./rewards/rewards.module";
     PersonasModule,
     AutomationModule,
     MarketplaceModule,
-    RewardsModule
+    RewardsModule,
+    SecurityModule,
+    ApiKeysModule,
+    ProvidersModule,
+    WebhooksModule
   ],
   controllers: [
     HealthController,

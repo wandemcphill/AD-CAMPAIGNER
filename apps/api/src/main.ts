@@ -16,7 +16,6 @@ declare global {
     toJSON(): string;
   }
 }
-// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type -- augmenting a built-in prototype
 (BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function toJSON(this: bigint) {
   return this.toString();
 };
@@ -30,6 +29,7 @@ async function bootstrap() {
   ];
 
   const app = await NestFactory.create(AppModule, {
+    rawBody: true,
     cors: {
       origin: corsOrigins,
       credentials: false,

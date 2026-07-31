@@ -526,48 +526,48 @@ enum RewardFulfillmentStatus {
 }
 
 model User {
-  id                    String                   @id @default(uuid())
-  email                 String?                  @unique
-  username              String                   @unique
-  name                  String
-  displayName           String?
-  defaultWorkspaceId    String?
-  status                UserStatus               @default(ACTIVE)
-  passwordHash          String?
-  emailVerifiedAt       DateTime?
-  totpSecretEncrypted   String?
-  totpEnabledAt         DateTime?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  deletedAt             DateTime?
-  defaultWorkspace      Workspace?               @relation("UserDefaultWorkspace", fields: [defaultWorkspaceId], references: [id])
-  memberships           TeamMember[]
-  sessions              Session[]
-  auditLogs             AuditLog[]               @relation("AuditActor")
-  digitalAccessRequests DigitalAccessRequest[]
-  companyProfiles       CompanyProfile[]         @relation("CompanyProfileOwner")
-  mediaAssets           MediaAsset[]             @relation("MediaAssetUploader")
-  voucherPurchases      Voucher[]                @relation("VoucherPurchaser")
-  voucherOwnerships     Voucher[]                @relation("VoucherOwner")
-  voucherClaims         VoucherClaimToken[]      @relation("VoucherClaimedBy")
-  campaignNotes         CampaignNote[]           @relation("CampaignNoteAuthor")
-  campaignAssignments   CampaignAssignment[]     @relation("CampaignAssignee")
-  assignedCampaigns     CampaignAssignment[]     @relation("CampaignAssigner")
-  campaignReports       CampaignReport[]         @relation("CampaignReportGenerator")
-  campaignLedgerEntries CampaignLedgerEntry[]     @relation("CampaignLedgerEntryActor")
-  notifications         Notification[]           @relation("NotificationRecipient")
-  notificationPrefs     NotificationPreference[]
-  createdPersonas       Persona[]                @relation("PersonaCreator")
-  createdWorkflows      AutomationWorkflow[]     @relation("AutomationWorkflowCreator")
-  twoFactorBackupCodes  TwoFactorBackupCode[]
-  apiKeys               ApiKey[]                 @relation("ApiKeyCreator")
-  outgoingWebhookSubs   OutgoingWebhookSubscription[] @relation("OutgoingWebhookSubscriptionCreator")
+  id                             String                          @id @default(uuid())
+  email                          String?                         @unique
+  username                       String                          @unique
+  name                           String
+  displayName                    String?
+  defaultWorkspaceId             String?
+  status                         UserStatus                      @default(ACTIVE)
+  passwordHash                   String?
+  emailVerifiedAt                DateTime?
+  totpSecretEncrypted            String?
+  totpEnabledAt                  DateTime?
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
+  deletedAt                      DateTime?
+  defaultWorkspace               Workspace?                      @relation("UserDefaultWorkspace", fields: [defaultWorkspaceId], references: [id])
+  memberships                    TeamMember[]
+  sessions                       Session[]
+  auditLogs                      AuditLog[]                      @relation("AuditActor")
+  digitalAccessRequests          DigitalAccessRequest[]
+  companyProfiles                CompanyProfile[]                @relation("CompanyProfileOwner")
+  mediaAssets                    MediaAsset[]                    @relation("MediaAssetUploader")
+  voucherPurchases               Voucher[]                       @relation("VoucherPurchaser")
+  voucherOwnerships              Voucher[]                       @relation("VoucherOwner")
+  voucherClaims                  VoucherClaimToken[]             @relation("VoucherClaimedBy")
+  campaignNotes                  CampaignNote[]                  @relation("CampaignNoteAuthor")
+  campaignAssignments            CampaignAssignment[]            @relation("CampaignAssignee")
+  assignedCampaigns              CampaignAssignment[]            @relation("CampaignAssigner")
+  campaignReports                CampaignReport[]                @relation("CampaignReportGenerator")
+  campaignLedgerEntries          CampaignLedgerEntry[]           @relation("CampaignLedgerEntryActor")
+  notifications                  Notification[]                  @relation("NotificationRecipient")
+  notificationPrefs              NotificationPreference[]
+  createdPersonas                Persona[]                       @relation("PersonaCreator")
+  createdWorkflows               AutomationWorkflow[]            @relation("AutomationWorkflowCreator")
+  twoFactorBackupCodes           TwoFactorBackupCode[]
+  apiKeys                        ApiKey[]                        @relation("ApiKeyCreator")
+  outgoingWebhookSubs            OutgoingWebhookSubscription[]   @relation("OutgoingWebhookSubscriptionCreator")
   marketplaceAgencyApplications  MarketplaceAgencyApplication[]  @relation("MarketplaceAgencyApplicant")
   marketplaceCreatorApplications MarketplaceCreatorApplication[] @relation("MarketplaceCreatorApplicant")
   reviewedAgencyApplications     MarketplaceAgencyApplication[]  @relation("MarketplaceAgencyReviewer")
   reviewedCreatorApplications    MarketplaceCreatorApplication[] @relation("MarketplaceCreatorReviewer")
-  invitedTeamMembers    TeamMember[]             @relation("TeamMemberInviter")
-  rewardParticipations  RewardParticipant[]      @relation("RewardParticipant")
+  invitedTeamMembers             TeamMember[]                    @relation("TeamMemberInviter")
+  rewardParticipations           RewardParticipant[]             @relation("RewardParticipant")
 
   @@index([status])
   @@index([deletedAt])
@@ -590,43 +590,44 @@ model Organization {
 }
 
 model Workspace {
-  id                         String                      @id @default(uuid())
-  organizationId             String
-  name                       String
-  defaultCurrency            String                      @default("NGN")
-  createdAt                  DateTime                    @default(now())
-  updatedAt                  DateTime                    @updatedAt
-  deletedAt                  DateTime?
-  organization               Organization                @relation(fields: [organizationId], references: [id])
-  defaultForUsers            User[]                      @relation("UserDefaultWorkspace")
-  campaigns                  Campaign[]
-  wallets                    Wallet[]
-  paymentIntents             PaymentIntent[]
-  smmOrders                  SmmOrder[]
-  growthOrders               GrowthOrder[]
-  vtuOrders                  VtuOrder[]
-  vtuWalletCharges           VtuWalletCharge[]
-  virtualNumbers             VirtualNumber[]
-  virtualNumberOrders        VirtualNumberOrder[]
-  virtualNumberWalletCharges VirtualNumberWalletCharge[]
-  digitalAccessRequests      DigitalAccessRequest[]
-  digitalAccessWalletCharges DigitalAccessWalletCharge[]
-  companyProfiles            CompanyProfile[]
-  mediaAssets                MediaAsset[]
-  vouchers                   Voucher[]
-  campaignInvoices           CampaignInvoice[]
-  campaignLedgerEntries      CampaignLedgerEntry[]
-  eventOutbox                EventOutbox[]
-  notifications              Notification[]
-  notificationPrefs          NotificationPreference[]
-  supportTickets             SupportTicket[]
-  referralAccounts           ReferralAccount[]
-  auditLogs                  AuditLog[]
-  adAccounts                 AdAccount[]
-  personas                   Persona[]
-  automationWorkflows        AutomationWorkflow[]
-  apiKeys                    ApiKey[]
-  outgoingWebhookSubscriptions OutgoingWebhookSubscription[]
+  id                             String                          @id @default(uuid())
+  organizationId                 String
+  name                           String
+  defaultCurrency                String                          @default("NGN")
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
+  deletedAt                      DateTime?
+  organization                   Organization                    @relation(fields: [organizationId], references: [id])
+  defaultForUsers                User[]                          @relation("UserDefaultWorkspace")
+  campaigns                      Campaign[]
+  wallets                        Wallet[]
+  paymentIntents                 PaymentIntent[]
+  smmOrders                      SmmOrder[]
+  growthOrders                   GrowthOrder[]
+  vtuOrders                      VtuOrder[]
+  vtuWalletCharges               VtuWalletCharge[]
+  virtualNumbers                 VirtualNumber[]
+  virtualNumberOrders            VirtualNumberOrder[]
+  virtualNumberWalletCharges     VirtualNumberWalletCharge[]
+  virtualNumberPurchaseLimits    VirtualNumberPurchaseLimit[]
+  digitalAccessRequests          DigitalAccessRequest[]
+  digitalAccessWalletCharges     DigitalAccessWalletCharge[]
+  companyProfiles                CompanyProfile[]
+  mediaAssets                    MediaAsset[]
+  vouchers                       Voucher[]
+  campaignInvoices               CampaignInvoice[]
+  campaignLedgerEntries          CampaignLedgerEntry[]
+  eventOutbox                    EventOutbox[]
+  notifications                  Notification[]
+  notificationPrefs              NotificationPreference[]
+  supportTickets                 SupportTicket[]
+  referralAccounts               ReferralAccount[]
+  auditLogs                      AuditLog[]
+  adAccounts                     AdAccount[]
+  personas                       Persona[]
+  automationWorkflows            AutomationWorkflow[]
+  apiKeys                        ApiKey[]
+  outgoingWebhookSubscriptions   OutgoingWebhookSubscription[]
   marketplaceAgencyApplications  MarketplaceAgencyApplication[]
   marketplaceCreatorApplications MarketplaceCreatorApplication[]
   rewardCampaigns                RewardCampaign[]
@@ -636,18 +637,18 @@ model Workspace {
 }
 
 model TeamMember {
-  id             String           @id @default(uuid())
-  userId         String
-  organizationId String
-  role           OrganizationRole
-  permissions    String[]         @default([])
+  id              String           @id @default(uuid())
+  userId          String
+  organizationId  String
+  role            OrganizationRole
+  permissions     String[]         @default([])
   invitedByUserId String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  deletedAt      DateTime?
-  user           User             @relation(fields: [userId], references: [id])
-  organization   Organization     @relation(fields: [organizationId], references: [id])
-  invitedBy      User?            @relation("TeamMemberInviter", fields: [invitedByUserId], references: [id])
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  deletedAt       DateTime?
+  user            User             @relation(fields: [userId], references: [id])
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  invitedBy       User?            @relation("TeamMemberInviter", fields: [invitedByUserId], references: [id])
 
   @@unique([userId, organizationId])
   @@index([organizationId, role])
@@ -671,56 +672,56 @@ model Session {
 }
 
 model Campaign {
-  id                String                  @id @default(uuid())
-  workspaceId       String
-  creatorUserId     String
-  name              String
-  objective         CampaignObjective
-  status            CampaignStatus          @default(DRAFT)
-  budgetMinor       Int
+  id                 String                  @id @default(uuid())
+  workspaceId        String
+  creatorUserId      String
+  name               String
+  objective          CampaignObjective
+  status             CampaignStatus          @default(DRAFT)
+  budgetMinor        Int
   dailySpendCapMinor Int?
-  currency          String                  @default("NGN")
-  provider          String                  @default("MOCK")
-  providerReference String?
-  companyProfileId  String?
-  personaId         String?
-  adAccountId       String?
-  riskAction        CampaignRiskAction?
-  riskScore         Int?
-  brief             String?
-  targetAudience    Json                    @default("{}")
-  placementPlan     Json                    @default("{}")
-  submittedAt       DateTime?
-  approvedAt        DateTime?
-  approvedByUserId  String?
-  cancelledAt       DateTime?
-  metadata          Json                    @default("{}")
-  startsAt          DateTime
-  endsAt            DateTime?
-  timezone          String                  @default("UTC")
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  deletedAt         DateTime?
-  workspace         Workspace               @relation(fields: [workspaceId], references: [id])
-  companyProfile    CompanyProfile?         @relation(fields: [companyProfileId], references: [id])
-  persona           Persona?                @relation(fields: [personaId], references: [id])
-  destination       Destination?
-  livePromotion     LivePromotion?
-  analytics         AnalyticsMetric[]
-  creatives         CampaignCreative[]
-  notes             CampaignNote[]
-  statusHistory     CampaignStatusHistory[]
-  assignments       CampaignAssignment[]
-  manualPlacements  ManualAdPlacement[]
-  reports           CampaignReport[]
-  budgetHolds       CampaignBudgetHold[]
-  invoices          CampaignInvoice[]
-  spendEntries      CampaignSpendEntry[]
-  paymentIntents    PaymentIntent[]
-  ledgerEntries     CampaignLedgerEntry[]
-  adAccount         AdAccount?              @relation(fields: [adAccountId], references: [id])
-  riskAssessment    CampaignRiskAssessment?
-  outcome           CampaignOutcome?
+  currency           String                  @default("NGN")
+  provider           String                  @default("MOCK")
+  providerReference  String?
+  companyProfileId   String?
+  personaId          String?
+  adAccountId        String?
+  riskAction         CampaignRiskAction?
+  riskScore          Int?
+  brief              String?
+  targetAudience     Json                    @default("{}")
+  placementPlan      Json                    @default("{}")
+  submittedAt        DateTime?
+  approvedAt         DateTime?
+  approvedByUserId   String?
+  cancelledAt        DateTime?
+  metadata           Json                    @default("{}")
+  startsAt           DateTime
+  endsAt             DateTime?
+  timezone           String                  @default("UTC")
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  deletedAt          DateTime?
+  workspace          Workspace               @relation(fields: [workspaceId], references: [id])
+  companyProfile     CompanyProfile?         @relation(fields: [companyProfileId], references: [id])
+  persona            Persona?                @relation(fields: [personaId], references: [id])
+  destination        Destination?
+  livePromotion      LivePromotion?
+  analytics          AnalyticsMetric[]
+  creatives          CampaignCreative[]
+  notes              CampaignNote[]
+  statusHistory      CampaignStatusHistory[]
+  assignments        CampaignAssignment[]
+  manualPlacements   ManualAdPlacement[]
+  reports            CampaignReport[]
+  budgetHolds        CampaignBudgetHold[]
+  invoices           CampaignInvoice[]
+  spendEntries       CampaignSpendEntry[]
+  paymentIntents     PaymentIntent[]
+  ledgerEntries      CampaignLedgerEntry[]
+  adAccount          AdAccount?              @relation(fields: [adAccountId], references: [id])
+  riskAssessment     CampaignRiskAssessment?
+  outcome            CampaignOutcome?
 
   @@index([workspaceId, status])
   @@index([adAccountId, status])
@@ -832,42 +833,42 @@ model CampaignOutcome {
 }
 
 model Wallet {
-  id                   String                      @id @default(uuid())
-  workspaceId          String
-  currency             String                      @default("NGN")
-  status               String                      @default("ACTIVE")
-  metadata             Json                        @default("{}")
-  createdAt            DateTime                    @default(now())
-  updatedAt            DateTime                    @updatedAt
-  workspace            Workspace                   @relation(fields: [workspaceId], references: [id])
-  entries              LedgerEntry[]
-  vtuCharges           VtuWalletCharge[]
-  virtualNumberCharges VirtualNumberWalletCharge[]
-  digitalAccessCharges DigitalAccessWalletCharge[]
-  campaignBudgetHolds  CampaignBudgetHold[]
-  paymentIntents       PaymentIntent[]
+  id                    String                      @id @default(uuid())
+  workspaceId           String
+  currency              String                      @default("NGN")
+  status                String                      @default("ACTIVE")
+  metadata              Json                        @default("{}")
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  workspace             Workspace                   @relation(fields: [workspaceId], references: [id])
+  entries               LedgerEntry[]
+  vtuCharges            VtuWalletCharge[]
+  virtualNumberCharges  VirtualNumberWalletCharge[]
+  digitalAccessCharges  DigitalAccessWalletCharge[]
+  campaignBudgetHolds   CampaignBudgetHold[]
+  paymentIntents        PaymentIntent[]
   campaignLedgerEntries CampaignLedgerEntry[]
-  adAccounts           AdAccount[]
-  growthOrders         GrowthOrder[]
+  adAccounts            AdAccount[]
+  growthOrders          GrowthOrder[]
 
   @@unique([workspaceId, currency])
 }
 
 model LedgerEntry {
-  id             String          @id @default(uuid())
-  walletId       String
-  kind           LedgerEntryKind
-  amountMinor    Int
-  currency       String          @default("NGN")
-  reference      String
-  description    String
-  idempotencyKey String?         @unique
-  sourceType     String?
-  sourceId       String?
-  metadata       Json            @default("{}")
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  wallet         Wallet          @relation(fields: [walletId], references: [id])
+  id                    String                @id @default(uuid())
+  walletId              String
+  kind                  LedgerEntryKind
+  amountMinor           Int
+  currency              String                @default("NGN")
+  reference             String
+  description           String
+  idempotencyKey        String?               @unique
+  sourceType            String?
+  sourceId              String?
+  metadata              Json                  @default("{}")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  wallet                Wallet                @relation(fields: [walletId], references: [id])
   campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([walletId, createdAt])
@@ -876,30 +877,30 @@ model LedgerEntry {
 }
 
 model PaymentIntent {
-  id                String           @id @default(uuid())
-  workspaceId       String
-  gateway           String
-  amountMinor       Int
-  currency          String           @default("NGN")
-  status            PaymentStatus    @default(PENDING)
-  providerReference String?
-  walletId          String?
-  campaignId        String?
-  campaignInvoiceId String?
-  idempotencyKey    String?          @unique
-  checkoutUrl       String?
-  customerEmail     String?
-  customerName      String?
-  providerPayload   Json             @default("{}")
-  metadata          Json             @default("{}")
-  completedAt       DateTime?
-  creditedAt        DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
-  workspace         Workspace        @relation(fields: [workspaceId], references: [id])
-  wallet            Wallet?          @relation(fields: [walletId], references: [id])
-  campaign          Campaign?        @relation(fields: [campaignId], references: [id])
-  campaignInvoice   CampaignInvoice? @relation(fields: [campaignInvoiceId], references: [id])
+  id                    String                @id @default(uuid())
+  workspaceId           String
+  gateway               String
+  amountMinor           Int
+  currency              String                @default("NGN")
+  status                PaymentStatus         @default(PENDING)
+  providerReference     String?
+  walletId              String?
+  campaignId            String?
+  campaignInvoiceId     String?
+  idempotencyKey        String?               @unique
+  checkoutUrl           String?
+  customerEmail         String?
+  customerName          String?
+  providerPayload       Json                  @default("{}")
+  metadata              Json                  @default("{}")
+  completedAt           DateTime?
+  creditedAt            DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  workspace             Workspace             @relation(fields: [workspaceId], references: [id])
+  wallet                Wallet?               @relation(fields: [walletId], references: [id])
+  campaign              Campaign?             @relation(fields: [campaignId], references: [id])
+  campaignInvoice       CampaignInvoice?      @relation(fields: [campaignInvoiceId], references: [id])
   campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([workspaceId, status])
@@ -910,51 +911,51 @@ model PaymentIntent {
 }
 
 model VoucherProduct {
-  id                String                  @id @default(uuid())
-  name              String
-  category          VoucherProductCategory
-  handler           VoucherProductHandler
-  provider          String?
-  providerServiceId String?
-  inputSchema       Json                    @default("{}")
-  targetWalletType  VoucherWalletType?
-  active            Boolean                 @default(true)
-  metadata          Json                    @default("{}")
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  vouchers             Voucher[]
-  rewardCampaigns      RewardCampaign[]
-  rewardEntitlements   RewardEntitlement[]
+  id                 String                 @id @default(uuid())
+  name               String
+  category           VoucherProductCategory
+  handler            VoucherProductHandler
+  provider           String?
+  providerServiceId  String?
+  inputSchema        Json                   @default("{}")
+  targetWalletType   VoucherWalletType?
+  active             Boolean                @default(true)
+  metadata           Json                   @default("{}")
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  vouchers           Voucher[]
+  rewardCampaigns    RewardCampaign[]
+  rewardEntitlements RewardEntitlement[]
 
   @@index([category, active])
   @@index([handler, active])
 }
 
 model Voucher {
-  id                    String             @id @default(uuid())
-  serialNumber          String             @unique
+  id                    String              @id @default(uuid())
+  serialNumber          String              @unique
   pinEncrypted          String
   workspaceId           String
   productId             String
-  status                VoucherStatus      @default(CREATED)
-  locked                Boolean            @default(false)
+  status                VoucherStatus       @default(CREATED)
+  locked                Boolean             @default(false)
   ownerUserId           String?
   purchaserUserId       String
   giftNote              String?
-  redemptionInput       Json               @default("{}")
+  redemptionInput       Json                @default("{}")
   redemptionDestination String?
-  metadata              Json               @default("{}")
-  createdAt             DateTime           @default(now())
+  metadata              Json                @default("{}")
+  createdAt             DateTime            @default(now())
   activatedAt           DateTime?
   revealedAt            DateTime?
   redeemedAt            DateTime?
   expiresAt             DateTime
-  updatedAt             DateTime           @updatedAt
+  updatedAt             DateTime            @updatedAt
   deletedAt             DateTime?
-  workspace             Workspace          @relation(fields: [workspaceId], references: [id])
-  product               VoucherProduct     @relation(fields: [productId], references: [id])
-  purchaser             User               @relation("VoucherPurchaser", fields: [purchaserUserId], references: [id])
-  owner                 User?              @relation("VoucherOwner", fields: [ownerUserId], references: [id])
+  workspace             Workspace           @relation(fields: [workspaceId], references: [id])
+  product               VoucherProduct      @relation(fields: [productId], references: [id])
+  purchaser             User                @relation("VoucherPurchaser", fields: [purchaserUserId], references: [id])
+  owner                 User?               @relation("VoucherOwner", fields: [ownerUserId], references: [id])
   claimTokens           VoucherClaimToken[]
 
   @@index([status, expiresAt])
@@ -964,19 +965,19 @@ model Voucher {
 }
 
 model VoucherClaimToken {
-  id                   String   @id @default(uuid())
-  token                String   @unique
-  voucherId            String
-  createdByShareActionAt DateTime @default(now())
-  claimedAt            DateTime?
-  claimedByUserId      String?
-  channel              String?
-  tokenExpiresAt       DateTime
-  metadata             Json     @default("{}")
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-  voucher              Voucher  @relation(fields: [voucherId], references: [id])
-  claimedBy            User?    @relation("VoucherClaimedBy", fields: [claimedByUserId], references: [id])
+  id                     String    @id @default(uuid())
+  token                  String    @unique
+  voucherId              String
+  createdByShareActionAt DateTime  @default(now())
+  claimedAt              DateTime?
+  claimedByUserId        String?
+  channel                String?
+  tokenExpiresAt         DateTime
+  metadata               Json      @default("{}")
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  voucher                Voucher   @relation(fields: [voucherId], references: [id])
+  claimedBy              User?     @relation("VoucherClaimedBy", fields: [claimedByUserId], references: [id])
 
   @@index([voucherId, tokenExpiresAt])
   @@index([claimedByUserId, claimedAt])
@@ -1185,29 +1186,29 @@ model ManualAdPlacement {
 }
 
 model CampaignReport {
-  id                String                     @id @default(uuid())
-  campaignId        String
-  placementId       String?
-  generatedByUserId String?
-  periodStart       DateTime
-  periodEnd         DateTime
-  status            CampaignReportStatus       @default(DRAFT)
-  summary           String?
-  spendMinor        Int                        @default(0)
-  revenueMinor      Int?
-  currency          String                     @default("NGN")
-  impressions       Int                        @default(0)
-  clicks            Int                        @default(0)
-  conversions       Int                        @default(0)
-  metrics           Json                       @default("{}")
-  publishedAt       DateTime?
-  createdAt         DateTime                   @default(now())
-  updatedAt         DateTime                   @updatedAt
-  deletedAt         DateTime?
-  campaign          Campaign                   @relation(fields: [campaignId], references: [id])
-  placement         ManualAdPlacement?         @relation(fields: [placementId], references: [id])
-  generatedBy       User?                      @relation("CampaignReportGenerator", fields: [generatedByUserId], references: [id])
-  screenshots       CampaignReportScreenshot[]
+  id                    String                     @id @default(uuid())
+  campaignId            String
+  placementId           String?
+  generatedByUserId     String?
+  periodStart           DateTime
+  periodEnd             DateTime
+  status                CampaignReportStatus       @default(DRAFT)
+  summary               String?
+  spendMinor            Int                        @default(0)
+  revenueMinor          Int?
+  currency              String                     @default("NGN")
+  impressions           Int                        @default(0)
+  clicks                Int                        @default(0)
+  conversions           Int                        @default(0)
+  metrics               Json                       @default("{}")
+  publishedAt           DateTime?
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
+  deletedAt             DateTime?
+  campaign              Campaign                   @relation(fields: [campaignId], references: [id])
+  placement             ManualAdPlacement?         @relation(fields: [placementId], references: [id])
+  generatedBy           User?                      @relation("CampaignReportGenerator", fields: [generatedByUserId], references: [id])
+  screenshots           CampaignReportScreenshot[]
   campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([campaignId, status, createdAt])
@@ -1234,31 +1235,31 @@ model CampaignReportScreenshot {
 }
 
 model CampaignInvoice {
-  id               String                @id @default(uuid())
-  workspaceId      String
-  campaignId       String
-  companyProfileId String?
-  number           String
-  status           CampaignInvoiceStatus @default(DRAFT)
-  subtotalMinor    Int
-  taxMinor         Int                   @default(0)
-  totalMinor       Int
-  amountPaidMinor  Int                   @default(0)
-  currency         String                @default("NGN")
-  lineItems        Json                  @default("[]")
-  issuedAt         DateTime?
-  dueAt            DateTime?
-  paidAt           DateTime?
-  voidedAt         DateTime?
-  metadata         Json                  @default("{}")
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  deletedAt        DateTime?
-  workspace        Workspace             @relation(fields: [workspaceId], references: [id])
-  campaign         Campaign              @relation(fields: [campaignId], references: [id])
-  companyProfile   CompanyProfile?       @relation(fields: [companyProfileId], references: [id])
-  budgetHolds      CampaignBudgetHold[]
-  paymentIntents   PaymentIntent[]
+  id                    String                @id @default(uuid())
+  workspaceId           String
+  campaignId            String
+  companyProfileId      String?
+  number                String
+  status                CampaignInvoiceStatus @default(DRAFT)
+  subtotalMinor         Int
+  taxMinor              Int                   @default(0)
+  totalMinor            Int
+  amountPaidMinor       Int                   @default(0)
+  currency              String                @default("NGN")
+  lineItems             Json                  @default("[]")
+  issuedAt              DateTime?
+  dueAt                 DateTime?
+  paidAt                DateTime?
+  voidedAt              DateTime?
+  metadata              Json                  @default("{}")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  deletedAt             DateTime?
+  workspace             Workspace             @relation(fields: [workspaceId], references: [id])
+  campaign              Campaign              @relation(fields: [campaignId], references: [id])
+  companyProfile        CompanyProfile?       @relation(fields: [companyProfileId], references: [id])
+  budgetHolds           CampaignBudgetHold[]
+  paymentIntents        PaymentIntent[]
   campaignLedgerEntries CampaignLedgerEntry[]
 
   @@unique([workspaceId, number])
@@ -1300,20 +1301,20 @@ model CampaignBudgetHold {
 }
 
 model CampaignSpendEntry {
-  id              String              @id @default(uuid())
-  campaignId      String
-  placementId     String?
-  actorUserId     String?
-  amountMinor     Int
-  currency        String              @default("NGN")
-  source          CampaignSpendSource @default(MANUAL)
-  recordedForDate DateTime            @default(now())
-  notes           String?
-  metadata        Json                @default("{}")
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  campaign        Campaign            @relation(fields: [campaignId], references: [id])
-  placement       ManualAdPlacement?  @relation(fields: [placementId], references: [id])
+  id                    String                @id @default(uuid())
+  campaignId            String
+  placementId           String?
+  actorUserId           String?
+  amountMinor           Int
+  currency              String                @default("NGN")
+  source                CampaignSpendSource   @default(MANUAL)
+  recordedForDate       DateTime              @default(now())
+  notes                 String?
+  metadata              Json                  @default("{}")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  campaign              Campaign              @relation(fields: [campaignId], references: [id])
+  placement             ManualAdPlacement?    @relation(fields: [placementId], references: [id])
   campaignLedgerEntries CampaignLedgerEntry[]
 
   @@index([campaignId, recordedForDate])
@@ -1413,44 +1414,44 @@ model SmmOrder {
 }
 
 model GrowthOrder {
-  id                    String                   @id @default(uuid())
-  workspaceId           String
-  walletId              String
-  serviceCode           String
-  serviceName           String
-  platform              GrowthServicePlatform
-  serviceKind           String
-  destinationKind       DestinationKind
-  destinationUrl        String
-  quantityOrdered       Int
-  quantityDelivered     Int                      @default(0)
-  status                GrowthOrderStatus        @default(PENDING)
-  amountMinor           Int
-  currency              String                   @default("NGN")
-  supplierCostMinor     Int
-  supplierCostCurrency  String                   @default("USD")
-  grossMarginMinor      Int
-  expectedCompletionAt  DateTime
-  idempotencyKey        String                   @unique
-  paymentStatus         GrowthOrderPaymentStatus @default(FUNDS_REQUIRED)
+  id                       String                   @id @default(uuid())
+  workspaceId              String
+  walletId                 String
+  serviceCode              String
+  serviceName              String
+  platform                 GrowthServicePlatform
+  serviceKind              String
+  destinationKind          DestinationKind
+  destinationUrl           String
+  quantityOrdered          Int
+  quantityDelivered        Int                      @default(0)
+  status                   GrowthOrderStatus        @default(PENDING)
+  amountMinor              Int
+  currency                 String                   @default("NGN")
+  supplierCostMinor        Int
+  supplierCostCurrency     String                   @default("USD")
+  grossMarginMinor         Int
+  expectedCompletionAt     DateTime
+  idempotencyKey           String                   @unique
+  paymentStatus            GrowthOrderPaymentStatus @default(FUNDS_REQUIRED)
   reservationLedgerEntryId String?
-  captureLedgerEntryId  String?
-  releaseLedgerEntryId  String?
-  refundLedgerEntryId   String?
-  refundEligibility     GrowthRefundEligibility  @default(NONE)
-  refundReviewStatus    GrowthRefundReviewStatus @default(NOT_REQUIRED)
-  submittedAt           DateTime?
-  completedAt           DateTime?
-  supplierName          String?
-  supplierReference     String?
-  failureReason         String?
-  adminNote             String?
-  createdByUserId       String?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  deletedAt             DateTime?
-  workspace             Workspace                @relation(fields: [workspaceId], references: [id])
-  wallet                Wallet                   @relation(fields: [walletId], references: [id])
+  captureLedgerEntryId     String?
+  releaseLedgerEntryId     String?
+  refundLedgerEntryId      String?
+  refundEligibility        GrowthRefundEligibility  @default(NONE)
+  refundReviewStatus       GrowthRefundReviewStatus @default(NOT_REQUIRED)
+  submittedAt              DateTime?
+  completedAt              DateTime?
+  supplierName             String?
+  supplierReference        String?
+  failureReason            String?
+  adminNote                String?
+  createdByUserId          String?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  deletedAt                DateTime?
+  workspace                Workspace                @relation(fields: [workspaceId], references: [id])
+  wallet                   Wallet                   @relation(fields: [walletId], references: [id])
 
   @@index([workspaceId, status])
   @@index([walletId, status])
@@ -1584,7 +1585,7 @@ model VtuDataPlan {
 }
 
 model VtuOrder {
-  id                String         @id @default(uuid())
+  id                String            @id @default(uuid())
   workspaceId       String
   userId            String?
   productType       VtuProductType
@@ -1595,21 +1596,21 @@ model VtuOrder {
   faceValueMinor    Int?
   amountMinor       Int
   costMinor         Int
-  currency          String         @default("NGN")
+  currency          String            @default("NGN")
   providerName      String?
   providerReference String?
-  status            VtuOrderStatus @default(QUOTED)
-  idempotencyKey    String         @unique
-  attemptCount      Int            @default(0)
+  status            VtuOrderStatus    @default(QUOTED)
+  idempotencyKey    String            @unique
+  attemptCount      Int               @default(0)
   failureReason     String?
   reconciledAt      DateTime?
   requestIpAddress  String?
   requestUserAgent  String?
   requestDeviceId   String?
-  metadata          Json           @default("{}")
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  workspace         Workspace      @relation(fields: [workspaceId], references: [id])
+  metadata          Json              @default("{}")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id])
   walletCharges     VtuWalletCharge[]
 
   @@index([workspaceId, status, createdAt])
@@ -1668,7 +1669,7 @@ model VirtualNumberProduct {
 }
 
 model VirtualNumber {
-  id                String              @id @default(uuid())
+  id                String                 @id @default(uuid())
   workspaceId       String
   userId            String?
   productId         String
@@ -1676,22 +1677,22 @@ model VirtualNumber {
   providerNumberId  String
   e164              String
   countryCode       String
-  status            VirtualNumberStatus @default(RESERVED)
+  status            VirtualNumberStatus    @default(RESERVED)
   provisionedAt     DateTime?
   activatedAt       DateTime?
   expiresAt         DateTime?
   expiryWarnedAt    DateTime?
   releasedAt        DateTime?
-  renewalCount      Int                 @default(0)
-  messageCount      Int                 @default(0)
+  renewalCount      Int                    @default(0)
+  messageCount      Int                    @default(0)
   lastMessageAt     DateTime?
   lastPolledAt      DateTime?
-  supplierCostMinor Int                 @default(0)
-  supplierCurrency  String              @default("USD")
-  metadata          Json                @default("{}")
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  workspace         Workspace           @relation(fields: [workspaceId], references: [id])
+  supplierCostMinor Int                    @default(0)
+  supplierCurrency  String                 @default("USD")
+  metadata          Json                   @default("{}")
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  workspace         Workspace              @relation(fields: [workspaceId], references: [id])
   messages          VirtualNumberMessage[]
 
   @@unique([providerName, providerNumberId])
@@ -1721,33 +1722,33 @@ model VirtualNumberMessage {
 }
 
 model VirtualNumberOrder {
-  id                  String                    @id @default(uuid())
+  id                  String                      @id @default(uuid())
   workspaceId         String
   userId              String?
   productId           String
   virtualNumberId     String?
   kind                VirtualNumberOrderKind
-  status              VirtualNumberOrderStatus  @default(QUOTED)
+  status              VirtualNumberOrderStatus    @default(QUOTED)
   amountMinor         Int
-  currency            String                    @default("NGN")
-  supplierCostMinor   Int                       @default(0)
-  supplierCurrency    String                    @default("USD")
+  currency            String                      @default("NGN")
+  supplierCostMinor   Int                         @default(0)
+  supplierCurrency    String                      @default("USD")
   fxRateId            String?
   fxRateMicrosApplied BigInt?
   providerName        String?
   providerReference   String?
-  idempotencyKey      String                    @unique
-  riskScore           Int                       @default(0)
-  attestationAccepted Boolean                   @default(false)
+  idempotencyKey      String                      @unique
+  riskScore           Int                         @default(0)
+  attestationAccepted Boolean                     @default(false)
   requestIpAddress    String?
   requestUserAgent    String?
   requestDeviceId     String?
-  attemptCount        Int                       @default(0)
+  attemptCount        Int                         @default(0)
   failureReason       String?
-  metadata            Json                      @default("{}")
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  workspace           Workspace                 @relation(fields: [workspaceId], references: [id])
+  metadata            Json                        @default("{}")
+  createdAt           DateTime                    @default(now())
+  updatedAt           DateTime                    @updatedAt
+  workspace           Workspace                   @relation(fields: [workspaceId], references: [id])
   walletCharges       VirtualNumberWalletCharge[]
 
   @@index([workspaceId, status, createdAt])
@@ -1755,19 +1756,19 @@ model VirtualNumberOrder {
 }
 
 model VirtualNumberWalletCharge {
-  id                  String    @id @default(uuid())
+  id                  String             @id @default(uuid())
   workspaceId         String
   walletId            String
   orderId             String
-  idempotencyKey      String    @unique
+  idempotencyKey      String             @unique
   amountMinor         Int
-  currency            String    @default("NGN")
-  status              String    @default("CHARGED")
+  currency            String             @default("NGN")
+  status              String             @default("CHARGED")
   debitLedgerEntryId  String?
   refundLedgerEntryId String?
-  metadata            Json      @default("{}")
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  metadata            Json               @default("{}")
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
   workspace           Workspace          @relation(fields: [workspaceId], references: [id])
   wallet              Wallet             @relation(fields: [walletId], references: [id])
   virtualNumberOrder  VirtualNumberOrder @relation(fields: [orderId], references: [id])
@@ -1792,6 +1793,63 @@ model NumberCompatibility {
   updatedAt      DateTime                 @updatedAt
 
   @@unique([serviceKey, countryCode, providerName, numberType])
+}
+
+model VirtualNumberPurchaseLimit {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String?
+  periodType  String    @default("MONTH") // MONTH, WEEK, DAY, ROLLING_30D
+  limitMinor  Int // in minor units of the workspace currency
+  spentMinor  Int       @default(0)
+  periodStart DateTime
+  periodEnd   DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, userId, periodStart, periodEnd])
+}
+
+model VirtualNumberReconciliation {
+  id                   String    @id @default(uuid())
+  providerName         String
+  domain               String    @default("VIRTUAL_NUMBER")
+  reportPeriodStart    DateTime
+  reportPeriodEnd      DateTime
+  providerBalanceMinor Int? // Latest known balance from provider
+  providerCurrency     String    @default("USD")
+  declaredCostMinor    Int       @default(0) // Sum of supplierCostMinor from orders in period
+  discrepancyMinor     Int? // providerBalance - declaredCost (can be negative)
+  discrepancyBps       Int? // Percentage of discrepancy
+  status               String    @default("PENDING") // PENDING, RESOLVED, INVESTIGATION
+  notes                String?
+  reviewedBy           String?
+  reviewedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([providerName, reportPeriodStart, reportPeriodEnd])
+  @@index([status, createdAt])
+}
+
+model VirtualNumberMarginAnalytics {
+  id                  String   @id @default(uuid())
+  orderId             String
+  countryCode         String
+  providerName        String
+  costMinorUsd        Int
+  costMinorNgn        Int
+  sellMinorNgn        Int
+  marginMinorNgn      Int      @default(0)
+  marginBps           Int      @default(0)
+  expectedMarginBps   Int      @default(3500) // 35% default markup
+  marginVarianceBps   Int      @default(0) // Actual - Expected
+  fxRateMicrosApplied BigInt?
+  createdAt           DateTime @default(now())
+
+  @@index([countryCode, providerName, createdAt])
+  @@index([marginVarianceBps, createdAt])
 }
 
 model DigitalAccessCategory {
@@ -2113,43 +2171,43 @@ model AutomationWorkflow {
 }
 
 model MarketplaceAgency {
-  id           String   @id @default(uuid())
-  name         String
-  specialty    String
-  location     String
-  verified     Boolean  @default(false)
-  ratingBps    Int      @default(0)
-  reviewCount  Int      @default(0)
-  campaignCount Int     @default(0)
-  teamSize     Int      @default(0)
-  description  String
-  packages     String[] @default([])
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  deletedAt    DateTime?
+  id            String    @id @default(uuid())
+  name          String
+  specialty     String
+  location      String
+  verified      Boolean   @default(false)
+  ratingBps     Int       @default(0)
+  reviewCount   Int       @default(0)
+  campaignCount Int       @default(0)
+  teamSize      Int       @default(0)
+  description   String
+  packages      String[]  @default([])
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
   @@index([isActive, specialty])
   @@index([deletedAt])
 }
 
 model MarketplaceCreator {
-  id              String   @id @default(uuid())
-  name            String
-  niche           String
-  verified        Boolean  @default(false)
-  followerCount   Int      @default(0)
-  engagementBps   Int      @default(0)
-  rateMinor       Int      @default(0)
-  currency        String   @default("NGN")
-  languages       String[] @default([])
-  platforms       String[] @default([])
-  pastCampaigns   Int      @default(0)
-  bio             String
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime?
+  id            String    @id @default(uuid())
+  name          String
+  niche         String
+  verified      Boolean   @default(false)
+  followerCount Int       @default(0)
+  engagementBps Int       @default(0)
+  rateMinor     Int       @default(0)
+  currency      String    @default("NGN")
+  languages     String[]  @default([])
+  platforms     String[]  @default([])
+  pastCampaigns Int       @default(0)
+  bio           String
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
   @@index([isActive, niche])
   @@index([deletedAt])
@@ -2196,33 +2254,33 @@ model ApiKey {
 // ─── Outgoing webhooks ───────────────────────────────────────────────────────
 
 model OutgoingWebhookSubscription {
-  id              String    @id @default(uuid())
+  id              String                    @id @default(uuid())
   workspaceId     String
   createdByUserId String
   targetUrl       String
-  events          String[]  @default([])
+  events          String[]                  @default([])
   signingSecret   String
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  workspace       Workspace @relation(fields: [workspaceId], references: [id])
-  createdBy       User      @relation("OutgoingWebhookSubscriptionCreator", fields: [createdByUserId], references: [id])
+  isActive        Boolean                   @default(true)
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  workspace       Workspace                 @relation(fields: [workspaceId], references: [id])
+  createdBy       User                      @relation("OutgoingWebhookSubscriptionCreator", fields: [createdByUserId], references: [id])
   deliveries      OutgoingWebhookDelivery[]
 
   @@index([workspaceId, isActive])
 }
 
 model OutgoingWebhookDelivery {
-  id             String                       @id @default(uuid())
+  id             String                      @id @default(uuid())
   subscriptionId String
   eventName      String
-  payload        Json                         @default("{}")
-  status         String                       @default("PENDING")
-  attempts       Int                          @default(0)
+  payload        Json                        @default("{}")
+  status         String                      @default("PENDING")
+  attempts       Int                         @default(0)
   responseStatus Int?
   lastAttemptAt  DateTime?
-  createdAt      DateTime                     @default(now())
-  subscription   OutgoingWebhookSubscription  @relation(fields: [subscriptionId], references: [id])
+  createdAt      DateTime                    @default(now())
+  subscription   OutgoingWebhookSubscription @relation(fields: [subscriptionId], references: [id])
 
   @@index([subscriptionId, createdAt])
   @@index([eventName, status])
@@ -2237,50 +2295,50 @@ enum MarketplaceApplicationStatus {
 }
 
 model MarketplaceAgencyApplication {
-  id              String                        @id @default(uuid())
-  workspaceId     String
-  applicantUserId String
-  status          MarketplaceApplicationStatus @default(PENDING)
-  name            String
-  specialty       String
-  location        String
-  description     String
-  packages        String[]                     @default([])
-  reviewedByUserId String?
-  reviewedAt      DateTime?
-  rejectionReason String?
+  id                 String                       @id @default(uuid())
+  workspaceId        String
+  applicantUserId    String
+  status             MarketplaceApplicationStatus @default(PENDING)
+  name               String
+  specialty          String
+  location           String
+  description        String
+  packages           String[]                     @default([])
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+  rejectionReason    String?
   resultingListingId String?
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
-  workspace       Workspace                    @relation(fields: [workspaceId], references: [id])
-  applicant       User                         @relation("MarketplaceAgencyApplicant", fields: [applicantUserId], references: [id])
-  reviewer        User?                        @relation("MarketplaceAgencyReviewer", fields: [reviewedByUserId], references: [id])
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  workspace          Workspace                    @relation(fields: [workspaceId], references: [id])
+  applicant          User                         @relation("MarketplaceAgencyApplicant", fields: [applicantUserId], references: [id])
+  reviewer           User?                        @relation("MarketplaceAgencyReviewer", fields: [reviewedByUserId], references: [id])
 
   @@index([workspaceId, status])
   @@index([status, createdAt])
 }
 
 model MarketplaceCreatorApplication {
-  id              String                        @id @default(uuid())
-  workspaceId     String
-  applicantUserId String
-  status          MarketplaceApplicationStatus @default(PENDING)
-  name            String
-  niche           String
-  bio             String
-  followerCount   Int                          @default(0)
-  languages       String[]                     @default([])
-  platforms       String[]                     @default([])
-  rateMinor       Int                          @default(0)
-  reviewedByUserId String?
-  reviewedAt      DateTime?
-  rejectionReason String?
+  id                 String                       @id @default(uuid())
+  workspaceId        String
+  applicantUserId    String
+  status             MarketplaceApplicationStatus @default(PENDING)
+  name               String
+  niche              String
+  bio                String
+  followerCount      Int                          @default(0)
+  languages          String[]                     @default([])
+  platforms          String[]                     @default([])
+  rateMinor          Int                          @default(0)
+  reviewedByUserId   String?
+  reviewedAt         DateTime?
+  rejectionReason    String?
   resultingListingId String?
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
-  workspace       Workspace                    @relation(fields: [workspaceId], references: [id])
-  applicant       User                         @relation("MarketplaceCreatorApplicant", fields: [applicantUserId], references: [id])
-  reviewer        User?                        @relation("MarketplaceCreatorReviewer", fields: [reviewedByUserId], references: [id])
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  workspace          Workspace                    @relation(fields: [workspaceId], references: [id])
+  applicant          User                         @relation("MarketplaceCreatorApplicant", fields: [applicantUserId], references: [id])
+  reviewer           User?                        @relation("MarketplaceCreatorReviewer", fields: [reviewedByUserId], references: [id])
 
   @@index([workspaceId, status])
   @@index([status, createdAt])
@@ -2289,24 +2347,24 @@ model MarketplaceCreatorApplication {
 // ─── Reward Engine ──────────────────────────────────────────────────────────────
 
 model RewardCampaign {
-  id               String               @id @default(uuid())
+  id               String                   @id @default(uuid())
   workspaceId      String
   name             String
   description      String?
-  status           RewardCampaignStatus  @default(DRAFT)
+  status           RewardCampaignStatus     @default(DRAFT)
   totalSlots       Int
-  claimedSlots     Int                   @default(0)
+  claimedSlots     Int                      @default(0)
   rewardProductId  String
   rewardValueMinor Int
-  currency         String                @default("NGN")
-  eligibilityRules Json                  @default("{}")
+  currency         String                   @default("NGN")
+  eligibilityRules Json                     @default("{}")
   startsAt         DateTime
   endsAt           DateTime?
-  metadata         Json                  @default("{}")
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  workspace        Workspace             @relation(fields: [workspaceId], references: [id])
-  rewardProduct    VoucherProduct        @relation(fields: [rewardProductId], references: [id])
+  metadata         Json                     @default("{}")
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  workspace        Workspace                @relation(fields: [workspaceId], references: [id])
+  rewardProduct    VoucherProduct           @relation(fields: [rewardProductId], references: [id])
   tasks            RewardTask[]
   participants     RewardParticipant[]
   entitlements     RewardEntitlement[]
@@ -2318,18 +2376,18 @@ model RewardCampaign {
 }
 
 model RewardTask {
-  id                 String         @id @default(uuid())
+  id                 String           @id @default(uuid())
   campaignId         String
   taskType           RewardTaskType
   label              String
   description        String?
-  verificationConfig Json           @default("{}")
-  sortOrder          Int            @default(0)
-  required           Boolean        @default(true)
-  metadata           Json           @default("{}")
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  campaign           RewardCampaign @relation(fields: [campaignId], references: [id])
+  verificationConfig Json             @default("{}")
+  sortOrder          Int              @default(0)
+  required           Boolean          @default(true)
+  metadata           Json             @default("{}")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  campaign           RewardCampaign   @relation(fields: [campaignId], references: [id])
   completions        TaskCompletion[]
   qrCodes            RewardQrCode[]
 
@@ -2378,7 +2436,7 @@ model RewardEntitlement {
   id               String                  @id @default(uuid())
   campaignId       String
   participantId    String
-  status           RewardEntitlementStatus  @default(RESERVED)
+  status           RewardEntitlementStatus @default(RESERVED)
   rewardProductId  String
   rewardValueMinor Int
   currency         String                  @default("NGN")
