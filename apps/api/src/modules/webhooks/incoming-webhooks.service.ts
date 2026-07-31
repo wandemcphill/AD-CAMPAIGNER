@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
 import { Injectable, NotFoundException } from "@nestjs/common";
 
 import { PrismaService } from "../prisma.service";

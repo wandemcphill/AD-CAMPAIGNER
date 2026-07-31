@@ -1,12 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Shield, Users } from "lucide-react";
+import { Plus, Shield, Trash2, Users } from "lucide-react";
 
 import { Badge, Button } from "@fliptrybe/ui";
 import { Drawer, Input } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import {
+  TEAM_ROLES,
+  inviteTeamMember,
+  removeTeamMember,
+  updateTeamMemberRole,
+  type TeamMemberRecord
+} from "../../../team/api";
 import { useTeamData } from "../../../team/use-team-data";
 
 const ROLE_TONE: Record<string, "success" | "info" | "neutral" | "warning"> = {
@@ -24,9 +31,54 @@ function initials(name: string) {
 }
 
 export default function TeamSettingsPage() {
-  const { error, loading, members } = useTeamData();
+  const { error, loading, members, refresh } = useTeamData();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteUsername, setInviteUsername] = useState("");
+  const [inviteRole, setInviteRole] = useState<string>(TEAM_ROLES[0]);
+  const [inviteError, setInviteError] = useState<string>();
+  const [busy, setBusy] = useState<string>();
+
+  async function onInvite() {
+    if (!inviteUsername.trim()) return;
+
+    setBusy("invite");
+    setInviteError(undefined);
+    try {
+      await inviteTeamMember(inviteUsername.trim(), inviteRole);
+      setInviteUsername("");
+      setShowInvite(false);
+      await refresh();
+    } catch (caught) {
+      setInviteError(caught instanceof Error ? caught.message : "Could not invite that user.");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function onRoleChange(member: TeamMemberRecord, role: string) {
+    setBusy(member.id);
+    try {
+      await updateTeamMemberRole(member.id, role);
+      await refresh();
+    } catch {
+      // Surfaced via the shared ErrorNotice on next refresh failure; role selects
+      // revert visually once refresh() re-fetches the authoritative member list.
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function onRemove(member: TeamMemberRecord) {
+    setBusy(member.id);
+    try {
+      await removeTeamMember(member.id);
+      await refresh();
+    } catch {
+      // Same as above — refresh() re-syncs the list either way.
+    } finally {
+      setBusy(undefined);
+    }
+  }
 
   return (
     <div className="grid gap-8">
@@ -72,7 +124,30 @@ export default function TeamSettingsPage() {
                     {member.permissions.length} permission{member.permissions.length === 1 ? "" : "s"}
                   </div>
                 </div>
-                <Badge tone={ROLE_TONE[member.role] ?? "neutral"}>{member.role}</Badge>
+                {member.role === "OWNER" ? (
+                  <Badge tone={ROLE_TONE[member.role] ?? "neutral"}>{member.role}</Badge>
+                ) : (
+                  <>
+                    <select
+                      className="h-8 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-2 text-xs outline-none focus:border-[var(--ft-accent)]"
+                      disabled={busy === member.id}
+                      onChange={(e) => void onRoleChange(member, e.target.value)}
+                      value={member.role}
+                    >
+                      {TEAM_ROLES.map((role) => (
+                        <option key={role} value={role}>{role}</option>
+                      ))}
+                    </select>
+                    <button
+                      className="text-[var(--ft-text-muted)] transition hover:text-[var(--ft-red)]"
+                      disabled={busy === member.id}
+                      onClick={() => void onRemove(member)}
+                      type="button"
+                    >
+                      <Trash2 className="size-4" />
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -85,16 +160,34 @@ export default function TeamSettingsPage() {
             id="invite-user"
             label="Username"
             onChange={(e) => setInviteUsername(e.currentTarget.value)}
-            placeholder="Enter username"
+            placeholder="Enter an existing user's username"
             type="text"
             value={inviteUsername}
           />
-          <div className="rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
-            Invitations aren&apos;t wired to the backend yet — there&apos;s no invite endpoint on the
-            API. This form is a placeholder until that&apos;s built.
+          <div className="grid gap-1.5">
+            <label className="text-sm font-medium" htmlFor="invite-role">Role</label>
+            <select
+              className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+              id="invite-role"
+              onChange={(e) => setInviteRole(e.target.value)}
+              value={inviteRole}
+            >
+              {TEAM_ROLES.map((role) => (
+                <option key={role} value={role}>{role}</option>
+              ))}
+            </select>
           </div>
-          <Button className="w-full justify-center" disabled>
-            Send Invitation
+          <div className="rounded-[var(--radius-md)] border border-[var(--ft-blue)]/30 bg-[var(--ft-blue-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
+            The invited user must already have a FlipTrybe account — they&apos;ll get an in-app
+            notification once added. There&apos;s no email invite flow yet.
+          </div>
+          <ErrorNotice message={inviteError} />
+          <Button
+            className="w-full justify-center"
+            disabled={!inviteUsername.trim() || busy === "invite"}
+            onClick={() => void onInvite()}
+          >
+            {busy === "invite" ? "Sending..." : "Send Invitation"}
           </Button>
         </div>
       </Drawer>

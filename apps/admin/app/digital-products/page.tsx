@@ -96,6 +96,9 @@ const TABS = [
   { id: "numbers", label: "Numbers" },
   { id: "orders", label: "Orders" },
   { id: "providers", label: "Providers" },
+  { id: "margins", label: "Margins" },
+  { id: "reconciliation", label: "Reconciliation" },
+  { id: "limits", label: "Purchase Limits" },
   { id: "fx", label: "FX Rate" }
 ];
 
@@ -112,6 +115,9 @@ export default function AdminDigitalProductsPage() {
   const [providers, setProviders] = useState<ProviderHealthRow[]>([]);
   const [fxCurrent, setFxCurrent] = useState<FxRateRow>();
   const [fxHistory, setFxHistory] = useState<FxRateRow[]>([]);
+  const [marginStats, setMarginStats] = useState<any>();
+  const [reconciliationData, setReconciliationData] = useState<any>();
+  const [purchaseLimits, setPurchaseLimits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
@@ -121,20 +127,29 @@ export default function AdminDigitalProductsPage() {
   const [fxConfirming, setFxConfirming] = useState(false);
   const [fxSubmitting, setFxSubmitting] = useState(false);
 
+  const [limitInput, setLimitInput] = useState("");
+  const [limitSubmitting, setLimitSubmitting] = useState(false);
+
   const refresh = useCallback(async () => {
     setError(undefined);
     try {
-      const [numbersRes, ordersRes, healthRes, historyRes] = await Promise.all([
+      const [numbersRes, ordersRes, healthRes, historyRes, marginRes, reconRes, limitsRes] = await Promise.all([
         apiRequest<{ numbers: AdminVirtualNumber[] }>("/admin/digital-products/numbers"),
         apiRequest<{ orders: AdminVirtualNumberOrder[] }>("/admin/digital-products/orders"),
         apiRequest<ProviderHealthRow[]>("/admin/digital-products/providers/health"),
-        apiRequest<FxRateRow[]>("/admin/digital-products/fx/history")
+        apiRequest<FxRateRow[]>("/admin/digital-products/fx/history"),
+        apiRequest<any>("/admin/digital-products/margin-analytics?days=30"),
+        apiRequest<any>("/admin/digital-products/reconciliation?days=30"),
+        apiRequest<any[]>("/admin/digital-products/purchase-limits")
       ]);
       setNumbers(numbersRes.numbers);
       setOrders(ordersRes.orders);
       setProviders(healthRes);
       setFxHistory(historyRes);
       setFxCurrent(historyRes.find((r) => r.effectiveTo === null));
+      setMarginStats(marginRes);
+      setReconciliationData(reconRes);
+      setPurchaseLimits(limitsRes);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load Digital Products data.");
     } finally {
@@ -210,6 +225,32 @@ export default function AdminDigitalProductsPage() {
       setError(message);
     } finally {
       setFxSubmitting(false);
+    }
+  }
+
+  async function submitPurchaseLimit() {
+    const limitMinor = Number(limitInput) * 100; // Convert NGN to minor units
+    if (!Number.isFinite(limitMinor) || limitMinor <= 0) {
+      setError("Enter a valid positive amount.");
+      return;
+    }
+
+    setLimitSubmitting(true);
+    setError(undefined);
+    try {
+      await apiRequest("/admin/digital-products/purchase-limits", {
+        method: "POST",
+        body: JSON.stringify({
+          workspaceId: session?.workspace?.id,
+          limitMinor
+        })
+      });
+      setLimitInput("");
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not set purchase limit.");
+    } finally {
+      setLimitSubmitting(false);
     }
   }
 
@@ -334,6 +375,200 @@ export default function AdminDigitalProductsPage() {
                   <Badge tone={STATUS_TONE[p.status] ?? "neutral"}>{p.status.toLowerCase()}</Badge>
                 </Panel>
               ))
+            )}
+          </div>
+        )}
+
+        {tab === "margins" && (
+          <div className="mt-4 grid gap-4">
+            {loading ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">Loading margin analytics...</Panel>
+            ) : marginStats ? (
+              <>
+                <Panel className="p-5">
+                  <h3 className="mb-4 font-semibold">Margin Summary (Last 30 days)</h3>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Total Orders</div>
+                      <div className="text-2xl font-bold">{marginStats.summary.totalOrders}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Avg Margin</div>
+                      <div className="text-2xl font-bold">{(marginStats.summary.avgMarginBps / 100).toFixed(1)}%</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Expected</div>
+                      <div className="text-2xl font-bold">{(marginStats.summary.expectedMarginBps / 100).toFixed(1)}%</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Below Target</div>
+                      <div className="text-2xl font-bold text-[var(--ft-red)]">{marginStats.summary.belowTargetCount}</div>
+                    </div>
+                  </div>
+                </Panel>
+
+                <Panel className="p-5">
+                  <h3 className="mb-3 font-semibold">By Provider</h3>
+                  <div className="space-y-2">
+                    {marginStats.providerStats.map((p: any) => (
+                      <div className="flex items-center justify-between rounded border border-[var(--ft-border)] p-3" key={p.provider}>
+                        <div>
+                          <div className="text-sm font-semibold">{p.provider}</div>
+                          <div className="text-xs text-[var(--ft-text-muted)]">{p.count} orders</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-semibold">{(p.avgMarginBps / 100).toFixed(1)}%</div>
+                          <div className={`text-xs ${p.avgVarianceBps < 0 ? "text-[var(--ft-red)]" : "text-[var(--ft-green)]"}`}>
+                            {p.avgVarianceBps < 0 ? "-" : "+"}{Math.abs(p.avgVarianceBps / 100).toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+
+                <Panel className="p-5">
+                  <h3 className="mb-3 font-semibold">Recent Orders</h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {marginStats.orders.slice(0, 20).map((order: any) => (
+                      <div className="text-xs border-b border-[var(--ft-border)] pb-2" key={order.orderId}>
+                        <div className="flex justify-between">
+                          <span className="font-mono text-[var(--ft-text-muted)]">{order.orderId.slice(0, 8)}</span>
+                          <span className="font-semibold">{(order.marginBps / 100).toFixed(1)}%</span>
+                        </div>
+                        <div className="mt-1 flex justify-between text-[var(--ft-text-muted)]">
+                          <span>{order.provider} · {order.country}</span>
+                          <span>{order.sellNgn > 0 ? formatNaira(order.sellNgn) : "—"}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              </>
+            ) : (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">No margin data available.</Panel>
+            )}
+          </div>
+        )}
+
+        {tab === "reconciliation" && (
+          <div className="mt-4 grid gap-4">
+            {loading ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">Loading reconciliation data...</Panel>
+            ) : reconciliationData ? (
+              <>
+                <Panel className="p-5">
+                  <h3 className="mb-4 font-semibold">Reconciliation Summary (Last 30 days)</h3>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Total Records</div>
+                      <div className="text-2xl font-bold">{reconciliationData.summary.total}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Resolved</div>
+                      <div className="text-2xl font-bold text-[var(--ft-green)]">
+                        {reconciliationData.summary.byStatus?.RESOLVED || 0}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Pending</div>
+                      <div className="text-2xl font-bold text-[var(--ft-yellow)]">
+                        {reconciliationData.summary.byStatus?.PENDING || 0}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">Investigation</div>
+                      <div className="text-2xl font-bold text-[var(--ft-red)]">
+                        {reconciliationData.summary.investigationCount}
+                      </div>
+                    </div>
+                  </div>
+                </Panel>
+
+                <Panel className="p-5">
+                  <h3 className="mb-3 font-semibold">Recent Records</h3>
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    {reconciliationData.records.map((r: any) => (
+                      <div className="text-xs border-b border-[var(--ft-border)] pb-3" key={r.id}>
+                        <div className="flex items-center justify-between">
+                          <div className="font-semibold">{r.provider}</div>
+                          <Badge tone={r.status === "INVESTIGATION" ? "danger" : r.status === "PENDING" ? "warning" : "success"}>
+                            {r.status.toLowerCase()}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 grid grid-cols-3 gap-2 text-[var(--ft-text-muted)]">
+                          <div>Balance: {r.providerBalance ? (r.providerBalance / 100).toFixed(2) + " USD" : "—"}</div>
+                          <div>Declared: {r.declaredCost ? formatNaira(r.declaredCost) : "—"}</div>
+                          <div className={r.discrepancyBps ? (Math.abs(r.discrepancyBps) > 500 ? "text-[var(--ft-red)]" : "") : ""}>
+                            Variance: {r.discrepancyBps ? (r.discrepancyBps / 100).toFixed(1) + "%" : "—"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+              </>
+            ) : (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">No reconciliation data available.</Panel>
+            )}
+          </div>
+        )}
+
+        {tab === "limits" && (
+          <div className="mt-4 grid gap-4">
+            {loading ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">Loading purchase limits...</Panel>
+            ) : (
+              <>
+                <Panel className="p-5">
+                  <h3 className="mb-4 font-semibold">Set Purchase Limit</h3>
+                  <div className="flex gap-2">
+                    <input
+                      className="h-10 flex-1 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                      onChange={(e) => setLimitInput(e.target.value)}
+                      placeholder="Amount in NGN (e.g. 500000 for ₦500,000)"
+                      type="number"
+                      value={limitInput}
+                    />
+                    <Button disabled={limitSubmitting || !limitInput} onClick={() => void submitPurchaseLimit()}>
+                      Set Limit
+                    </Button>
+                  </div>
+                </Panel>
+
+                {purchaseLimits && purchaseLimits.length > 0 ? (
+                  <Panel className="p-5">
+                    <h3 className="mb-3 font-semibold">Active Limits</h3>
+                    <div className="space-y-2">
+                      {purchaseLimits.map((limit) => (
+                        <div className="flex items-center justify-between rounded border border-[var(--ft-border)] p-3" key={limit.id}>
+                          <div>
+                            <div className="text-sm font-semibold">{limit.workspace}</div>
+                            <div className="text-xs text-[var(--ft-text-muted)]">{limit.period}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-semibold">{formatNaira(limit.spentMinor)} / {formatNaira(limit.limitMinor)}</div>
+                            <div className="mt-1 h-1.5 w-32 rounded-full bg-[var(--ft-bg-surface)]">
+                              <div
+                                className={`h-full rounded-full ${
+                                  limit.utilizationBps > 8000
+                                    ? "bg-[var(--ft-red)]"
+                                    : limit.utilizationBps > 5000
+                                      ? "bg-[var(--ft-yellow)]"
+                                      : "bg-[var(--ft-green)]"
+                                }`}
+                                style={{ width: `${Math.min(100, (limit.utilizationBps / 10000) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
+                ) : (
+                  <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">No purchase limits configured.</Panel>
+                )}
+              </>
             )}
           </div>
         )}

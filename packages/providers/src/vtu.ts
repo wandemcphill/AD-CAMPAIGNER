@@ -353,6 +353,137 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
           reason: err instanceof Error ? err.message : "VTpass health check failed"
         };
       }
+    },
+
+    // Phase 5 — Bills & Cable
+
+    async validateMeter(input): Promise<VtuMeterValidation> {
+      try {
+        const res = (await vtpassPost(config, "/bills/validate", {
+          serviceID: `${input.disco.toUpperCase()}-BILL`,
+          billersCode: input.meterNumber
+        })) as {
+          code?: string;
+          content?: {
+            customer_name?: string;
+            address?: string;
+            minimum_amount?: string | number;
+          };
+          response_description?: string;
+        };
+
+        if (res.code === "000") {
+          const result: VtuMeterValidation = { valid: true };
+          if (res.content?.customer_name) result.customerName = res.content.customer_name;
+          if (res.content?.address) result.address = res.content.address;
+          if (res.content?.minimum_amount) {
+            result.minAmountMinor = Math.round(parseFloat(String(res.content.minimum_amount)) * 100);
+          }
+          return result;
+        }
+
+        return { valid: false };
+      } catch (err) {
+        return { valid: false };
+      }
+    },
+
+    async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
+      const body = {
+        request_id: input.reference,
+        serviceID: `${input.disco.toUpperCase()}-BILL`,
+        billersCode: input.meterNumber,
+        amount: (input.amountMinor / 100).toFixed(2),
+        phone: "",
+        quantity: input.meterNumber
+      };
+
+      try {
+        const res = (await vtpassPost(config, "/pay", body)) as {
+          code?: string;
+          content?: {
+            transactions?: {
+              status?: string;
+              token?: string;
+              units?: string;
+            };
+          };
+          response_description?: string;
+        };
+
+        const status = res.content?.transactions?.status;
+        const code = res.code ?? "";
+
+        if (code === "000" || mapVtpassStatus(status) === "DELIVERED") {
+          const result: VtuSubmitResult & { token?: string; units?: string } = {
+            providerReference: input.reference,
+            status: "DELIVERED" as const
+          };
+          if (res.content?.transactions?.token) result.token = res.content.transactions.token;
+          if (res.content?.transactions?.units) result.units = res.content.transactions.units;
+          return result;
+        }
+
+        if (code === "099" || mapVtpassStatus(status) === "SUBMITTED") {
+          const result: VtuSubmitResult & { token?: string; units?: string } = {
+            providerReference: input.reference,
+            status: "SUBMITTED" as const
+          };
+          if (res.content?.transactions?.token) result.token = res.content.transactions.token;
+          return result;
+        }
+
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: res.response_description ?? "Electricity purchase failed"
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Electricity purchase error"
+        };
+      }
+    },
+
+    async purchaseCable(input): Promise<VtuSubmitResult> {
+      try {
+        const res = (await vtpassPost(config, "/pay", {
+          request_id: input.reference,
+          serviceID: input.provider.toUpperCase(),
+          billersCode: input.smartCardNumber,
+          variation_code: input.packageCode,
+          phone: ""
+        })) as {
+          code?: string;
+          content?: { transactions?: { status?: string } };
+          response_description?: string;
+        };
+
+        const status = res.content?.transactions?.status;
+        const code = res.code ?? "";
+
+        if (code === "000" || mapVtpassStatus(status) === "DELIVERED") {
+          return { providerReference: input.reference, status: "DELIVERED" as const };
+        }
+
+        if (code === "099" || mapVtpassStatus(status) === "SUBMITTED") {
+          return { providerReference: input.reference, status: "SUBMITTED" as const };
+        }
+
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: res.response_description ?? "Cable subscription failed"
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Cable subscription error"
+        };
+      }
     }
   };
 }
@@ -569,6 +700,94 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
           status: "DEGRADED",
           latencyMs: Date.now() - start,
           reason: err instanceof Error ? err.message : "ClubKonnect health check failed"
+        };
+      }
+    },
+
+    // Phase 5 — Bills & Cable (ClubKonnect has limited bill support; primarily used for failover)
+
+    async validateMeter(input): Promise<VtuMeterValidation> {
+      try {
+        // ClubKonnect doesn't expose a direct validate endpoint; assume validation happens at purchase
+        // Return basic response for compatibility
+        return { valid: true };
+      } catch {
+        return { valid: false };
+      }
+    },
+
+    async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
+      try {
+        const res = (await ckGet(config, "/api/v1/bill", {
+          BillerCode: input.disco.toUpperCase(),
+          CustomerRef: input.meterNumber,
+          Amount: (input.amountMinor / 100).toFixed(2),
+          RequestID: input.reference
+        })) as {
+          Status?: string;
+          Token?: string;
+          Units?: string;
+          ErrorMessage?: string;
+        };
+
+        const status = mapCkStatus(res.Status);
+
+        if (status === "DELIVERED") {
+          const result: VtuSubmitResult & { token?: string; units?: string } = {
+            providerReference: input.reference,
+            status
+          };
+          if (res.Token) result.token = res.Token;
+          if (res.Units) result.units = res.Units;
+          return result;
+        }
+
+        if (status === "SUBMITTED") {
+          return { providerReference: input.reference, status };
+        }
+
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: res.ErrorMessage ?? "Electricity purchase failed"
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Electricity purchase error"
+        };
+      }
+    },
+
+    async purchaseCable(input): Promise<VtuSubmitResult> {
+      try {
+        const res = (await ckGet(config, "/api/v1/cable", {
+          BillerCode: input.provider.toUpperCase(),
+          CustomerRef: input.smartCardNumber,
+          PackageCode: input.packageCode,
+          RequestID: input.reference
+        })) as {
+          Status?: string;
+          ErrorMessage?: string;
+        };
+
+        const status = mapCkStatus(res.Status);
+
+        if (status === "DELIVERED" || status === "SUBMITTED") {
+          return { providerReference: input.reference, status };
+        }
+
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: res.ErrorMessage ?? "Cable subscription failed"
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Cable subscription error"
         };
       }
     }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 
 import { PrismaService } from "../prisma.service";
@@ -11,7 +12,6 @@ function requireScope(context?: AuthenticatedRequestContext) {
   return context;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function requireAdmin(db: any, scope: AuthenticatedRequestContext) {
   const workspace = await db.workspace.findFirst({
     where: { id: scope.workspaceId, deletedAt: null },

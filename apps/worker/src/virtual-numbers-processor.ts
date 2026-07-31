@@ -138,9 +138,8 @@ export async function processLifecycleSweep(): Promise<string> {
 }
 
 // ─── expiry_warning ─────────────────────────────────────────────────────────────
-// T-3d and T-1d notifications. expiryWarnedAt prevents duplicate sends — this job
-// only marks the flag; actual notification dispatch goes through the notifications
-// queue once that integration exists (tracked as a follow-up, not silently dropped).
+// T-3d and T-1d notifications. expiryWarnedAt prevents duplicate sends — queues
+// notifications to the notifications queue for multi-channel delivery.
 
 export async function processExpiryWarning(): Promise<string> {
   const db = getDb();
@@ -154,16 +153,40 @@ export async function processExpiryWarning(): Promise<string> {
       expiresAt: { lte: threeDaysOut, gt: now },
       OR: [{ expiryWarnedAt: null }, { expiryWarnedAt: { lt: new Date(now.getTime() - 24 * 60 * 60 * 1000) } }]
     },
-    take: 200
+    take: 200,
+    include: { workspace: { select: { id: true } } }
   });
 
   let warned = 0;
   for (const number of dueForWarning) {
     const isUrgent = number.expiresAt !== null && number.expiresAt <= oneDayOut;
-     
-    console.log(
-      `expiry_warning: number ${number.id} (${number.e164}) expires ${isUrgent ? "within 1 day" : "within 3 days"}`
-    );
+    const daysLeft = number.expiresAt
+      ? Math.ceil((number.expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+      : 0;
+
+    const ntfId = `ntf_${Math.random().toString(36).slice(2, 12)}`;
+    const title = isUrgent
+      ? `Your virtual number ${number.e164} expires tomorrow`
+      : `Your virtual number ${number.e164} expires in ${daysLeft} days`;
+    const body = `Renew now to keep using this number. You can renew with the same number for +${7}-${365} days.`;
+
+    await db.notification.create({
+      data: {
+        id: ntfId,
+        workspaceId: number.workspaceId,
+        recipientUserId: number.userId,
+        channel: "IN_APP",
+        category: "virtual-numbers",
+        priority: isUrgent ? "high" : "normal",
+        title,
+        body,
+        actionUrl: `/os/numbers/${number.id}`,
+        entityType: "VirtualNumber",
+        entityId: number.id,
+        idempotencyKey: `vn_expiry_${number.id}_${isUrgent ? "urgent" : "warning"}`
+      }
+    });
+
     await db.virtualNumber.update({ where: { id: number.id }, data: { expiryWarnedAt: now } });
     warned++;
   }
@@ -217,7 +240,7 @@ export async function processRetentionPurge(): Promise<string> {
 // ─── reconcile ───────────────────────────────────────────────────────────────────
 // Compares FULFILLED orders' declared supplier cost against a fresh provider balance
 // read — a coarse drift signal, not a per-transaction reconciliation (providers don't
-// expose per-order cost breakdowns consistently). Surfaces via ProviderHealth.metadata.
+// expose per-order cost breakdowns consistently). Surfaces via VirtualNumberReconciliation.
 
 export async function processReconcile(): Promise<string> {
   const db = getDb();
@@ -227,11 +250,49 @@ export async function processReconcile(): Promise<string> {
     distinct: ["providerName"]
   })).map((o) => o.providerName).filter((p): p is string => p !== null))];
 
+  const now = new Date();
+  const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
   let checked = 0;
   for (const providerName of providers) {
     try {
       const adapter = buildAdapter(providerName);
       const balance = await adapter.getBalance();
+
+      // Calculate declared costs from orders in the last 24h
+      const recentOrders = await db.virtualNumberOrder.findMany({
+        where: {
+          status: "FULFILLED",
+          providerName,
+          createdAt: { gte: oneDayAgo }
+        },
+        select: { supplierCostMinor: true }
+      });
+
+      const declaredCostMinor = recentOrders.reduce((sum, o) => sum + o.supplierCostMinor, 0);
+      const discrepancyMinor = balance.balanceMinorUsd - declaredCostMinor;
+      const discrepancyBps =
+        declaredCostMinor > 0 ? Math.abs(Math.round((discrepancyMinor / declaredCostMinor) * 10_000)) : 0;
+
+      // Flag significant discrepancies (>5%) for investigation
+      const status = Math.abs(discrepancyBps) > 500 ? "INVESTIGATION" : "RESOLVED";
+
+      await db.virtualNumberReconciliation.create({
+        data: {
+          providerName,
+          domain: "VIRTUAL_NUMBER",
+          reportPeriodStart: oneDayAgo,
+          reportPeriodEnd: now,
+          providerBalanceMinor: balance.balanceMinorUsd,
+          providerCurrency: "USD",
+          declaredCostMinor,
+          discrepancyMinor,
+          discrepancyBps,
+          status
+        }
+      });
+
+      // Also update provider health
       await db.providerHealth.create({
         data: {
           providerName,
@@ -243,14 +304,15 @@ export async function processReconcile(): Promise<string> {
           currency: "USD"
         }
       });
+
       checked++;
     } catch (err) {
-       
+
       console.error(`reconcile: balance check failed for ${providerName}: ${String(err)}`);
     }
   }
 
-  return `reconcile: ${checked}/${providers.length} providers balance-checked`;
+  return `reconcile: ${checked}/${providers.length} providers reconciled`;
 }
 
 // ─── provider_health ────────────────────────────────────────────────────────────

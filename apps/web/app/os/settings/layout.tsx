@@ -6,14 +6,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell,
-  Bot,
   Building2,
-  Code2,
   CreditCard,
+  Plug,
   Shield,
   UserCircle,
   Users,
-  Webhook,
   type LucideIcon
 } from "lucide-react";
 
@@ -23,22 +21,24 @@ type SettingsNavItem = { label: string; href: Route; icon: LucideIcon };
 type SettingsNavGroup = { group: string; items: SettingsNavItem[] };
 
 const SETTINGS_NAV: SettingsNavGroup[] = [
-  { group: "General", items: [
+  { group: "Account", items: [
     { label: "Workspace", href: "/os/settings/workspace", icon: Building2 },
     { label: "Profile", href: "/os/settings/profile", icon: UserCircle },
-    { label: "Team", href: "/os/settings/team", icon: Users },
   ]},
-  { group: "AI & Integrations", items: [
-    { label: "AI Preferences", href: "/os/settings/ai", icon: Bot },
-    { label: "Integrations", href: "/os/settings/integrations", icon: Webhook },
+  { group: "Security", items: [
+    { label: "Security", href: "/os/settings/security", icon: Shield },
+  ]},
+  { group: "Notifications", items: [
+    { label: "Notifications", href: "/os/settings/notifications", icon: Bell },
+  ]},
+  { group: "Team", items: [
+    { label: "Team", href: "/os/settings/team", icon: Users },
   ]},
   { group: "Billing", items: [
     { label: "Wallet", href: "/os/settings/wallet", icon: CreditCard },
-    { label: "Notifications", href: "/os/settings/notifications", icon: Bell },
   ]},
-  { group: "Developer", items: [
-    { label: "API & Developers", href: "/os/settings/api", icon: Code2 },
-    { label: "Security", href: "/os/settings/security", icon: Shield },
+  { group: "Integrations & Developer", items: [
+    { label: "Integrations & Developer", href: "/os/settings/integrations", icon: Plug },
   ]},
 ];
 

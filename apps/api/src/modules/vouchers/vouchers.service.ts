@@ -5,6 +5,7 @@ import { Prisma, type PrismaClient } from "@fliptrybe/database";
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
+import { OutgoingWebhooksService } from "../webhooks/outgoing-webhooks.service";
 
 type VoucherProductSeed = {
   name: string;
@@ -103,7 +104,10 @@ type TransactionClient = Parameters<PrismaClient["$transaction"]>[0] extends (pr
 
 @Injectable()
 export class VouchersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly webhooks: OutgoingWebhooksService
+  ) {}
 
   async listProducts() {
     await this.seedProducts();
@@ -256,7 +260,7 @@ export class VouchersService {
       throw new ConflictException("Voucher must be revealed before redemption.");
     }
 
-    return this.prisma.client.voucher.update({
+    const redeemed = await this.prisma.client.voucher.update({
       where: { id: voucher.id },
       data: {
         redemptionInput: jsonValue(input),
@@ -265,6 +269,15 @@ export class VouchersService {
       },
       include: { product: true, purchaser: true, owner: true, claimTokens: true }
     });
+
+    void this.webhooks.dispatchEvent(scope.workspaceId, "voucher.redeemed", {
+      voucherId: redeemed.id,
+      serialNumber: redeemed.serialNumber,
+      productId: redeemed.productId,
+      redeemedAt: redeemed.redeemedAt
+    });
+
+    return redeemed;
   }
 
   async listWalletVouchers(context?: AuthenticatedRequestContext) {

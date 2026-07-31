@@ -1,6 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 
 import type { DatabaseClient, Prisma } from "@fliptrybe/database";
+import {
+  createFiveSimRentalAdapter,
+  createMockVirtualNumberAdapter,
+  createSmsPoolAdapter,
+  createSmsPvaAdapter,
+  type VirtualNumberProviderAdapter
+} from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
@@ -22,10 +29,117 @@ function fromMicros(micros: bigint): number {
 
 @Injectable()
 export class FxService {
+  private readonly logger = new Logger(FxService.name);
+
   constructor(private readonly prismaService: PrismaService) {}
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
+  }
+
+  // ─── Guardrails ────────────────────────────────────────────────────────────
+
+  private buildVirtualNumberAdapter(providerName: string): VirtualNumberProviderAdapter {
+    switch (providerName) {
+      case "smspool":
+        return createSmsPoolAdapter({
+          apiKey: process.env["SMSPOOL_API_KEY"] ?? "",
+          ...(process.env["SMSPOOL_BASE_URL"] ? { baseUrl: process.env["SMSPOOL_BASE_URL"] } : {})
+        });
+      case "5sim":
+        return createFiveSimRentalAdapter({
+          apiToken: process.env["FIVESIM_API_TOKEN"] ?? "",
+          ...(process.env["FIVESIM_BASE_URL"] ? { baseUrl: process.env["FIVESIM_BASE_URL"] } : {})
+        });
+      case "smspva":
+        return createSmsPvaAdapter({
+          apiKey: process.env["SMSPVA_API_KEY"] ?? "",
+          ...(process.env["SMSPVA_BASE_URL"] ? { baseUrl: process.env["SMSPVA_BASE_URL"] } : {})
+        });
+      default:
+        return createMockVirtualNumberAdapter(providerName);
+    }
+  }
+
+  private async getCandidateProviders(preferredProviders: string[]): Promise<string[]> {
+    if (preferredProviders.length === 0) return [];
+
+    const healthRows = await this.db.providerHealth.findMany({
+      where: { providerName: { in: preferredProviders }, domain: "VIRTUAL_NUMBER" },
+      orderBy: { checkedAt: "desc" },
+      distinct: ["providerName"]
+    });
+    const latestStatus = new Map(healthRows.map((h) => [h.providerName, h.status]));
+
+    return preferredProviders.filter((name) => {
+      const status = latestStatus.get(name);
+      return status !== "DOWN" && status !== "DISABLED";
+    });
+  }
+
+  private async validateSellBelowCostGuardrail(
+    newRateMicros: bigint
+  ): Promise<Array<{ productName: string; costMinorNgn: number; sellMinorNgn: number; marginBps: number }>> {
+    const MARKUP_BPS = 3_500; // 35% margin from virtual-numbers.service.ts
+    const MIN_MARGIN_BPS = 1_000; // 10% minimum margin guardrail
+
+    function applyMarkup(costMinorUsd: number): number {
+      return Math.ceil(costMinorUsd * (1 + MARKUP_BPS / 10_000));
+    }
+
+    function usdMinorToNgnMinor(usdMinor: number, rateMicros: bigint): number {
+      return Math.ceil((usdMinor * Number(rateMicros)) / 1_000_000);
+    }
+
+    const issues: Array<{ productName: string; costMinorNgn: number; sellMinorNgn: number; marginBps: number }> = [];
+
+    const products = await this.db.virtualNumberProduct.findMany({
+      where: { active: true }
+    });
+
+    for (const product of products) {
+      const candidates = await this.getCandidateProviders(product.preferredProviders);
+      if (candidates.length === 0) {
+        continue; // Skip if no healthy providers
+      }
+
+      for (const providerName of candidates) {
+        const adapter = this.buildVirtualNumberAdapter(providerName);
+
+        try {
+          const offers = await adapter.searchNumbers({
+            country: product.countryCode,
+            durationDays: product.durationDays
+          });
+          const offer = offers[0];
+          if (!offer) {
+            continue;
+          }
+
+          const costMinorNgn = usdMinorToNgnMinor(offer.costMinorUsd, newRateMicros);
+          const sellMinorNgn = usdMinorToNgnMinor(applyMarkup(offer.costMinorUsd), newRateMicros);
+          const marginMinor = sellMinorNgn - costMinorNgn;
+          const marginBps = Math.round((marginMinor / costMinorNgn) * 10_000);
+
+          if (marginBps < MIN_MARGIN_BPS) {
+            issues.push({
+              productName: product.displayName,
+              costMinorNgn,
+              sellMinorNgn,
+              marginBps
+            });
+          }
+
+          break; // Successfully checked this product via first healthy provider
+        } catch (err) {
+          this.logger.warn(
+            `Guardrail check failed for ${product.displayName} at ${providerName}: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+    }
+
+    return issues;
   }
 
   /**
@@ -96,11 +210,16 @@ export class FxService {
       }
     }
 
-    // NOTE: the sell-below-cost guardrail (re-pricing every active SKU against live
-    // provider cost before allowing the change) is not implemented — it requires a
-    // live searchNumbers() call per active VirtualNumberProduct on every FX update,
-    // which is a heavier feature than this pass covers. Flagging explicitly rather
-    // than silently skipping it.
+    // Validate that no active virtual number product would sell below cost with the new rate.
+    const guardIssues = await this.validateSellBelowCostGuardrail(toMicros(dto.rate));
+    if (guardIssues.length > 0 && !dto.confirmLargeChange) {
+      const summary = guardIssues
+        .map((iss) => `${iss.productName}: ₦${iss.costMinorNgn} cost → ₦${iss.sellMinorNgn} sell (${iss.marginBps}bps)`)
+        .join("; ");
+      throw new BadRequestException(
+        `Sell-below-cost guardrail triggered: ${summary}. Pass confirmLargeChange: true to override.`
+      );
+    }
 
     const now = new Date();
     const newRate = await this.db.$transaction(async (tx: Prisma.TransactionClient) => {

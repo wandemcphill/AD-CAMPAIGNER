@@ -94,7 +94,7 @@ export class SecurityService {
       this.db.twoFactorBackupCode.deleteMany({ where: { userId: scope.userId } }),
       this.db.twoFactorBackupCode.createMany({
         data: backupCodes.map((backupCode) => ({
-          userId: scope.userId!,
+          userId: scope.userId,
           codeHash: hashBackupCode(backupCode)
         }))
       })

@@ -186,4 +186,24 @@ export class AdminVirtualNumbersController {
   providerHealth() {
     return this.numbers.adminProviderHealth();
   }
+
+  @Get("margin-analytics")
+  marginAnalytics(@Query() query: { days?: number; limit?: number; orderBy?: string }) {
+    return this.numbers.adminMarginAnalytics(query);
+  }
+
+  @Get("reconciliation")
+  reconciliation(@Query() query: { status?: string; days?: number; limit?: number }) {
+    return this.numbers.adminReconciliation(query);
+  }
+
+  @Get("purchase-limits")
+  purchaseLimits(@Query() query: { workspaceId?: string }) {
+    return this.numbers.adminPurchaseLimits(query);
+  }
+
+  @Post("purchase-limits")
+  setPurchaseLimit(@Body() body: { workspaceId: string; limitMinor: number; periodType?: string }) {
+    return this.numbers.adminSetPurchaseLimit(body);
+  }
 }

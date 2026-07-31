@@ -40,3 +40,25 @@ export async function loadTeamProjects() {
 export async function loadTeamApprovals() {
   return apiRequest<TeamApprovalRecord[]>("/teams/approvals");
 }
+
+export const TEAM_ROLES = ["ADMIN", "MANAGER", "MARKETER", "FINANCE", "SUPPORT", "VIEWER"] as const;
+
+export async function inviteTeamMember(username: string, role: string) {
+  return apiRequest<TeamMemberRecord>("/teams/invite", {
+    method: "POST",
+    body: JSON.stringify({ username, role })
+  });
+}
+
+export async function updateTeamMemberRole(memberId: string, role: string) {
+  return apiRequest<TeamMemberRecord>(`/teams/${encodeURIComponent(memberId)}/role`, {
+    method: "PATCH",
+    body: JSON.stringify({ role })
+  });
+}
+
+export async function removeTeamMember(memberId: string) {
+  return apiRequest<{ ok: boolean }>(`/teams/${encodeURIComponent(memberId)}`, {
+    method: "DELETE"
+  });
+}

@@ -65,6 +65,8 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [recoveryPin, setRecoveryPin] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [trustDevice, setTrustDevice] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -82,10 +84,20 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      await signIn({ username, password });
+      await signIn({
+        username,
+        password,
+        ...(needsTwoFactor ? { totpCode: totpCode.trim() } : {})
+      });
       router.replace("/studio");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Login failed.");
+      const message = caught instanceof Error ? caught.message : "Login failed.";
+      if (message === "TWO_FACTOR_REQUIRED") {
+        setNeedsTwoFactor(true);
+        setError(undefined);
+      } else {
+        setError(needsTwoFactor ? "That code is invalid or expired." : message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -173,61 +185,89 @@ export default function LoginPage() {
               </p>
 
               <form className="mt-8 grid gap-5" onSubmit={(event) => void handleSubmit(event)}>
-                <Input
-                  autoComplete="username"
-                  id="username"
-                  label="Username"
-                  onChange={(e) => setUsername(e.currentTarget.value)}
-                  placeholder="Enter your username"
-                  required
-                  type="text"
-                  value={username}
-                />
-
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium text-[var(--ft-text-primary)]" htmlFor="password">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <input
-                      autoComplete="current-password"
-                      className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 pr-11 text-sm text-[var(--ft-text-primary)] outline-none transition placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)] focus:ring-2 focus:ring-[var(--ft-accent-glow)]"
-                      id="password"
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
+                {needsTwoFactor ? (
+                  <>
+                    <div className="rounded-[var(--radius-md)] border border-[var(--ft-accent)]/30 bg-[var(--ft-accent-subtle)] px-4 py-3 text-sm text-[var(--ft-text-secondary)]">
+                      Enter the 6-digit code from your authenticator app, or a backup code.
+                    </div>
+                    <Input
+                      autoComplete="one-time-code"
+                      autoFocus
+                      id="totp-code"
+                      label="Two-factor code"
+                      onChange={(e) => setTotpCode(e.currentTarget.value)}
+                      placeholder="123456"
                       required
-                      type={showPassword ? "text" : "password"}
-                      value={password}
+                      type="text"
+                      value={totpCode}
                     />
                     <button
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ft-text-muted)] transition hover:text-[var(--ft-text-primary)]"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex={-1}
+                      className="justify-self-start text-sm font-medium text-[var(--ft-accent)] transition hover:text-[var(--ft-accent-dim)]"
+                      onClick={() => { setNeedsTwoFactor(false); setTotpCode(""); }}
                       type="button"
                     >
-                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      Back to password
                     </button>
-                  </div>
-                </div>
+                  </>
+                ) : (
+                  <>
+                    <Input
+                      autoComplete="username"
+                      id="username"
+                      label="Username"
+                      onChange={(e) => setUsername(e.currentTarget.value)}
+                      placeholder="Enter your username"
+                      required
+                      type="text"
+                      value={username}
+                    />
 
-                <Input
-                  autoComplete="off"
-                  id="recovery-pin"
-                  hint="Optional — use if your password needs recovery"
-                  label="Recovery PIN"
-                  onChange={(e) => setRecoveryPin(e.currentTarget.value)}
-                  placeholder="4-6 digit PIN"
-                  type="password"
-                  value={recoveryPin}
-                />
+                    <div className="grid gap-1.5">
+                      <label className="text-sm font-medium text-[var(--ft-text-primary)]" htmlFor="password">
+                        Password
+                      </label>
+                      <div className="relative">
+                        <input
+                          autoComplete="current-password"
+                          className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 pr-11 text-sm text-[var(--ft-text-primary)] outline-none transition placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)] focus:ring-2 focus:ring-[var(--ft-accent-glow)]"
+                          id="password"
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="Enter your password"
+                          required
+                          type={showPassword ? "text" : "password"}
+                          value={password}
+                        />
+                        <button
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ft-text-muted)] transition hover:text-[var(--ft-text-primary)]"
+                          onClick={() => setShowPassword(!showPassword)}
+                          tabIndex={-1}
+                          type="button"
+                        >
+                          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                        </button>
+                      </div>
+                    </div>
 
-                <Checkbox
-                  checked={trustDevice}
-                  id="trust-device"
-                  onChange={setTrustDevice}
-                >
-                  Trust this device for 30 days
-                </Checkbox>
+                    <Input
+                      autoComplete="off"
+                      id="recovery-pin"
+                      hint="Optional — use if your password needs recovery"
+                      label="Recovery PIN"
+                      onChange={(e) => setRecoveryPin(e.currentTarget.value)}
+                      placeholder="4-6 digit PIN"
+                      type="password"
+                      value={recoveryPin}
+                    />
+
+                    <Checkbox
+                      checked={trustDevice}
+                      id="trust-device"
+                      onChange={setTrustDevice}
+                    >
+                      Trust this device for 30 days
+                    </Checkbox>
+                  </>
+                )}
 
                 {error ? (
                   <motion.div

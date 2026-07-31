@@ -41,6 +41,122 @@ export async function loadMarketplaceCreators(niche?: string) {
   return apiRequest<MarketplaceCreatorRecord[]>(`/marketplace/creators${query}`);
 }
 
+export type MarketplaceApplicationStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export type MarketplaceAgencyApplicationRecord = {
+  id: string;
+  status: MarketplaceApplicationStatus;
+  name: string;
+  specialty: string;
+  location: string;
+  description: string;
+  packages: string[];
+  rejectionReason: string | null;
+  resultingListingId: string | null;
+  createdAt: string;
+  applicant?: { name: string; username: string };
+};
+
+export type MarketplaceCreatorApplicationRecord = {
+  id: string;
+  status: MarketplaceApplicationStatus;
+  name: string;
+  niche: string;
+  bio: string;
+  followerCount: number;
+  languages: string[];
+  platforms: string[];
+  rateMinor: number;
+  rejectionReason: string | null;
+  resultingListingId: string | null;
+  createdAt: string;
+  applicant?: { name: string; username: string };
+};
+
+export async function applyAsAgency(input: {
+  name: string;
+  specialty: string;
+  location: string;
+  description: string;
+  packages?: string[];
+}) {
+  return apiRequest<MarketplaceAgencyApplicationRecord>("/marketplace/applications/agency", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function applyAsCreator(input: {
+  name: string;
+  niche: string;
+  bio: string;
+  followerCount?: number;
+  languages?: string[];
+  platforms?: string[];
+  rateMinor?: number;
+}) {
+  return apiRequest<MarketplaceCreatorApplicationRecord>("/marketplace/applications/creator", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function loadMyMarketplaceApplications() {
+  return apiRequest<{
+    agencyApplications: MarketplaceAgencyApplicationRecord[];
+    creatorApplications: MarketplaceCreatorApplicationRecord[];
+  }>("/marketplace/applications/mine");
+}
+
+// Admin
+
+export async function adminLoadMarketplaceApplications(status?: string, type?: "agency" | "creator") {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (type) params.set("type", type);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return apiRequest<{
+    agencyApplications: MarketplaceAgencyApplicationRecord[];
+    creatorApplications: MarketplaceCreatorApplicationRecord[];
+  }>(`/admin/marketplace/applications${query}`);
+}
+
+export async function adminReviewAgencyApplication(id: string, decision: "APPROVED" | "REJECTED", rejectionReason?: string) {
+  return apiRequest<{ ok: boolean; resultingListingId?: string }>(`/admin/marketplace/applications/agency/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ decision, rejectionReason })
+  });
+}
+
+export async function adminReviewCreatorApplication(id: string, decision: "APPROVED" | "REJECTED", rejectionReason?: string) {
+  return apiRequest<{ ok: boolean; resultingListingId?: string }>(`/admin/marketplace/applications/creator/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ decision, rejectionReason })
+  });
+}
+
+export async function adminLoadAgencies() {
+  return apiRequest<MarketplaceAgencyRecord[]>("/admin/marketplace/agencies");
+}
+
+export async function adminLoadCreators() {
+  return apiRequest<MarketplaceCreatorRecord[]>("/admin/marketplace/creators");
+}
+
+export async function adminSetAgencyActive(id: string, isActive: boolean) {
+  return apiRequest<MarketplaceAgencyRecord>(`/admin/marketplace/agencies/${encodeURIComponent(id)}/active`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive })
+  });
+}
+
+export async function adminSetCreatorActive(id: string, isActive: boolean) {
+  return apiRequest<MarketplaceCreatorRecord>(`/admin/marketplace/creators/${encodeURIComponent(id)}/active`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive })
+  });
+}
+
 export function formatRating(ratingBps: number) {
   return (ratingBps / 2000).toFixed(1);
 }

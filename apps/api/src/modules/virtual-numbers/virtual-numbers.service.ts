@@ -133,6 +133,66 @@ export class VirtualNumbersService {
     });
   }
 
+  // ─── Hardening & limits ──────────────────────────────────────────────────────
+
+  private async checkPurchaseLimits(ctx: AuthenticatedRequestContext, rate: { rateMicros: bigint }) {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const limit = await this.db.virtualNumberPurchaseLimit.findFirst({
+      where: {
+        workspaceId: ctx.workspaceId,
+        periodType: "MONTH",
+        periodStart: { lte: now },
+        periodEnd: { gte: now }
+      }
+    });
+
+    if (limit && limit.spentMinor > limit.limitMinor) {
+      const spent = (limit.spentMinor / 100).toFixed(2);
+      const cap = (limit.limitMinor / 100).toFixed(2);
+      throw new ForbiddenException(
+        `Monthly virtual numbers spending limit exceeded: ₦${spent} spent of ₦${cap} cap.`
+      );
+    }
+  }
+
+  private async trackMarginAnalytics(
+    orderId: string,
+    countryCode: string,
+    providerName: string,
+    costMinorUsd: number,
+    chargeMinorNgn: number,
+    rate: { rateMicros: bigint }
+  ) {
+    const EXPECTED_MARGIN_BPS = 3_500;
+
+    function usdMinorToNgnMinor(usdMinor: number, rateMicros: bigint): number {
+      return Math.ceil((usdMinor * Number(rateMicros)) / 1_000_000);
+    }
+
+    const costMinorNgn = usdMinorToNgnMinor(costMinorUsd, rate.rateMicros);
+    const marginMinorNgn = chargeMinorNgn - costMinorNgn;
+    const marginBps = costMinorNgn > 0 ? Math.round((marginMinorNgn / costMinorNgn) * 10_000) : 0;
+    const marginVarianceBps = marginBps - EXPECTED_MARGIN_BPS;
+
+    await this.db.virtualNumberMarginAnalytics.create({
+      data: {
+        orderId,
+        countryCode,
+        providerName,
+        costMinorUsd,
+        costMinorNgn,
+        sellMinorNgn: chargeMinorNgn,
+        marginMinorNgn,
+        marginBps,
+        marginVarianceBps,
+        fxRateMicrosApplied: rate.rateMicros
+      }
+    });
+  }
+
   // ─── Wallet helpers ──────────────────────────────────────────────────────────
 
   private async getWallet(workspaceId: string, db: DbClient = this.db) {
@@ -267,6 +327,9 @@ export class VirtualNumbersService {
     // which is exactly the guardrail: never quote off a stale rate.
     const rate = await this.fx.getActiveRate();
 
+    // Check purchase limits before proceeding
+    await this.checkPurchaseLimits(ctx, rate);
+
     const orderId = uid("vno");
     const idempotencyKey = `vn_order_${orderId}`;
 
@@ -399,6 +462,16 @@ export class VirtualNumbersService {
         where: { id: order.id },
         data: { status: "FULFILLED", virtualNumberId: number.id, providerReference: provisioned.providerNumberId }
       });
+
+      // Track margin analytics for reporting
+      await this.trackMarginAnalytics(
+        order.id,
+        product.countryCode,
+        adapter.name,
+        offer.costMinorUsd,
+        chargeMinor,
+        rate
+      );
 
       return this.db.virtualNumberOrder.findUniqueOrThrow({ where: { id: order.id } });
     } catch (err) {
@@ -569,6 +642,16 @@ export class VirtualNumbersService {
         where: { id: order.id },
         data: { status: "FULFILLED" }
       });
+
+      // Track margin analytics for renewal
+      await this.trackMarginAnalytics(
+        order.id,
+        number.countryCode,
+        adapter.name,
+        offer.costMinorUsd,
+        chargeMinor,
+        rate
+      );
 
       return { order: await this.db.virtualNumberOrder.findUniqueOrThrow({ where: { id: order.id } }), sameNumber: true };
     } catch (err) {
@@ -770,5 +853,170 @@ export class VirtualNumbersService {
     return providers.map(
       (name) => rows.find((r) => r.providerName === name) ?? { providerName: name, status: "DISABLED" as const }
     );
+  }
+
+  // ─── Admin dashboards ─────────────────────────────────────────────────────────
+
+  async adminMarginAnalytics(query: { days?: number; limit?: number; orderBy?: string }) {
+    const days = Math.max(1, Math.min(90, query.days ?? 30));
+    const limit = Math.min(500, Math.max(1, query.limit ?? 100));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const analytics = await this.db.virtualNumberMarginAnalytics.findMany({
+      where: { createdAt: { gte: since } },
+      orderBy: { createdAt: "desc" },
+      take: limit
+    });
+
+    // Calculate summary statistics
+    const totalOrders = analytics.length;
+    const avgMarginBps = totalOrders > 0 ? Math.round(analytics.reduce((sum, a) => sum + a.marginBps, 0) / totalOrders) : 0;
+    const minMarginBps = totalOrders > 0 ? Math.min(...analytics.map((a) => a.marginBps)) : 0;
+    const maxMarginBps = totalOrders > 0 ? Math.max(...analytics.map((a) => a.marginBps)) : 0;
+    const belowTargetCount = analytics.filter((a) => a.marginBps < 3500).length;
+
+    // Group by provider for provider-level insights
+    const byProvider = new Map<string, typeof analytics>();
+    for (const a of analytics) {
+      const list = byProvider.get(a.providerName) ?? [];
+      list.push(a);
+      byProvider.set(a.providerName, list);
+    }
+
+    const providerStats = Array.from(byProvider.entries()).map(([provider, records]) => ({
+      provider,
+      count: records.length,
+      avgMarginBps: Math.round(records.reduce((sum, r) => sum + r.marginBps, 0) / records.length),
+      avgVarianceBps: Math.round(records.reduce((sum, r) => sum + r.marginVarianceBps, 0) / records.length)
+    }));
+
+    return {
+      summary: {
+        period: `${days} days`,
+        totalOrders,
+        avgMarginBps,
+        minMarginBps,
+        maxMarginBps,
+        belowTargetCount,
+        expectedMarginBps: MARKUP_BPS
+      },
+      providerStats,
+      orders: analytics.map((a) => ({
+        orderId: a.orderId,
+        country: a.countryCode,
+        provider: a.providerName,
+        costUsd: a.costMinorUsd,
+        costNgn: a.costMinorNgn,
+        sellNgn: a.sellMinorNgn,
+        marginBps: a.marginBps,
+        varianceBps: a.marginVarianceBps,
+        createdAt: a.createdAt.toISOString()
+      }))
+    };
+  }
+
+  async adminReconciliation(query: { status?: string; days?: number; limit?: number }) {
+    const days = Math.max(1, Math.min(90, query.days ?? 30));
+    const limit = Math.min(200, Math.max(1, query.limit ?? 50));
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const reconciliations = await this.db.virtualNumberReconciliation.findMany({
+      where: {
+        reportPeriodStart: { gte: since },
+        ...(query.status ? { status: query.status } : {})
+      },
+      orderBy: { reportPeriodEnd: "desc" },
+      take: limit
+    });
+
+    const totalByStatus = new Map<string, number>();
+    for (const r of reconciliations) {
+      totalByStatus.set(r.status, (totalByStatus.get(r.status) ?? 0) + 1);
+    }
+
+    return {
+      summary: {
+        period: `${days} days`,
+        total: reconciliations.length,
+        byStatus: Object.fromEntries(totalByStatus),
+        investigationCount: reconciliations.filter((r) => r.status === "INVESTIGATION").length
+      },
+      records: reconciliations.map((r) => ({
+        id: r.id,
+        provider: r.providerName,
+        period: `${r.reportPeriodStart.toISOString().split("T")[0]} to ${r.reportPeriodEnd.toISOString().split("T")[0]}`,
+        providerBalance: r.providerBalanceMinor,
+        declaredCost: r.declaredCostMinor,
+        discrepancy: r.discrepancyMinor,
+        discrepancyBps: r.discrepancyBps,
+        status: r.status,
+        reviewedBy: r.reviewedBy,
+        reviewedAt: r.reviewedAt?.toISOString(),
+        notes: r.notes
+      }))
+    };
+  }
+
+  async adminPurchaseLimits(query: { workspaceId?: string }) {
+    const where = query.workspaceId ? { workspaceId: query.workspaceId } : {};
+    const limits = await this.db.virtualNumberPurchaseLimit.findMany({
+      where,
+      include: { workspace: { select: { id: true, name: true } } },
+      orderBy: { periodEnd: "desc" },
+      take: 100
+    });
+
+    return limits.map((l) => ({
+      id: l.id,
+      workspace: l.workspace.name,
+      workspaceId: l.workspaceId,
+      userId: l.userId,
+      period: l.periodType,
+      limitMinor: l.limitMinor,
+      spentMinor: l.spentMinor,
+      available: l.limitMinor - l.spentMinor,
+      utilizationBps: l.limitMinor > 0 ? Math.round((l.spentMinor / l.limitMinor) * 10_000) : 0,
+      periodStart: l.periodStart.toISOString(),
+      periodEnd: l.periodEnd.toISOString()
+    }));
+  }
+
+  async adminSetPurchaseLimit(data: { workspaceId: string; limitMinor: number; periodType?: string }) {
+    const periodType = data.periodType ?? "MONTH";
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    // Remove old limit for this workspace and period
+    await this.db.virtualNumberPurchaseLimit.deleteMany({
+      where: {
+        workspaceId: data.workspaceId,
+        periodType,
+        periodStart: { lte: now },
+        periodEnd: { gte: now }
+      }
+    });
+
+    // Create new limit
+    const limit = await this.db.virtualNumberPurchaseLimit.create({
+      data: {
+        id: uid("vnpl"),
+        workspaceId: data.workspaceId,
+        periodType,
+        limitMinor: data.limitMinor,
+        periodStart: monthStart,
+        periodEnd: monthEnd
+      }
+    });
+
+    return {
+      id: limit.id,
+      workspaceId: limit.workspaceId,
+      period: limit.periodType,
+      limitMinor: limit.limitMinor,
+      spentMinor: limit.spentMinor,
+      periodStart: limit.periodStart.toISOString(),
+      periodEnd: limit.periodEnd.toISOString()
+    };
   }
 }
