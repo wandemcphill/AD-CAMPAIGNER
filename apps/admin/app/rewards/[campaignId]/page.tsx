@@ -12,23 +12,10 @@ interface TaskCompletion {
   id: string;
   status: string;
   createdAt: string;
-  task: { label: string; taskType: string };
+  task: { label: string; taskType: string; campaign?: { id: string } };
   participant: {
     user: { name: string; displayName?: string; email?: string };
   };
-}
-
-interface RewardEntitlement {
-  id: string;
-  status: string;
-  rewardValueMinor: number;
-  currency: string;
-  reservedAt: string;
-  fulfilledAt?: string;
-  participant: {
-    user: { name: string; displayName?: string };
-  };
-  fulfillment?: { status: string; failureReason?: string };
 }
 
 interface CampaignDetail {
@@ -56,7 +43,6 @@ export default function AdminCampaignDetailPage({
   const { campaignId } = use(params);
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
   const [reviewQueue, setReviewQueue] = useState<TaskCompletion[]>([]);
-  const [entitlements, setEntitlements] = useState<RewardEntitlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [resolving, setResolving] = useState<string>();
@@ -65,14 +51,14 @@ export default function AdminCampaignDetailPage({
     setError(undefined);
     try {
       const [campaignData, reviewData] = await Promise.all([
-        apiRequest<CampaignDetail>(`/admin/rewards/campaigns`).then(
-          (r: any) => r.campaigns?.find((c: CampaignDetail) => c.id === campaignId) ?? null
+        apiRequest<{ campaigns: CampaignDetail[] }>(`/admin/rewards/campaigns`).then(
+          (r) => r.campaigns?.find((c) => c.id === campaignId) ?? null
         ),
         apiRequest<{ completions: TaskCompletion[] }>("/admin/rewards/review-queue")
       ]);
       setCampaign(campaignData);
       setReviewQueue(
-        reviewData.completions.filter((c: any) => c.task?.campaign?.id === campaignId)
+        reviewData.completions.filter((c) => c.task?.campaign?.id === campaignId)
       );
     } catch {
       setError("Could not load campaign details.");
@@ -181,7 +167,7 @@ export default function AdminCampaignDetailPage({
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>{campaign._count.participants} participants</span>
         <span>{campaign._count.entitlements} entitlements issued</span>
-        <Link href={"/rewards" as any} className="underline">Back to campaigns</Link>
+        <Link href="/rewards" className="underline">Back to campaigns</Link>
       </div>
     </div>
   );

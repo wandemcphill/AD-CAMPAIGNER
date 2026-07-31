@@ -68,6 +68,59 @@ interface FxRateRow {
   note: string | null;
 }
 
+interface MarginProviderStat {
+  provider: string;
+  count: number;
+  avgMarginBps: number;
+  avgVarianceBps: number;
+}
+
+interface MarginOrderRow {
+  orderId: string;
+  provider: string;
+  country: string;
+  marginBps: number;
+  sellNgn: number;
+}
+
+interface MarginStats {
+  summary: {
+    totalOrders: number;
+    avgMarginBps: number;
+    expectedMarginBps: number;
+    belowTargetCount: number;
+  };
+  providerStats: MarginProviderStat[];
+  orders: MarginOrderRow[];
+}
+
+interface ReconciliationRecord {
+  id: string;
+  provider: string;
+  status: "RESOLVED" | "PENDING" | "INVESTIGATION" | string;
+  providerBalance: number | null;
+  declaredCost: number | null;
+  discrepancyBps: number | null;
+}
+
+interface ReconciliationData {
+  summary: {
+    total: number;
+    byStatus?: Record<string, number>;
+    investigationCount: number;
+  };
+  records: ReconciliationRecord[];
+}
+
+interface PurchaseLimitRow {
+  id: string;
+  workspace: string;
+  period: string;
+  spentMinor: number;
+  limitMinor: number;
+  utilizationBps: number;
+}
+
 function microsToRate(rateMicros: string) {
   return Number(rateMicros) / 1_000_000;
 }
@@ -115,9 +168,9 @@ export default function AdminDigitalProductsPage() {
   const [providers, setProviders] = useState<ProviderHealthRow[]>([]);
   const [fxCurrent, setFxCurrent] = useState<FxRateRow>();
   const [fxHistory, setFxHistory] = useState<FxRateRow[]>([]);
-  const [marginStats, setMarginStats] = useState<any>();
-  const [reconciliationData, setReconciliationData] = useState<any>();
-  const [purchaseLimits, setPurchaseLimits] = useState<any[]>([]);
+  const [marginStats, setMarginStats] = useState<MarginStats>();
+  const [reconciliationData, setReconciliationData] = useState<ReconciliationData>();
+  const [purchaseLimits, setPurchaseLimits] = useState<PurchaseLimitRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
@@ -138,9 +191,9 @@ export default function AdminDigitalProductsPage() {
         apiRequest<{ orders: AdminVirtualNumberOrder[] }>("/admin/digital-products/orders"),
         apiRequest<ProviderHealthRow[]>("/admin/digital-products/providers/health"),
         apiRequest<FxRateRow[]>("/admin/digital-products/fx/history"),
-        apiRequest<any>("/admin/digital-products/margin-analytics?days=30"),
-        apiRequest<any>("/admin/digital-products/reconciliation?days=30"),
-        apiRequest<any[]>("/admin/digital-products/purchase-limits")
+        apiRequest<MarginStats>("/admin/digital-products/margin-analytics?days=30"),
+        apiRequest<ReconciliationData>("/admin/digital-products/reconciliation?days=30"),
+        apiRequest<PurchaseLimitRow[]>("/admin/digital-products/purchase-limits")
       ]);
       setNumbers(numbersRes.numbers);
       setOrders(ordersRes.orders);
@@ -410,7 +463,7 @@ export default function AdminDigitalProductsPage() {
                 <Panel className="p-5">
                   <h3 className="mb-3 font-semibold">By Provider</h3>
                   <div className="space-y-2">
-                    {marginStats.providerStats.map((p: any) => (
+                    {marginStats.providerStats.map((p) => (
                       <div className="flex items-center justify-between rounded border border-[var(--ft-border)] p-3" key={p.provider}>
                         <div>
                           <div className="text-sm font-semibold">{p.provider}</div>
@@ -430,7 +483,7 @@ export default function AdminDigitalProductsPage() {
                 <Panel className="p-5">
                   <h3 className="mb-3 font-semibold">Recent Orders</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {marginStats.orders.slice(0, 20).map((order: any) => (
+                    {marginStats.orders.slice(0, 20).map((order) => (
                       <div className="text-xs border-b border-[var(--ft-border)] pb-2" key={order.orderId}>
                         <div className="flex justify-between">
                           <span className="font-mono text-[var(--ft-text-muted)]">{order.orderId.slice(0, 8)}</span>
@@ -488,7 +541,7 @@ export default function AdminDigitalProductsPage() {
                 <Panel className="p-5">
                   <h3 className="mb-3 font-semibold">Recent Records</h3>
                   <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {reconciliationData.records.map((r: any) => (
+                    {reconciliationData.records.map((r) => (
                       <div className="text-xs border-b border-[var(--ft-border)] pb-3" key={r.id}>
                         <div className="flex items-center justify-between">
                           <div className="font-semibold">{r.provider}</div>
