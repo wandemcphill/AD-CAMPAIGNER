@@ -1794,6 +1794,57 @@ export function createCloudinaryStorageProvider(
   };
 }
 
+// ─── Settlement Provider Abstraction ──────────────────────────────────────────
+
+export interface SettlementTransfer {
+  id: string;
+  source: {
+    amount: bigint; // minor units
+    currency: string;
+  };
+  destination: {
+    amount: bigint; // minor units
+    currency: string;
+  };
+  beneficiary: {
+    name: string | undefined;
+    reference: string; // Bank account, email, etc.
+  };
+  fxRate?: bigint; // Rate used (in micros)
+  status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED";
+  providerReference: string;
+  providerTimestamp?: Date;
+  errorReason?: string;
+}
+
+export interface SettlementTransferRequest {
+  idempotencyKey: string; // Must be unique per logical transfer
+  sourceAmountMinor: bigint;
+  sourceCurrency: string;
+  destinationAmountMinor: bigint;
+  destinationCurrency: string;
+  fxRateMicros: bigint;
+  beneficiaryName: string | undefined;
+  beneficiaryReference: string; // Bank account, Wise email, payment ID, etc.
+  metadata?: Record<string, any>;
+}
+
+export interface SettlementProvider {
+  readonly name: string;
+
+  // Create a transfer/payment
+  createTransfer(request: SettlementTransferRequest): Promise<SettlementTransfer>;
+
+  // Get transfer status
+  getTransferStatus(providerReference: string): Promise<SettlementTransfer>;
+
+  // Cancel transfer (if supported)
+  cancelTransfer?(providerReference: string): Promise<{ cancelled: boolean; reason?: string }>;
+
+  // Health check
+  healthCheck(): Promise<{ healthy: boolean; message?: string }>;
+}
+
 // ─── FX Provider Abstraction ──────────────────────────────────────────────────
 
 export interface FxRate {
@@ -1869,6 +1920,238 @@ export function createMockFxProvider(): FxProvider {
   };
 }
 
+export function createMockSettlementProvider(): SettlementProvider {
+  // In-memory store for simulating provider behavior
+  const transfers = new Map<string, SettlementTransfer>();
+  const idempotencyCache = new Map<string, SettlementTransfer>();
+
+  return {
+    name: "mock-settlement",
+    async createTransfer(request: SettlementTransferRequest): Promise<SettlementTransfer> {
+      // Check idempotency
+      if (idempotencyCache.has(request.idempotencyKey)) {
+        return idempotencyCache.get(request.idempotencyKey)!;
+      }
+
+      // Simulate provider reference (would be real ID from provider API)
+      const providerReference = `mock_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+      // Simulate different outcomes based on metadata
+      let status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" = "PROCESSING";
+      let errorReason: string | undefined;
+
+      if (request.metadata?.["simulation"]) {
+        const sim = request.metadata["simulation"] as string;
+        if (sim === "success") status = "COMPLETED";
+        else if (sim === "failure") {
+          status = "FAILED";
+          errorReason = "Simulated provider error";
+        } else if (sim === "timeout") status = "PROCESSING";
+      }
+
+      const transfer: SettlementTransfer = {
+        id: providerReference,
+        source: {
+          amount: request.sourceAmountMinor,
+          currency: request.sourceCurrency
+        },
+        destination: {
+          amount: request.destinationAmountMinor,
+          currency: request.destinationCurrency
+        },
+        beneficiary: {
+          name: request.beneficiaryName,
+          reference: request.beneficiaryReference
+        },
+        fxRate: request.fxRateMicros,
+        status,
+        providerReference,
+        providerTimestamp: new Date(),
+        ...(errorReason ? { errorReason } : {})
+      };
+
+      transfers.set(providerReference, transfer);
+      idempotencyCache.set(request.idempotencyKey, transfer);
+
+      return transfer;
+    },
+
+    async getTransferStatus(providerReference: string): Promise<SettlementTransfer> {
+      const transfer = transfers.get(providerReference);
+      if (!transfer) {
+        throw new Error(`Transfer not found: ${providerReference}`);
+      }
+
+      // Simulate status progression: PROCESSING → COMPLETED
+      if (transfer.status === "PROCESSING") {
+        const elapsed = Date.now() - (transfer.providerTimestamp?.getTime() ?? 0);
+        if (elapsed > 5000) {
+          // After 5 seconds, mark as completed (unless it's a failure simulation)
+          if (!transfer.errorReason) {
+            transfer.status = "COMPLETED";
+          }
+        }
+      }
+
+      return transfer;
+    },
+
+    async healthCheck() {
+      return { healthy: true };
+    }
+  };
+}
+
+// ─── Gift Card Sell Provider ────────────────────────────────────────────────────
+
+export interface GiftCardSellRate {
+  brand: string;
+  region: string;
+  denomination: number;
+  currency: string;
+  rateMinor: number;
+  fee?: number;
+  rateTimestamp: Date;
+}
+
+export interface GiftCardSellProvider {
+  readonly name: string;
+
+  listSupportedBrands(): Promise<string[]>;
+  getRate(brand: string, region: string, denomination: number): Promise<GiftCardSellRate>;
+  submitCard(input: {
+    reference: string;
+    brand: string;
+    region: string;
+    denomination: number;
+    cardInfo: Record<string, string>;
+  }): Promise<{
+    providerReference: string;
+    status: 'SUBMITTED' | 'PROCESSING' | 'AMBIGUOUS';
+    failureReason?: string;
+  }>;
+  getTransactionStatus(reference: string): Promise<{
+    status: 'PROCESSING' | 'VERIFIED' | 'APPROVED' | 'PAID' | 'REJECTED' | 'FAILED';
+    payout?: number;
+    payoutCurrency?: string;
+  }>;
+  checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number }>;
+}
+
+// ─── Gift Card Purchase Provider ────────────────────────────────────────────────
+
+export interface GiftCardProduct {
+  productId: string;
+  brand: string;
+  region: string;
+  country: string;
+  denomination: number;
+  currency: string;
+  retailPrice: number;
+  wholesalePrice: number;
+  available: boolean;
+}
+
+export interface GiftCardPurchaseProvider {
+  readonly name: string;
+
+  getProducts(filters?: { brand?: string; region?: string; country?: string }): Promise<GiftCardProduct[]>;
+  getProduct(productId: string): Promise<GiftCardProduct>;
+  getPrice(productId: string, quantity?: number): Promise<{ productId: string; price: number; fee?: number }>;
+  purchase(input: {
+    reference: string;
+    productId: string;
+    quantity: number;
+    recipient?: { email?: string; phone?: string };
+  }): Promise<{
+    supplierOrderId: string;
+    status: 'CREATED' | 'PROCESSING' | 'AMBIGUOUS';
+    failureReason?: string;
+  }>;
+  getOrderStatus(orderId: string): Promise<{
+    status: 'PROCESSING' | 'FULFILLED' | 'DELIVERED' | 'FAILED';
+    codes?: string[];
+    failureReason?: string;
+  }>;
+  checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number; balance?: number }>;
+}
+
+// ─── Airtime Cashout Provider ──────────────────────────────────────────────────
+
+export interface AirtimeCashoutProvider {
+  readonly name: string;
+
+  getSupportedNetworks(): Promise<string[]>;
+  requestOtp(phone: string, network: string): Promise<{ sessionId?: string; message: string }>;
+  verifyOtp(input: {
+    phone: string;
+    network: string;
+    otp: string;
+    sessionId?: string;
+  }): Promise<{
+    verified: boolean;
+    airtimeBalance?: number;
+    balanceCurrency?: string;
+    sessionId?: string;
+  }>;
+  getBalance(phone: string, network: string): Promise<{ balanceMinor: number; currency: string }>;
+  getQuote(input: {
+    phone: string;
+    network: string;
+    amountMinor: number;
+  }): Promise<{
+    amountMinor: number;
+    feeMinor: number;
+    payoutMinor: number;
+    currency: string;
+  }>;
+  initiateCashout(input: {
+    reference: string;
+    phone: string;
+    network: string;
+    amountMinor: number;
+    sessionId?: string;
+    pin?: string;
+  }): Promise<{
+    providerReference: string;
+    status: 'SUBMITTED' | 'PROCESSING' | 'AMBIGUOUS';
+    failureReason?: string;
+  }>;
+  getTransactionStatus(reference: string): Promise<{
+    status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    payout?: number;
+    payoutCurrency?: string;
+  }>;
+  checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number }>;
+}
+
+// ─── Airtime Purchase Provider ────────────────────────────────────────────────
+
+export interface AirtimePurchaseProvider {
+  readonly name: string;
+
+  getNetworks(): Promise<string[]>;
+  getDenominations(network: string): Promise<number[]>;
+  getPrice(network: string, amountMinor: number): Promise<{ priceMinor: number; fee?: number }>;
+  purchase(input: {
+    reference: string;
+    network: string;
+    phone: string;
+    amountMinor: number;
+  }): Promise<{
+    providerOrderId: string;
+    status: 'SUBMITTED' | 'PROCESSING' | 'AMBIGUOUS';
+    failureReason?: string;
+  }>;
+  getOrderStatus(orderId: string): Promise<{
+    status: 'PROCESSING' | 'DELIVERED' | 'FAILED';
+    failureReason?: string;
+  }>;
+  checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number; balance?: number }>;
+}
+
 export * from './router.js';
 export * from './vtu.js';
 export * from './virtual-numbers.js';
+export * from './gift-cards.js';
+export * from './airtime-cashout.js';

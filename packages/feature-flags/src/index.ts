@@ -14,7 +14,11 @@ export const featureFlags = {
   billsCable: false,
   workflowAutomation: true,
   rewards: true,
-  rewardsAdmin: true
+  rewardsAdmin: true,
+  giftCardSell: false,
+  giftCardBuy: false,
+  airtimeCashout: false,
+  digitalValueAdmin: false
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

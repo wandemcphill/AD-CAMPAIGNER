@@ -368,6 +368,8 @@ enum GrowthRefundReviewStatus {
 enum ProviderDomain {
   VIRTUAL_NUMBER
   VTU
+  GIFT_CARD
+  AIRTIME_CASHOUT
 }
 
 enum ProviderTier {
@@ -393,6 +395,24 @@ enum FxQuoteStatus {
   EXPIRED
   USED
   CANCELLED
+}
+
+enum SettlementInstructionStatus {
+  PENDING
+  READY
+  SUBMITTED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REQUIRES_REVIEW
+}
+
+enum SettlementReconciliationState {
+  SYNCED
+  DIVERGED
+  UNRECONCILED
+  MANUAL_REVIEW_REQUIRED
 }
 
 enum VtuProductType {
@@ -1572,6 +1592,409 @@ model FxQuote {
 
   @@index([baseCurrency, quoteCurrency, expiresAt, status])
   @@index([transactionId])
+}
+
+model SettlementInstruction {
+  id                    String                        @id @default(uuid())
+  quoteId               String
+  workspaceId           String
+  partnerId             String
+  beneficiaryId         String?
+
+  // Amount side (customer input)
+  sourceAmountMinor     BigInt
+  sourceCurrency        String      @default("NGN")
+
+  // Result side (what will be sent to beneficiary)
+  destinationAmountMinor BigInt
+  destinationCurrency   String      @default("USD")
+
+  // FX details (locked at quote time)
+  fxRateMicros          BigInt
+  spreadBps             Int
+  bufferBps             Int
+  feesMinor             BigInt      @default(0)
+  netAmountMinor        BigInt      // What beneficiary actually gets
+
+  // Beneficiary details
+  beneficiaryName       String?
+  beneficiaryReference  String?     // Bank account, Wise email, etc.
+  metadata              Json        @default("{}")
+
+  // Settlement execution
+  status                SettlementInstructionStatus @default(PENDING)
+  provider              String      @default("pending")
+  providerReference     String?     // Wise transfer ID, Stripe payout ID, etc.
+  providerStatus        String?     // Provider's status (COMPLETED, FAILED, etc.)
+  providerTimestamp     DateTime?
+
+  // Error tracking
+  errorCode             String?
+  errorReason           String?
+  lastErrorAt           DateTime?
+  retryCount            Int         @default(0)
+  maxRetries            Int         @default(3)
+
+  // Reconciliation
+  reconciliationState   SettlementReconciliationState @default(UNRECONCILED)
+  reconciliationNote    String?
+
+  // Idempotency
+  idempotencyKey        String      @unique
+
+  // Timeline
+  createdAt             DateTime    @default(now())
+  createdBy             String?
+  readyAt               DateTime?
+  submittedAt           DateTime?
+  completedAt           DateTime?
+  failedAt              DateTime?
+  updatedAt             DateTime    @updatedAt
+
+  @@index([quoteId])
+  @@index([partnerId, status])
+  @@index([status, createdAt])
+  @@index([provider, providerReference])
+  @@index([idempotencyKey])
+}
+
+model SettlementReconciliation {
+  id                          String   @id @default(uuid())
+  settlementInstructionId     String
+
+  // FlipTrybe state
+  ftStatus                    String
+  ftProviderReference         String?
+  ftAmountMinor               BigInt?
+  ftTimestamp                 DateTime?
+
+  // Provider state
+  providerStatus              String?
+  providerAmountMinor         BigInt?
+  providerTimestamp           DateTime?
+
+  // Discrepancy tracking
+  statusMatch                 Boolean  @default(false)
+  amountMatch                 Boolean  @default(false)
+
+  // Resolution
+  resolved                    Boolean  @default(false)
+  resolvedBy                  String?
+  resolutionNote              String?
+
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  @@unique([settlementInstructionId])
+  @@index([resolved, statusMatch, amountMatch])
+}
+
+model SettlementWebhookEvent {
+  id                      String   @id @default(uuid())
+  settlementInstructionId String?
+
+  provider                String
+  providerEventId         String
+  eventType               String   // "transfer.completed", "transfer.failed", etc.
+
+  rawPayload              Json
+  parsedData              Json     @default("{}")
+
+  processed               Boolean  @default(false)
+  processedAt             DateTime?
+  processError            String?
+
+  receivedAt              DateTime @default(now())
+
+  @@unique([provider, providerEventId])
+  @@index([settlementInstructionId])
+  @@index([provider, processed])
+}
+
+enum GiftCardBrand {
+  APPLE
+  AMAZON
+  STEAM
+  GOOGLE_PLAY
+  PLAYSTATION
+  XBOX
+  RAZER_GOLD
+  ITUNES
+  OTHER
+}
+
+enum GiftCardRegion {
+  US
+  UK
+  EU
+  GLOBAL
+}
+
+enum GiftCardSellStatus {
+  DRAFT
+  QUOTED
+  SUBMITTED
+  PROCESSING
+  VERIFIED
+  APPROVED
+  PAID
+  COMPLETED
+  REJECTED
+  FAILED
+  CANCELLED
+  DISPUTED
+}
+
+enum GiftCardPurchaseStatus {
+  CREATED
+  AWAITING_PAYMENT
+  PAYMENT_CONFIRMED
+  SUPPLIER_SELECTION
+  PURCHASING
+  FULFILLMENT_PENDING
+  FULFILLED
+  DELIVERED
+  FAILED
+  REFUND_PENDING
+  REFUNDED
+  DISPUTED
+}
+
+model GiftCardProduct {
+  id                String          @id @default(uuid())
+  brand             GiftCardBrand
+  region            GiftCardRegion
+  currencyCode      String          @default("USD")
+  minDenomination   Int
+  maxDenomination   Int
+  denominations     Int[]           @default([])
+  active            Boolean         @default(true)
+  metadata          Json            @default("{}")
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([brand, region])
+  @@index([active])
+}
+
+model GiftCardSellQuote {
+  id                      String   @id @default(uuid())
+  workspaceId             String
+  userId                  String?
+  brand                   GiftCardBrand
+  region                  GiftCardRegion
+  denomination            Int
+  currency                String   @default("USD")
+  providerRate            Decimal  @db.Decimal(18, 8)
+  providerRateTimestamp   DateTime
+  fliptrybeMarkupBps      Int      @default(0)
+  fliptrybeFeeBps         Int      @default(0)
+  quotedCustomerPayoutNgn Int
+  expiresAt               DateTime
+  status                  String   @default("ACTIVE")
+  createdAt               DateTime @default(now())
+
+  @@index([workspaceId, expiresAt, status])
+  @@index([userId])
+}
+
+model GiftCardSellTransaction {
+  id                      String              @id @default(uuid())
+  workspaceId             String
+  userId                  String?
+  quoteId                 String?
+  brand                   GiftCardBrand
+  region                  GiftCardRegion
+  denomination            Int
+  currency                String              @default("USD")
+  providerName            String
+  providerTransactionId   String?
+  providerRate            Decimal             @db.Decimal(18, 8)
+  providerRateTimestamp   DateTime
+  providerPayoutNgn       Int
+  fliptrybeFeeMicro       Int
+  fliptrybeCommissionNgn  Int
+  quotedCustomerPayoutNgn Int
+  status                  GiftCardSellStatus  @default(DRAFT)
+  cardInfoRequired        String[]            @default([])
+  idempotencyKey          String              @unique
+  metadata                Json                @default("{}")
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+  submittedAt             DateTime?
+  completedAt             DateTime?
+
+  @@index([workspaceId, status, createdAt])
+  @@index([userId])
+  @@index([providerName])
+  @@index([providerTransactionId])
+}
+
+model GiftCardPurchaseQuote {
+  id                      String   @id @default(uuid())
+  workspaceId             String
+  brand                   GiftCardBrand
+  region                  GiftCardRegion
+  denomination            Int
+  supplierName            String
+  supplierCostNgn         Int
+  fliptrybeMarkupBps      Int      @default(200)
+  fliptrybeMarginNgn      Int
+  customerPriceNgn        Int
+  landedCostNgn           Int
+  expiresAt               DateTime
+  status                  String   @default("ACTIVE")
+  createdAt               DateTime @default(now())
+
+  @@index([workspaceId, expiresAt, status])
+  @@index([supplierName])
+}
+
+model GiftCardPurchaseTransaction {
+  id                      String                   @id @default(uuid())
+  workspaceId             String
+  userId                  String?
+  quoteId                 String?
+  brand                   GiftCardBrand
+  region                  GiftCardRegion
+  denomination            Int
+  supplierName            String
+  supplierProductId       String
+  supplierCostNgn         Int
+  fliptrybeMarkupBps      Int
+  fliptrybeMarginNgn      Int
+  customerPriceNgn        Int
+  status                  GiftCardPurchaseStatus  @default(CREATED)
+  supplierOrderId         String?
+  supplierTransactionId   String?
+  giftCardCode            String?                 @default("")
+  giftCardCodeMasked      String?
+  giftCardCodeEncrypted   String?
+  codeDeliveredAt         DateTime?
+  idempotencyKey          String                  @unique
+  metadata                Json                    @default("{}")
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  paymentConfirmedAt      DateTime?
+  fulfilledAt             DateTime?
+  deliveredAt             DateTime?
+
+  wallet                  Wallet?                 @relation(fields: [walletId], references: [id])
+  walletId                String?
+  ledgerEntry             LedgerEntry?            @relation(fields: [ledgerEntryId], references: [id])
+  ledgerEntryId           String?
+  charge                  GiftCardWalletCharge?   @relation(fields: [chargeId], references: [id])
+  chargeId                String?
+
+  @@index([workspaceId, status, createdAt])
+  @@index([userId])
+  @@index([supplierName])
+  @@index([supplierOrderId])
+  @@index([walletId])
+}
+
+model GiftCardWalletCharge {
+  id                  String                        @id @default(uuid())
+  workspaceId         String
+  walletId            String
+  transactionId       String
+  idempotencyKey      String                        @unique
+  amountMinor         Int
+  currency            String                        @default("NGN")
+  status              String                        @default("CHARGED")
+  debitLedgerEntryId  String?
+  refundLedgerEntryId String?
+  createdAt           DateTime                      @default(now())
+  updatedAt           DateTime                      @updatedAt
+
+  transactions        GiftCardPurchaseTransaction[]
+
+  @@index([workspaceId, status])
+  @@index([walletId])
+}
+
+enum AirtimeCashoutStatus {
+  INITIATED
+  OTP_REQUIRED
+  OTP_VERIFIED
+  BALANCE_CHECKED
+  QUOTED
+  CONFIRMED
+  PROCESSING
+  COMPLETED
+  FAILED
+  REJECTED
+  EXPIRED
+  DISPUTED
+}
+
+model AirtimeCashoutQuote {
+  id                      String   @id @default(uuid())
+  workspaceId             String
+  userId                  String?
+  network                 String
+  phoneNumber             String   @db.VarChar(20)
+  phoneNumberMasked       String
+  requestedAmountNgn      Int
+  providerFeeNgn          Int
+  providerPayoutNgn       Int
+  fliptrybeFeeMicroNgn    Int
+  customerPayoutNgn       Int
+  expiresAt               DateTime
+  status                  String   @default("ACTIVE")
+  createdAt               DateTime @default(now())
+
+  @@index([workspaceId, expiresAt, status])
+  @@index([userId])
+}
+
+model AirtimeCashoutTransaction {
+  id                      String                @id @default(uuid())
+  workspaceId             String
+  userId                  String?
+  network                 String
+  phoneNumber             String                @db.VarChar(20)
+  phoneNumberMasked       String
+  providerName            String
+  providerTransactionId   String?
+  requestedAmountNgn      Int
+  providerFeeNgn          Int
+  providerPayoutNgn       Int
+  fliptrybeFeeMicroNgn    Int
+  customerPayoutNgn       Int
+  status                  AirtimeCashoutStatus  @default(INITIATED)
+  sessionId               String?
+  idempotencyKey          String                @unique
+  metadata                Json                  @default("{}")
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  completedAt             DateTime?
+
+  @@index([workspaceId, status, createdAt])
+  @@index([userId])
+  @@index([network])
+  @@index([providerTransactionId])
+}
+
+model ProviderWebhookEvent {
+  id                      String   @id @default(uuid())
+  provider                String
+  domain                  String
+  providerEventId         String   @db.VarChar(255)
+  eventType               String
+  signature               String?
+  signatureValid          Boolean  @default(false)
+  rawPayload              Json
+  parsedMetadata          Json     @default("{}")
+  processed               Boolean  @default(false)
+  processedAt             DateTime?
+  processError            String?
+  relatedOrderId          String?
+  createdAt               DateTime @default(now())
+
+  @@unique([provider, domain, providerEventId])
+  @@index([provider, processed, createdAt])
+  @@index([domain, eventType])
 }
 
 model PricingRule {

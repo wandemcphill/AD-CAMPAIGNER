@@ -99,6 +99,19 @@ export class QueueProducerService implements OnModuleDestroy {
     });
   }
 
+  async enqueueDigitalValueProcessing(
+    transactionId: string,
+    type: "GIFT_CARD_SELL" | "GIFT_CARD_BUY" | "AIRTIME_CASHOUT" | "AIRTIME_BUY"
+  ): Promise<QueueProducerResult> {
+    return this.enqueue("digital-value-processing", type, { transactionId, type }, {
+      jobId: `dv_${type}_${transactionId}`,
+      attempts: 5,
+      backoff: { type: "exponential", delay: 15_000 },
+      removeOnComplete: { age: 604_800, count: 20_000 },
+      removeOnFail: { age: 2_592_000, count: 20_000 }
+    });
+  }
+
   async onModuleDestroy() {
     await Promise.all([...this.queues.values()].map((queue) => queue.close()));
 

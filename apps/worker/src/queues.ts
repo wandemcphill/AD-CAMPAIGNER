@@ -19,7 +19,8 @@ export const queueNames = [
   "vtu-fulfilment",
   "virtual-numbers",
   "workflow-automation",
-  "reward-engine"
+  "reward-engine",
+  "digital-value-processing"
 ] as const;
 
 export type QueueName = (typeof queueNames)[number];
@@ -111,6 +112,17 @@ export interface RewardEngineJob {
   campaignId?: string;
 }
 
+export type DigitalValueProcessingJobType =
+  | "GIFT_CARD_SELL"
+  | "GIFT_CARD_BUY"
+  | "AIRTIME_CASHOUT"
+  | "AIRTIME_BUY";
+
+export interface DigitalValueProcessingJob {
+  transactionId: string;
+  type: DigitalValueProcessingJobType;
+}
+
 export interface QueueRuntimePolicy {
   concurrency: number;
   retryPolicy: SmmRetryPolicy;
@@ -154,6 +166,7 @@ export type QueuePayloads = {
   "virtual-numbers": VirtualNumbersJob;
   "workflow-automation": WorkflowAutomationJob;
   "reward-engine": RewardEngineJob;
+  "digital-value-processing": DigitalValueProcessingJob;
 };
 
 export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
@@ -232,6 +245,12 @@ export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
   "reward-engine": {
     concurrency: 10,
     retryPolicy: { attempts: 5, baseDelayMs: 10_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
+    removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
+    removeOnFail: { ageSeconds: 2_592_000, count: 20_000 }
+  },
+  "digital-value-processing": {
+    concurrency: 8,
+    retryPolicy: { attempts: 5, baseDelayMs: 15_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
     removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
     removeOnFail: { ageSeconds: 2_592_000, count: 20_000 }
   }
