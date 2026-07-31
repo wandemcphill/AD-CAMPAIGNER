@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
+import { verifyFincraWebhook } from "@fliptrybe/providers";
 
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
 import { RequirePermissions } from "../authorization.decorators";
@@ -74,16 +75,32 @@ export class AdminSettlementController {
   @Post("webhook/:provider")
   async handleWebhook(
     @Param("provider") provider: string,
+    @Headers("signature") signature: string | undefined,
     @Body() body: any
   ) {
-    // Provider-agnostic webhook handler
-    // Body should contain: eventId, eventType, payload
-    await this.settlement.handleSettlementWebhook(
-      provider,
-      body.eventId ?? `${provider}_${Date.now()}`,
-      body.eventType ?? "unknown",
-      body
-    );
+    if (provider === "fincra") {
+      const webhookKey = process.env["FINCRA_WEBHOOK_KEY"];
+      if (webhookKey && signature) {
+        if (!verifyFincraWebhook(JSON.stringify(body), signature, webhookKey)) {
+          throw new UnauthorizedException("Invalid webhook signature");
+        }
+      }
+
+      await this.settlement.handleSettlementWebhook(
+        "fincra",
+        body.data?.reference ?? `fincra_${Date.now()}`,
+        body.event ?? "unknown",
+        body
+      );
+    } else {
+      await this.settlement.handleSettlementWebhook(
+        provider,
+        body.eventId ?? `${provider}_${Date.now()}`,
+        body.eventType ?? "unknown",
+        body
+      );
+    }
+
     return { received: true };
   }
 }

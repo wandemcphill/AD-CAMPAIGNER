@@ -2,10 +2,15 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from "@nes
 
 import type { DatabaseClient, Prisma } from "@fliptrybe/database";
 import type { SettlementProvider, SettlementTransferRequest } from "@fliptrybe/providers";
-import { createMockSettlementProvider } from "@fliptrybe/providers";
+import { createMockSettlementProvider, createFincraSettlementProvider } from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
 import type { CreateSettlementInstructionDto } from "./settlement.dtos";
+
+// Derive a stable ledger idempotency key from the settlement instruction id
+function ledgerKey(instructionId: string, kind: "hold" | "debit" | "reversal"): string {
+  return `settlement:${kind}:${instructionId}`;
+}
 
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
@@ -15,11 +20,107 @@ export class SettlementService {
   private settlementProvider: SettlementProvider;
 
   constructor(private readonly prismaService: PrismaService) {
-    this.settlementProvider = createMockSettlementProvider();
+    const fincraApiKey = process.env["FINCRA_API_KEY"];
+    const fincraBusinessId = process.env["FINCRA_BUSINESS_ID"];
+
+    if (fincraApiKey && fincraBusinessId) {
+      const isProduction = process.env["FINCRA_ENV"] === "production";
+      this.settlementProvider = createFincraSettlementProvider({
+        apiKey: fincraApiKey,
+        businessId: fincraBusinessId,
+        ...(isProduction ? { baseUrl: "https://api.fincra.com" } : {}),
+      });
+    } else {
+      this.settlementProvider = createMockSettlementProvider();
+    }
   }
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
+  }
+
+  // ─── Ledger Helpers ────────────────────────────────────────────────────
+
+  private async requireWallet(tx: DatabaseClient | Prisma.TransactionClient, workspaceId: string, currency: string) {
+    const wallet = await tx.wallet.findUnique({
+      where: { workspaceId_currency: { workspaceId, currency } }
+    });
+    if (!wallet) {
+      throw new BadRequestException(
+        `No ${currency} wallet found for workspace ${workspaceId}. Fund the wallet before settling.`
+      );
+    }
+    return wallet;
+  }
+
+  private async holdLedgerEntry(
+    tx: DatabaseClient | Prisma.TransactionClient,
+    walletId: string,
+    instructionId: string,
+    amountMinor: bigint,
+    currency: string
+  ) {
+    return tx.ledgerEntry.create({
+      data: {
+        id: uid("le"),
+        walletId,
+        kind: "HOLD",
+        amountMinor: Number(amountMinor),
+        currency,
+        reference: `settlement:${instructionId}`,
+        description: `Settlement hold: ${instructionId}`,
+        idempotencyKey: ledgerKey(instructionId, "hold"),
+        sourceType: "SettlementInstruction",
+        sourceId: instructionId,
+      }
+    });
+  }
+
+  private async debitLedgerEntry(
+    tx: DatabaseClient | Prisma.TransactionClient,
+    walletId: string,
+    instructionId: string,
+    amountMinor: bigint,
+    currency: string
+  ) {
+    return tx.ledgerEntry.create({
+      data: {
+        id: uid("le"),
+        walletId,
+        kind: "DEBIT",
+        amountMinor: Number(amountMinor),
+        currency,
+        reference: `settlement:${instructionId}`,
+        description: `Settlement debit: ${instructionId}`,
+        idempotencyKey: ledgerKey(instructionId, "debit"),
+        sourceType: "SettlementInstruction",
+        sourceId: instructionId,
+      }
+    });
+  }
+
+  private async reversalLedgerEntry(
+    tx: DatabaseClient | Prisma.TransactionClient,
+    walletId: string,
+    instructionId: string,
+    amountMinor: bigint,
+    currency: string,
+    reason: string
+  ) {
+    return tx.ledgerEntry.create({
+      data: {
+        id: uid("le"),
+        walletId,
+        kind: "REVERSAL",
+        amountMinor: Number(amountMinor),
+        currency,
+        reference: `settlement_reversal:${instructionId}`,
+        description: `Settlement reversal: ${reason}`,
+        idempotencyKey: ledgerKey(instructionId, "reversal"),
+        sourceType: "SettlementInstruction",
+        sourceId: instructionId,
+      }
+    });
   }
 
   // ─── Settlement Instruction Management ───────────────────────────────────
@@ -28,7 +129,6 @@ export class SettlementService {
     quoteId: string,
     dto: CreateSettlementInstructionDto
   ): Promise<any> {
-    // Fetch the FxQuote
     const quote = await this.db.fxQuote.findUnique({ where: { id: quoteId } });
     if (!quote) {
       throw new NotFoundException(`Quote not found: ${quoteId}`);
@@ -38,12 +138,10 @@ export class SettlementService {
       throw new BadRequestException(`Quote must be USED to settle, currently: ${quote.status}`);
     }
 
-    // Validate amounts
     if (!dto.destinationAmountMinor || dto.destinationAmountMinor <= 0) {
       throw new BadRequestException("destinationAmountMinor must be positive");
     }
 
-    // Calculate net amount (destination - fees)
     const feesMinor = dto.feesMinor ?? 0;
     const netAmountMinor = dto.destinationAmountMinor - feesMinor;
 
@@ -51,42 +149,49 @@ export class SettlementService {
       throw new BadRequestException("Net amount (destination - fees) must be positive");
     }
 
-    // Generate idempotency key based on quote + transaction ID
-    const idempotencyKey = `settlement_${quoteId}_${dto.transactionId}_${Date.now()}`;
+    const idempotencyKey = `settlement_${quoteId}_${dto.transactionId}`;
 
-    // Create settlement instruction
-    const instruction = await this.db.settlementInstruction.create({
-      data: {
-        id: uid("settle"),
-        quoteId,
-        workspaceId: dto.workspaceId,
-        partnerId: dto.partnerId,
-        ...(dto.beneficiaryId ? { beneficiaryId: dto.beneficiaryId } : {}),
+    return this.db.$transaction(async (tx) => {
+      const wallet = await this.requireWallet(tx, dto.workspaceId, quote.baseCurrency);
 
-        sourceAmountMinor: quote.sourceAmountMinor,
-        sourceCurrency: quote.baseCurrency,
+      const instruction = await tx.settlementInstruction.create({
+        data: {
+          id: uid("settle"),
+          quoteId,
+          workspaceId: dto.workspaceId,
+          partnerId: dto.partnerId,
+          ...(dto.beneficiaryId ? { beneficiaryId: dto.beneficiaryId } : {}),
 
-        destinationAmountMinor: dto.destinationAmountMinor,
-        destinationCurrency: quote.quoteCurrency,
+          sourceAmountMinor: quote.sourceAmountMinor,
+          sourceCurrency: quote.baseCurrency,
 
-        fxRateMicros: quote.customerRateMicros,
-        spreadBps: quote.spreadBps,
-        bufferBps: quote.bufferBps,
-        feesMinor: BigInt(feesMinor),
-        netAmountMinor: BigInt(netAmountMinor),
+          destinationAmountMinor: dto.destinationAmountMinor,
+          destinationCurrency: quote.quoteCurrency,
 
-        ...(dto.beneficiaryName ? { beneficiaryName: dto.beneficiaryName } : {}),
-        beneficiaryReference: dto.beneficiaryReference,
-        metadata: dto.metadata ?? {},
+          fxRateMicros: quote.customerRateMicros,
+          spreadBps: quote.spreadBps,
+          bufferBps: quote.bufferBps,
+          feesMinor: BigInt(feesMinor),
+          netAmountMinor: BigInt(netAmountMinor),
 
-        status: "PENDING",
-        provider: this.settlementProvider.name,
-        idempotencyKey,
-        ...(dto.createdBy ? { createdBy: dto.createdBy } : {})
-      }
+          ...(dto.beneficiaryName ? { beneficiaryName: dto.beneficiaryName } : {}),
+          beneficiaryReference: dto.beneficiaryReference,
+          metadata: dto.metadata ?? {},
+
+          status: "PENDING",
+          provider: this.settlementProvider.name,
+          idempotencyKey,
+          ...(dto.createdBy ? { createdBy: dto.createdBy } : {})
+        }
+      });
+
+      // HOLD the source amount in the workspace wallet
+      await this.holdLedgerEntry(tx, wallet.id, instruction.id, quote.sourceAmountMinor, quote.baseCurrency);
+
+      this.logger.log(`Settlement instruction created: ${instruction.id}, HOLD ${Number(quote.sourceAmountMinor)} ${quote.baseCurrency}`);
+
+      return instruction;
     });
-
-    return instruction;
   }
 
   // ─── Settlement Submission ──────────────────────────────────────────────
@@ -104,53 +209,78 @@ export class SettlementService {
       throw new BadRequestException(`Can only submit PENDING settlements, current status: ${instruction.status}`);
     }
 
-    // Call provider to create transfer
+    if (!instruction.beneficiaryReference) {
+      throw new BadRequestException("Settlement instruction missing beneficiary reference");
+    }
+
+    const request: SettlementTransferRequest = {
+      idempotencyKey: instruction.idempotencyKey,
+      sourceAmountMinor: instruction.sourceAmountMinor,
+      sourceCurrency: instruction.sourceCurrency,
+      destinationAmountMinor: instruction.destinationAmountMinor,
+      destinationCurrency: instruction.destinationCurrency,
+      fxRateMicros: instruction.fxRateMicros,
+      beneficiaryName: instruction.beneficiaryName ?? undefined,
+      beneficiaryReference: instruction.beneficiaryReference,
+      metadata: (instruction.metadata as Record<string, any>) ?? {}
+    };
+
     try {
-      if (!instruction.beneficiaryReference) {
-        throw new BadRequestException("Settlement instruction missing beneficiary reference");
-      }
-
-      const request: SettlementTransferRequest = {
-        idempotencyKey: instruction.idempotencyKey,
-        sourceAmountMinor: instruction.sourceAmountMinor,
-        sourceCurrency: instruction.sourceCurrency,
-        destinationAmountMinor: instruction.destinationAmountMinor,
-        destinationCurrency: instruction.destinationCurrency,
-        fxRateMicros: instruction.fxRateMicros,
-        beneficiaryName: instruction.beneficiaryName ?? undefined,
-        beneficiaryReference: instruction.beneficiaryReference,
-        metadata: (instruction.metadata as Record<string, any>) ?? {}
-      };
-
       const transfer = await this.settlementProvider.createTransfer(request);
+      const failed = !!transfer.errorReason;
 
-      // Update instruction with provider reference
-      const updateData: any = {
-        status: transfer.errorReason ? "FAILED" : "SUBMITTED",
-        providerReference: transfer.providerReference,
-        providerStatus: transfer.status,
-        submittedAt: new Date()
-      };
+      await this.db.$transaction(async (tx) => {
+        const wallet = await this.requireWallet(tx, instruction.workspaceId, instruction.sourceCurrency);
 
-      if (transfer.providerTimestamp) {
-        updateData.providerTimestamp = transfer.providerTimestamp;
-      }
+        if (failed) {
+          // Release the HOLD via REVERSAL — funds return to available balance
+          await this.reversalLedgerEntry(
+            tx, wallet.id, instruction.id,
+            instruction.sourceAmountMinor, instruction.sourceCurrency,
+            transfer.errorReason ?? "Provider rejected transfer"
+          );
+        } else {
+          // Convert HOLD to firm DEBIT now that provider has accepted
+          await this.debitLedgerEntry(
+            tx, wallet.id, instruction.id,
+            instruction.sourceAmountMinor, instruction.sourceCurrency
+          );
+        }
 
-      if (transfer.errorReason) {
-        updateData.errorReason = transfer.errorReason;
-        updateData.failedAt = new Date();
-      }
-
-      const updated = await this.db.settlementInstruction.update({
-        where: { id: instructionId },
-        data: updateData
+        await tx.settlementInstruction.update({
+          where: { id: instructionId },
+          data: {
+            status: failed ? "FAILED" : "SUBMITTED",
+            providerReference: transfer.providerReference,
+            providerStatus: transfer.status,
+            submittedAt: new Date(),
+            ...(transfer.providerTimestamp ? { providerTimestamp: transfer.providerTimestamp } : {}),
+            ...(failed ? { errorReason: transfer.errorReason, failedAt: new Date() } : {})
+          }
+        });
       });
 
-      this.logger.log(`Settlement submitted: ${instructionId} → provider ref: ${transfer.providerReference}`);
+      this.logger.log(`Settlement submitted: ${instructionId} → provider ref: ${transfer.providerReference}${failed ? " (FAILED)" : ""}`);
 
-      return updated;
+      return this.db.settlementInstruction.findUnique({ where: { id: instructionId } });
     } catch (err) {
       const errorReason = err instanceof Error ? err.message : String(err);
+
+      // Best-effort reversal — if ledger entry already exists (idempotency key clash), this is a no-op
+      try {
+        const wallet = await this.db.wallet.findUnique({
+          where: { workspaceId_currency: { workspaceId: instruction.workspaceId, currency: instruction.sourceCurrency } }
+        });
+        if (wallet) {
+          await this.reversalLedgerEntry(
+            this.db, wallet.id, instruction.id,
+            instruction.sourceAmountMinor, instruction.sourceCurrency,
+            errorReason
+          );
+        }
+      } catch (reversalErr) {
+        this.logger.warn(`Could not create reversal ledger entry for ${instructionId}: ${reversalErr instanceof Error ? reversalErr.message : String(reversalErr)}`);
+      }
 
       await this.db.settlementInstruction.update({
         where: { id: instructionId },
@@ -183,25 +313,44 @@ export class SettlementService {
 
     try {
       const transfer = await this.settlementProvider.getTransferStatus(instruction.providerReference);
-
-      // Update instruction with latest status
       const statusChanged = instruction.providerStatus !== transfer.status;
+      const nowFailed = transfer.status === "FAILED" && !instruction.failedAt;
 
-      const updated = await this.db.settlementInstruction.update({
-        where: { id: instructionId },
-        data: {
-          providerStatus: transfer.status,
-          ...(transfer.status === "COMPLETED" && !instruction.completedAt ? { status: "COMPLETED", completedAt: new Date() } : {}),
-          ...(transfer.status === "FAILED" && !instruction.failedAt ? { status: "FAILED", failedAt: new Date(), errorReason: transfer.errorReason } : {}),
-          ...(transfer.status === "PROCESSING" ? { status: "PROCESSING" } : {})
-        }
-      });
+      if (nowFailed) {
+        // Provider confirmed failure — reverse the debit
+        await this.db.$transaction(async (tx) => {
+          const wallet = await this.requireWallet(tx, instruction.workspaceId, instruction.sourceCurrency);
+          await this.reversalLedgerEntry(
+            tx, wallet.id, instruction.id,
+            instruction.sourceAmountMinor, instruction.sourceCurrency,
+            transfer.errorReason ?? "Provider reported failure"
+          );
+          await tx.settlementInstruction.update({
+            where: { id: instructionId },
+            data: {
+              providerStatus: transfer.status,
+              status: "FAILED",
+              failedAt: new Date(),
+              ...(transfer.errorReason ? { errorReason: transfer.errorReason } : {})
+            }
+          });
+        });
+      } else {
+        await this.db.settlementInstruction.update({
+          where: { id: instructionId },
+          data: {
+            providerStatus: transfer.status,
+            ...(transfer.status === "COMPLETED" && !instruction.completedAt ? { status: "COMPLETED", completedAt: new Date() } : {}),
+            ...(transfer.status === "PROCESSING" ? { status: "PROCESSING" } : {})
+          }
+        });
+      }
 
       if (statusChanged) {
         this.logger.log(`Settlement status updated: ${instructionId} → ${transfer.status}`);
       }
 
-      return updated;
+      return this.db.settlementInstruction.findUnique({ where: { id: instructionId } });
     } catch (err) {
       this.logger.error(`Failed to poll settlement status for ${instructionId}: ${err instanceof Error ? err.message : String(err)}`);
       throw err;
@@ -211,7 +360,6 @@ export class SettlementService {
   // ─── Webhook Handling ───────────────────────────────────────────────────
 
   async handleSettlementWebhook(provider: string, eventId: string, eventType: string, payload: any): Promise<void> {
-    // Store webhook event for audit/replay
     const event = await this.db.settlementWebhookEvent.create({
       data: {
         id: uid("whook"),
@@ -225,9 +373,61 @@ export class SettlementService {
 
     this.logger.log(`Webhook received: ${provider} / ${eventType} / ${eventId}`);
 
-    // TODO: Implement provider-specific webhook parsing
-    // Map provider webhook payload to SettlementInstruction update
-    // For now, mark as processed
+    if (provider === "fincra" && payload.data) {
+      const d = payload.data;
+      const reference = d.reference as string | undefined;
+      if (reference) {
+        const instruction = await this.db.settlementInstruction.findFirst({
+          where: { providerReference: reference }
+        });
+
+        if (instruction) {
+          const fincraStatus = (d.status as string) ?? "";
+          const mapped = fincraStatus === "successful" ? "COMPLETED"
+            : fincraStatus === "failed" ? "FAILED"
+            : fincraStatus === "processing" ? "PROCESSING"
+            : null;
+
+          if (mapped) {
+            const nowFailed = mapped === "FAILED" && !instruction.failedAt;
+
+            await this.db.$transaction(async (tx) => {
+              if (nowFailed) {
+                // Reverse the debit — funds back to available balance
+                const wallet = await tx.wallet.findUnique({
+                  where: { workspaceId_currency: { workspaceId: instruction.workspaceId, currency: instruction.sourceCurrency } }
+                });
+                if (wallet) {
+                  await this.reversalLedgerEntry(
+                    tx, wallet.id, instruction.id,
+                    instruction.sourceAmountMinor, instruction.sourceCurrency,
+                    d.failureReason ?? "Payout failed (webhook)"
+                  );
+                }
+              }
+
+              await tx.settlementInstruction.update({
+                where: { id: instruction.id },
+                data: {
+                  providerStatus: fincraStatus,
+                  status: mapped,
+                  ...(mapped === "COMPLETED" && !instruction.completedAt ? { completedAt: new Date() } : {}),
+                  ...(nowFailed ? { failedAt: new Date(), errorReason: d.failureReason ?? "Payout failed" } : {}),
+                }
+              });
+            });
+
+            this.logger.log(`Settlement ${instruction.id} updated via webhook → ${mapped}${nowFailed ? " (REVERSAL written)" : ""}`);
+          }
+
+          await this.db.settlementWebhookEvent.update({
+            where: { id: event.id },
+            data: { processed: true, processedAt: new Date(), parsedData: { instructionId: instruction.id, mapped } }
+          });
+          return;
+        }
+      }
+    }
 
     await this.db.settlementWebhookEvent.update({
       where: { id: event.id },

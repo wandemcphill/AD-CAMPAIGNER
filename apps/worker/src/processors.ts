@@ -322,5 +322,23 @@ export function processQueueJob(
         processedAt
       };
     }
+    case "digital-value-processing": {
+      const data = job.data as QueuePayloads["digital-value-processing"];
+      return {
+        queue,
+        status: "processed",
+        detail: `Digital value ${data.type} accepted for transaction ${data.transactionId}`,
+        processedAt
+      };
+    }
+    default: {
+      const _exhaustive: never = queue;
+      return {
+        queue: _exhaustive,
+        status: "skipped",
+        detail: `Unknown queue: ${_exhaustive}`,
+        processedAt
+      };
+    }
   }
 }

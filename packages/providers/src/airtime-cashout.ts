@@ -76,14 +76,11 @@ export function createAirtimeToCashAdapter(
       const data = (await response.json()) as AirtimeToCashResponse<AirtimeToCashOtpData>;
 
       if (data.code !== 2000) {
-        return {
-          sessionId: undefined,
-          message: data.message || 'OTP request failed'
-        };
+        return { message: data.message || 'OTP request failed' };
       }
 
       return {
-        sessionId: data.data?.sessionId,
+        ...(data.data?.sessionId ? { sessionId: data.data.sessionId } : {}),
         message: data.message
       };
     },
@@ -105,19 +102,14 @@ export function createAirtimeToCashAdapter(
       const data = (await response.json()) as AirtimeToCashResponse<AirtimeToCashVerifyData>;
 
       if (data.code !== 2000) {
-        return {
-          verified: false,
-          airtimeBalance: undefined,
-          balanceCurrency: undefined,
-          sessionId: undefined
-        };
+        return { verified: false };
       }
 
       return {
         verified: true,
         airtimeBalance: parseNgnAmount(data.data?.airtimeBalance || '0'),
         balanceCurrency: 'NGN',
-        sessionId: data.data?.sessionId
+        ...(data.data?.sessionId ? { sessionId: data.data.sessionId } : {})
       };
     },
 
@@ -177,11 +169,7 @@ export function createAirtimeToCashAdapter(
       const data = (await response.json()) as AirtimeToCashResponse<AirtimeToCashTransferData>;
 
       if (data.code === 2000) {
-        return {
-          providerReference: input.reference,
-          status: 'PROCESSING',
-          failureReason: undefined
-        };
+        return { providerReference: input.reference, status: 'PROCESSING' as const };
       }
 
       return {
@@ -259,7 +247,7 @@ export function createMockAirtimeCashoutAdapter(
         verified: true,
         airtimeBalance: Math.floor(Math.random() * 100000) + 5000,
         balanceCurrency: 'NGN',
-        sessionId: input.sessionId
+        ...(input.sessionId ? { sessionId: input.sessionId } : {})
       };
     },
 

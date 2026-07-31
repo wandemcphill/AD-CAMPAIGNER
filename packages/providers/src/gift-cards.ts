@@ -210,13 +210,10 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
         quantity: input.quantity,
         unitPrice,
         customIdentifier: input.reference,
-        recipientEmail: input.recipient?.email,
-        recipientPhoneDetails: input.recipient?.phone
-          ? {
-              countryCode: product.region,
-              phoneNumber: input.recipient.phone
-            }
-          : undefined
+        ...(input.recipient?.email ? { recipientEmail: input.recipient.email } : {}),
+        ...(input.recipient?.phone
+          ? { recipientPhoneDetails: { countryCode: product.region, phoneNumber: input.recipient.phone } }
+          : {})
       };
 
       const response = await f(`${baseUrl}/orders`, {
@@ -248,7 +245,7 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
       return {
         supplierOrderId: orderData.transactionId,
         status,
-        failureReason: orderData.status === 'FAILED' ? 'Order failed at Reloadly' : undefined
+        ...(orderData.status === 'FAILED' ? { failureReason: 'Order failed at Reloadly' } : {})
       };
     },
 
@@ -266,16 +263,17 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
       }
 
       const orderData = (await response.json()) as ReloadlyOrderResponse;
+      const orderStatus = (
+        orderData.status === 'SUCCESSFUL'
+          ? 'DELIVERED'
+          : orderData.status === 'FAILED'
+            ? 'FAILED'
+            : 'PROCESSING'
+      ) as 'PROCESSING' | 'FULFILLED' | 'DELIVERED' | 'FAILED';
       return {
-        status: (
-          orderData.status === 'SUCCESSFUL'
-            ? 'DELIVERED'
-            : orderData.status === 'FAILED'
-              ? 'FAILED'
-              : 'PROCESSING'
-        ) as 'PROCESSING' | 'FULFILLED' | 'DELIVERED' | 'FAILED',
-        codes: orderData.status === 'SUCCESSFUL' ? [orderData.transactionId] : undefined,
-        failureReason: orderData.status === 'FAILED' ? 'Order failed' : undefined
+        status: orderStatus,
+        ...(orderData.status === 'SUCCESSFUL' ? { codes: [orderData.transactionId] } : {}),
+        ...(orderData.status === 'FAILED' ? { failureReason: 'Order failed' } : {})
       };
     },
 

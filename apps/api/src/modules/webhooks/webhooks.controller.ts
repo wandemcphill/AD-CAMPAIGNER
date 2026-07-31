@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query, Req, RawBodyRequest } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import type { RawBodyRequest } from "@nestjs/common";
 
 import { RequirePermissions } from "../authorization.decorators";
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";

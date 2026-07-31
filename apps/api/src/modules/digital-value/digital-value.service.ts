@@ -169,6 +169,12 @@ export class DigitalValueService {
         denomination: dto.denomination,
         currency: 'USD',
         providerName: this.giftCardSellProvider.name,
+        providerRate: 0,
+        providerRateTimestamp: new Date(),
+        providerPayoutNgn: 0,
+        fliptrybeFeeMicro: 0,
+        fliptrybeCommissionNgn: 0,
+        quotedCustomerPayoutNgn: 0,
         status: 'SUBMITTED' as any,
         cardInfoRequired: Object.keys(dto.cardInfo),
         idempotencyKey,
@@ -367,8 +373,8 @@ export class DigitalValueService {
         productId: quote.id,
         quantity: 1,
         recipient: {
-          email: dto.recipientEmail,
-          phone: dto.recipientPhone
+          ...(dto.recipientEmail ? { email: dto.recipientEmail } : {}),
+          ...(dto.recipientPhone ? { phone: dto.recipientPhone } : {})
         }
       });
 
@@ -509,8 +515,8 @@ export class DigitalValueService {
         phone: dto.phone,
         network: dto.network,
         amountMinor: dto.amountMinor,
-        sessionId: dto.sessionId,
-        pin: dto.pin
+        ...(dto.sessionId ? { sessionId: dto.sessionId } : {}),
+        ...(dto.pin ? { pin: dto.pin } : {})
       });
 
       await this.db.airtimeCashoutTransaction.update({

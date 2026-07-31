@@ -2002,6 +2002,317 @@ export function createMockSettlementProvider(): SettlementProvider {
   };
 }
 
+// ─── Fincra FX Provider ─────────────────────────────────────────────────────────
+
+export interface FincraConfig {
+  apiKey: string;
+  businessId: string;
+  baseUrl?: string; // defaults to sandbox
+  webhookEncryptionKey?: string;
+}
+
+type FincraFetcher = (url: string, init: RequestInit) => Promise<Response>;
+
+interface FincraRateResponse {
+  success: boolean;
+  message: string;
+  data: {
+    rates: Array<{
+      baseCurrency: string;
+      quoteCurrency: string;
+      side: string;
+      price: number;
+    }>;
+    pagination: { page: number; perPage: number; totalItems: number; totalPages: number };
+  };
+}
+
+interface FincraQuoteResponse {
+  success: boolean;
+  message: string;
+  data: {
+    sourceCurrency: string;
+    destinationCurrency: string;
+    sourceAmount: number;
+    destinationAmount: number;
+    fee: number;
+    rate: number;
+    amountToCharge: number;
+    amountToReceive: number;
+    reference: string;
+    expireAt: string;
+  };
+}
+
+interface FincraPayoutResponse {
+  success: boolean;
+  message: string;
+  data: {
+    id: number;
+    reference: string;
+    customerReference: string;
+    status: string;
+  };
+}
+
+interface FincraPayoutStatusResponse {
+  success: boolean;
+  message: string;
+  data: {
+    id: number;
+    amountSent: number;
+    amountReceived: number;
+    sourceCurrency: string;
+    destinationCurrency: string;
+    fee: number;
+    status: string;
+    reference: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+const FINCRA_SANDBOX_URL = "https://sandboxapi.fincra.com";
+const FINCRA_PRODUCTION_URL = "https://api.fincra.com";
+
+const FINCRA_SUPPORTED_CURRENCIES = [
+  "NGN", "USD", "EUR", "GBP", "GHS", "KES", "UGX", "TZS", "ZMW", "XAF", "XOF", "ZAR", "EGP"
+];
+
+const FINCRA_PAYMENT_SCHEMES: Record<string, string> = {
+  GBP: "fps",
+  EUR: "sepa",
+  USD: "swift",
+  NGN: "",
+};
+
+function mapFincraStatus(status: string): "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" {
+  switch (status) {
+    case "successful": return "COMPLETED";
+    case "failed": return "FAILED";
+    case "processing": return "PROCESSING";
+    default: return "PENDING";
+  }
+}
+
+async function fincraRequest<T>(
+  baseUrl: string,
+  apiKey: string,
+  method: string,
+  path: string,
+  body: any | undefined,
+  fetcher: FincraFetcher
+): Promise<T> {
+  const url = `${baseUrl}${path}`;
+  const init: RequestInit = {
+    method,
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  };
+
+  const res = await fetcher(url, init);
+  const json = await res.json() as { success: boolean; message: string };
+
+  if (!res.ok || !json.success) {
+    throw new Error(`Fincra ${method} ${path} failed (${res.status}): ${json.message}`);
+  }
+
+  return json as T;
+}
+
+export function createFincraFxProvider(
+  config: FincraConfig,
+  fetcher: FincraFetcher = globalThis.fetch
+): FxProvider {
+  const baseUrl = config.baseUrl ?? FINCRA_SANDBOX_URL;
+
+  return {
+    name: "fincra",
+
+    async getRate(baseCurrency: string, quoteCurrency: string): Promise<FxRate> {
+      const pair = `${baseCurrency}-${quoteCurrency}`;
+      const res = await fincraRequest<FincraRateResponse>(
+        baseUrl, config.apiKey, "GET",
+        `/quotes/treasury-orders/rates?currencyPair=${pair}&side=buy`,
+        undefined, fetcher
+      );
+
+      const rate = res.data.rates.find(
+        (r) => r.baseCurrency === baseCurrency && r.quoteCurrency === quoteCurrency
+      );
+
+      if (!rate) {
+        throw new Error(`Fincra returned no rate for ${pair}`);
+      }
+
+      return {
+        baseCurrency,
+        quoteCurrency,
+        rateMicros: BigInt(Math.round(rate.price * 1_000_000)),
+        timestamp: new Date(),
+        provider: "fincra",
+      };
+    },
+
+    async getRates(baseCurrency: string, quoteCurrencies: string[]): Promise<FxRate[]> {
+      return Promise.all(
+        quoteCurrencies.map((qc) => this.getRate(baseCurrency, qc))
+      );
+    },
+
+    async getSupportedCurrencies(): Promise<string[]> {
+      return FINCRA_SUPPORTED_CURRENCIES;
+    },
+
+    async healthCheck(): Promise<{ healthy: boolean; message?: string }> {
+      try {
+        await fincraRequest<FincraRateResponse>(
+          baseUrl, config.apiKey, "GET",
+          "/quotes/treasury-orders/rates?currencyPair=USD-NGN&side=buy",
+          undefined, fetcher
+        );
+        return { healthy: true };
+      } catch (err) {
+        return { healthy: false, message: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  };
+}
+
+export function createFincraSettlementProvider(
+  config: FincraConfig,
+  fetcher: FincraFetcher = globalThis.fetch
+): SettlementProvider {
+  const baseUrl = config.baseUrl ?? FINCRA_SANDBOX_URL;
+
+  return {
+    name: "fincra",
+
+    async createTransfer(request: SettlementTransferRequest): Promise<SettlementTransfer> {
+      const isCrossCurrency = request.sourceCurrency !== request.destinationCurrency;
+
+      let quoteReference: string | undefined;
+
+      if (isCrossCurrency) {
+        // Step 1: Generate a quote (expires in 30s)
+        const quoteRes = await fincraRequest<FincraQuoteResponse>(
+          baseUrl, config.apiKey, "POST", "/quotes/generate",
+          {
+            business: config.businessId,
+            sourceCurrency: request.sourceCurrency,
+            destinationCurrency: request.destinationCurrency,
+            amount: String(request.sourceAmountMinor),
+            action: "send",
+            transactionType: "disbursement",
+            paymentDestination: "bank_account",
+            feeBearer: "business",
+            ...(FINCRA_PAYMENT_SCHEMES[request.destinationCurrency]
+              ? { paymentScheme: FINCRA_PAYMENT_SCHEMES[request.destinationCurrency] }
+              : {}),
+          },
+          fetcher
+        );
+        quoteReference = quoteRes.data.reference;
+      }
+
+      // Step 2: Create payout
+      const [firstName = "", ...lastParts] = (request.beneficiaryName ?? "").split(" ");
+      const lastName = lastParts.join(" ") || firstName;
+
+      const payoutBody: Record<string, any> = {
+        business: config.businessId,
+        sourceCurrency: request.sourceCurrency,
+        destinationCurrency: request.destinationCurrency,
+        amount: String(request.sourceAmountMinor),
+        description: request.metadata?.["description"] ?? "FlipTrybe settlement",
+        paymentDestination: request.metadata?.["paymentDestination"] ?? "bank_account",
+        customerReference: request.idempotencyKey,
+        beneficiary: {
+          firstName,
+          lastName,
+          accountHolderName: request.beneficiaryName ?? firstName,
+          accountNumber: request.beneficiaryReference,
+          type: request.metadata?.["beneficiaryType"] ?? "individual",
+          country: request.metadata?.["beneficiaryCountry"] ?? "NG",
+          ...(request.metadata?.["bankCode"] ? { bankCode: request.metadata["bankCode"] } : {}),
+          ...(request.metadata?.["sortCode"] ? { sortCode: request.metadata["sortCode"] } : {}),
+          ...(request.metadata?.["bankSwiftCode"] ? { bankSwiftCode: request.metadata["bankSwiftCode"] } : {}),
+          ...(request.metadata?.["email"] ? { email: request.metadata["email"] } : {}),
+        },
+        ...(quoteReference ? { quoteReference } : {}),
+        ...(FINCRA_PAYMENT_SCHEMES[request.destinationCurrency]
+          ? { paymentScheme: FINCRA_PAYMENT_SCHEMES[request.destinationCurrency] }
+          : {}),
+      };
+
+      const payoutRes = await fincraRequest<FincraPayoutResponse>(
+        baseUrl, config.apiKey, "POST", "/disbursements/payouts",
+        payoutBody, fetcher
+      );
+
+      return {
+        id: String(payoutRes.data.id),
+        source: { amount: request.sourceAmountMinor, currency: request.sourceCurrency },
+        destination: { amount: request.destinationAmountMinor, currency: request.destinationCurrency },
+        beneficiary: { name: request.beneficiaryName, reference: request.beneficiaryReference },
+        fxRate: request.fxRateMicros,
+        status: mapFincraStatus(payoutRes.data.status),
+        providerReference: payoutRes.data.reference,
+        providerTimestamp: new Date(),
+      };
+    },
+
+    async getTransferStatus(providerReference: string): Promise<SettlementTransfer> {
+      const res = await fincraRequest<FincraPayoutStatusResponse>(
+        baseUrl, config.apiKey, "GET",
+        `/disbursements/payouts/reference/${encodeURIComponent(providerReference)}`,
+        undefined, fetcher
+      );
+
+      const d = res.data;
+      return {
+        id: String(d.id),
+        source: { amount: BigInt(Math.round(d.amountSent)), currency: d.sourceCurrency },
+        destination: { amount: BigInt(Math.round(d.amountReceived)), currency: d.destinationCurrency },
+        beneficiary: { name: undefined, reference: "" },
+        status: mapFincraStatus(d.status),
+        providerReference: d.reference,
+        providerTimestamp: new Date(d.updatedAt),
+        ...(d.status === "failed" ? { errorReason: `Fincra payout failed (ref: ${d.reference})` } : {}),
+      };
+    },
+
+    async healthCheck(): Promise<{ healthy: boolean; message?: string }> {
+      try {
+        await fincraRequest<{ success: boolean; message: string }>(
+          baseUrl, config.apiKey, "GET",
+          "/quotes/treasury-orders/rates?currencyPair=USD-NGN&side=buy",
+          undefined, fetcher
+        );
+        return { healthy: true };
+      } catch (err) {
+        return { healthy: false, message: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  };
+}
+
+export function verifyFincraWebhook(
+  body: string,
+  signature: string,
+  webhookEncryptionKey: string
+): boolean {
+  // Uses Node.js crypto — import at call site
+  // crypto.createHmac("SHA512", webhookEncryptionKey).update(body).digest("hex") === signature
+  const crypto = require("crypto") as typeof import("crypto");
+  const hash = crypto.createHmac("SHA512", webhookEncryptionKey).update(body).digest("hex");
+  return hash === signature;
+}
+
 // ─── Gift Card Sell Provider ────────────────────────────────────────────────────
 
 export interface GiftCardSellRate {

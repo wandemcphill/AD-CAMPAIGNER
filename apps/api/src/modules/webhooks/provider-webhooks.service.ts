@@ -100,24 +100,12 @@ export class ProviderWebhooksService {
 
     this.logger.log(`Processing Sogo transaction completed: ${reference}`);
 
-    // Update DigitalValueOrder status to COMPLETED
-    await this.prisma.client.digitalValueOrder.updateMany({
-      where: {
-        providerReference: reference,
-        provider: 'SOGO'
-      },
-      data: {
-        status: 'COMPLETED',
-        updatedAt: new Date()
-      }
+    await this.prisma.client.giftCardSellTransaction.updateMany({
+      where: { providerTransactionId: reference, providerName: 'SOGO' },
+      data: { status: 'COMPLETED' as any }
     });
 
-    // Dispatch event for downstream processing
-    await this.queueProducer.enqueue('digital-value-event', {
-      type: 'gift_card_completed',
-      reference,
-      provider: 'SOGO'
-    });
+    await this.queueProducer.enqueueDigitalValueProcessing(reference, 'GIFT_CARD_SELL');
   }
 
   private async handleSogoTransactionFailed(event: Record<string, unknown>): Promise<void> {
@@ -128,26 +116,12 @@ export class ProviderWebhooksService {
 
     this.logger.log(`Processing Sogo transaction failed: ${reference}`);
 
-    // Update DigitalValueOrder status to FAILED
-    await this.prisma.client.digitalValueOrder.updateMany({
-      where: {
-        providerReference: reference,
-        provider: 'SOGO'
-      },
-      data: {
-        status: 'FAILED',
-        failureReason: event.reason as string | undefined,
-        updatedAt: new Date()
-      }
+    await this.prisma.client.giftCardSellTransaction.updateMany({
+      where: { providerTransactionId: reference, providerName: 'SOGO' },
+      data: { status: 'FAILED' as any }
     });
 
-    // Dispatch event for downstream processing
-    await this.queueProducer.enqueue('digital-value-event', {
-      type: 'gift_card_failed',
-      reference,
-      provider: 'SOGO',
-      reason: event.reason
-    });
+    await this.queueProducer.enqueueDigitalValueProcessing(reference, 'GIFT_CARD_SELL');
   }
 
   private async handleReloadlyTransactionStatus(event: Record<string, unknown>): Promise<void> {
@@ -168,24 +142,12 @@ export class ProviderWebhooksService {
 
     const mappedStatus = statusMap[status || ''] || status;
 
-    // Update DigitalValueOrder status
-    await this.prisma.client.digitalValueOrder.updateMany({
-      where: {
-        providerReference: transactionId,
-        provider: 'RELOADLY'
-      },
-      data: {
-        status: mappedStatus as any,
-        updatedAt: new Date()
-      }
+    await this.prisma.client.giftCardPurchaseTransaction.updateMany({
+      where: { supplierTransactionId: transactionId },
+      data: { status: mappedStatus as any }
     });
 
-    // Dispatch event for downstream processing
-    await this.queueProducer.enqueue('digital-value-event', {
-      type: 'gift_card_status_update',
-      reference: transactionId,
-      provider: 'RELOADLY',
-      status: mappedStatus
-    });
+    // Dispatch downstream processing job
+    await this.queueProducer.enqueueDigitalValueProcessing(transactionId, 'GIFT_CARD_BUY');
   }
 }

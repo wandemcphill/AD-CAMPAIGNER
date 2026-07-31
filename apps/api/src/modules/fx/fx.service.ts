@@ -8,6 +8,7 @@ import {
   createSmsPoolAdapter,
   createSmsPvaAdapter,
   createMockFxProvider,
+  createFincraFxProvider,
   type VirtualNumberProviderAdapter,
   type FxProvider
 } from "@fliptrybe/providers";
@@ -58,7 +59,19 @@ export class FxService implements OnModuleInit {
   private cacheRefreshInProgress = false;
 
   constructor(private readonly prismaService: PrismaService) {
-    this.fxProvider = createMockFxProvider();
+    const fincraApiKey = process.env["FINCRA_API_KEY"];
+    const fincraBusinessId = process.env["FINCRA_BUSINESS_ID"];
+
+    if (fincraApiKey && fincraBusinessId) {
+      const isProduction = process.env["FINCRA_ENV"] === "production";
+      this.fxProvider = createFincraFxProvider({
+        apiKey: fincraApiKey,
+        businessId: fincraBusinessId,
+        ...(isProduction ? { baseUrl: "https://api.fincra.com" } : {}),
+      });
+    } else {
+      this.fxProvider = createMockFxProvider();
+    }
   }
 
   async onModuleInit() {
