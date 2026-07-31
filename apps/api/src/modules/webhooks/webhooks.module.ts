@@ -1,13 +1,15 @@
 import { Module } from "@nestjs/common";
 
 import { PrismaService } from "../prisma.service";
-import { IncomingWebhooksController, OutgoingWebhooksController } from "./webhooks.controller";
+import { QueueProducerService } from "../queue-producer.service";
+import { IncomingWebhooksController, OutgoingWebhooksController, ProviderWebhooksController } from "./webhooks.controller";
 import { IncomingWebhooksService } from "./incoming-webhooks.service";
 import { OutgoingWebhooksService } from "./outgoing-webhooks.service";
+import { ProviderWebhooksService } from "./provider-webhooks.service";
 
 @Module({
-  controllers: [OutgoingWebhooksController, IncomingWebhooksController],
-  providers: [PrismaService, OutgoingWebhooksService, IncomingWebhooksService],
-  exports: [OutgoingWebhooksService, IncomingWebhooksService]
+  controllers: [OutgoingWebhooksController, IncomingWebhooksController, ProviderWebhooksController],
+  providers: [PrismaService, QueueProducerService, OutgoingWebhooksService, IncomingWebhooksService, ProviderWebhooksService],
+  exports: [OutgoingWebhooksService, IncomingWebhooksService, ProviderWebhooksService]
 })
 export class WebhooksModule {}

@@ -244,14 +244,19 @@ export function createMockAirtimeCashoutAdapter(
 
     async requestOtp(phone, network) {
       return {
-        sessionId: `SESSION-${Date.now()}`,
+        sessionId: `SESSION-${Math.random().toString(36).slice(2, 12)}`,
         message: 'OTP sent successfully'
       };
     },
 
     async verifyOtp(input) {
+      if (input.otp === '000000') {
+        return {
+          verified: false
+        };
+      }
       return {
-        verified: input.otp === '000000' ? false : true,
+        verified: true,
         airtimeBalance: Math.floor(Math.random() * 100000) + 5000,
         balanceCurrency: 'NGN',
         sessionId: input.sessionId
@@ -277,8 +282,7 @@ export function createMockAirtimeCashoutAdapter(
     async initiateCashout(input) {
       return {
         providerReference: `MOCK-${input.reference}`,
-        status: 'PROCESSING',
-        failureReason: undefined
+        status: 'PROCESSING' as const
       };
     },
 

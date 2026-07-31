@@ -11,6 +11,8 @@ import { calculateAvailableBalance } from '@fliptrybe/payments';
 import type { CurrencyCode, LedgerEntry } from '@fliptrybe/types';
 import {
   createReloadlyGiftCardAdapter,
+  createSogoGiftCardAdapter,
+  createAirtimeToCashAdapter,
   createMockGiftCardSellProvider,
   createMockGiftCardPurchaseAdapter,
   createMockAirtimeCashoutAdapter,
@@ -60,10 +62,9 @@ export class DigitalValueService {
 
   private initializeProviders() {
     if (featureFlags.giftCardSell) {
-      this.giftCardSellProvider =
-        process.env['SOGO_API_KEY'] && process.env['SOGO_API_BASE_URL']
-          ? this.buildSogoAdapter()
-          : createMockGiftCardSellProvider('sogo-mock');
+      this.giftCardSellProvider = process.env['SOGO_API_KEY']
+        ? this.buildSogoAdapter()
+        : createMockGiftCardSellProvider('sogo-mock');
     } else {
       this.giftCardSellProvider = createMockGiftCardSellProvider();
     }
@@ -82,21 +83,25 @@ export class DigitalValueService {
     }
 
     if (featureFlags.airtimeCashout) {
-      this.airtimeCashoutProvider =
-        process.env['AIRTIMETOCASH_API_KEY'] && process.env['AIRTIMETOCASH_BASE_URL']
-          ? this.buildAirtimeToCashAdapter()
-          : createMockAirtimeCashoutAdapter('airtimetocash-mock');
+      this.airtimeCashoutProvider = process.env['AIRTIMETOCASH_API_KEY']
+        ? this.buildAirtimeToCashAdapter()
+        : createMockAirtimeCashoutAdapter('airtimetocash-mock');
     } else {
       this.airtimeCashoutProvider = createMockAirtimeCashoutAdapter();
     }
   }
 
   private buildSogoAdapter(): GiftCardSellProvider {
-    throw new BadRequestException('Sogo adapter not yet implemented');
+    return createSogoGiftCardAdapter({
+      apiKey: process.env['SOGO_API_KEY'] || '',
+      sandbox: process.env['SOGO_SANDBOX'] === 'true'
+    });
   }
 
   private buildAirtimeToCashAdapter(): AirtimeCashoutProvider {
-    throw new BadRequestException('AirtimeToCash adapter not yet implemented');
+    return createAirtimeToCashAdapter({
+      apiKey: process.env['AIRTIMETOCASH_API_KEY'] || ''
+    });
   }
 
   private async getWallet(workspaceId: string, db: DbClient = this.db) {

@@ -301,6 +301,185 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
   };
 }
 
+// ─── Sogo Gift Card Sell Adapter ─────────────────────────────────────────────
+
+export interface SogoConfig {
+  apiKey: string;
+  sandbox?: boolean;
+  fetcher?: typeof fetch;
+}
+
+interface SogoCatalogItem {
+  slug: string;
+  name: string;
+  currencies: string[];
+  denominations: number[];
+  card_types: string[];
+  requires_pin: boolean;
+  is_active: boolean;
+}
+
+interface SogoRateData {
+  slug: string;
+  name: string;
+  rates: Record<string, Record<string, Record<string, number | Record<string, number>>>>;
+}
+
+interface SogoSubmitResponse {
+  id: string;
+  slug: string;
+  status: string;
+  payout_currency: string;
+  payout_amount: number;
+  created_at: string;
+}
+
+export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvider {
+  const baseUrl = config.sandbox
+    ? 'https://sandbox.sogo.africa/v1'
+    : 'https://api.sogo.africa/v1';
+  const f = config.fetcher ?? fetch;
+
+  return {
+    name: 'sogo',
+
+    async listSupportedBrands() {
+      const response = await f(`${baseUrl}/gift-cards/sell/catalog`, {
+        headers: { Authorization: `Bearer ${config.apiKey}` }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Sogo catalog failed: ${response.statusText}`);
+      }
+
+      const body = (await response.json()) as { data: SogoCatalogItem[] };
+      return body.data
+        .filter((item) => item.is_active)
+        .map((item) => item.name);
+    },
+
+    async getRate(brand, region, denomination) {
+      const response = await f(`${baseUrl}/gift-cards/sell/rates`, {
+        headers: { Authorization: `Bearer ${config.apiKey}` }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Sogo rates failed: ${response.statusText}`);
+      }
+
+      const body = (await response.json()) as { data: SogoRateData[] };
+      const item = body.data.find(
+        (r) => r.name.toLowerCase() === brand.toLowerCase()
+      );
+
+      if (!item) {
+        throw new Error(`Brand ${brand} not found in Sogo catalog`);
+      }
+
+      // Navigate nested rate structure: rates[currency][cardType][targetCurrency]
+      // For simplicity, assume we're converting to NGN
+      let rateMinor = 0;
+      for (const currencyRates of Object.values(item.rates)) {
+        if (typeof currencyRates === 'object') {
+          for (const cardTypeRates of Object.values(currencyRates)) {
+            if (typeof cardTypeRates === 'object') {
+              // cardTypeRates could be { NGN: number } or { NGN: { receipt_type: number } }
+              if (typeof cardTypeRates.NGN === 'number') {
+                rateMinor = Math.floor(cardTypeRates.NGN * 100);
+                break;
+              } else if (typeof cardTypeRates.NGN === 'object') {
+                // Pick the best (highest) rate among receipt types
+                const rates = Object.values(cardTypeRates.NGN) as number[];
+                rateMinor = Math.floor(Math.max(...rates) * 100);
+                break;
+              }
+            }
+          }
+          if (rateMinor > 0) break;
+        }
+      }
+
+      return {
+        brand,
+        region,
+        denomination,
+        currency: 'NGN',
+        rateMinor,
+        rateTimestamp: new Date()
+      };
+    },
+
+    async submitCard(input) {
+      const idempotencyKey = `${input.reference}-${Date.now()}`;
+      const currency = input.cardInfo.currency || 'USD';
+      const cardCode = input.cardInfo.cardCode || '';
+      const slug = input.reference.split('-')[0] || input.reference;
+
+      const response = await f(`${baseUrl}/gift-cards/sell`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.apiKey}`,
+          'Idempotency-Key': idempotencyKey
+        },
+        body: JSON.stringify({
+          slug: slug.toLowerCase(),
+          card_country: input.region,
+          card_type: 'ecode',
+          card_currency: currency,
+          card_amount: input.denomination,
+          additional_info: cardCode,
+          payout_currency: 'NGN'
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        return {
+          providerReference: '',
+          status: 'AMBIGUOUS' as const,
+          failureReason: `Sogo submit failed: ${response.statusText} - ${errorData}`
+        };
+      }
+
+      const result = (await response.json()) as SogoSubmitResponse;
+
+      return {
+        providerReference: result.id,
+        status: 'PROCESSING' as const
+      };
+    },
+
+    async getTransactionStatus(reference) {
+      // Sogo webhooks drive status updates, not polling
+      // This endpoint would require a GET /transactions/{id} endpoint
+      // which may not be documented. For now, return PROCESSING and rely on webhooks.
+      return {
+        status: 'PROCESSING' as const
+      };
+    },
+
+    async checkHealth() {
+      const start = Date.now();
+      try {
+        const response = await f(`${baseUrl}/gift-cards/sell/catalog`, {
+          headers: { Authorization: `Bearer ${config.apiKey}` }
+        });
+
+        return {
+          status: response.ok ? ('HEALTHY' as const) : ('DEGRADED' as const),
+          latencyMs: Date.now() - start
+        };
+      } catch {
+        return {
+          status: 'DOWN' as const,
+          latencyMs: Date.now() - start
+        };
+      }
+    }
+  };
+}
+
 // ─── Mock Gift Card Sell Provider (CI / tests) ──────────────────────────────────
 
 export function createMockGiftCardSellProvider(
@@ -327,8 +506,7 @@ export function createMockGiftCardSellProvider(
     async submitCard(input) {
       return {
         providerReference: `MOCK${input.reference.slice(0, 16).toUpperCase()}`,
-        status: 'PROCESSING',
-        failureReason: undefined
+        status: 'PROCESSING' as const
       };
     },
 
@@ -403,16 +581,14 @@ export function createMockGiftCardPurchaseAdapter(
     async purchase(input) {
       return {
         supplierOrderId: `MOCK-${input.reference}`,
-        status: 'PROCESSING',
-        failureReason: undefined
+        status: 'PROCESSING' as const
       };
     },
 
     async getOrderStatus(orderId) {
       return {
-        status: 'DELIVERED',
-        codes: ['AAAA-BBBB-CCCC-DDDD'],
-        failureReason: undefined
+        status: 'DELIVERED' as const,
+        codes: ['AAAA-BBBB-CCCC-DDDD']
       };
     },
 

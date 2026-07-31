@@ -1878,12 +1878,8 @@ model GiftCardPurchaseTransaction {
   paymentConfirmedAt      DateTime?
   fulfilledAt             DateTime?
   deliveredAt             DateTime?
-
-  wallet                  Wallet?                 @relation(fields: [walletId], references: [id])
   walletId                String?
-  ledgerEntry             LedgerEntry?            @relation(fields: [ledgerEntryId], references: [id])
   ledgerEntryId           String?
-  charge                  GiftCardWalletCharge?   @relation(fields: [chargeId], references: [id])
   chargeId                String?
 
   @@index([workspaceId, status, createdAt])
@@ -1906,8 +1902,6 @@ model GiftCardWalletCharge {
   refundLedgerEntryId String?
   createdAt           DateTime                      @default(now())
   updatedAt           DateTime                      @updatedAt
-
-  transactions        GiftCardPurchaseTransaction[]
 
   @@index([workspaceId, status])
   @@index([walletId])
