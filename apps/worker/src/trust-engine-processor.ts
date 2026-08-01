@@ -192,7 +192,7 @@ function createRepositories(db: DatabaseClient): {
             resultData: (data.resultData as any) ?? null,
             retryCount: data.retryCount,
             durationMs: data.durationMs,
-            failureMessage: data.failureMessage ?? undefined,
+            failureMessage: data.failureMessage ?? null,
           },
         });
         return {
@@ -202,12 +202,12 @@ function createRepositories(db: DatabaseClient): {
           status: result.status,
           signals: [],
           reasonCodes: (result.reasonCodes as any) ?? [],
-          resultData: result.resultData,
+          resultData: (result.resultData ?? {}) as Record<string, unknown>,
           retryCount: result.retryCount,
           durationMs: result.durationMs,
-          failureMessage: result.failureMessage === null ? undefined : result.failureMessage,
+          failureMessage: result.failureMessage || undefined,
           createdAt: result.createdAt,
-        };
+        } as any;
       },
       async getByValidationRunId(runId) {
         const results = await db.stageResult.findMany({
@@ -220,12 +220,12 @@ function createRepositories(db: DatabaseClient): {
           status: r.status,
           signals: [],
           reasonCodes: (r.reasonCodes as any) ?? [],
-          resultData: r.resultData,
+          resultData: (r.resultData ?? {}) as Record<string, unknown>,
           retryCount: r.retryCount,
           durationMs: r.durationMs,
-          failureMessage: r.failureMessage === null ? undefined : r.failureMessage,
+          failureMessage: r.failureMessage || undefined,
           createdAt: r.createdAt,
-        }));
+        })) as any;
       },
     },
   };
