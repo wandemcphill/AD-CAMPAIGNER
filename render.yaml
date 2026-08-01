@@ -21,6 +21,12 @@ services:
         value: https://fliptrybe-ads-campaigner-admin-lndq.onrender.com
       - key: API_URL
         value: https://ft-campaigner-api-fra.onrender.com
+      - key: PUBLIC_APP_URL
+        value: https://fliptrybe-ads-campaigner-web-qz8a.onrender.com
+      - key: FRONTEND_URLS
+        value: https://fliptrybe-ads-campaigner-web-qz8a.onrender.com,https://fliptrybe-ads-campaigner-admin-lndq.onrender.com
+      - key: PORT
+        value: "10000"
       - key: DATABASE_URL
         sync: false
       - key: PRISMA_MIGRATE_DATABASE_URL
@@ -34,6 +40,12 @@ services:
         generateValue: true
       - key: SESSION_SECRET
         generateValue: true
+      - key: TOTP_SECRET_ENCRYPTION_KEY
+        generateValue: true
+      - key: VOUCHER_PIN_SECRET
+        generateValue: true
+      - key: ALLOW_MOCK_PROVIDERS
+        value: "false"
       - key: AUTH_SESSION_TTL_SECONDS
         value: "604800"
       - key: STORAGE_PROVIDER
@@ -62,6 +74,12 @@ services:
         value: "900"
       - key: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE
         value: "false"
+      - key: MEDIA_MAX_IMAGE_BYTES
+        value: "10485760"
+      - key: MEDIA_MAX_VIDEO_BYTES
+        value: "314572800"
+      - key: MEDIA_MAX_SCREENSHOT_BYTES
+        value: "5242880"
       - key: ADS_PROVIDER
         value: live
       - key: PAYMENT_PROVIDER
@@ -223,6 +241,8 @@ services:
         value: 22.12.0
       - key: NODE_ENV
         value: production
+      - key: NEXT_PUBLIC_APP_URL
+        value: https://fliptrybe-ads-campaigner-web-qz8a.onrender.com
       - key: NEXT_PUBLIC_API_URL
         value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_API_BASE_URL
@@ -314,6 +334,18 @@ services:
       - key: MEDIA_UPLOAD_SIGNATURE_TTL_SECONDS
         value: "900"
       - key: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE
+        value: "false"
+      - key: MEDIA_MAX_IMAGE_BYTES
+        value: "10485760"
+      - key: MEDIA_MAX_VIDEO_BYTES
+        value: "314572800"
+      - key: MEDIA_MAX_SCREENSHOT_BYTES
+        value: "5242880"
+      - key: TOTP_SECRET_ENCRYPTION_KEY
+        sync: false
+      - key: VOUCHER_PIN_SECRET
+        sync: false
+      - key: ALLOW_MOCK_PROVIDERS
         value: "false"
       - key: SMDPANEL_API_URL
         value: https://smdpanel.com/api/v2
