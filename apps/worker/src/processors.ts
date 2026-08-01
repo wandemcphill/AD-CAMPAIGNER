@@ -331,6 +331,20 @@ export function processQueueJob(
         processedAt
       };
     }
+    case "trust-engine": {
+      const data = job.data as QueuePayloads["trust-engine"];
+      return {
+        queue,
+        status: "processed",
+        detail: `Trust engine validation accepted for submission ${data.submissionId}`,
+        details: {
+          submissionId: data.submissionId,
+          retryCount: data.retryCount ?? 0,
+          sideEffects: false
+        },
+        processedAt
+      };
+    }
     default: {
       const _exhaustive: never = queue;
       return {

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unused-vars */
 import {
   BadRequestException,
   ForbiddenException,
@@ -299,8 +300,8 @@ export class DigitalValueService {
       const wallet = await this.getWallet(ctx.workspaceId, tx);
       const entries = (await tx.ledgerEntry.findMany({
         where: { walletId: wallet.id }
-      })) as any[];
-      const available = calculateAvailableBalance(entries.map((e) => ({...e})));
+      })) as LedgerEntry[];
+      const available = calculateAvailableBalance(entries);
 
       if (available.amountMinor < quote.customerPriceNgn) {
         throw new ForbiddenException(

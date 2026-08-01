@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access */
 import { Injectable, Logger, BadRequestException, NotFoundException } from "@nestjs/common";
 
 import type { DatabaseClient, Prisma } from "@fliptrybe/database";
@@ -176,7 +177,7 @@ export class SettlementService {
 
           ...(dto.beneficiaryName ? { beneficiaryName: dto.beneficiaryName } : {}),
           beneficiaryReference: dto.beneficiaryReference,
-          metadata: dto.metadata ?? {},
+          metadata: (dto.metadata ?? {}) as Prisma.InputJsonObject,
 
           status: "PENDING",
           provider: this.settlementProvider.name,

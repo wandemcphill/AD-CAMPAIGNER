@@ -10,7 +10,7 @@ export interface CreateSettlementInstructionDto {
   beneficiaryName?: string;
   beneficiaryReference: string; // Bank account, Wise email, etc.
 
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   createdBy?: string;
 }
 

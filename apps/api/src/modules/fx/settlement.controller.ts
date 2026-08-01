@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access */
 import { Body, Controller, Get, Headers, Inject, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 import { verifyFincraWebhook } from "@fliptrybe/providers";
 

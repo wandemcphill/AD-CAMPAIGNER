@@ -1,5 +1,4 @@
-import { IsString, IsInt, IsOptional, IsEnum, ValidateNested, IsEmail } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsInt, IsOptional, IsEmail } from 'class-validator';
 
 // ─── Gift Card Sell DTOs ───────────────────────────────────────────────────────
 

@@ -3,13 +3,8 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 
 import type { DatabaseClient, Prisma } from "@fliptrybe/database";
 import {
-  createFiveSimRentalAdapter,
-  createMockVirtualNumberAdapter,
-  createSmsPoolAdapter,
-  createSmsPvaAdapter,
   createMockFxProvider,
   createFincraFxProvider,
-  type VirtualNumberProviderAdapter,
   type FxProvider
 } from "@fliptrybe/providers";
 
@@ -28,15 +23,6 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
 
 // Bootstrap fallback only — used when no FxRate row has ever been set for this pair.
 const BOOTSTRAP_RATE_MICROS = 1_450_000_000n; // ₦1,450/USD
-
-// Configuration
-const DEFAULT_SUPPORTED_PAIRS = [
-  { base: "USD", quote: "NGN" },
-  { base: "USD", quote: "GBP" },
-  { base: "USD", quote: "EUR" },
-  { base: "GBP", quote: "NGN" },
-  { base: "EUR", quote: "NGN" }
-];
 
 const DEFAULT_SPREAD_BPS = 150; // 1.5% spread
 const DEFAULT_BUFFER_BPS = 100; // 1% buffer

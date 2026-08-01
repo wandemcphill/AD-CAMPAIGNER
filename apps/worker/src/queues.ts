@@ -20,7 +20,8 @@ export const queueNames = [
   "virtual-numbers",
   "workflow-automation",
   "reward-engine",
-  "digital-value-processing"
+  "digital-value-processing",
+  "trust-engine"
 ] as const;
 
 export type QueueName = (typeof queueNames)[number];
@@ -123,6 +124,11 @@ export interface DigitalValueProcessingJob {
   type: DigitalValueProcessingJobType;
 }
 
+export interface TrustEngineValidationJob {
+  submissionId: string;
+  retryCount?: number;
+}
+
 export interface QueueRuntimePolicy {
   concurrency: number;
   retryPolicy: SmmRetryPolicy;
@@ -167,6 +173,7 @@ export type QueuePayloads = {
   "workflow-automation": WorkflowAutomationJob;
   "reward-engine": RewardEngineJob;
   "digital-value-processing": DigitalValueProcessingJob;
+  "trust-engine": TrustEngineValidationJob;
 };
 
 export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
@@ -253,6 +260,12 @@ export const queueRuntimePolicies: Record<QueueName, QueueRuntimePolicy> = {
     retryPolicy: { attempts: 5, baseDelayMs: 15_000, maxDelayMs: 300_000, jitterRatio: 0.15 },
     removeOnComplete: { ageSeconds: 604_800, count: 20_000 },
     removeOnFail: { ageSeconds: 2_592_000, count: 20_000 }
+  },
+  "trust-engine": {
+    concurrency: 12,
+    retryPolicy: { attempts: 3, baseDelayMs: 5_000, maxDelayMs: 60_000, jitterRatio: 0.1 },
+    removeOnComplete: { ageSeconds: 604_800, count: 30_000 },
+    removeOnFail: { ageSeconds: 2_592_000, count: 30_000 }
   }
 };
 

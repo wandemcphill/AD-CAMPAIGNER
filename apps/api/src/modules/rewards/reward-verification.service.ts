@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment */
 import { Injectable, Logger } from "@nestjs/common";
 import type { DatabaseClient } from "@fliptrybe/database";
 

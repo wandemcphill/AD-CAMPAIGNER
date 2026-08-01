@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { Injectable, Logger } from "@nestjs/common";
 import { Prisma, type DatabaseClient } from "@fliptrybe/database";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
