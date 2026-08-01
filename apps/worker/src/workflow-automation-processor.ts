@@ -72,7 +72,19 @@ function getDb(): AutomationDb {
 
 function readConfig(raw: unknown): WorkflowConfig {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  return raw as WorkflowConfig;
+  const r = raw as Record<string, unknown>;
+  const action = r.action;
+  return {
+    cronExpression: typeof r.cronExpression === "string" ? r.cronExpression : undefined,
+    budgetThresholdPct: typeof r.budgetThresholdPct === "number" ? r.budgetThresholdPct : undefined,
+    walletThresholdMinor: typeof r.walletThresholdMinor === "number" ? r.walletThresholdMinor : undefined,
+    performanceThresholdRoas:
+      typeof r.performanceThresholdRoas === "number" ? r.performanceThresholdRoas : undefined,
+    creativeAgeDays: typeof r.creativeAgeDays === "number" ? r.creativeAgeDays : undefined,
+    action:
+      action === "pause_campaign" || action === "notify" || action === "log" ? action : undefined,
+    campaignId: typeof r.campaignId === "string" ? r.campaignId : undefined
+  };
 }
 
 function matchesCron(expression: string, now: Date): boolean {
