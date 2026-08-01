@@ -75,15 +75,19 @@ function readConfig(raw: unknown): WorkflowConfig {
   const r = raw as Record<string, unknown>;
   const action = r.action;
   return {
-    cronExpression: typeof r.cronExpression === "string" ? r.cronExpression : undefined,
-    budgetThresholdPct: typeof r.budgetThresholdPct === "number" ? r.budgetThresholdPct : undefined,
-    walletThresholdMinor: typeof r.walletThresholdMinor === "number" ? r.walletThresholdMinor : undefined,
-    performanceThresholdRoas:
-      typeof r.performanceThresholdRoas === "number" ? r.performanceThresholdRoas : undefined,
-    creativeAgeDays: typeof r.creativeAgeDays === "number" ? r.creativeAgeDays : undefined,
-    action:
-      action === "pause_campaign" || action === "notify" || action === "log" ? action : undefined,
-    campaignId: typeof r.campaignId === "string" ? r.campaignId : undefined
+    ...(typeof r.cronExpression === "string" ? { cronExpression: r.cronExpression } : {}),
+    ...(typeof r.budgetThresholdPct === "number" ? { budgetThresholdPct: r.budgetThresholdPct } : {}),
+    ...(typeof r.walletThresholdMinor === "number"
+      ? { walletThresholdMinor: r.walletThresholdMinor }
+      : {}),
+    ...(typeof r.performanceThresholdRoas === "number"
+      ? { performanceThresholdRoas: r.performanceThresholdRoas }
+      : {}),
+    ...(typeof r.creativeAgeDays === "number" ? { creativeAgeDays: r.creativeAgeDays } : {}),
+    ...(action === "pause_campaign" || action === "notify" || action === "log"
+      ? { action }
+      : {}),
+    ...(typeof r.campaignId === "string" ? { campaignId: r.campaignId } : {})
   };
 }
 
