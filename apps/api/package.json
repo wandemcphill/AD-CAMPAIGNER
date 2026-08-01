@@ -24,6 +24,7 @@
     "@fliptrybe/service-campaigns": "workspace:*",
     "@fliptrybe/service-digital-access": "workspace:*",
     "@fliptrybe/service-smm": "workspace:*",
+    "@fliptrybe/service-trust-engine": "workspace:*",
     "@fliptrybe/types": "workspace:*",
     "@nestjs/common": "^11.1.22",
     "@nestjs/config": "^4.0.2",

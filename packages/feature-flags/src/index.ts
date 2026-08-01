@@ -18,7 +18,9 @@ export const featureFlags = {
   giftCardSell: false,
   giftCardBuy: false,
   airtimeCashout: false,
-  digitalValueAdmin: false
+  digitalValueAdmin: false,
+  trustEngine: false,
+  trustEngineAdmin: false
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

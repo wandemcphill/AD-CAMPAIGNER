@@ -26,8 +26,8 @@
       "@fliptrybe/payments": ["packages/payments/src/index.ts"],
       "@fliptrybe/providers": ["packages/providers/src/index.ts"],
       "@fliptrybe/service-digital-access": ["services/digital-access/src/index.ts"],
-      "@fliptrybe/service-otp": ["services/otp/src/index.ts"],
       "@fliptrybe/service-smm": ["services/smm/src/index.ts"],
+      "@fliptrybe/service-trust-engine": ["services/trust-engine/src/index.ts"],
       "@fliptrybe/types": ["packages/types/src/index.ts"],
       "@fliptrybe/ui": ["packages/ui/src/index.tsx"]
     }

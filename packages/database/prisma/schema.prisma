@@ -597,6 +597,8 @@ model User {
   reviewedCreatorApplications    MarketplaceCreatorApplication[] @relation("MarketplaceCreatorReviewer")
   invitedTeamMembers             TeamMember[]                    @relation("TeamMemberInviter")
   rewardParticipations           RewardParticipant[]             @relation("RewardParticipant")
+  assetSubmissions               AssetSubmission[]               @relation("AssetSubmissionUser")
+  moderationReviews              ModerationQueue[]               @relation("ModerationQueueReviewer")
 
   @@index([status])
   @@index([deletedAt])
@@ -660,6 +662,7 @@ model Workspace {
   marketplaceAgencyApplications  MarketplaceAgencyApplication[]
   marketplaceCreatorApplications MarketplaceCreatorApplication[]
   rewardCampaigns                RewardCampaign[]
+  assetSubmissions               AssetSubmission[]
 
   @@index([organizationId])
   @@index([deletedAt])
@@ -1077,6 +1080,9 @@ model MediaAsset {
   companyProfile    CompanyProfile?            @relation(fields: [companyProfileId], references: [id])
   creatives         CampaignCreative[]
   reportScreenshots CampaignReportScreenshot[]
+  assetSubmissions  AssetSubmission[]
+  ocrResults        OcrResult[]
+  qualityResult     ImageQualityResult?
 
   @@unique([workspaceId, storageProvider, storageKey])
   @@unique([storageProvider, providerAssetId])
@@ -2977,4 +2983,269 @@ model RewardLeaderboardEntry {
 
   @@unique([campaignId, userId])
   @@index([campaignId, rank])
+}
+
+// ─── Trust Engine Models ───────────────────────────────────────────────────────
+
+enum AssetClass {
+  GIFT_CARD
+  AIRTIME_PIN
+  RECHARGE_VOUCHER
+  DIGITAL_COUPON
+}
+
+enum SubmissionStatus {
+  PENDING
+  PROCESSING
+  ACCEPTED
+  REVIEW
+  REJECTED
+  DISPUTED
+  COMPLETED
+}
+
+enum StageStatus {
+  PASS
+  FAIL
+  INCONCLUSIVE
+}
+
+enum ValidationRunStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+enum ModerationReason {
+  VERDICT_REVIEW
+  SYSTEM_FAILURE
+  ESCALATION_MANUAL
+  FRAUD_SIGNAL_AMBIGUOUS
+  USER_DISPUTE
+}
+
+model AssetSubmission {
+  id                  String         @id @default(uuid())
+  workspaceId         String
+  userId              String
+  assetClass          AssetClass
+  status              SubmissionStatus @default(PENDING)
+
+  mediaAssetId        String?
+  submissionProfile   Json           @default("{}")
+
+  lastValidationRunId String?
+  nextRetryAt         DateTime?
+  retryCount          Int            @default(0)
+  maxRetries          Int            @default(3)
+
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  deletedAt           DateTime?
+
+  workspace           Workspace      @relation(fields: [workspaceId], references: [id])
+  user                User           @relation("AssetSubmissionUser", fields: [userId], references: [id])
+  mediaAsset          MediaAsset?    @relation(fields: [mediaAssetId], references: [id])
+  validationRuns      ValidationRun[]
+  secrets             SubmissionSecret?
+  ocrResult           OcrResult?
+  qualityResult       ImageQualityResult?
+  moderationQueue     ModerationQueue?
+
+  @@index([workspaceId, status, createdAt])
+  @@index([userId, assetClass, createdAt])
+  @@index([status, nextRetryAt])
+  @@index([lastValidationRunId])
+}
+
+model SubmissionSecret {
+  id              String   @id @default(uuid())
+  submissionId    String   @unique
+  encryptedValue  String
+  encryptionKeyRef String
+  secretKind      String
+  createdAt       DateTime @default(now())
+
+  submission      AssetSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+}
+
+model ValidationRun {
+  id                  String                @id @default(uuid())
+  submissionId        String
+  configVersion       Int
+  pipelineVersion     Int
+  idempotencyKey      String                @unique
+  status              ValidationRunStatus   @default(PENDING)
+
+  verdict             String?
+  verdictReasons      String[]              @default([])
+  verdictExplained    String?
+
+  fraudScore          Int?
+  trustScore          Int?
+  finalScore          Int?
+
+  stageDurationMs     Json                  @default("{}")
+  totalDurationMs     Int?
+  stagesFailed        String[]              @default([])
+  stagesInconcl       String[]              @default([])
+  externalCalls       Int                   @default(0)
+  externalCostMicro   Int                   @default(0)
+
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  submission          AssetSubmission       @relation(fields: [submissionId], references: [id])
+  stageResults        StageResult[]
+  moderationQueue     ModerationQueue?
+
+  @@index([submissionId, createdAt])
+  @@index([verdict, createdAt])
+  @@index([configVersion, createdAt])
+}
+
+model StageResult {
+  id              String      @id @default(uuid())
+  validationRunId String
+  stageKey        String
+  status          StageStatus
+
+  signals         Signal[]
+  reasonCodes     String[]    @default([])
+  resultData      Json?
+
+  retryCount      Int         @default(0)
+  durationMs      Int
+  failureMessage  String?
+
+  createdAt       DateTime    @default(now())
+
+  validationRun   ValidationRun @relation(fields: [validationRunId], references: [id])
+
+  @@index([validationRunId, stageKey])
+  @@unique([validationRunId, stageKey])
+}
+
+model Signal {
+  id              String   @id @default(uuid())
+  stageResultId   String
+  key             String
+  value           Decimal  @db.Decimal(5, 2)
+  confidence      Int
+  weight          Int?
+
+  createdAt       DateTime @default(now())
+
+  stageResult     StageResult @relation(fields: [stageResultId], references: [id])
+
+  @@index([stageResultId])
+}
+
+model OcrResult {
+  id              String   @id @default(uuid())
+  submissionId    String   @unique
+  mediaAssetId    String?  @unique
+
+  brand           String?
+  regionCode      String?
+  denomination    String?
+  visibleText     String[]  @default([])
+
+  overallConfidence Int
+  fieldConfidence   Json     @default("{}")
+  ocrEngine        String
+
+  detectedCodeCount Int
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  submission       AssetSubmission @relation(fields: [submissionId], references: [id])
+  mediaAsset       MediaAsset?     @relation(fields: [mediaAssetId], references: [id])
+
+  @@index([submissionId, createdAt])
+}
+
+model ImageQualityResult {
+  id              String   @id @default(uuid())
+  submissionId    String   @unique
+  mediaAssetId    String   @unique
+
+  blurScore       Int
+  darkScore       Int
+  glareScore      Int
+  exposureOk      Boolean
+
+  croppingDetected Boolean
+  partialCardVisible Boolean
+  rotationDegrees Int?
+  perspective     String?
+
+  metrics         Json
+  assessmentEngine String
+
+  createdAt       DateTime @default(now())
+
+  submission      AssetSubmission @relation(fields: [submissionId], references: [id])
+  mediaAsset      MediaAsset      @relation(fields: [mediaAssetId], references: [id])
+
+  @@index([submissionId])
+}
+
+model BrandRuleSet {
+  id                  String   @id @default(uuid())
+  assetClass          AssetClass
+  brand               String
+  region              String?
+
+  minDenomination     Int?
+  maxDenomination     Int?
+  allowedDenominations Int[]  @default([])
+  ecodeLengthMin      Int?
+  ecodeLengthMax      Int?
+  ecodeFormatRegex    String?
+
+  minQualityScore     Int      @default(50)
+  requireFullCard     Boolean  @default(true)
+  requireNoCropping   Boolean  @default(false)
+  allowPartialOcr     Boolean  @default(false)
+
+  suspectIfOcrMismatchConfidence Int  @default(30)
+  duplicateHarsh      Boolean  @default(true)
+
+  enabled             Boolean  @default(true)
+  priority            Int      @default(100)
+  metadata            Json     @default("{}")
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([assetClass, brand, region])
+  @@index([assetClass, enabled])
+}
+
+model ModerationQueue {
+  id                  String              @id @default(uuid())
+  submissionId        String              @unique
+  validationRunId     String?             @unique
+  reason              ModerationReason
+  status              String              @default("PENDING")
+
+  reviewerUserId      String?
+  reviewedAt          DateTime?
+  decision            String?
+  decisionReason      String?
+
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  submission          AssetSubmission     @relation(fields: [submissionId], references: [id])
+  validationRun       ValidationRun?      @relation(fields: [validationRunId], references: [id])
+  reviewer            User?               @relation("ModerationQueueReviewer", fields: [reviewerUserId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([reviewerUserId, status])
 }

@@ -52,6 +52,7 @@ import { SecurityModule } from "./security/security.module";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { ProvidersModule } from "./providers/providers.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
+import { TrustEngineModule } from "./trust-engine/trust-engine.module";
 
 @Module({
   imports: [
@@ -82,7 +83,8 @@ import { WebhooksModule } from "./webhooks/webhooks.module";
     SecurityModule,
     ApiKeysModule,
     ProvidersModule,
-    WebhooksModule
+    WebhooksModule,
+    TrustEngineModule
   ],
   controllers: [
     HealthController,
