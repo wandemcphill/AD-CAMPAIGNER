@@ -115,8 +115,7 @@ export function RedemptionForm({ voucherId, productId }: RedemptionFormProps) {
     setSubmitError(null);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitRedemption() {
     setSubmitted(true);
     setSubmitError(null);
 
@@ -142,6 +141,11 @@ export function RedemptionForm({ voucherId, productId }: RedemptionFormProps) {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void submitRedemption();
   }
 
   if (loadError) {
