@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { CheckCircle, RefreshCw, Trophy, XCircle } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
@@ -167,7 +168,7 @@ export default function AdminCampaignDetailPage({
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>{campaign._count.participants} participants</span>
         <span>{campaign._count.entitlements} entitlements issued</span>
-        <Link href="/rewards" className="underline">Back to campaigns</Link>
+        <Link href={"/rewards" as Route} className="underline">Back to campaigns</Link>
       </div>
     </div>
   );

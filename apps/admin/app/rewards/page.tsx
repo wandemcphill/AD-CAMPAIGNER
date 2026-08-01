@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { RefreshCw, Trophy } from "lucide-react";
 
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
@@ -81,7 +82,7 @@ export default function AdminRewardsPage() {
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh
           </Button>
-          <Link href="/rewards/review-queue">
+          <Link href={"/rewards/review-queue" as Route}>
             <Button variant="secondary">Review Queue</Button>
           </Link>
         </div>
@@ -140,7 +141,7 @@ export default function AdminRewardsPage() {
                     {c._count.participants}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/rewards/${c.id}`}>
+                    <Link href={`/rewards/${c.id}` as Route}>
                       <Button variant="secondary">Manage</Button>
                     </Link>
                   </td>

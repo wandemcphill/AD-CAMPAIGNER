@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname } from "next/navigation";
 import {
   Activity,
@@ -25,7 +26,7 @@ const NAV = [
   { label: "Digital Products", href: "/admin/products", icon: Package },
   { label: "Providers", href: "/admin/providers", icon: Server },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-];
+] satisfies Array<{ label: string; href: Route; icon: typeof LayoutDashboard }>;
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
