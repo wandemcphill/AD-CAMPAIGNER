@@ -336,7 +336,7 @@ export function processQueueJob(
       return {
         queue: _exhaustive,
         status: "skipped",
-        detail: `Unknown queue: ${_exhaustive}`,
+        detail: `Unknown queue: ${String(_exhaustive)}`,
         processedAt
       };
     }

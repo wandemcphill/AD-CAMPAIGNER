@@ -16,11 +16,58 @@ interface WorkflowConfig {
   campaignId?: string;
 }
 
+interface AutomationWorkflowRecord {
+  id: string;
+  workspaceId: string;
+  triggerKind: string;
+  config: unknown;
+}
+
+interface CampaignSpendEntry {
+  spendMinor?: number | string | null;
+}
+
+interface CampaignWithSpend {
+  id: string;
+  budgetMinor: number;
+  spendEntries?: CampaignSpendEntry[];
+}
+
+interface WalletRecord {
+  id: string;
+  balanceMinor?: number | string | null;
+}
+
+interface CampaignCreativeRecord {
+  id: string;
+  createdAt: string | Date;
+}
+
+// Prisma delegates for models that may not yet be generated into the base
+// DatabaseClient type. Cast the client through this shape at the boundary so
+// call sites stay fully typed.
+interface AutomationDb {
+  automationWorkflow: {
+    update: (args: { where: { id: string }; data: unknown }) => Promise<unknown>;
+    findFirst: (args: { where: unknown }) => Promise<AutomationWorkflowRecord | null>;
+    findMany: (args: { where: unknown }) => Promise<AutomationWorkflowRecord[]>;
+  };
+  campaign: {
+    findFirst: (args: { where: unknown; include?: unknown }) => Promise<CampaignWithSpend | null>;
+  };
+  wallet: {
+    findFirst: (args: { where: unknown }) => Promise<WalletRecord | null>;
+  };
+  campaignCreative: {
+    findFirst: (args: { where: unknown; orderBy?: unknown }) => Promise<CampaignCreativeRecord | null>;
+  };
+}
+
 let dbSingleton: DatabaseClient | undefined;
 
-function getDb(): DatabaseClient {
+function getDb(): AutomationDb {
   if (!dbSingleton) dbSingleton = createPrismaClient();
-  return dbSingleton;
+  return dbSingleton as unknown as AutomationDb;
 }
 
 function readConfig(raw: unknown): WorkflowConfig {
@@ -49,14 +96,18 @@ function matchesCron(expression: string, now: Date): boolean {
   return true;
 }
 
-async function recordRun(db: DatabaseClient, workflowId: string): Promise<void> {
-  await (db as any).automationWorkflow.update({
+async function recordRun(db: AutomationDb, workflowId: string): Promise<void> {
+  await db.automationWorkflow.update({
     where: { id: workflowId },
     data: { runCount: { increment: 1 }, lastRunAt: new Date() }
   });
 }
 
-async function evaluateWorkflow(db: DatabaseClient, workflow: any, now: Date): Promise<string> {
+async function evaluateWorkflow(
+  db: AutomationDb,
+  workflow: AutomationWorkflowRecord,
+  now: Date
+): Promise<string> {
   const config = readConfig(workflow.config);
 
   switch (workflow.triggerKind) {
@@ -71,13 +122,13 @@ async function evaluateWorkflow(db: DatabaseClient, workflow: any, now: Date): P
     case "BUDGET_THRESHOLD": {
       const thresholdPct = config.budgetThresholdPct ?? 80;
       if (!config.campaignId) return "skipped:no_campaign_id";
-      const campaign = await (db as any).campaign.findFirst({
+      const campaign = await db.campaign.findFirst({
         where: { id: config.campaignId, workspaceId: workflow.workspaceId, deletedAt: null },
         include: { spendEntries: true }
       });
       if (!campaign) return "skipped:campaign_not_found";
       const totalSpend = (campaign.spendEntries ?? []).reduce(
-        (sum: number, e: any) => sum + Number(e.spendMinor ?? 0), 0
+        (sum, e) => sum + Number(e.spendMinor ?? 0), 0
       );
       const spendPct = campaign.budgetMinor > 0 ? (totalSpend / campaign.budgetMinor) * 100 : 0;
       if (spendPct < thresholdPct) return `skipped:spend_${Math.round(spendPct)}pct_below_threshold`;
@@ -87,7 +138,7 @@ async function evaluateWorkflow(db: DatabaseClient, workflow: any, now: Date): P
 
     case "WALLET_BALANCE": {
       const threshold = config.walletThresholdMinor ?? 100_000;
-      const wallet = await (db as any).wallet.findFirst({
+      const wallet = await db.wallet.findFirst({
         where: { workspaceId: workflow.workspaceId, deletedAt: null }
       });
       if (!wallet) return "skipped:no_wallet";
@@ -100,7 +151,7 @@ async function evaluateWorkflow(db: DatabaseClient, workflow: any, now: Date): P
     case "CREATIVE_AGE": {
       const maxDays = config.creativeAgeDays ?? 30;
       if (!config.campaignId) return "skipped:no_campaign_id";
-      const oldestCreative = await (db as any).campaignCreative.findFirst({
+      const oldestCreative = await db.campaignCreative.findFirst({
         where: { campaignId: config.campaignId, deletedAt: null },
         orderBy: { createdAt: "asc" }
       });
@@ -131,7 +182,7 @@ export async function processWorkflowAutomationJob(
 
   // If a specific workflowId is given, evaluate only that workflow.
   if (job.data.workflowId) {
-    const wf = await (db as any).automationWorkflow.findFirst({
+    const wf = await db.automationWorkflow.findFirst({
       where: { id: job.data.workflowId, status: "ACTIVE", deletedAt: null }
     });
     if (!wf) {
@@ -147,7 +198,7 @@ export async function processWorkflowAutomationJob(
   const where: Record<string, unknown> = { status: "ACTIVE", deletedAt: null };
   if (job.data.workspaceId) where.workspaceId = job.data.workspaceId;
 
-  const workflows = await (db as any).automationWorkflow.findMany({ where });
+  const workflows = await db.automationWorkflow.findMany({ where });
 
   for (const wf of workflows) {
     try {

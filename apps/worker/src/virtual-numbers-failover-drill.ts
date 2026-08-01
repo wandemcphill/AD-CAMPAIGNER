@@ -8,7 +8,6 @@
  * Usage: Run via worker with TEST_MODE=true and specific drill configuration
  */
 
-import { createPrismaClient, type DatabaseClient } from "@fliptrybe/database";
 import {
   createFiveSimRentalAdapter,
   createMockVirtualNumberAdapter,
@@ -243,7 +242,7 @@ export function reportDrillResults(results: FailoverDrillResult[]): void {
 
 // Main entry point for CLI
 if (require.main === module) {
-  runFailoverDrill().then((results) => {
+  void runFailoverDrill().then((results) => {
     reportDrillResults(results);
     process.exit(results.some((r) => r.testResult === "FAIL") ? 1 : 0);
   });

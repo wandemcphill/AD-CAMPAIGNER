@@ -209,9 +209,11 @@ async function handleLeaderboardRefresh(data: RewardEngineJob): Promise<void> {
   console.log(`[reward-engine] Leaderboard refreshed for campaign ${data.campaignId}: ${ranked.length} entries`);
 }
 
-async function handleOpsReview(data: RewardEngineJob): Promise<void> {
-  if (!data.entitlementId) return;
-  console.log(`[reward-engine] Ops review required for entitlement ${data.entitlementId}`);
+function handleOpsReview(data: RewardEngineJob): Promise<void> {
+  if (data.entitlementId) {
+    console.log(`[reward-engine] Ops review required for entitlement ${data.entitlementId}`);
+  }
+  return Promise.resolve();
 }
 
 async function checkQualificationAndReserve(
