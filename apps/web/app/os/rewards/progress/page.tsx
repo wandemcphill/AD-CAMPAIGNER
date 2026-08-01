@@ -56,7 +56,7 @@ export default function MyProgressPage() {
           <div className="flex flex-col items-center gap-4 py-16 text-center">
             <Gift className="h-12 w-12 text-muted-foreground opacity-40" />
             <p className="text-muted-foreground">You haven't joined any reward campaigns yet.</p>
-            <Link href={"/os/rewards" as any} className="text-sm text-primary underline">
+            <Link href="/os/rewards" className="text-sm text-primary underline">
               Browse campaigns
             </Link>
           </div>
@@ -66,7 +66,7 @@ export default function MyProgressPage() {
       {!loading && progress.length > 0 && (
         <div className="space-y-4">
           {progress.map((item) => (
-            <Link key={item.campaign.id} href={`/os/rewards/${item.campaign.id}` as any}>
+            <Link key={item.campaign.id} href={`/os/rewards/${item.campaign.id}`}>
               <Panel className="cursor-pointer transition-shadow hover:shadow-md">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">

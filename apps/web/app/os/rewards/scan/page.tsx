@@ -107,7 +107,7 @@ export default function ScanQrPage() {
                   <p className="font-medium">Ready to scan</p>
                   <p className="text-sm text-muted-foreground">Use your camera or enter a code manually</p>
                 </div>
-                <Button onClick={startCamera}>Open Camera</Button>
+                <Button onClick={() => void startCamera()}>Open Camera</Button>
               </div>
             )}
           </Panel>

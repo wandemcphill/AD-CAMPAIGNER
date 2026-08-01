@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Trophy, Users, Zap } from "lucide-react";
 import Link from "next/link";
 
-import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
+import { Badge, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import { listRewardCampaigns, type RewardCampaign } from "../../rewards/api";
 import { ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
@@ -75,7 +75,7 @@ export default function RewardsPage() {
       {!loading && campaigns.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {campaigns.map((campaign) => (
-            <Link key={campaign.id} href={`/os/rewards/${campaign.id}` as any}>
+            <Link key={campaign.id} href={`/os/rewards/${campaign.id}`}>
               <Panel className="cursor-pointer transition-shadow hover:shadow-md">
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-semibold leading-tight">{campaign.name}</h3>

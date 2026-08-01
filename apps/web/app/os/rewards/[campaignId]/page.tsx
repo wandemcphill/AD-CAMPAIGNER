@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { use } from "react";
-import { CheckCircle, Circle, Clock, Trophy, Users, Zap } from "lucide-react";
+import { CheckCircle, Circle, Clock, Trophy } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
@@ -148,7 +148,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
                 </div>
                 {!verified && !pending && task.taskType !== "QR_SCAN" && task.taskType !== "MANUAL_PROOF" && campaign.status === "ACTIVE" && (
                   <Button
-                    onClick={() => handleCompleteTask(task.id)}
+                    onClick={() => void handleCompleteTask(task.id)}
                     disabled={busy}
                   >
                     {busy ? "Submitting…" : "Complete"}

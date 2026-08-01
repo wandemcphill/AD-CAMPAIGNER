@@ -65,7 +65,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                       ? "bg-[var(--ft-accent)]/10 font-medium text-[var(--ft-accent)]"
                       : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
                   )}
-                  href={item.href as never}
+                  href={item.href}
                   key={item.href}
                 >
                   <item.icon className="size-4" />
@@ -110,7 +110,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                       ? "bg-[var(--ft-accent)] text-[var(--ft-text-inverse)]"
                       : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)]"
                   )}
-                  href={item.href as never}
+                  href={item.href}
                   key={item.href}
                 >
                   {item.label}
