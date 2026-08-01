@@ -97,7 +97,7 @@ interface MarginStats {
 interface ReconciliationRecord {
   id: string;
   provider: string;
-  status: "RESOLVED" | "PENDING" | "INVESTIGATION" | string;
+  status: "RESOLVED" | "PENDING" | "INVESTIGATION";
   providerBalance: number | null;
   declaredCost: number | null;
   discrepancyBps: number | null;
