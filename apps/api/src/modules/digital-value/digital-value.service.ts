@@ -39,6 +39,37 @@ import type {
 } from './digital-value.dtos';
 
 type DbClient = DatabaseClient | Prisma.TransactionClient;
+type DbLedgerEntryRow = {
+  id: string;
+  walletId: string;
+  kind: string;
+  amountMinor: number;
+  currency: string;
+  reference: string;
+  description: string;
+  idempotencyKey: string | null;
+  sourceType: string | null;
+  sourceId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+function toTypedEntry(e: DbLedgerEntryRow): LedgerEntry {
+  return {
+    id: e.id,
+    walletId: e.walletId,
+    kind: e.kind as LedgerEntry["kind"],
+    amount: { amountMinor: e.amountMinor, currency: e.currency as LedgerEntry["amount"]["currency"] },
+    reference: e.reference,
+    description: e.description,
+    ...(e.idempotencyKey ? { idempotencyKey: e.idempotencyKey } : {}),
+    ...(e.sourceType ? { sourceType: e.sourceType } : {}),
+    ...(e.sourceId ? { sourceId: e.sourceId } : {}),
+    metadata: {},
+    createdAt: e.createdAt.toISOString(),
+    updatedAt: e.updatedAt.toISOString()
+  };
+}
 
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
@@ -300,8 +331,8 @@ export class DigitalValueService {
       const wallet = await this.getWallet(ctx.workspaceId, tx);
       const entries = (await tx.ledgerEntry.findMany({
         where: { walletId: wallet.id }
-      })) as LedgerEntry[];
-      const available = calculateAvailableBalance(entries);
+      })) as DbLedgerEntryRow[];
+      const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
       if (available.amountMinor < quote.customerPriceNgn) {
         throw new ForbiddenException(
