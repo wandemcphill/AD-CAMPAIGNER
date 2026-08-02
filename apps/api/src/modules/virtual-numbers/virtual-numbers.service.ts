@@ -135,10 +135,8 @@ export class VirtualNumbersService {
 
   // ─── Hardening & limits ──────────────────────────────────────────────────────
 
-  private async checkPurchaseLimits(ctx: AuthenticatedRequestContext, rate: { rateMicros: bigint }) {
+  private async checkPurchaseLimits(ctx: AuthenticatedRequestContext) {
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
     const limit = await this.db.virtualNumberPurchaseLimit.findFirst({
       where: {
@@ -328,7 +326,7 @@ export class VirtualNumbersService {
     const rate = await this.fx.getActiveRate();
 
     // Check purchase limits before proceeding
-    await this.checkPurchaseLimits(ctx, rate);
+    await this.checkPurchaseLimits(ctx);
 
     const orderId = uid("vno");
     const idempotencyKey = `vn_order_${orderId}`;

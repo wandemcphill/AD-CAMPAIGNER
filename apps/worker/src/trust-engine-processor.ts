@@ -11,13 +11,16 @@ import {
   DuplicateStage,
   FraudScoringStage,
 } from '@fliptrybe/service-trust-engine';
-import { createPrismaClient, type DatabaseClient } from '@fliptrybe/database';
+import { createPrismaClient, type DatabaseClient, type Prisma } from '@fliptrybe/database';
 import type { TrustEngineValidationJob } from './queues';
 import type {
   SubmissionRepository,
   ValidationRunRepository,
   StageResultRepository,
   SubmissionContext,
+  Verdict,
+  ReasonCode,
+  StageKey,
 } from '@fliptrybe/service-trust-engine';
 
 let dbSingleton: DatabaseClient | undefined;
@@ -48,7 +51,7 @@ function createRepositories(db: DatabaseClient): {
             userId: data.userId,
             assetClass: data.assetClass,
             mediaAssetId: data.mediaAssetId ?? null,
-            submissionProfile: data.submissionProfile as any,
+            submissionProfile: data.submissionProfile as Prisma.InputJsonValue,
             status: 'PENDING',
           },
         });
@@ -97,8 +100,8 @@ function createRepositories(db: DatabaseClient): {
             configVersion: data.configVersion,
             pipelineVersion: data.pipelineVersion,
             idempotencyKey: data.idempotencyKey,
-            verdict: (data.verdict as any) ?? 'REVIEW',
-            verdictReasons: (data.verdictReasons as any) ?? [],
+            verdict: data.verdict ?? 'REVIEW',
+            verdictReasons: data.verdictReasons ?? [],
             verdictExplained: data.verdictExplained ?? '',
             fraudScore: data.fraudScore ?? 0,
             trustScore: data.trustScore ?? 0,
@@ -111,8 +114,8 @@ function createRepositories(db: DatabaseClient): {
           configVersion: run.configVersion,
           pipelineVersion: run.pipelineVersion,
           idempotencyKey: run.idempotencyKey,
-          verdict: run.verdict as any,
-          verdictReasons: (run.verdictReasons as any) ?? [],
+          verdict: (run.verdict ?? 'REVIEW') as Verdict,
+          verdictReasons: (run.verdictReasons ?? []) as ReasonCode[],
           verdictExplained: run.verdictExplained ?? '',
           fraudScore: run.fraudScore ?? 0,
           trustScore: run.trustScore ?? 0,
@@ -137,8 +140,8 @@ function createRepositories(db: DatabaseClient): {
           configVersion: run.configVersion,
           pipelineVersion: run.pipelineVersion,
           idempotencyKey: run.idempotencyKey,
-          verdict: run.verdict as any,
-          verdictReasons: (run.verdictReasons as any) ?? [],
+          verdict: (run.verdict ?? 'REVIEW') as Verdict,
+          verdictReasons: (run.verdictReasons ?? []) as ReasonCode[],
           verdictExplained: run.verdictExplained ?? '',
           fraudScore: run.fraudScore ?? 0,
           trustScore: run.trustScore ?? 0,
@@ -164,8 +167,8 @@ function createRepositories(db: DatabaseClient): {
           configVersion: run.configVersion,
           pipelineVersion: run.pipelineVersion,
           idempotencyKey: run.idempotencyKey,
-          verdict: run.verdict as any,
-          verdictReasons: (run.verdictReasons as any) ?? [],
+          verdict: (run.verdict ?? 'REVIEW') as Verdict,
+          verdictReasons: (run.verdictReasons ?? []) as ReasonCode[],
           verdictExplained: run.verdictExplained ?? '',
           fraudScore: run.fraudScore ?? 0,
           trustScore: run.trustScore ?? 0,
@@ -186,10 +189,10 @@ function createRepositories(db: DatabaseClient): {
           data: {
             id: data.id,
             validationRunId: data.validationRunId,
-            stageKey: data.stageKey as string,
+            stageKey: data.stageKey,
             status: data.status,
-            reasonCodes: (data.reasonCodes as any) ?? [],
-            resultData: (data.resultData as any) ?? null,
+            reasonCodes: data.reasonCodes ?? [],
+            resultData: (data.resultData ?? null) as Prisma.InputJsonValue,
             retryCount: data.retryCount,
             durationMs: data.durationMs,
             failureMessage: data.failureMessage ?? null,
@@ -198,16 +201,16 @@ function createRepositories(db: DatabaseClient): {
         return {
           id: result.id,
           validationRunId: result.validationRunId,
-          stageKey: result.stageKey as any,
+          stageKey: result.stageKey as StageKey,
           status: result.status,
           signals: [],
-          reasonCodes: (result.reasonCodes as any) ?? [],
+          reasonCodes: (result.reasonCodes ?? []) as ReasonCode[],
           resultData: (result.resultData ?? {}) as Record<string, unknown>,
           retryCount: result.retryCount,
           durationMs: result.durationMs,
-          failureMessage: result.failureMessage || undefined,
+          ...(result.failureMessage ? { failureMessage: result.failureMessage } : {}),
           createdAt: result.createdAt,
-        } as any;
+        };
       },
       async getByValidationRunId(runId) {
         const results = await db.stageResult.findMany({
@@ -216,16 +219,16 @@ function createRepositories(db: DatabaseClient): {
         return results.map((r) => ({
           id: r.id,
           validationRunId: r.validationRunId,
-          stageKey: r.stageKey as any,
+          stageKey: r.stageKey as StageKey,
           status: r.status,
           signals: [],
-          reasonCodes: (r.reasonCodes as any) ?? [],
+          reasonCodes: (r.reasonCodes ?? []) as ReasonCode[],
           resultData: (r.resultData ?? {}) as Record<string, unknown>,
           retryCount: r.retryCount,
           durationMs: r.durationMs,
-          failureMessage: r.failureMessage || undefined,
+          ...(r.failureMessage ? { failureMessage: r.failureMessage } : {}),
           createdAt: r.createdAt,
-        })) as any;
+        }));
       },
     },
   };

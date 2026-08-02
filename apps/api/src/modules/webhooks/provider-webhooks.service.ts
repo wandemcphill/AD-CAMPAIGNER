@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, UnauthorizedException, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
+import type { GiftCardPurchaseStatus } from '@fliptrybe/database';
 import { PrismaService } from '../prisma.service';
 import { QueueProducerService } from '../queue-producer.service';
 
@@ -52,9 +53,10 @@ export class ProviderWebhooksService {
     }
 
     const event = payload as Record<string, unknown>;
-    this.logger.debug(`Sogo webhook received: ${event.type}`);
+    const eventType = typeof event.type === 'string' ? event.type : 'unknown';
+    this.logger.debug(`Sogo webhook received: ${eventType}`);
 
-    switch (event.type) {
+    switch (eventType) {
       case 'transaction.completed':
         await this.handleSogoTransactionCompleted(event);
         break;
@@ -62,7 +64,7 @@ export class ProviderWebhooksService {
         await this.handleSogoTransactionFailed(event);
         break;
       default:
-        this.logger.warn(`Unhandled Sogo event type: ${event.type}`);
+        this.logger.warn(`Unhandled Sogo event type: ${eventType}`);
     }
   }
 
@@ -81,14 +83,15 @@ export class ProviderWebhooksService {
     }
 
     const event = payload as Record<string, unknown>;
-    this.logger.debug(`Reloadly webhook received: ${event.type}`);
+    const eventType = typeof event.type === 'string' ? event.type : 'unknown';
+    this.logger.debug(`Reloadly webhook received: ${eventType}`);
 
-    switch (event.type) {
+    switch (eventType) {
       case 'giftcard_transaction.status':
         await this.handleReloadlyTransactionStatus(event);
         break;
       default:
-        this.logger.warn(`Unhandled Reloadly event type: ${event.type}`);
+        this.logger.warn(`Unhandled Reloadly event type: ${eventType}`);
     }
   }
 
@@ -102,7 +105,7 @@ export class ProviderWebhooksService {
 
     await this.prisma.client.giftCardSellTransaction.updateMany({
       where: { providerTransactionId: reference, providerName: 'SOGO' },
-      data: { status: 'COMPLETED' as any }
+      data: { status: 'COMPLETED' }
     });
 
     await this.queueProducer.enqueueDigitalValueProcessing(reference, 'GIFT_CARD_SELL');
@@ -118,7 +121,7 @@ export class ProviderWebhooksService {
 
     await this.prisma.client.giftCardSellTransaction.updateMany({
       where: { providerTransactionId: reference, providerName: 'SOGO' },
-      data: { status: 'FAILED' as any }
+      data: { status: 'FAILED' }
     });
 
     await this.queueProducer.enqueueDigitalValueProcessing(reference, 'GIFT_CARD_SELL');
@@ -133,18 +136,22 @@ export class ProviderWebhooksService {
     const status = event.status as string | undefined;
     this.logger.log(`Processing Reloadly transaction status: ${transactionId} = ${status}`);
 
-    // Map Reloadly status to our status
-    const statusMap: Record<string, string> = {
-      SUCCESSFUL: 'COMPLETED',
-      PENDING: 'PROCESSING',
+    // Map Reloadly status to our GiftCardPurchaseStatus enum
+    const statusMap: Record<string, GiftCardPurchaseStatus> = {
+      SUCCESSFUL: 'FULFILLED',
+      PENDING: 'PURCHASING',
       FAILED: 'FAILED'
     };
 
-    const mappedStatus = statusMap[status || ''] || status;
+    const mappedStatus = statusMap[status ?? ''];
+    if (!mappedStatus) {
+      this.logger.warn(`Unmapped Reloadly status "${status}" for transaction ${transactionId}; skipping update`);
+      return;
+    }
 
     await this.prisma.client.giftCardPurchaseTransaction.updateMany({
       where: { supplierTransactionId: transactionId },
-      data: { status: mappedStatus as any }
+      data: { status: mappedStatus }
     });
 
     // Dispatch downstream processing job

@@ -686,7 +686,6 @@ export class VtuService {
       throw new BadRequestException("Cable subscriptions are not yet available.");
     }
 
-    const { workspaceId } = ctx;
     if (!dto.provider) throw new BadRequestException("provider is required.");
     if (!dto.smartCardNumber) throw new BadRequestException("smartCardNumber is required.");
     if (!dto.packageCode) throw new BadRequestException("packageCode is required.");

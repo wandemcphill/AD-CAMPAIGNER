@@ -62,7 +62,7 @@ export class ProviderWebhooksController {
 
   @Post("sogo")
   async sogoWebhook(
-    @Req() req: RawBodyRequest<any>,
+    @Req() req: RawBodyRequest<unknown>,
     @Headers("x-sogo-signature") signature: string,
     @Headers("x-sogo-timestamp") timestamp: string
   ) {
@@ -74,7 +74,7 @@ export class ProviderWebhooksController {
 
   @Post("reloadly")
   async reloadlyWebhook(
-    @Req() req: RawBodyRequest<any>,
+    @Req() req: RawBodyRequest<unknown>,
     @Headers("x-reloadly-signature") signature: string
   ) {
     const secret = process.env['RELOADLY_WEBHOOK_SECRET'] || '';
