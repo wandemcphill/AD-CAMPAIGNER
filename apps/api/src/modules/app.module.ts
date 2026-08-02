@@ -34,10 +34,10 @@ import {
 } from "./platform.controllers";
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
-import { PrismaService } from "./prisma.service";
 import { AuthSessionService } from "./auth-session.service";
 import { AuthorizationGuard } from "./authorization.guard";
 import { RealtimeGateway } from "./realtime.gateway";
+import { PrismaModule } from "./prisma.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 import { VtuModule } from "./vtu/vtu.module";
@@ -70,6 +70,7 @@ import { TrustEngineModule } from "./trust-engine/trust-engine.module";
         limit: 1000
       }
     ]),
+    PrismaModule,
     DigitalAccessModule,
     VouchersModule,
     VtuModule,
@@ -116,7 +117,6 @@ import { TrustEngineModule } from "./trust-engine/trust-engine.module";
     AuditController
   ],
   providers: [
-    PrismaService,
     AuthSessionService,
     PlatformService,
     ManagedAdsService,

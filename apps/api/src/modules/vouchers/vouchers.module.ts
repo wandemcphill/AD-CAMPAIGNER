@@ -1,14 +1,14 @@
 import { Module } from "@nestjs/common";
 
-import { PrismaService } from "../prisma.service";
+import { PrismaModule } from "../prisma.module";
 import { WebhooksModule } from "../webhooks/webhooks.module";
 import { VouchersController, VoucherClaimController } from "./vouchers.controller";
 import { VouchersService } from "./vouchers.service";
 
 @Module({
-  imports: [WebhooksModule],
+  imports: [WebhooksModule, PrismaModule],
   controllers: [VouchersController, VoucherClaimController],
-  providers: [PrismaService, VouchersService],
+  providers: [VouchersService],
   exports: [VouchersService]
 })
 export class VouchersModule {}

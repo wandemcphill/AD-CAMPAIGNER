@@ -3,13 +3,13 @@ import { TrustEngineService, ConsoleLogger } from '@fliptrybe/service-trust-engi
 import { TrustEngineController } from './trust-engine.controller';
 import { TrustEngineRepositories } from './repositories';
 import { TrustEngineStages } from './stages';
-import { PrismaService } from '../prisma.service';
+import { PrismaModule } from '../prisma.module';
 import { QueueProducerService } from '../queue-producer.service';
 
 @Module({
+  imports: [PrismaModule],
   controllers: [TrustEngineController],
   providers: [
-    PrismaService,
     QueueProducerService,
     TrustEngineRepositories,
     TrustEngineStages,
