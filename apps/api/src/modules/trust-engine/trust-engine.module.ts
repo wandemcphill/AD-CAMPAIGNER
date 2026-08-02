@@ -4,11 +4,13 @@ import { TrustEngineController } from './trust-engine.controller';
 import { TrustEngineRepositories } from './repositories';
 import { TrustEngineStages } from './stages';
 import { PrismaService } from '../prisma.service';
+import { QueueProducerService } from '../queue-producer.service';
 
 @Module({
   controllers: [TrustEngineController],
   providers: [
     PrismaService,
+    QueueProducerService,
     TrustEngineRepositories,
     TrustEngineStages,
     {

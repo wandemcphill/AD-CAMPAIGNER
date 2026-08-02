@@ -141,7 +141,7 @@ export default function AdminRewardsPage() {
                     {c._count.participants}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link href={`/rewards/${c.id}` as Route}>
+                    <Link href={`/rewards/detail?campaignId=${c.id}`}>
                       <Button variant="secondary">Manage</Button>
                     </Link>
                   </td>

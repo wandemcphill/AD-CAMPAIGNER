@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@fliptrybe/database';
 import { PrismaService } from '../prisma.service';
 import type {
   SubmissionRepository,
@@ -7,6 +8,9 @@ import type {
   CreateSubmissionInput,
   CreateValidationRunInput,
   CreateStageResultInput,
+  Verdict,
+  ReasonCode,
+  StageKey,
 } from '@fliptrybe/service-trust-engine';
 
 @Injectable()
@@ -27,7 +31,7 @@ export class TrustEngineRepositories {
             userId: data.userId,
             assetClass: data.assetClass,
             mediaAssetId: data.mediaAssetId ?? null,
-            submissionProfile: data.submissionProfile as any,
+            submissionProfile: data.submissionProfile as Prisma.InputJsonValue,
             status: 'PENDING',
           },
         });
@@ -60,7 +64,7 @@ export class TrustEngineRepositories {
           updatedAt: submission.updatedAt,
         };
       },
-      updateStatus: async (submissionId: string, status: any) => {
+      updateStatus: async (submissionId, status) => {
         await db.assetSubmission.update({
           where: { id: submissionId },
           data: { status },
@@ -77,8 +81,8 @@ export class TrustEngineRepositories {
             configVersion: data.configVersion,
             pipelineVersion: data.pipelineVersion,
             idempotencyKey: data.idempotencyKey,
-            verdict: (data.verdict as any) ?? 'REVIEW',
-            verdictReasons: (data.verdictReasons as any) ?? [],
+            verdict: data.verdict ?? 'REVIEW',
+            verdictReasons: data.verdictReasons ?? [],
             verdictExplained: data.verdictExplained ?? '',
             fraudScore: data.fraudScore ?? 0,
             trustScore: data.trustScore ?? 0,
@@ -91,8 +95,8 @@ export class TrustEngineRepositories {
           configVersion: run.configVersion,
           pipelineVersion: run.pipelineVersion,
           idempotencyKey: run.idempotencyKey,
-          verdict: run.verdict as any,
-          verdictReasons: (run.verdictReasons as any) ?? [],
+          verdict: (run.verdict ?? 'REVIEW') as Verdict,
+          verdictReasons: (run.verdictReasons ?? []) as ReasonCode[],
           verdictExplained: run.verdictExplained ?? '',
           fraudScore: run.fraudScore ?? 0,
           trustScore: run.trustScore ?? 0,
@@ -117,8 +121,8 @@ export class TrustEngineRepositories {
           configVersion: run.configVersion,
           pipelineVersion: run.pipelineVersion,
           idempotencyKey: run.idempotencyKey,
-          verdict: run.verdict as any,
-          verdictReasons: (run.verdictReasons as any) ?? [],
+          verdict: (run.verdict ?? 'REVIEW') as Verdict,
+          verdictReasons: (run.verdictReasons ?? []) as ReasonCode[],
           verdictExplained: run.verdictExplained ?? '',
           fraudScore: run.fraudScore ?? 0,
           trustScore: run.trustScore ?? 0,
@@ -144,8 +148,8 @@ export class TrustEngineRepositories {
           configVersion: run.configVersion,
           pipelineVersion: run.pipelineVersion,
           idempotencyKey: run.idempotencyKey,
-          verdict: run.verdict as any,
-          verdictReasons: (run.verdictReasons as any) ?? [],
+          verdict: (run.verdict ?? 'REVIEW') as Verdict,
+          verdictReasons: (run.verdictReasons ?? []) as ReasonCode[],
           verdictExplained: run.verdictExplained ?? '',
           fraudScore: run.fraudScore ?? 0,
           trustScore: run.trustScore ?? 0,
@@ -167,10 +171,10 @@ export class TrustEngineRepositories {
           data: {
             id: data.id,
             validationRunId: data.validationRunId,
-            stageKey: data.stageKey as string,
+            stageKey: data.stageKey,
             status: data.status,
-            reasonCodes: (data.reasonCodes as any) ?? [],
-            resultData: (data.resultData as any) ?? null,
+            reasonCodes: data.reasonCodes ?? [],
+            resultData: (data.resultData ?? null) as Prisma.InputJsonValue,
             retryCount: data.retryCount,
             durationMs: data.durationMs,
             failureMessage: data.failureMessage ?? null,
@@ -179,34 +183,34 @@ export class TrustEngineRepositories {
         return {
           id: result.id,
           validationRunId: result.validationRunId,
-          stageKey: result.stageKey as any,
+          stageKey: result.stageKey as StageKey,
           status: result.status,
           signals: [],
-          reasonCodes: (result.reasonCodes as any) ?? [],
-          resultData: result.resultData,
+          reasonCodes: (result.reasonCodes ?? []) as ReasonCode[],
+          ...(result.resultData ? { resultData: result.resultData as Record<string, unknown> } : {}),
           retryCount: result.retryCount,
           durationMs: result.durationMs,
-          failureMessage: result.failureMessage ?? undefined,
+          ...(result.failureMessage ? { failureMessage: result.failureMessage } : {}),
           createdAt: result.createdAt,
-        } as any;
+        };
       },
       getByValidationRunId: async (runId: string) => {
         const results = await db.stageResult.findMany({
           where: { validationRunId: runId },
         });
-        return results.map((r: any) => ({
+        return results.map((r) => ({
           id: r.id,
           validationRunId: r.validationRunId,
-          stageKey: r.stageKey,
+          stageKey: r.stageKey as StageKey,
           status: r.status,
           signals: [],
-          reasonCodes: (r.reasonCodes as any) ?? [],
-          resultData: r.resultData,
+          reasonCodes: (r.reasonCodes ?? []) as ReasonCode[],
+          ...(r.resultData ? { resultData: r.resultData as Record<string, unknown> } : {}),
           retryCount: r.retryCount,
           durationMs: r.durationMs,
-          failureMessage: r.failureMessage ?? undefined,
+          ...(r.failureMessage ? { failureMessage: r.failureMessage } : {}),
           createdAt: r.createdAt,
-        })) as any;
+        }));
       },
     };
   }

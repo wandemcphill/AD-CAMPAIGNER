@@ -112,6 +112,16 @@ export class QueueProducerService implements OnModuleDestroy {
     });
   }
 
+  async enqueueTrustEngineValidation(submissionId: string): Promise<QueueProducerResult> {
+    return this.enqueue("trust-engine", "validate", { submissionId }, {
+      jobId: `trust_engine_${submissionId}`,
+      attempts: 3,
+      backoff: { type: "exponential", delay: 5_000 },
+      removeOnComplete: { age: 604_800, count: 30_000 },
+      removeOnFail: { age: 2_592_000, count: 30_000 }
+    });
+  }
+
   async onModuleDestroy() {
     await Promise.all([...this.queues.values()].map((queue) => queue.close()));
 

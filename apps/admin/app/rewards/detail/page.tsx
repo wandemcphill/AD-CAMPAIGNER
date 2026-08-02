@@ -1,8 +1,8 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import type { Route } from "next";
+import { useSearchParams } from "next/navigation";
 import { CheckCircle, RefreshCw, Trophy, XCircle } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
@@ -36,12 +36,17 @@ function formatMinor(amountMinor: number, currency: string) {
   return `${symbol}${(amountMinor / 100).toLocaleString()}`;
 }
 
-export default function AdminCampaignDetailPage({
-  params
-}: {
-  params: Promise<{ campaignId: string }>;
-}) {
-  const { campaignId } = use(params);
+export default function AdminCampaignDetailPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground animate-pulse">Loading…</div>}>
+      <AdminCampaignDetailContent />
+    </Suspense>
+  );
+}
+
+function AdminCampaignDetailContent() {
+  const searchParams = useSearchParams();
+  const campaignId = searchParams.get("campaignId") ?? "";
   const [campaign, setCampaign] = useState<CampaignDetail | null>(null);
   const [reviewQueue, setReviewQueue] = useState<TaskCompletion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +54,11 @@ export default function AdminCampaignDetailPage({
   const [resolving, setResolving] = useState<string>();
 
   const refresh = useCallback(async () => {
+    if (!campaignId) {
+      setError("Missing campaign id.");
+      setLoading(false);
+      return;
+    }
     setError(undefined);
     try {
       const [campaignData, reviewData] = await Promise.all([
@@ -144,14 +154,14 @@ export default function AdminCampaignDetailPage({
                 </div>
                 <div className="flex gap-2">
                   <Button
-                                       onClick={() => void resolveCompletion(completion.id, "VERIFIED")}
+                    onClick={() => void resolveCompletion(completion.id, "VERIFIED")}
                     disabled={resolving === completion.id}
                   >
                     <CheckCircle className="h-4 w-4 mr-1" />
                     Approve
                   </Button>
                   <Button
-                                       variant="secondary"
+                    variant="secondary"
                     onClick={() => void resolveCompletion(completion.id, "REJECTED")}
                     disabled={resolving === completion.id}
                   >
@@ -168,7 +178,7 @@ export default function AdminCampaignDetailPage({
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>{campaign._count.participants} participants</span>
         <span>{campaign._count.entitlements} entitlements issued</span>
-        <Link href={"/rewards" as Route} className="underline">Back to campaigns</Link>
+        <Link href="/rewards" className="underline">Back to campaigns</Link>
       </div>
     </div>
   );

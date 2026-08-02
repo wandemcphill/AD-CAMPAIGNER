@@ -52,8 +52,7 @@ import { SecurityModule } from "./security/security.module";
 import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { ProvidersModule } from "./providers/providers.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
-// TODO: Trust Engine API integration - currently incomplete, enable when fully implemented
-// import { TrustEngineModule } from "./trust-engine/trust-engine.module";
+import { TrustEngineModule } from "./trust-engine/trust-engine.module";
 
 @Module({
   imports: [
@@ -85,7 +84,7 @@ import { WebhooksModule } from "./webhooks/webhooks.module";
     ApiKeysModule,
     ProvidersModule,
     WebhooksModule,
-    // TrustEngineModule, // TODO: Enable when fully implemented
+    TrustEngineModule,
 
   ],
   controllers: [
