@@ -15,7 +15,12 @@ END $$;
 ALTER TABLE IF EXISTS public."MarketplaceAgency" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public."MarketplaceCreator" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public."VoucherProduct" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public."GiftCardProduct" ENABLE ROW LEVEL SECURITY;
+DO $$
+BEGIN
+  IF to_regclass('public."GiftCardProduct"') IS NOT NULL THEN
+    EXECUTE 'ALTER TABLE public."GiftCardProduct" ENABLE ROW LEVEL SECURITY';
+  END IF;
+END $$;
 ALTER TABLE IF EXISTS public."VtuDataPlan" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public."NumberCountry" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public."VirtualNumberProduct" ENABLE ROW LEVEL SECURITY;
@@ -29,7 +34,7 @@ CREATE INDEX IF NOT EXISTS "VoucherProduct_public_rls_idx" ON public."VoucherPro
 DO $$
 BEGIN
   IF to_regclass('public."GiftCardProduct"') IS NOT NULL THEN
-    CREATE INDEX IF NOT EXISTS "GiftCardProduct_public_rls_idx" ON public."GiftCardProduct" ("active");
+    EXECUTE 'CREATE INDEX IF NOT EXISTS "GiftCardProduct_public_rls_idx" ON public."GiftCardProduct" ("active")';
   END IF;
 END $$;
 CREATE INDEX IF NOT EXISTS "VtuDataPlan_public_rls_idx" ON public."VtuDataPlan" ("active", "network");
@@ -95,11 +100,11 @@ DECLARE
   app_role text;
 BEGIN
   IF to_regclass('public."GiftCardProduct"') IS NOT NULL THEN
-    DROP POLICY IF EXISTS "GiftCardProduct_public_select" ON public."GiftCardProduct";
-    CREATE POLICY "GiftCardProduct_public_select" ON public."GiftCardProduct"
+    EXECUTE 'DROP POLICY IF EXISTS "GiftCardProduct_public_select" ON public."GiftCardProduct"';
+    EXECUTE 'CREATE POLICY "GiftCardProduct_public_select" ON public."GiftCardProduct"
       FOR SELECT
       TO PUBLIC
-      USING ("active" = true);
+      USING ("active" = true)';
 
     FOREACH app_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
       IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = app_role) THEN
