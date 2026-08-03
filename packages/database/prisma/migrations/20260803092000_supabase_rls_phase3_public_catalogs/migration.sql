@@ -26,7 +26,12 @@ ALTER TABLE IF EXISTS public.digital_access_plans ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS "MarketplaceAgency_public_rls_idx" ON public."MarketplaceAgency" ("isActive", "deletedAt");
 CREATE INDEX IF NOT EXISTS "MarketplaceCreator_public_rls_idx" ON public."MarketplaceCreator" ("isActive", "deletedAt");
 CREATE INDEX IF NOT EXISTS "VoucherProduct_public_rls_idx" ON public."VoucherProduct" ("active");
-CREATE INDEX IF NOT EXISTS "GiftCardProduct_public_rls_idx" ON public."GiftCardProduct" ("active");
+DO $$
+BEGIN
+  IF to_regclass('public."GiftCardProduct"') IS NOT NULL THEN
+    CREATE INDEX IF NOT EXISTS "GiftCardProduct_public_rls_idx" ON public."GiftCardProduct" ("active");
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS "VtuDataPlan_public_rls_idx" ON public."VtuDataPlan" ("active", "network");
 CREATE INDEX IF NOT EXISTS "NumberCountry_public_rls_idx" ON public."NumberCountry" ("enabled", "sortOrder");
 CREATE INDEX IF NOT EXISTS "VirtualNumberProduct_public_rls_idx" ON public."VirtualNumberProduct" ("active", "countryCode");
@@ -85,21 +90,23 @@ BEGIN
   END LOOP;
 END $$;
 
-DROP POLICY IF EXISTS "GiftCardProduct_public_select" ON public."GiftCardProduct";
-CREATE POLICY "GiftCardProduct_public_select" ON public."GiftCardProduct"
-  FOR SELECT
-  TO PUBLIC
-  USING ("active" = true);
-
 DO $$
 DECLARE
   app_role text;
 BEGIN
-  FOREACH app_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = app_role) THEN
-      EXECUTE format('GRANT SELECT ON TABLE public."GiftCardProduct" TO %I', app_role);
-    END IF;
-  END LOOP;
+  IF to_regclass('public."GiftCardProduct"') IS NOT NULL THEN
+    DROP POLICY IF EXISTS "GiftCardProduct_public_select" ON public."GiftCardProduct";
+    CREATE POLICY "GiftCardProduct_public_select" ON public."GiftCardProduct"
+      FOR SELECT
+      TO PUBLIC
+      USING ("active" = true);
+
+    FOREACH app_role IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = app_role) THEN
+        EXECUTE format('GRANT SELECT ON TABLE public."GiftCardProduct" TO %I', app_role);
+      END IF;
+    END LOOP;
+  END IF;
 END $$;
 
 DROP POLICY IF EXISTS "VtuDataPlan_public_select" ON public."VtuDataPlan";
