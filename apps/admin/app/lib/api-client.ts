@@ -58,6 +58,8 @@ type ApiRequestOptions = RequestInit & {
 
 const tokenStorageKey = "fliptrybe.authToken";
 const sessionChangeEvent = "fliptrybe-session-changed";
+const localApiBaseUrl = "http://localhost:4000/v1";
+const productionApiBaseUrl = "https://ft-campaigner-api-fra.onrender.com/v1";
 
 function normalizeApiBaseUrl(raw: string) {
   const stripped = raw.trim().replace(/\/+$/, "");
@@ -67,10 +69,19 @@ function normalizeApiBaseUrl(raw: string) {
 }
 
 export function getApiBaseUrl() {
+  const configured =
+    process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.NEXT_PUBLIC_API_URL;
+
+  if (configured) {
+    return normalizeApiBaseUrl(configured);
+  }
+
+  if (typeof window !== "undefined" && !["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+    return productionApiBaseUrl;
+  }
+
   return normalizeApiBaseUrl(
-    process.env.NEXT_PUBLIC_API_BASE_URL ??
-      process.env.NEXT_PUBLIC_API_URL ??
-      "http://localhost:4000/v1"
+    localApiBaseUrl
   );
 }
 

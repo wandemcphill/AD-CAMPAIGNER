@@ -8,6 +8,7 @@ import { TabBar } from "@fliptrybe/ui/components";
 
 import { apiRequest } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
+import { AdminAuthState } from "../ui/admin-auth-state";
 
 type VirtualNumberStatus =
   | "RESERVED"
@@ -160,7 +161,7 @@ function formatNaira(amountMinor: number) {
 }
 
 export default function AdminDigitalProductsPage() {
-  const { loading: sessionLoading, session } = useApiSession();
+  const { error: sessionError, loading: sessionLoading, session } = useApiSession();
   const [tab, setTab] = useState("numbers");
 
   const [numbers, setNumbers] = useState<AdminVirtualNumber[]>([]);
@@ -308,7 +309,7 @@ export default function AdminDigitalProductsPage() {
   }
 
   if (sessionLoading || !session) {
-    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
+    return <AdminAuthState error={sessionError} loading={sessionLoading} title="Digital products auth" />;
   }
 
   const failedOrders = orders.filter((o) => o.status === "FAILED");

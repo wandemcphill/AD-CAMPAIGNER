@@ -7,6 +7,7 @@ import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 
 import { apiRequest } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
+import { AdminAuthState } from "../ui/admin-auth-state";
 
 type VtuProductType = "AIRTIME" | "DATA";
 type VtuNetwork = "MTN" | "GLO" | "AIRTEL" | "NINE_MOBILE";
@@ -34,7 +35,7 @@ function groupKey(route: VtuProviderRoute) {
 }
 
 export default function AdminVtuPage() {
-  const { loading: sessionLoading, session } = useApiSession();
+  const { error: sessionError, loading: sessionLoading, session } = useApiSession();
   const [routes, setRoutes] = useState<VtuProviderRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -117,7 +118,7 @@ export default function AdminVtuPage() {
   }
 
   if (sessionLoading || !session) {
-    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
+    return <AdminAuthState error={sessionError} loading={sessionLoading} title="VTU auth" />;
   }
 
   return (

@@ -19,6 +19,7 @@ import {
 import { Badge, Panel, PlatformChip as SharedPlatformChip, ThemeToggle, cn } from "@fliptrybe/ui";
 
 import { useApiSession } from "../lib/use-session";
+import { AdminAuthState } from "../ui/admin-auth-state";
 import { SessionPanel } from "../ui/session-panel";
 import {
   campaignOpsEnabled,
@@ -175,7 +176,7 @@ export function AdminCampaignOpsShell({
   children: ReactNode;
   active: string;
 }) {
-  const { loading, session } = useApiSession();
+  const { error, loading, session } = useApiSession();
   const activeItem = navItems.find((item) => item.href === active);
 
   useEffect(() => {
@@ -185,7 +186,7 @@ export function AdminCampaignOpsShell({
   }, [loading, session]);
 
   if (loading || !session) {
-    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
+    return <AdminAuthState error={error} loading={loading} title="Campaign ops auth" />;
   }
 
   return (

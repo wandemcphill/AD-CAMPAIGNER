@@ -5,6 +5,7 @@ import { useEffect, type ReactNode } from "react";
 import { Badge, Panel, ThemeToggle, cn } from "@fliptrybe/ui";
 
 import { useApiSession } from "../lib/use-session";
+import { AdminAuthState } from "../ui/admin-auth-state";
 import { SessionPanel } from "../ui/session-panel";
 import {
   adminAccessEnabled,
@@ -22,7 +23,7 @@ export function AdminDigitalAccessShell({
   children: ReactNode;
   active: string;
 }) {
-  const { loading, session } = useApiSession();
+  const { error, loading, session } = useApiSession();
 
   useEffect(() => {
     if (!loading && !session) {
@@ -31,7 +32,7 @@ export function AdminDigitalAccessShell({
   }, [loading, session]);
 
   if (loading || !session) {
-    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
+    return <AdminAuthState error={error} loading={loading} title="Digital access auth" />;
   }
 
   return (

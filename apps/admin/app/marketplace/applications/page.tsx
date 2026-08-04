@@ -8,6 +8,7 @@ import { TabBar } from "@fliptrybe/ui/components";
 
 import { apiRequest } from "../../lib/api-client";
 import { useApiSession } from "../../lib/use-session";
+import { AdminAuthState } from "../../ui/admin-auth-state";
 
 type ApplicationStatus = "PENDING" | "APPROVED" | "REJECTED";
 
@@ -62,7 +63,7 @@ function formatNaira(amountMinor: number) {
 }
 
 export default function AdminMarketplaceApplicationsPage() {
-  const { loading: sessionLoading, session } = useApiSession();
+  const { error: sessionError, loading: sessionLoading, session } = useApiSession();
   const [status, setStatus] = useState<ApplicationStatus>("PENDING");
   const [agencyApplications, setAgencyApplications] = useState<AgencyApplication[]>([]);
   const [creatorApplications, setCreatorApplications] = useState<CreatorApplication[]>([]);
@@ -117,7 +118,7 @@ export default function AdminMarketplaceApplicationsPage() {
   }
 
   if (sessionLoading || !session) {
-    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
+    return <AdminAuthState error={sessionError} loading={sessionLoading} title="Marketplace auth" />;
   }
 
   const rows: QueueRow[] = [

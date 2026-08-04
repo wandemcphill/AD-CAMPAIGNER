@@ -23,6 +23,7 @@ import { Badge, Button, MetricCard, Panel, SummaryStatStrip, ThemeToggle } from 
 
 import { useApiSession } from "./lib/use-session";
 import { useAdminDashboard } from "./use-admin-dashboard";
+import { AdminAuthState } from "./ui/admin-auth-state";
 
 export default function AdminPage() {
   const { error: sessionError, loading: sessionLoading, session } = useApiSession();
@@ -47,41 +48,11 @@ export default function AdminPage() {
   }, [sessionLoading, session]);
 
   if (sessionLoading) {
-    return (
-      <main className="ft-shell flex min-h-screen items-center justify-center px-4">
-        <Panel className="w-full max-w-md p-6 text-center">
-          <Badge tone="info">Admin auth</Badge>
-          <h1 className="mt-4 text-2xl font-semibold text-[var(--ft-text-primary)]">
-            Loading admin session
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-            Checking the API session and workspace access.
-          </p>
-        </Panel>
-      </main>
-    );
+    return <AdminAuthState loading />;
   }
 
   if (!session) {
-    return (
-      <main className="ft-shell flex min-h-screen items-center justify-center px-4">
-        <Panel className="w-full max-w-md p-6 text-center">
-          <Badge tone={sessionError ? "warning" : "info"}>Admin auth</Badge>
-          <h1 className="mt-4 text-2xl font-semibold text-[var(--ft-text-primary)]">
-            Sign in required
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-            {sessionError ?? "Redirecting to the admin sign-in page."}
-          </p>
-          <a
-            className="mt-5 inline-flex h-10 items-center justify-center rounded-md bg-[var(--ft-accent)] px-4 text-sm font-semibold text-[var(--ft-text-inverse)]"
-            href="/login"
-          >
-            Open sign in
-          </a>
-        </Panel>
-      </main>
-    );
+    return <AdminAuthState error={sessionError} loading={false} />;
   }
 
   return (
