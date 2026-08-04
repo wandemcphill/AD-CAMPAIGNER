@@ -10,7 +10,7 @@ import { useApiSession } from "../lib/use-session";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { loading: sessionLoading, session, signIn } = useApiSession();
+  const { error: sessionError, loading: sessionLoading, session, signIn } = useApiSession();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +55,18 @@ export default function LoginPage() {
         </div>
 
         <div className="p-6 sm:p-8">
+          {sessionLoading ? (
+            <div className="mb-5 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]">
+              Checking existing admin session...
+            </div>
+          ) : null}
+
+          {sessionError ? (
+            <div className="mb-5 rounded-md border border-[var(--ft-amber)]/40 bg-[var(--ft-amber-subtle)] p-3 text-sm text-[var(--ft-amber)]">
+              {sessionError}
+            </div>
+          ) : null}
+
           <SummaryStatStrip
             items={[
               { label: "identity", value: "Username" },

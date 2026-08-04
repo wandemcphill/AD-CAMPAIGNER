@@ -53,6 +53,7 @@ type AuthEnvelope = SessionSource & {
 
 type ApiRequestOptions = RequestInit & {
   token?: string;
+  timeoutMs?: number;
 };
 
 const tokenStorageKey = "fliptrybe.authToken";
@@ -161,9 +162,17 @@ async function readErrorMessage(response: Response) {
 }
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}) {
-  const { token, ...requestOptions } = options;
+  const { token, timeoutMs = 12_000, signal, ...requestOptions } = options;
   const headers = new Headers(requestOptions.headers);
   const activeToken = token ?? getStoredToken();
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+
+  if (signal?.aborted) {
+    controller.abort();
+  } else if (signal) {
+    signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
 
   if (requestOptions.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -172,11 +181,23 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     headers.set("Authorization", `Bearer ${activeToken}`);
   }
 
-  const response = await fetch(endpoint(path), {
-    ...requestOptions,
-    headers,
-    cache: "no-store"
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(endpoint(path), {
+      ...requestOptions,
+      headers,
+      cache: "no-store",
+      signal: controller.signal
+    });
+  } catch (caught) {
+    if (controller.signal.aborted) {
+      throw new ApiClientError("Admin API request timed out. Check NEXT_PUBLIC_API_URL and API health.", 408);
+    }
+    throw caught;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new ApiClientError(await readErrorMessage(response), response.status);
