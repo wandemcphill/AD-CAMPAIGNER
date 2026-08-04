@@ -13,14 +13,14 @@ function jsonResponse(body: unknown, ok = true, statusText = 'OK') {
 
 describe('createSogoGiftCardAdapter', () => {
   it('uses the SOGO provider name expected by webhook reconciliation', () => {
-    const adapter = createSogoGiftCardAdapter({ apiKey: 'test', fetcher: vi.fn() as unknown as typeof fetch });
+    const adapter = createSogoGiftCardAdapter({ apiKey: 'test', fetcher: vi.fn<typeof fetch>() });
 
     expect(adapter.name).toBe('SOGO');
   });
 
   it('resolves brand names through the SOGO catalog before fetching a sell rate', async () => {
     const fetcher = vi
-      .fn()
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(
         jsonResponse({
           data: [
@@ -57,7 +57,7 @@ describe('createSogoGiftCardAdapter', () => {
     const adapter = createSogoGiftCardAdapter({
       apiKey: 'test',
       sandbox: true,
-      fetcher: fetcher as unknown as typeof fetch
+      fetcher
     });
 
     const rate = await adapter.getRate('APPLE_GIFT_CARD', 'US', 100);
@@ -78,7 +78,7 @@ describe('createSogoGiftCardAdapter', () => {
 
   it('submits sell requests with the SOGO catalog slug and stable idempotency key', async () => {
     const fetcher = vi
-      .fn()
+      .fn<typeof fetch>()
       .mockResolvedValueOnce(
         jsonResponse({
           data: [
@@ -99,7 +99,7 @@ describe('createSogoGiftCardAdapter', () => {
     const adapter = createSogoGiftCardAdapter({
       apiKey: 'test',
       sandbox: true,
-      fetcher: fetcher as unknown as typeof fetch
+      fetcher
     });
 
     const result = await adapter.submitCard({
@@ -115,25 +115,23 @@ describe('createSogoGiftCardAdapter', () => {
     });
 
     expect(result).toEqual({ providerReference: 'sogo_txn_1', status: 'PROCESSING' });
-    expect(fetcher).toHaveBeenNthCalledWith(
-      2,
-      'https://sandbox.sogo.africa/v1/gift-cards/sell',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer test',
-          'Idempotency-Key': 'gcs_123'
-        }),
-        body: JSON.stringify({
-          reference: 'gcs_123',
-          slug: 'steam',
-          card_country: 'US',
-          card_type: 'ecode',
-          card_currency: 'USD',
-          card_amount: 50,
-          additional_info: 'AAAA-BBBB',
-          payout_currency: 'NGN'
-        })
+    const sellRequest = fetcher.mock.calls[1];
+    const sellRequestInit = sellRequest?.[1];
+
+    expect(sellRequest?.[0]).toBe('https://sandbox.sogo.africa/v1/gift-cards/sell');
+    expect(sellRequestInit?.method).toBe('POST');
+    expect(new Headers(sellRequestInit?.headers).get('Authorization')).toBe('Bearer test');
+    expect(new Headers(sellRequestInit?.headers).get('Idempotency-Key')).toBe('gcs_123');
+    expect(sellRequestInit?.body).toBe(
+      JSON.stringify({
+        reference: 'gcs_123',
+        slug: 'steam',
+        card_country: 'US',
+        card_type: 'ecode',
+        card_currency: 'USD',
+        card_amount: 50,
+        additional_info: 'AAAA-BBBB',
+        payout_currency: 'NGN'
       })
     );
   });

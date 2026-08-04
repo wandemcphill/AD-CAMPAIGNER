@@ -97,7 +97,11 @@ describe("provider contracts", () => {
 
         if (endpoint.endsWith("/transaction/initialize")) {
           expect(init?.method).toBe("POST");
-          expect(JSON.parse(String(init?.body))).toMatchObject({
+          if (typeof init?.body !== "string") {
+            throw new Error("Expected Paystack initialize body to be a JSON string.");
+          }
+
+          expect(JSON.parse(init.body) as Record<string, unknown>).toMatchObject({
             email: "customer@fliptrybe.test",
             amount: 500000,
             currency: "NGN"
