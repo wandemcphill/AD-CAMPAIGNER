@@ -25,6 +25,7 @@ import {
   OrganizationsController,
   PaymentsController,
   ReferralsController,
+  RootController,
   SearchController,
   SmmController,
   SupportController,
@@ -89,6 +90,7 @@ import { TrustEngineModule } from "./trust-engine/trust-engine.module";
 
   ],
   controllers: [
+    RootController,
     HealthController,
     AuthController,
     OrganizationsController,

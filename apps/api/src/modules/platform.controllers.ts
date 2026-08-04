@@ -36,6 +36,23 @@ import {
 } from "./request-context";
 
 @Public()
+@Controller()
+export class RootController {
+  @Get()
+  getRoot() {
+    return {
+      name: "FlipTrybe Ads Campaigner API",
+      status: "ok",
+      version: "0.1.0",
+      endpoints: {
+        health: "/v1/health",
+        docs: "/docs"
+      }
+    };
+  }
+}
+
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
