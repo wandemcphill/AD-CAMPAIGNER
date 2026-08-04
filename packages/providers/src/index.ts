@@ -219,6 +219,14 @@ export interface KorapayPaymentGatewayConfig {
   fetcher?: typeof fetch | undefined;
 }
 
+export interface PaystackPaymentGatewayConfig {
+  secretKey?: string | undefined;
+  publicKey?: string | undefined;
+  baseUrl?: string | undefined;
+  defaultRedirectUrl?: string | undefined;
+  fetcher?: typeof fetch | undefined;
+}
+
 interface KorapayInitializeResponse {
   status?: boolean;
   message?: string;
@@ -238,6 +246,27 @@ interface KorapayVerifyResponse {
     payment_reference?: string;
     status?: string;
     amount?: string | number;
+    currency?: string;
+  };
+}
+
+interface PaystackInitializeResponse {
+  status?: boolean;
+  message?: string;
+  data?: {
+    authorization_url?: string;
+    access_code?: string;
+    reference?: string;
+  };
+}
+
+interface PaystackVerifyResponse {
+  status?: boolean;
+  message?: string;
+  data?: {
+    reference?: string;
+    status?: string;
+    amount?: number;
     currency?: string;
   };
 }
@@ -388,6 +417,64 @@ function getKorapayBaseUrl(config: KorapayPaymentGatewayConfig) {
 
 function getKorapayReference(prefix = "korapay") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getPaystackBaseUrl(config: PaystackPaymentGatewayConfig) {
+  return (config.baseUrl ?? "https://api.paystack.co").replace(/\/+$/, "");
+}
+
+function mapPaystackPaymentStatus(status?: string): PaymentIntent["status"] {
+  const normalizedStatus = status?.toLowerCase().trim();
+
+  switch (normalizedStatus) {
+    case "success":
+    case "successful":
+      return "COMPLETED";
+    case "abandoned":
+    case "cancelled":
+    case "canceled":
+      return "CANCELLED";
+    case "ongoing":
+    case "pending":
+    case "processing":
+      return "PENDING";
+    default:
+      return "FAILED";
+  }
+}
+
+async function callPaystackApi(
+  config: PaystackPaymentGatewayConfig,
+  path: string,
+  options?: {
+    method?: "GET" | "POST";
+    body?: Record<string, unknown>;
+  }
+) {
+  if (!config.secretKey) {
+    throw new Error("Paystack requires PAYSTACK_SECRET_KEY.");
+  }
+
+  const response = await (config.fetcher ?? fetch)(`${getPaystackBaseUrl(config)}${path}`, {
+    method: options?.method ?? "GET",
+    headers: {
+      Authorization: `Bearer ${config.secretKey}`,
+      "content-type": "application/json"
+    },
+    ...(options?.body === undefined ? {} : { body: JSON.stringify(options.body) })
+  });
+  const data: unknown = await response.json();
+
+  if (typeof data === "object" && data !== null && "status" in data && data.status === false) {
+    const message =
+      "message" in data && typeof data.message === "string" ? data.message : "Paystack API error.";
+    throw new Error(message);
+  }
+  if (!response.ok) {
+    throw new Error(`Paystack API returned HTTP ${response.status}.`);
+  }
+
+  return data;
 }
 
 async function callKorapayApi(
@@ -746,6 +833,64 @@ export function createKorapayPaymentGateway(
       return {
         status: mapKorapayPaymentStatus(response.data?.status),
         providerReference: response.data?.reference ?? response.data?.payment_reference ?? reference
+      };
+    }
+  };
+}
+
+export function createPaystackPaymentGateway(
+  config: PaystackPaymentGatewayConfig
+): PaymentGatewayAdapter {
+  return {
+    name: "paystack",
+    async createPaymentIntent(input) {
+      const now = new Date().toISOString();
+      const reference = getKorapayReference("ft_ps");
+      const response = (await callPaystackApi(config, "/transaction/initialize", {
+        method: "POST",
+        body: {
+          email: input.customerEmail ?? "payments@fliptrybe.test",
+          amount: input.amount.amountMinor,
+          currency: input.amount.currency,
+          reference,
+          callback_url: input.redirectUrl ?? config.defaultRedirectUrl,
+          metadata: {
+            workspaceId: input.workspaceId,
+            customerName: input.customerName ?? "FlipTrybe Customer"
+          }
+        }
+      })) as PaystackInitializeResponse;
+
+      const providerReference = response.data?.reference ?? reference;
+      const intent: PaymentIntent = {
+        id: makeId("pay"),
+        workspaceId: input.workspaceId,
+        gateway: "PAYSTACK",
+        amount: input.amount,
+        status: "PENDING",
+        providerReference,
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+          providerReference,
+          publicKeyConfigured: Boolean(config.publicKey),
+          accessCode: response.data?.access_code ?? null
+        }
+      };
+
+      return response.data?.authorization_url
+        ? { ...intent, checkoutUrl: response.data.authorization_url }
+        : intent;
+    },
+    async verifyPayment(reference) {
+      const response = (await callPaystackApi(
+        config,
+        `/transaction/verify/${encodeURIComponent(reference)}`
+      )) as PaystackVerifyResponse;
+
+      return {
+        status: mapPaystackPaymentStatus(response.data?.status),
+        providerReference: response.data?.reference ?? reference
       };
     }
   };

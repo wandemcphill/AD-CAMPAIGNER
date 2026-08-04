@@ -217,7 +217,7 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
     supportsCancel: true,
     supplierRouting: {
       strategy: "LOWEST_COST",
-      fallbackSuppliers: ["smdpanel", "justanotherpanel", "peakerr"]
+      fallbackSuppliers: ["smdpanel", "justanotherpanel", "sizzle", "peakerr"]
     },
     risk: {
       platformPolicyRisk: "HIGH",
@@ -249,7 +249,7 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
     supportsCancel: true,
     supplierRouting: {
       strategy: "LOWEST_COST",
-      fallbackSuppliers: ["smdpanel", "smmraja", "justanotherpanel"]
+      fallbackSuppliers: ["smdpanel", "smmraja", "justanotherpanel", "sizzle"]
     },
     risk: {
       platformPolicyRisk: "HIGH",
@@ -282,7 +282,7 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
     supplierRouting: {
       strategy: "PREFERRED_FIRST",
       preferredSupplier: "smdpanel",
-      fallbackSuppliers: ["justanotherpanel", "peakerr"]
+      fallbackSuppliers: ["justanotherpanel", "sizzle", "peakerr"]
     },
     risk: {
       platformPolicyRisk: "CRITICAL",
@@ -349,7 +349,7 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
     supportsCancel: true,
     supplierRouting: {
       strategy: "LOWEST_COST",
-      fallbackSuppliers: ["smdpanel", "smmraja", "justanotherpanel"]
+      fallbackSuppliers: ["smdpanel", "smmraja", "justanotherpanel", "sizzle"]
     },
     risk: {
       platformPolicyRisk: "HIGH",
@@ -381,7 +381,7 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
     supportsCancel: true,
     supplierRouting: {
       strategy: "LOWEST_COST",
-      fallbackSuppliers: ["smdpanel", "justanotherpanel", "peakerr"]
+      fallbackSuppliers: ["smdpanel", "justanotherpanel", "sizzle", "peakerr"]
     },
     risk: {
       platformPolicyRisk: "CRITICAL",
@@ -413,7 +413,7 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
     supportsCancel: true,
     supplierRouting: {
       strategy: "MANUAL_REVIEW",
-      fallbackSuppliers: ["smdpanel", "justanotherpanel"]
+      fallbackSuppliers: ["smdpanel", "justanotherpanel", "sizzle"]
     },
     risk: {
       platformPolicyRisk: "CRITICAL",
@@ -447,7 +447,7 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
     supplierRouting: {
       strategy: "PREFERRED_FIRST",
       preferredSupplier: "peakerr",
-      fallbackSuppliers: ["smdpanel", "justanotherpanel"]
+      fallbackSuppliers: ["smdpanel", "justanotherpanel", "sizzle"]
     },
     risk: {
       platformPolicyRisk: "HIGH",

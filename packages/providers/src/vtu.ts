@@ -498,8 +498,8 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
 export interface ClubKonnectConfig {
   userId: string;
   apiKey: string;
-  baseUrl?: string; // default https://www.clubkonnect.com
-  callbackUrl?: string;
+  baseUrl?: string | undefined; // default https://www.nellobytesystems.com
+  callbackUrl?: string | undefined;
   fetcher?: typeof fetch;
 }
 
@@ -521,7 +521,7 @@ async function ckGet(
   params: Record<string, string>
 ): Promise<unknown> {
   const f = config.fetcher ?? fetch;
-  const base = config.baseUrl ?? "https://www.clubkonnect.com";
+  const base = config.baseUrl ?? "https://www.nellobytesystems.com";
   const url = new URL(`${base}${path}`);
   url.searchParams.set("UserID", config.userId);
   url.searchParams.set("APIKey", config.apiKey);

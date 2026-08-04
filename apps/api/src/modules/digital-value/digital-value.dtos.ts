@@ -25,6 +25,10 @@ export class GiftCardSellRateResponseDto {
 }
 
 export class GiftCardSubmitDto {
+  @IsOptional()
+  @IsString()
+  quoteId?: string;
+
   @IsString()
   brand!: string;
 

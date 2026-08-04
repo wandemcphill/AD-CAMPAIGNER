@@ -40,14 +40,28 @@ export class ProvidersService {
   }
 
   async overview() {
-    const [vtu, virtualNumbers, fxRateCount, korapayConfigured] = await Promise.all([
+    const [vtu, virtualNumbers, fxRateCount, korapayConfigured, paystackConfigured] = await Promise.all([
       this.latestHealthByName(VTU_PROVIDERS, "VTU"),
       this.latestHealthByName(VIRTUAL_NUMBER_PROVIDERS, "VIRTUAL_NUMBER"),
       this.db.fxRate.count(),
       Promise.resolve(
         process.env.PAYMENT_PROVIDER === "live" && isSecretConfigured(process.env.KORAPAY_SECRET_KEY)
+      ),
+      Promise.resolve(
+        process.env.PAYMENT_PROVIDER === "live" && isSecretConfigured(process.env.PAYSTACK_SECRET_KEY)
       )
     ]);
+    const reloadlyConfigured = Boolean(
+      isSecretConfigured(process.env.RELOADLY_CLIENT_ID) ||
+        isSecretConfigured(process.env.RELOADLY_API_CLIENT_ID)
+    ) && Boolean(
+      isSecretConfigured(process.env.RELOADLY_CLIENT_SECRET) ||
+        isSecretConfigured(process.env.RELOADLY_API_CLIENT_KEY) ||
+        isSecretConfigured(process.env.RELOADLY_API_CLIENT_SECRET)
+    );
+    const sogoConfigured = Boolean(
+      isSecretConfigured(process.env.SOGO_API_KEY) || isSecretConfigured(process.env.SOGO_SECRET_KEY)
+    );
 
     return {
       categories: [
@@ -82,6 +96,16 @@ export class ProvidersService {
               reason: korapayConfigured ? null : "PAYMENT_PROVIDER is not set to live, or KORAPAY_SECRET_KEY is missing.",
               services: ["Wallet top-up", "Payment intents"],
               configurationState: korapayConfigured ? "configured" : "not_configured"
+            },
+            {
+              name: "paystack",
+              status: paystackConfigured ? "HEALTHY" : "DISABLED",
+              latencyMs: null,
+              successRateBps: null,
+              lastCheckedAt: null,
+              reason: paystackConfigured ? null : "PAYMENT_PROVIDER is not set to live, or PAYSTACK_SECRET_KEY is missing.",
+              services: ["Wallet top-up", "Payment intents"],
+              configurationState: paystackConfigured ? "configured" : "not_configured"
             }
           ]
         },
@@ -104,9 +128,29 @@ export class ProvidersService {
         {
           key: "global_digital_products",
           label: "Global Digital Products",
-          providers: [],
-          configurationState: "not_configured",
-          note: "No provider adapter is wired for this category yet."
+          providers: [
+            {
+              name: "reloadly",
+              status: reloadlyConfigured ? "HEALTHY" : "DISABLED",
+              latencyMs: null,
+              successRateBps: null,
+              lastCheckedAt: null,
+              reason: reloadlyConfigured ? null : "Reloadly client ID/key are missing.",
+              services: ["Gift card purchase"],
+              configurationState: reloadlyConfigured ? "configured" : "not_configured"
+            },
+            {
+              name: "SOGO",
+              status: sogoConfigured ? "HEALTHY" : "DISABLED",
+              latencyMs: null,
+              successRateBps: null,
+              lastCheckedAt: null,
+              reason: sogoConfigured ? null : "SOGO API or secret key is missing.",
+              services: ["Gift card sell/cashout"],
+              configurationState: sogoConfigured ? "configured" : "not_configured"
+            }
+          ],
+          configurationState: reloadlyConfigured || sogoConfigured ? "configured" : "not_configured"
         },
         {
           key: "virtual_cards",

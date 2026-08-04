@@ -12,6 +12,8 @@ export interface ReloadlyConfig {
   clientId: string;
   clientSecret: string;
   sandbox?: boolean;
+  baseUrl?: string | undefined;
+  authUrl?: string | undefined;
   fetcher?: typeof fetch;
 }
 
@@ -91,16 +93,17 @@ async function getReloadlyToken(config: ReloadlyConfig): Promise<string> {
   }
 
   const f = config.fetcher ?? fetch;
-  const response = await f('https://auth.reloadly.com/oauth/token', {
+  const audience =
+    config.baseUrl?.replace(/\/+$/, '') ??
+    (config.sandbox ? 'https://giftcards-sandbox.reloadly.com' : 'https://giftcards.reloadly.com');
+  const response = await f(config.authUrl ?? 'https://auth.reloadly.com/oauth/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       client_id: config.clientId,
       client_secret: config.clientSecret,
       grant_type: 'client_credentials',
-      audience: config.sandbox
-        ? 'https://giftcards-sandbox.reloadly.com'
-        : 'https://giftcards.reloadly.com'
+      audience
     })
   });
 
@@ -115,9 +118,9 @@ async function getReloadlyToken(config: ReloadlyConfig): Promise<string> {
 }
 
 export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardPurchaseProvider {
-  const baseUrl = config.sandbox
-    ? 'https://giftcards-sandbox.reloadly.com'
-    : 'https://giftcards.reloadly.com';
+  const baseUrl =
+    config.baseUrl?.replace(/\/+$/, '') ??
+    (config.sandbox ? 'https://giftcards-sandbox.reloadly.com' : 'https://giftcards.reloadly.com');
   const f = config.fetcher ?? fetch;
 
   return {
@@ -302,6 +305,7 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
 export interface SogoConfig {
   apiKey: string;
   sandbox?: boolean;
+  baseUrl?: string | undefined;
   fetcher?: typeof fetch;
 }
 
@@ -330,31 +334,61 @@ interface SogoSubmitResponse {
   created_at: string;
 }
 
+const normalizeSogoKey = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/[^a-z0-9-]/g, '');
+
 export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvider {
-  const baseUrl = config.sandbox
-    ? 'https://sandbox.sogo.africa/v1'
-    : 'https://api.sogo.africa/v1';
+  const configuredBaseUrl = config.baseUrl?.replace(/\/+$/, '');
+  const baseUrl = configuredBaseUrl
+    ? configuredBaseUrl.endsWith('/v1')
+      ? configuredBaseUrl
+      : `${configuredBaseUrl}/v1`
+    : config.sandbox
+      ? 'https://sandbox.sogo.africa/v1'
+      : 'https://api.sogo.africa/v1';
   const f = config.fetcher ?? fetch;
 
+  async function fetchCatalog(): Promise<SogoCatalogItem[]> {
+    const response = await f(`${baseUrl}/gift-cards/sell/catalog`, {
+      headers: { Authorization: `Bearer ${config.apiKey}` }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Sogo catalog failed: ${response.statusText}`);
+    }
+
+    const body = (await response.json()) as { data: SogoCatalogItem[] };
+    return body.data.filter((item) => item.is_active);
+  }
+
+  async function resolveCatalogItem(brand: string): Promise<SogoCatalogItem> {
+    const catalog = await fetchCatalog();
+    const key = normalizeSogoKey(brand);
+    const item = catalog.find(
+      (entry) => normalizeSogoKey(entry.slug) === key || normalizeSogoKey(entry.name) === key
+    );
+
+    if (!item) {
+      throw new Error(`Brand ${brand} not found in Sogo catalog`);
+    }
+
+    return item;
+  }
+
   return {
-    name: 'sogo',
+    name: 'SOGO',
 
     async listSupportedBrands() {
-      const response = await f(`${baseUrl}/gift-cards/sell/catalog`, {
-        headers: { Authorization: `Bearer ${config.apiKey}` }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Sogo catalog failed: ${response.statusText}`);
-      }
-
-      const body = (await response.json()) as { data: SogoCatalogItem[] };
-      return body.data
-        .filter((item) => item.is_active)
-        .map((item) => item.name);
+      const catalog = await fetchCatalog();
+      return catalog.map((item) => item.name);
     },
 
     async getRate(brand, region, denomination) {
+      const catalogItem = await resolveCatalogItem(brand);
       const response = await f(`${baseUrl}/gift-cards/sell/rates`, {
         headers: { Authorization: `Bearer ${config.apiKey}` }
       });
@@ -365,7 +399,9 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
 
       const body = (await response.json()) as { data: SogoRateData[] };
       const item = body.data.find(
-        (r) => r.name.toLowerCase() === brand.toLowerCase()
+        (r) =>
+          normalizeSogoKey(r.slug) === normalizeSogoKey(catalogItem.slug) ||
+          normalizeSogoKey(r.name) === normalizeSogoKey(catalogItem.name)
       );
 
       if (!item) {
@@ -406,10 +442,11 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
     },
 
     async submitCard(input) {
-      const idempotencyKey = `${input.reference}-${Date.now()}`;
+      const catalogItem = await resolveCatalogItem(input.brand);
+      const idempotencyKey = input.reference;
       const currency = input.cardInfo.currency || 'USD';
       const cardCode = input.cardInfo.cardCode || '';
-      const slug = input.reference.split('-')[0] || input.reference;
+      const cardType = input.cardInfo.cardType || 'ecode';
 
       const response = await f(`${baseUrl}/gift-cards/sell`, {
         method: 'POST',
@@ -419,9 +456,10 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
           'Idempotency-Key': idempotencyKey
         },
         body: JSON.stringify({
-          slug: slug.toLowerCase(),
+          reference: input.reference,
+          slug: catalogItem.slug,
           card_country: input.region,
-          card_type: 'ecode',
+          card_type: cardType,
           card_currency: currency,
           card_amount: input.denomination,
           additional_info: cardCode,

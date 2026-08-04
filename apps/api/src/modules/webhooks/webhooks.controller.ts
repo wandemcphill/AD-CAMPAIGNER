@@ -66,20 +66,21 @@ export class ProviderWebhooksController {
     @Headers("x-sogo-signature") signature: string,
     @Headers("x-sogo-timestamp") timestamp: string
   ) {
-    const secret = process.env['SOGO_WEBHOOK_SECRET'] || '';
+    const secret = process.env['SOGO_WEBHOOK_SECRET'] || process.env['SOGO_SECRET_KEY'] || '';
     const payload = req.rawBody?.toString() || '';
-    await this.provider.handleSogoWebhook(JSON.parse(payload), signature, timestamp, secret);
+    await this.provider.handleSogoWebhook(JSON.parse(payload), payload, signature, timestamp, secret);
     return { ok: true };
   }
 
   @Post("reloadly")
   async reloadlyWebhook(
     @Req() req: RawBodyRequest<unknown>,
-    @Headers("x-reloadly-signature") signature: string
+    @Headers("x-reloadly-signature") signature: string,
+    @Headers("x-reloadly-request-timestamp") timestamp: string
   ) {
     const secret = process.env['RELOADLY_WEBHOOK_SECRET'] || '';
     const payload = req.rawBody?.toString() || '';
-    await this.provider.handleReloadlyWebhook(JSON.parse(payload), signature, secret);
+    await this.provider.handleReloadlyWebhook(JSON.parse(payload), payload, timestamp, signature, secret);
     return { ok: true };
   }
 }

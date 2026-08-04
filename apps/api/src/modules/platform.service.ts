@@ -19,6 +19,7 @@ import {
   createMockPaymentGateway,
   createMockSmmSupplier,
   createMockStorageProvider,
+  createPaystackPaymentGateway,
   createPerfectPanelSmmSupplier,
   createRoutedSmmSupplier,
   parseSmmServiceMap
@@ -75,6 +76,15 @@ import { PrismaService } from "./prisma.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
 type DbClient = Record<string, any>;
+type GrowthServiceOverrideRow = {
+  serviceCode: string;
+  enabled: boolean | null;
+  marginBps: number | null;
+  preferredSupplier: string | null;
+  maximumQuantity: number | null;
+  expectedCompletion: string | null;
+  adminNote: string | null;
+};
 
 const now = () => new Date().toISOString();
 const id = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
@@ -122,16 +132,38 @@ function createStorageProvider() {
 }
 
 function createPaymentGateway() {
-  if (process.env.PAYMENT_PROVIDER === "live" && getSecret(process.env.KORAPAY_SECRET_KEY)) {
+  const preferredGateway = process.env.PAYMENT_GATEWAY?.toLowerCase();
+  const paystackSecret = getSecret(process.env.PAYSTACK_SECRET_KEY);
+  const korapaySecret = getSecret(process.env.KORAPAY_SECRET_KEY);
+
+  if (process.env.PAYMENT_PROVIDER === "live" && preferredGateway === "paystack" && paystackSecret) {
+    return createPaystackPaymentGateway({
+      publicKey: getSecret(process.env.PAYSTACK_PUBLIC_KEY),
+      secretKey: paystackSecret,
+      baseUrl: process.env.PAYSTACK_BASE_URL,
+      defaultRedirectUrl: process.env.PAYSTACK_REDIRECT_URL ?? process.env.APP_URL
+    });
+  }
+
+  if (process.env.PAYMENT_PROVIDER === "live" && korapaySecret) {
     return createKorapayPaymentGateway({
       publicKey: getSecret(process.env.KORAPAY_PUBLIC_KEY),
-      secretKey: getSecret(process.env.KORAPAY_SECRET_KEY),
+      secretKey: korapaySecret,
       encryptionKey: getSecret(process.env.KORAPAY_ENCRYPTION_KEY),
       baseUrl: process.env.KORAPAY_BASE_URL,
       defaultRedirectUrl: process.env.KORAPAY_REDIRECT_URL ?? process.env.APP_URL,
       defaultWebhookUrl:
         process.env.KORAPAY_WEBHOOK_URL ??
         `${process.env.API_URL ?? "http://localhost:4000"}/api/webhooks/korapay`
+    });
+  }
+
+  if (process.env.PAYMENT_PROVIDER === "live" && paystackSecret) {
+    return createPaystackPaymentGateway({
+      publicKey: getSecret(process.env.PAYSTACK_PUBLIC_KEY),
+      secretKey: paystackSecret,
+      baseUrl: process.env.PAYSTACK_BASE_URL,
+      defaultRedirectUrl: process.env.PAYSTACK_REDIRECT_URL ?? process.env.APP_URL
     });
   }
 
@@ -304,6 +336,13 @@ function createSmmSupplierBundle() {
       apiKey: getSecret(process.env.JAP_API_KEY),
       currency: getCurrency(process.env.JAP_CURRENCY, "USD"),
       serviceMap: parseSmmServiceMap(process.env.JAP_SERVICE_MAP)
+    },
+    {
+      name: "sizzle",
+      apiUrl: process.env.SIZZLE_API_URL ?? "https://app.sizzlesocial.ng/api/v1",
+      apiKey: getSecret(process.env.SIZZLE_API_KEY),
+      currency: getCurrency(process.env.SIZZLE_CURRENCY, "NGN"),
+      serviceMap: parseSmmServiceMap(process.env.SIZZLE_SERVICE_MAP)
     },
     {
       name: "peakerr",
@@ -918,20 +957,29 @@ export class PlatformService {
     return this.smmSupplier.requestCancel(supplierReferences);
   }
 
-  listGrowthServices(options?: { includeDisabled?: boolean }) {
+  private listBaseGrowthServices(options?: { includeDisabled?: boolean }) {
     return this.growthServices
       .filter((service) => options?.includeDisabled || service.enabled)
       .map(cloneGrowthService);
   }
 
-  listAdminGrowthServices(context: AuthenticatedRequestContext | undefined) {
+  async listGrowthServices(options?: { includeDisabled?: boolean }) {
+    const services = this.listBaseGrowthServices({ includeDisabled: true });
+    const withOverrides = await this.applyGrowthServiceOverrides(services);
+
+    return withOverrides
+      .filter((service) => options?.includeDisabled || service.enabled)
+      .map(cloneGrowthService);
+  }
+
+  async listAdminGrowthServices(context: AuthenticatedRequestContext | undefined) {
     requireWorkspaceContext(context);
 
     return this.listGrowthServices({ includeDisabled: true });
   }
 
-  listGrowthCatalog() {
-    const services = this.listGrowthServices();
+  async listGrowthCatalog() {
+    const services = await this.listGrowthServices();
     const categories = Array.from(
       new Map(
         services.map((service) => [
@@ -953,7 +1001,7 @@ export class PlatformService {
     input: CreateGrowthOrderDto
   ) {
     const scope = requireWorkspaceContext(context);
-    const service = this.requireGrowthService(input.serviceCode);
+    const service = await this.requireGrowthService(input.serviceCode);
 
     if (!service.enabled) {
       throw new BadRequestException("Growth service is currently disabled.");
@@ -1272,6 +1320,7 @@ export class PlatformService {
   async getGrowthOverview(context: AuthenticatedRequestContext | undefined) {
     const scope = requireWorkspaceContext(context);
     const orders = await this.listGrowthOrders(scope);
+    const services = await this.listGrowthServices({ includeDisabled: true });
     const totals = orders.reduce(
       (summary, order) => ({
         ...summary,
@@ -1289,8 +1338,8 @@ export class PlatformService {
 
     return {
       totals,
-      activeServices: this.growthServices.filter((service) => service.enabled).length,
-      disabledServices: this.growthServices.filter((service) => !service.enabled).length,
+      activeServices: services.filter((service) => service.enabled).length,
+      disabledServices: services.filter((service) => !service.enabled).length,
       revenue: {
         amountMinor: orders
           .filter((order) => order.status === "COMPLETED")
@@ -1312,21 +1361,23 @@ export class PlatformService {
     });
   }
 
-  getGrowthRiskReport() {
+  async getGrowthRiskReport() {
+    const services = await this.listGrowthServices({ includeDisabled: true });
+
     return {
       generatedAt: now(),
       disclaimer:
         "Risk levels are operational guidance for Growth Services controls, not legal advice.",
-      services: getGrowthServiceRiskReport(this.growthServices)
+      services: getGrowthServiceRiskReport(services)
     };
   }
 
-  updateGrowthService(
+  async updateGrowthService(
     context: AuthenticatedRequestContext | undefined,
     serviceCode: string,
     input: UpdateGrowthServiceDto
   ) {
-    requireWorkspaceContext(context);
+    const scope = requireWorkspaceContext(context);
     const index = this.growthServices.findIndex((service) => service.code === serviceCode);
 
     if (index < 0) {
@@ -1341,8 +1392,43 @@ export class PlatformService {
 
     const updated = applyGrowthServiceAdminControls(current, input);
     this.growthServices[index] = updated;
+    await this.db.growthServiceOverride.upsert({
+      where: { serviceCode },
+      create: {
+        id: id("gso"),
+        serviceCode,
+        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+        ...(input.marginBps === undefined ? {} : { marginBps: Math.round(input.marginBps) }),
+        ...(input.preferredSupplier === undefined
+          ? {}
+          : { preferredSupplier: input.preferredSupplier || null }),
+        ...(input.maximumQuantity === undefined
+          ? {}
+          : { maximumQuantity: Math.round(input.maximumQuantity) }),
+        ...(input.expectedCompletion === undefined
+          ? {}
+          : { expectedCompletion: input.expectedCompletion }),
+        ...(input.adminNote === undefined ? {} : { adminNote: input.adminNote }),
+        ...(scope.userId ? { updatedByUserId: scope.userId } : {})
+      },
+      update: {
+        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+        ...(input.marginBps === undefined ? {} : { marginBps: Math.round(input.marginBps) }),
+        ...(input.preferredSupplier === undefined
+          ? {}
+          : { preferredSupplier: input.preferredSupplier || null }),
+        ...(input.maximumQuantity === undefined
+          ? {}
+          : { maximumQuantity: Math.round(input.maximumQuantity) }),
+        ...(input.expectedCompletion === undefined
+          ? {}
+          : { expectedCompletion: input.expectedCompletion }),
+        ...(input.adminNote === undefined ? {} : { adminNote: input.adminNote }),
+        ...(scope.userId ? { updatedByUserId: scope.userId } : {})
+      }
+    });
 
-    return cloneGrowthService(updated);
+    return this.requireGrowthService(serviceCode, { includeDisabled: true });
   }
 
   async updateGrowthOrder(
@@ -2139,15 +2225,49 @@ export class PlatformService {
     }
   }
 
-  private requireGrowthService(serviceCode?: string) {
+  private async requireGrowthService(
+    serviceCode?: string,
+    options?: { includeDisabled?: boolean }
+  ) {
+    const services = await this.listGrowthServices({ includeDisabled: options?.includeDisabled ?? true });
     const service =
-      this.growthServices.find((item) => item.code === serviceCode) ?? this.growthServices[0];
+      services.find((item) => item.code === serviceCode) ?? services[0];
 
     if (!service) {
       throw new NotFoundException("Growth Services catalog is empty.");
     }
 
     return service;
+  }
+
+  private async applyGrowthServiceOverrides(services: GrowthServiceCatalogItem[]) {
+    const overrides = await this.db.growthServiceOverride.findMany({
+      where: { serviceCode: { in: services.map((service) => service.code) } }
+    });
+    const overrideByCode = new Map(
+      (overrides as GrowthServiceOverrideRow[]).map((override) => [override.serviceCode, override])
+    );
+
+    return services.map((service) => {
+      const override = overrideByCode.get(service.code);
+
+      if (!override) {
+        return cloneGrowthService(service);
+      }
+
+      const input = {
+        ...(override.enabled === null ? {} : { enabled: override.enabled }),
+        ...(override.marginBps === null ? {} : { marginBps: override.marginBps }),
+        preferredSupplier: override.preferredSupplier ?? "",
+        ...(override.maximumQuantity === null ? {} : { maximumQuantity: override.maximumQuantity }),
+        ...(override.expectedCompletion === null
+          ? {}
+          : { expectedCompletion: override.expectedCompletion }),
+        ...(override.adminNote === null ? {} : { adminNote: override.adminNote })
+      };
+
+      return applyGrowthServiceAdminControls(service, input);
+    });
   }
 
   private async refreshGrowthOrders(context: AuthenticatedRequestContext) {

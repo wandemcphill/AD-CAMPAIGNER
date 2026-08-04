@@ -32,10 +32,12 @@ function buildAdapter(providerName: string): VirtualNumberProviderAdapter {
         apiKey: process.env["SMSPOOL_API_KEY"] ?? "",
         ...(process.env["SMSPOOL_BASE_URL"] ? { baseUrl: process.env["SMSPOOL_BASE_URL"] } : {})
       });
-    case "5sim":
+      case "5sim":
       return createFiveSimRentalAdapter({
-        apiToken: process.env["FIVESIM_API_TOKEN"] ?? "",
-        ...(process.env["FIVESIM_BASE_URL"] ? { baseUrl: process.env["FIVESIM_BASE_URL"] } : {})
+        apiToken: process.env["FIVESIM_API_TOKEN"] ?? process.env["FIVESIM_API_KEY"] ?? "",
+        ...((process.env["FIVESIM_BASE_URL"] ?? process.env["FIVESIM_API_URL"])
+          ? { baseUrl: process.env["FIVESIM_BASE_URL"] ?? process.env["FIVESIM_API_URL"] }
+          : {})
       });
     case "smspva":
       return createSmsPvaAdapter({

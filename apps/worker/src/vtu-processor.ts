@@ -39,6 +39,9 @@ function buildAdapter(providerName: string): VtuProviderAdapter {
       return createClubKonnectAdapter({
         userId: process.env["CLUBKONNECT_USER_ID"] ?? "",
         apiKey: process.env["CLUBKONNECT_API_KEY"] ?? "",
+        ...((process.env["CLUBKONNECT_BASE_URL"] ?? process.env["CLUBKONNECT_API_URL"])
+          ? { baseUrl: process.env["CLUBKONNECT_BASE_URL"] ?? process.env["CLUBKONNECT_API_URL"] }
+          : {}),
         ...(process.env["CLUBKONNECT_CALLBACK_URL"]
           ? { callbackUrl: process.env["CLUBKONNECT_CALLBACK_URL"] }
           : {})

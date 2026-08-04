@@ -7,6 +7,7 @@ import {
   createMockOtpProvider,
   createMockPaymentGateway,
   createMockSmmSupplier,
+  createPaystackPaymentGateway,
   createPerfectPanelSmmSupplier,
   createRoutedSmmSupplier
 } from "./index";
@@ -82,6 +83,63 @@ describe("provider contracts", () => {
 
     expect(intent.gateway).toBe("KORAPAY");
     expect(intent.checkoutUrl).toContain("checkout.korapay.com");
+    expect(verified.status).toBe("COMPLETED");
+  });
+
+  it("creates and verifies Paystack checkout intents", async () => {
+    const paystack = createPaystackPaymentGateway({
+      secretKey: "sk_test",
+      publicKey: "pk_test",
+      defaultRedirectUrl: "https://app.fliptrybe.test/wallet",
+      fetcher: ((url, init) => {
+        const endpoint =
+          typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+
+        if (endpoint.endsWith("/transaction/initialize")) {
+          expect(init?.method).toBe("POST");
+          expect(JSON.parse(String(init?.body))).toMatchObject({
+            email: "customer@fliptrybe.test",
+            amount: 500000,
+            currency: "NGN"
+          });
+
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                status: true,
+                data: {
+                  reference: "ft_ps_123",
+                  authorization_url: "https://checkout.paystack.com/ft_ps_123",
+                  access_code: "access_123"
+                }
+              })
+            )
+          );
+        }
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              status: true,
+              data: {
+                reference: "ft_ps_123",
+                status: "success"
+              }
+            })
+          )
+        );
+      }) satisfies typeof fetch
+    });
+    const intent = await paystack.createPaymentIntent({
+      amount: { amountMinor: 500000, currency: "NGN" },
+      workspaceId: "workspace",
+      customerEmail: "customer@fliptrybe.test",
+      customerName: "FlipTrybe Customer"
+    });
+    const verified = await paystack.verifyPayment("ft_ps_123");
+
+    expect(intent.gateway).toBe("PAYSTACK");
+    expect(intent.checkoutUrl).toContain("checkout.paystack.com");
     expect(verified.status).toBe("COMPLETED");
   });
 

@@ -1494,6 +1494,22 @@ model GrowthOrder {
   @@index([deletedAt])
 }
 
+model GrowthServiceOverride {
+  id                 String   @id @default(uuid())
+  serviceCode        String   @unique
+  enabled            Boolean?
+  marginBps          Int?
+  preferredSupplier  String?
+  maximumQuantity    Int?
+  expectedCompletion String?
+  adminNote          String?
+  updatedByUserId    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([updatedByUserId])
+}
+
 // ─── Phase 0: Provider registry + FX + Pricing ───────────────────────────────
 
 model ProviderConfig {

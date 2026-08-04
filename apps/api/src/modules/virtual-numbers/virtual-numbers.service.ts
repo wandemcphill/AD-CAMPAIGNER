@@ -97,8 +97,10 @@ export class VirtualNumbersService {
         });
       case "5sim":
         return createFiveSimRentalAdapter({
-          apiToken: process.env["FIVESIM_API_TOKEN"] ?? "",
-          ...(process.env["FIVESIM_BASE_URL"] ? { baseUrl: process.env["FIVESIM_BASE_URL"] } : {})
+          apiToken: process.env["FIVESIM_API_TOKEN"] ?? process.env["FIVESIM_API_KEY"] ?? "",
+          ...((process.env["FIVESIM_BASE_URL"] ?? process.env["FIVESIM_API_URL"])
+            ? { baseUrl: process.env["FIVESIM_BASE_URL"] ?? process.env["FIVESIM_API_URL"] }
+            : {})
         });
       case "smspva":
         return createSmsPvaAdapter({

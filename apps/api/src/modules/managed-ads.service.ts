@@ -11,7 +11,8 @@ import { hasPermission } from "@fliptrybe/auth";
 import {
   createKorapayPaymentGateway,
   createMockPaymentGateway,
-  createMockStorageProvider
+  createMockStorageProvider,
+  createPaystackPaymentGateway
 } from "@fliptrybe/providers";
 import { calculateAvailableBalance } from "@fliptrybe/payments";
 import {
@@ -631,16 +632,38 @@ function assertMediaPolicy(input: { mimeType: string; sizeBytes: number; purpose
 }
 
 function getPaymentGateway() {
-  if (process.env.PAYMENT_PROVIDER === "live" && getSecret(process.env.KORAPAY_SECRET_KEY)) {
+  const preferredGateway = process.env.PAYMENT_GATEWAY?.toLowerCase();
+  const paystackSecret = getSecret(process.env.PAYSTACK_SECRET_KEY);
+  const korapaySecret = getSecret(process.env.KORAPAY_SECRET_KEY);
+
+  if (process.env.PAYMENT_PROVIDER === "live" && preferredGateway === "paystack" && paystackSecret) {
+    return createPaystackPaymentGateway({
+      publicKey: getSecret(process.env.PAYSTACK_PUBLIC_KEY),
+      secretKey: paystackSecret,
+      baseUrl: process.env.PAYSTACK_BASE_URL,
+      defaultRedirectUrl: process.env.PAYSTACK_REDIRECT_URL ?? process.env.APP_URL
+    });
+  }
+
+  if (process.env.PAYMENT_PROVIDER === "live" && korapaySecret) {
     return createKorapayPaymentGateway({
       publicKey: getSecret(process.env.KORAPAY_PUBLIC_KEY),
-      secretKey: getSecret(process.env.KORAPAY_SECRET_KEY),
+      secretKey: korapaySecret,
       encryptionKey: getSecret(process.env.KORAPAY_ENCRYPTION_KEY),
       baseUrl: process.env.KORAPAY_BASE_URL,
       defaultRedirectUrl: process.env.KORAPAY_REDIRECT_URL ?? process.env.APP_URL,
       defaultWebhookUrl:
         process.env.KORAPAY_WEBHOOK_URL ??
         `${process.env.API_URL ?? "http://localhost:4000"}/api/webhooks/korapay`
+    });
+  }
+
+  if (process.env.PAYMENT_PROVIDER === "live" && paystackSecret) {
+    return createPaystackPaymentGateway({
+      publicKey: getSecret(process.env.PAYSTACK_PUBLIC_KEY),
+      secretKey: paystackSecret,
+      baseUrl: process.env.PAYSTACK_BASE_URL,
+      defaultRedirectUrl: process.env.PAYSTACK_REDIRECT_URL ?? process.env.APP_URL
     });
   }
 
@@ -652,12 +675,15 @@ function assertLivePaymentsConfiguredForProduction() {
     return;
   }
 
-  if (process.env.PAYMENT_PROVIDER === "live" && getSecret(process.env.KORAPAY_SECRET_KEY)) {
+  if (
+    process.env.PAYMENT_PROVIDER === "live" &&
+    (getSecret(process.env.KORAPAY_SECRET_KEY) || getSecret(process.env.PAYSTACK_SECRET_KEY))
+  ) {
     return;
   }
 
   throw new BadRequestException(
-    "Payments are unavailable because Korapay live configuration is missing."
+    "Payments are unavailable because live payment configuration is missing."
   );
 }
 

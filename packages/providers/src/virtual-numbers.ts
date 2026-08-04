@@ -228,7 +228,7 @@ export function createSmsPoolAdapter(config: SmsPoolConfig): VirtualNumberProvid
 
 export interface FiveSimConfig {
   apiToken: string;
-  baseUrl?: string; // default https://5sim.net/v1
+  baseUrl?: string | undefined; // default https://5sim.net/v1
   fetcher?: typeof fetch;
 }
 

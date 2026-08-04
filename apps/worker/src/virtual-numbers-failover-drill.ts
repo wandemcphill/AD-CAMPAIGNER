@@ -44,9 +44,12 @@ function buildAdapter(providerName: string): VirtualNumberProviderAdapter {
     }
     case "5sim": {
       const fiveSimCfg: Parameters<typeof createFiveSimRentalAdapter>[0] = {
-        apiToken: process.env["FIVESIM_API_TOKEN"] ?? ""
+        apiToken: process.env["FIVESIM_API_TOKEN"] ?? process.env["FIVESIM_API_KEY"] ?? ""
       };
-      if (process.env["FIVESIM_BASE_URL"]) fiveSimCfg.baseUrl = process.env["FIVESIM_BASE_URL"];
+      const fiveSimBaseUrl = process.env["FIVESIM_BASE_URL"] ?? process.env["FIVESIM_API_URL"];
+      if (fiveSimBaseUrl) {
+        fiveSimCfg.baseUrl = fiveSimBaseUrl;
+      }
       return createFiveSimRentalAdapter(fiveSimCfg);
     }
     case "smspva": {

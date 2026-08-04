@@ -93,21 +93,33 @@ export class DigitalValueService {
   }
 
   private initializeProviders() {
-    if (featureFlags.giftCardSell) {
-      this.giftCardSellProvider = process.env['SOGO_API_KEY']
+    const sogoApiKey = process.env['SOGO_API_KEY'] ?? process.env['SOGO_SECRET_KEY'];
+
+    if (featureFlags.giftCardSell || sogoApiKey) {
+      this.giftCardSellProvider = sogoApiKey
         ? this.buildSogoAdapter()
         : createMockGiftCardSellProvider('sogo-mock');
     } else {
       this.giftCardSellProvider = createMockGiftCardSellProvider();
     }
 
-    if (featureFlags.giftCardBuy) {
+    const reloadlyClientId =
+      process.env['RELOADLY_CLIENT_ID'] ?? process.env['RELOADLY_API_CLIENT_ID'];
+    const reloadlyClientSecret =
+      process.env['RELOADLY_CLIENT_SECRET'] ??
+      process.env['RELOADLY_API_CLIENT_KEY'] ??
+      process.env['RELOADLY_API_CLIENT_SECRET'];
+
+    if (featureFlags.giftCardBuy || (reloadlyClientId && reloadlyClientSecret)) {
       this.giftCardBuyProvider =
-        process.env['RELOADLY_CLIENT_ID'] && process.env['RELOADLY_CLIENT_SECRET']
+        reloadlyClientId && reloadlyClientSecret
           ? createReloadlyGiftCardAdapter({
-              clientId: process.env['RELOADLY_CLIENT_ID'],
-              clientSecret: process.env['RELOADLY_CLIENT_SECRET'],
-              sandbox: process.env['RELOADLY_SANDBOX'] === 'true'
+              clientId: reloadlyClientId,
+              clientSecret: reloadlyClientSecret,
+              sandbox: process.env['RELOADLY_SANDBOX'] === 'true',
+              ...((process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'])
+                ? { baseUrl: process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'] }
+                : {})
             })
           : createMockGiftCardPurchaseAdapter('reloadly-mock');
     } else {
@@ -125,8 +137,9 @@ export class DigitalValueService {
 
   private buildSogoAdapter(): GiftCardSellProvider {
     return createSogoGiftCardAdapter({
-      apiKey: process.env['SOGO_API_KEY'] || '',
-      sandbox: process.env['SOGO_SANDBOX'] === 'true'
+      apiKey: process.env['SOGO_API_KEY'] ?? process.env['SOGO_SECRET_KEY'] ?? '',
+      sandbox: process.env['SOGO_SANDBOX'] === 'true',
+      ...(process.env['SOGO_BASE_URL'] ? { baseUrl: process.env['SOGO_BASE_URL'] } : {})
     });
   }
 
@@ -188,6 +201,12 @@ export class DigitalValueService {
       throw new BadRequestException('Gift card selling is not available.');
     }
 
+    const quote = await this.db.giftCardSellQuote.findUnique({
+      where: { id: dto.quoteId ?? '' }
+    });
+    const providerRate = quote?.providerRate ?? new Prisma.Decimal(0);
+    const providerRateTimestamp = quote?.providerRateTimestamp ?? new Date();
+    const quotedCustomerPayoutNgn = quote?.quotedCustomerPayoutNgn ?? 0;
     const transactionId = uid('gcs');
     const idempotencyKey = `gift_card_sell_${transactionId}`;
 
@@ -201,16 +220,20 @@ export class DigitalValueService {
         denomination: dto.denomination,
         currency: 'USD',
         providerName: this.giftCardSellProvider.name,
-        providerRate: 0,
-        providerRateTimestamp: new Date(),
-        providerPayoutNgn: 0,
+        providerRate,
+        providerRateTimestamp,
+        providerPayoutNgn: quotedCustomerPayoutNgn,
         fliptrybeFeeMicro: 0,
         fliptrybeCommissionNgn: 0,
-        quotedCustomerPayoutNgn: 0,
+        quotedCustomerPayoutNgn,
         status: 'SUBMITTED' as any,
+        ...(quote ? { quoteId: quote.id } : {}),
         cardInfoRequired: Object.keys(dto.cardInfo),
         idempotencyKey,
-        metadata: { cardInfo: dto.cardInfo }
+        metadata: {
+          cardInfo: dto.cardInfo,
+          ...(quote ? { quoteId: quote.id } : {})
+        }
       }
     });
 
