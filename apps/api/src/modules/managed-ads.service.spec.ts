@@ -797,7 +797,7 @@ describe("ManagedAdsService production payment and media guards", () => {
           amountMinor: 1000,
           currency: "NGN"
         })
-      ).rejects.toThrow("Payments are unavailable because Korapay live configuration is missing.");
+      ).rejects.toThrow("Payments are unavailable because live payment configuration is missing.");
     } finally {
       restoreUploadEnv(env);
     }

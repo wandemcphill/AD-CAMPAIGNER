@@ -166,6 +166,9 @@ function createFakeDb() {
       findFirst: async ({ where }: any) => growthOrders.find((row) => matchesWhere(row, where)) ?? null,
       findMany: async ({ where }: any) => growthOrders.filter((row) => matchesWhere(row, where))
     },
+    growthServiceOverride: {
+      findMany: async () => []
+    },
     $transaction: async (fn: (tx: Record<string, any>) => Promise<any>) => fn(db)
   };
 
