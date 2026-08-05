@@ -15,6 +15,7 @@ import {
   Globe,
   KeyRound,
   LayoutDashboard,
+  LogOut,
   Megaphone,
   Menu,
   MessageSquare,
@@ -126,11 +127,12 @@ const MOBILE_NAV: NavItem[] = [
 
 export function OsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { loading, session } = useApiSession();
+  const { loading, session, signOut } = useApiSession();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantMsg, setAssistantMsg] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (!loading && !session) {
@@ -156,6 +158,12 @@ export function OsShell({ children }: { children: ReactNode }) {
   function isActive(href: string) {
     if (href === "/os") return pathname === "/os";
     return pathname.startsWith(href);
+  }
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    await signOut();
+    window.location.replace("/login");
   }
 
   return (
@@ -221,6 +229,15 @@ export function OsShell({ children }: { children: ReactNode }) {
             </div>
             <ThemeToggle />
           </div>
+          <button
+            className="mt-1 flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-xs font-medium text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)]/40 hover:text-[var(--ft-text-primary)] disabled:opacity-60"
+            disabled={signingOut}
+            onClick={() => void handleSignOut()}
+            type="button"
+          >
+            <LogOut className="size-4" />
+            {signingOut ? "Signing out..." : "Logout"}
+          </button>
         </div>
       </aside>
 
@@ -254,6 +271,17 @@ export function OsShell({ children }: { children: ReactNode }) {
                 ))}
               </div>
             ))}
+            <div className="border-t border-[var(--ft-border)] px-3 pt-3">
+              <button
+                className="flex h-10 w-full items-center gap-3 rounded-[var(--radius-md)] px-3 text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)] disabled:opacity-60"
+                disabled={signingOut}
+                onClick={() => void handleSignOut()}
+                type="button"
+              >
+                <LogOut className="size-4" />
+                {signingOut ? "Signing out..." : "Logout"}
+              </button>
+            </div>
           </aside>
         </div>
       )}
@@ -290,6 +318,15 @@ export function OsShell({ children }: { children: ReactNode }) {
               <Bell className="size-4" />
             </a>
             <ThemeToggle className="hidden lg:inline-flex" />
+            <button
+              className="hidden h-8 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-xs font-medium text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)]/40 hover:text-[var(--ft-text-primary)] disabled:opacity-60 sm:flex"
+              disabled={signingOut}
+              onClick={() => void handleSignOut()}
+              type="button"
+            >
+              <LogOut className="size-3.5" />
+              {signingOut ? "Signing out..." : "Logout"}
+            </button>
           </div>
         </header>
 

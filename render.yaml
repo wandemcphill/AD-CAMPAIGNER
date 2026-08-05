@@ -8,7 +8,7 @@ services:
     autoDeployTrigger: commit
     healthCheckPath: /v1/health
     buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/api build
-    preDeployCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma migrate deploy
+    preDeployCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma migrate deploy && npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:digital-access
     startCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/api start
     envVars:
       - key: NODE_VERSION

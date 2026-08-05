@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Camera,
@@ -523,9 +524,27 @@ function ApiKeysTab() {
 }
 
 export default function IntegrationsPage() {
+  const router = useRouter();
   const { session } = useApiSession();
   const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
+  const visibleTabs = isAdmin ? TABS : TABS.filter((tabItem) => tabItem.id === "connected");
   const [tab, setTab] = useState("connected");
+
+  useEffect(() => {
+    if (session && !isAdmin) {
+      router.replace("/os/settings/profile");
+    }
+  }, [isAdmin, router, session]);
+
+  useEffect(() => {
+    if (!visibleTabs.some((tabItem) => tabItem.id === tab)) {
+      setTab(visibleTabs[0]?.id ?? "connected");
+    }
+  }, [tab, visibleTabs]);
+
+  if (session && !isAdmin) {
+    return null;
+  }
 
   return (
     <div className="grid gap-6">
@@ -540,7 +559,7 @@ export default function IntegrationsPage() {
         </p>
 
         <div className="mt-6">
-          <TabBar items={TABS} onChange={setTab} value={tab} />
+          <TabBar items={visibleTabs} onChange={setTab} value={tab} />
         </div>
 
         <div className="mt-6">

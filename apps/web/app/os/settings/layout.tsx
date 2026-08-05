@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@fliptrybe/ui";
+import { useApiSession } from "../../lib/use-session";
 
 type SettingsNavItem = { label: string; href: Route; icon: LucideIcon };
 type SettingsNavGroup = { group: string; items: SettingsNavItem[] };
@@ -44,6 +45,12 @@ const SETTINGS_NAV: SettingsNavGroup[] = [
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { session } = useApiSession();
+  const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
+  const visibleNav = SETTINGS_NAV.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => isAdmin || item.href !== "/os/settings/integrations")
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
@@ -56,7 +63,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         {/* Side nav */}
         <nav className="hidden lg:block">
           <div className="sticky top-8 grid gap-6">
-            {SETTINGS_NAV.map((group) => (
+            {visibleNav.map((group) => (
               <div key={group.group}>
                 <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--ft-text-muted)]">
                   {group.group}
@@ -89,7 +96,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         {/* Mobile tabs */}
         <div className="overflow-x-auto lg:hidden">
           <div className="flex gap-1 pb-2">
-            {SETTINGS_NAV.flatMap((g) => g.items).map((item) => {
+            {visibleNav.flatMap((g) => g.items).map((item) => {
               const active = pathname.startsWith(item.href);
               return (
                 <Link
