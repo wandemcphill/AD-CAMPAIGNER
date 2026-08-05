@@ -8,6 +8,7 @@ import type { AuthenticatedRequestContext } from "../request-context";
 import { OutgoingWebhooksService } from "../webhooks/outgoing-webhooks.service";
 
 type VoucherProductSeed = {
+  id: string;
   name: string;
   category: "CAMPAIGN" | "TELECOM";
   handler: "WALLET_CREDIT" | "VTU_TOPUP";
@@ -19,6 +20,7 @@ type VoucherProductSeed = {
 
 const productSeeds: VoucherProductSeed[] = [
   {
+    id: "campaign-credit",
     name: "Campaign Credit",
     category: "CAMPAIGN",
     handler: "WALLET_CREDIT",
@@ -26,6 +28,7 @@ const productSeeds: VoucherProductSeed[] = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false }
   },
   {
+    id: "airtime-data-voucher",
     name: "Airtime & Data Voucher",
     category: "TELECOM",
     handler: "VTU_TOPUP",
@@ -326,6 +329,7 @@ export class VouchersService {
 
       await this.prisma.client.voucherProduct.create({
         data: {
+          id: seed.id,
           name: seed.name,
           category: seed.category,
           handler: seed.handler,

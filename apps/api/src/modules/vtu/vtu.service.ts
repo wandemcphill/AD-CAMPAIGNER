@@ -36,6 +36,41 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
 
 // 2% margin over wholesale.
 const MARKUP_BPS = 200;
+const VTU_NETWORKS: VtuNetwork[] = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
+const DEFAULT_VTU_PROVIDER = "clubkonnect";
+const DEFAULT_DATA_PLANS: Array<{
+  network: VtuNetwork;
+  providerPlanId: string;
+  displayName: string;
+  sizeMb: number;
+  validityDays: number;
+  costMinor: number;
+}> = VTU_NETWORKS.flatMap((network) => [
+  {
+    network,
+    providerPlanId: `${network.toLowerCase()}_1gb_30d`,
+    displayName: `${network.replace("_", " ")} 1GB - 30 days`,
+    sizeMb: 1024,
+    validityDays: 30,
+    costMinor: 45000
+  },
+  {
+    network,
+    providerPlanId: `${network.toLowerCase()}_2gb_30d`,
+    displayName: `${network.replace("_", " ")} 2GB - 30 days`,
+    sizeMb: 2048,
+    validityDays: 30,
+    costMinor: 85000
+  },
+  {
+    network,
+    providerPlanId: `${network.toLowerCase()}_5gb_30d`,
+    displayName: `${network.replace("_", " ")} 5GB - 30 days`,
+    sizeMb: 5120,
+    validityDays: 30,
+    costMinor: 200000
+  }
+]);
 
 function applyMarkup(costMinor: number): number {
   return Math.ceil(costMinor * (1 + MARKUP_BPS / 10_000));
@@ -120,6 +155,7 @@ export class VtuService {
     network: VtuNetwork,
     db: DbClient = this.db
   ): Promise<VtuProviderAdapter> {
+    await this.ensureDefaultCatalog(db);
     const routes = await db.vtuProviderRoute.findMany({
       where: { productType, network, active: true },
       orderBy: { priority: "asc" }
@@ -425,6 +461,7 @@ export class VtuService {
   // ─── Data plan catalog ───────────────────────────────────────────────────────
 
   async listDataPlans(network?: VtuNetwork) {
+    await this.ensureDefaultCatalog();
     return this.db.vtuDataPlan.findMany({
       where: { active: true, ...(network ? { network } : {}) },
       orderBy: [{ network: "asc" }, { costMinor: "asc" }]
@@ -461,7 +498,72 @@ export class VtuService {
   // ─── Admin: routes ───────────────────────────────────────────────────────────
 
   async adminListRoutes() {
+    await this.ensureDefaultCatalog();
     return this.db.vtuProviderRoute.findMany({ orderBy: { priority: "asc" } });
+  }
+
+  private async ensureDefaultCatalog(db: DbClient = this.db) {
+    for (const network of VTU_NETWORKS) {
+      for (const productType of ["AIRTIME", "DATA"] as const) {
+        const existing = await db.vtuProviderRoute.findFirst({
+          where: { productType, network, provider: DEFAULT_VTU_PROVIDER }
+        });
+
+        if (existing) {
+          await db.vtuProviderRoute.update({
+            where: { id: existing.id },
+            data: { active: true }
+          });
+        } else {
+          await db.vtuProviderRoute.create({
+            data: {
+              id: uid("vroute"),
+              productType,
+              network,
+              provider: DEFAULT_VTU_PROVIDER,
+              priority: 10,
+              active: true,
+              note: "Default production route"
+            }
+          });
+        }
+      }
+    }
+
+    await Promise.all(
+      DEFAULT_DATA_PLANS.map((plan) =>
+        db.vtuDataPlan.upsert({
+          where: {
+            providerName_providerPlanId: {
+              providerName: DEFAULT_VTU_PROVIDER,
+              providerPlanId: plan.providerPlanId
+            }
+          },
+          update: {
+            network: plan.network,
+            displayName: plan.displayName,
+            sizeMb: plan.sizeMb,
+            validityDays: plan.validityDays,
+            costMinor: plan.costMinor,
+            active: true,
+            lastSyncedAt: new Date()
+          },
+          create: {
+            id: uid("vplan"),
+            providerName: DEFAULT_VTU_PROVIDER,
+            providerPlanId: plan.providerPlanId,
+            network: plan.network,
+            planType: "SME",
+            displayName: plan.displayName,
+            sizeMb: plan.sizeMb,
+            validityDays: plan.validityDays,
+            costMinor: plan.costMinor,
+            currency: "NGN",
+            active: true
+          }
+        })
+      )
+    );
   }
 
   async adminUpdateRoute(

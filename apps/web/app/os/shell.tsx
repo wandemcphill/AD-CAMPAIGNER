@@ -85,6 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "International Numbers", href: "/os/numbers", icon: Globe },
       { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone },
+      { label: "Gift Cards", href: "/os/digital-value", icon: Gift },
       { label: "Airtime", href: "/os/airtime", icon: Phone },
       { label: "Data", href: "/os/data", icon: Wifi },
     ],

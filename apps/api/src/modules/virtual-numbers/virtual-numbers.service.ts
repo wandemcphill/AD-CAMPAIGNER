@@ -31,6 +31,12 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
 // 35% margin over wholesale — numbers carry higher margin than VTU per the plan's
 // indicative pricing (23-45% across SKUs).
 const MARKUP_BPS = 3_500;
+const DEFAULT_NUMBER_COUNTRIES = [
+  { isoCode: "US", name: "United States", dialPrefix: "+1", flagEmoji: "US", sortOrder: 10 },
+  { isoCode: "GB", name: "United Kingdom", dialPrefix: "+44", flagEmoji: "GB", sortOrder: 20 },
+  { isoCode: "CA", name: "Canada", dialPrefix: "+1", flagEmoji: "CA", sortOrder: 30 },
+  { isoCode: "NG", name: "Nigeria", dialPrefix: "+234", flagEmoji: "NG", sortOrder: 40 }
+] as const;
 
 function applyMarkup(costMinorUsd: number): number {
   return Math.ceil(costMinorUsd * (1 + MARKUP_BPS / 10_000));
@@ -278,6 +284,7 @@ export class VirtualNumbersService {
   // ─── Catalog ─────────────────────────────────────────────────────────────────
 
   async listCountries() {
+    await this.ensureDefaultCatalog();
     return this.db.numberCountry.findMany({
       where: { enabled: true },
       orderBy: { sortOrder: "asc" }
@@ -285,6 +292,7 @@ export class VirtualNumbersService {
   }
 
   async listProducts(countryCode: string) {
+    await this.ensureDefaultCatalog();
     const products = await this.db.virtualNumberProduct.findMany({
       where: { countryCode, active: true },
       orderBy: { durationDays: "asc" }
@@ -304,6 +312,68 @@ export class VirtualNumbersService {
         rate.rateMicros
       )
     }));
+  }
+
+  private async ensureDefaultCatalog() {
+    await Promise.all(
+      DEFAULT_NUMBER_COUNTRIES.map((country) =>
+        this.db.numberCountry.upsert({
+          where: { isoCode: country.isoCode },
+          update: {
+            name: country.name,
+            dialPrefix: country.dialPrefix,
+            flagEmoji: country.flagEmoji,
+            enabled: true,
+            sortOrder: country.sortOrder
+          },
+          create: {
+            isoCode: country.isoCode,
+            name: country.name,
+            dialPrefix: country.dialPrefix,
+            flagEmoji: country.flagEmoji,
+            enabled: true,
+            sortOrder: country.sortOrder
+          }
+        })
+      )
+    );
+
+    await Promise.all(
+      DEFAULT_NUMBER_COUNTRIES.flatMap((country) =>
+        [1, 7, 30].map((durationDays) =>
+          this.db.virtualNumberProduct.upsert({
+            where: {
+              countryCode_capability_durationDays: {
+                countryCode: country.isoCode,
+                capability: "SMS",
+                durationDays
+              }
+            },
+            update: {
+              displayName: `${country.name} SMS number - ${durationDays} day${durationDays === 1 ? "" : "s"}`,
+              active: true,
+              preferredProviders: ["5sim", "smspva", "smspool"],
+              metadata: {
+                referenceCostMinorUsd: durationDays === 1 ? 120 : durationDays === 7 ? 450 : 1200
+              }
+            },
+            create: {
+              id: uid("vnprod"),
+              countryCode: country.isoCode,
+              capability: "SMS",
+              rentalKind: durationDays === 1 ? "TEMPORARY" : durationDays === 7 ? "EXTENDED" : "LONG_TERM",
+              durationDays,
+              displayName: `${country.name} SMS number - ${durationDays} day${durationDays === 1 ? "" : "s"}`,
+              active: true,
+              preferredProviders: ["5sim", "smspva", "smspool"],
+              metadata: {
+                referenceCostMinorUsd: durationDays === 1 ? 120 : durationDays === 7 ? 450 : 1200
+              }
+            }
+          })
+        )
+      )
+    );
   }
 
   // ─── Purchase ────────────────────────────────────────────────────────────────

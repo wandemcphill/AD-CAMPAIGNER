@@ -404,6 +404,13 @@ export function createPaymentIntent(input: CreatePaymentIntentInput) {
   });
 }
 
+export function createWalletFundingIntent(input: CreatePaymentIntentInput) {
+  return apiRequest<PaymentIntent>("/wallet/funding-intents", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
 export function formatCampaignMoney(money?: Money | null) {
   return money ? formatMoney(money) : "No amount";
 }

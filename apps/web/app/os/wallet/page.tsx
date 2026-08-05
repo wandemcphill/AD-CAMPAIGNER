@@ -20,7 +20,7 @@ import type { CurrencyCode, PaymentIntent } from "@fliptrybe/types";
 
 import {
   amountToMinor,
-  createPaymentIntent,
+  createWalletFundingIntent,
   formatCampaignMoney,
   type CreatePaymentIntentInput
 } from "../../campaigns/api";
@@ -282,10 +282,10 @@ export default function BillingPage() {
         input.customerName = session.user.displayName ?? session.user.name;
       }
       if (typeof window !== "undefined") {
-        input.redirectUrl = `${window.location.origin}/billing`;
+        input.redirectUrl = `${window.location.origin}/os/wallet`;
       }
 
-      setIntent(await createPaymentIntent(input));
+      setIntent(await createWalletFundingIntent(input));
       await refresh();
     } catch (caught) {
       setFormError(checkoutErrorMessage(caught));
