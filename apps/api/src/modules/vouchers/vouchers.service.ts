@@ -46,6 +46,8 @@ const productSeeds: VoucherProductSeed[] = [
   }
 ];
 
+const CAMPAIGN_CREDIT_VOUCHER_AMOUNT_MINOR = 500_000;
+
 function baseUrl() {
   const value = process.env.PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   return value.replace(/\/+$/, "");
@@ -87,6 +89,10 @@ function voucherPin() {
 
 function serialNumber() {
   return `FTC${new Date().toISOString().slice(0, 10).replace(/-/g, "")}${randomBytes(3).toString("hex").toUpperCase()}`;
+}
+
+function id(prefix: string) {
+  return `${prefix}_${randomBytes(6).toString("hex")}`;
 }
 
 function requireContext(context?: AuthenticatedRequestContext) {
@@ -259,18 +265,53 @@ export class VouchersService {
     const scope = requireContext(context);
     const voucher = await this.getOwnedVoucher(voucherId, scope.userId, scope.workspaceId);
 
+    if (voucher.status === "REDEEMED") {
+      throw new ConflictException("Voucher has already been redeemed.");
+    }
     if (voucher.status !== "REVEALED" && voucher.status !== "CLAIMED") {
       throw new ConflictException("Voucher must be revealed before redemption.");
     }
 
-    const redeemed = await this.prisma.client.voucher.update({
-      where: { id: voucher.id },
-      data: {
-        redemptionInput: jsonValue(input),
-        status: "REDEEMED",
-        redeemedAt: new Date()
-      },
-      include: { product: true, purchaser: true, owner: true, claimTokens: true }
+    const redeemed = await this.prisma.client.$transaction(async (tx: TransactionClient) => {
+      if (voucher.product.handler === "WALLET_CREDIT") {
+        const currency = "NGN";
+        const wallet = await tx.wallet.upsert({
+          where: { workspaceId_currency: { workspaceId: scope.workspaceId, currency } },
+          update: {},
+          create: { workspaceId: scope.workspaceId, currency }
+        });
+
+        await tx.ledgerEntry.create({
+          data: {
+            id: id("led"),
+            walletId: wallet.id,
+            kind: "CREDIT",
+            amountMinor: CAMPAIGN_CREDIT_VOUCHER_AMOUNT_MINOR,
+            currency,
+            reference: `voucher_redeem_${voucher.id}`,
+            description: `Voucher redemption: ${voucher.product.name}`,
+            idempotencyKey: `voucher_redeem_${voucher.id}`,
+            sourceType: "Voucher",
+            sourceId: voucher.id
+          }
+        });
+      }
+
+      if (voucher.product.handler === "VTU_TOPUP") {
+        throw new BadRequestException(
+          "Airtime and data vouchers require phone number, network, and plan fulfillment before redemption."
+        );
+      }
+
+      return tx.voucher.update({
+        where: { id: voucher.id },
+        data: {
+          redemptionInput: jsonValue(input),
+          status: "REDEEMED",
+          redeemedAt: new Date()
+        },
+        include: { product: true, purchaser: true, owner: true, claimTokens: true }
+      });
     });
 
     void this.webhooks.dispatchEvent(scope.workspaceId, "voucher.redeemed", {

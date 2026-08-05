@@ -193,9 +193,11 @@ export class VtuService {
   // ─── Wallet helpers ──────────────────────────────────────────────────────────
 
   private async getWallet(workspaceId: string, db: DbClient = this.db) {
-    const wallet = await db.wallet.findFirst({ where: { workspaceId, currency: "NGN" } });
-    if (!wallet) throw new NotFoundException("Wallet not found.");
-    return wallet;
+    return db.wallet.upsert({
+      where: { workspaceId_currency: { workspaceId, currency: "NGN" } },
+      update: {},
+      create: { workspaceId, currency: "NGN" }
+    });
   }
 
   private async debitWallet(
