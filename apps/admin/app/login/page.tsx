@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { ArrowRight, LogIn, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
+import { Badge, Button, Panel } from "@fliptrybe/ui";
 
 import { useApiSession } from "../lib/use-session";
 
@@ -13,14 +13,17 @@ export default function LoginPage() {
   const { error: sessionError, loading: sessionLoading, session, signIn } = useApiSession();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+  const isAdminSession = session?.role === "OWNER" || session?.role === "ADMIN";
 
   useEffect(() => {
-    if (!sessionLoading && session) {
+    if (!sessionLoading && isAdminSession) {
       router.replace("/campaign-ops");
     }
-  }, [router, session, sessionLoading]);
+  }, [isAdminSession, router, sessionLoading]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,10 +31,27 @@ export default function LoginPage() {
     setSubmitting(true);
 
     try {
-      await signIn({ username, password });
+      const nextSession = await signIn({
+        username: username.trim(),
+        password,
+        ...(totpCode.trim() ? { totpCode: totpCode.trim() } : {})
+      });
+
+      if (nextSession.role !== "OWNER" && nextSession.role !== "ADMIN") {
+        setError("This account is not allowed to access the admin console.");
+        return;
+      }
+
       router.replace("/campaign-ops");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Login failed.");
+      const message = caught instanceof Error ? caught.message : "Login failed.";
+
+      if (message === "TWO_FACTOR_REQUIRED") {
+        setNeedsTwoFactor(true);
+        setError("Enter your two-factor code to continue.");
+      } else {
+        setError(message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -44,7 +64,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-2">
             <Badge tone="info">Admin auth</Badge>
             <span className="text-xs uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
-              Username only
+              Admin workspace
             </span>
           </div>
           <h1 className="mt-4 text-3xl font-semibold tracking-normal">Sign in</h1>
@@ -67,13 +87,11 @@ export default function LoginPage() {
             </div>
           ) : null}
 
-          <SummaryStatStrip
-            items={[
-              { label: "identity", value: "Username" },
-              { label: "verification", value: "None" },
-              { label: "workspace", value: "Auto-attached" }
-            ]}
-          />
+          {session && !isAdminSession ? (
+            <div className="mb-5 rounded-md border border-[var(--ft-red)]/40 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
+              You are signed in, but this account is not allowed to access the admin console.
+            </div>
+          ) : null}
 
           <form className="mt-6 grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
           <label className="grid gap-2 text-sm font-medium" htmlFor="username">
@@ -102,6 +120,22 @@ export default function LoginPage() {
               value={password}
             />
           </label>
+
+          {needsTwoFactor ? (
+            <label className="grid gap-2 text-sm font-medium" htmlFor="totp-code">
+              Two-factor code
+              <input
+                autoComplete="one-time-code"
+                className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                id="totp-code"
+                inputMode="numeric"
+                onChange={(event) => setTotpCode(event.target.value)}
+                placeholder="123456"
+                type="text"
+                value={totpCode}
+              />
+            </label>
+          ) : null}
 
           {error ? <p className="text-sm leading-6 text-[var(--ft-red)]">{error}</p> : null}
 

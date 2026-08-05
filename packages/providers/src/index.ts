@@ -792,7 +792,7 @@ export function createKorapayPaymentGateway(
           reference,
           customer: {
             name: input.customerName ?? "FlipTrybe Customer",
-            email: input.customerEmail ?? "payments@fliptrybe.test"
+            email: input.customerEmail ?? "billing@fliptrybe.com"
           },
           redirect_url: input.redirectUrl ?? config.defaultRedirectUrl,
           notification_url: input.webhookUrl ?? config.defaultWebhookUrl,
@@ -849,7 +849,7 @@ export function createPaystackPaymentGateway(
       const response = (await callPaystackApi(config, "/transaction/initialize", {
         method: "POST",
         body: {
-          email: input.customerEmail ?? "payments@fliptrybe.test",
+          email: input.customerEmail ?? "billing@fliptrybe.com",
           amount: input.amount.amountMinor,
           currency: input.amount.currency,
           reference,

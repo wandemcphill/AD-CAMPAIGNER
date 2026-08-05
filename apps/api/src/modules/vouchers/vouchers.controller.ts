@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
 
-import { Public } from "../authorization.decorators";
+import { Public, RequirePermissions } from "../authorization.decorators";
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
 import { VouchersService } from "./vouchers.service";
 
 @Controller("vouchers")
+@RequirePermissions("analytics:read")
 export class VouchersController {
   constructor(@Inject(VouchersService) private readonly vouchers: VouchersService) {}
 
@@ -19,6 +20,7 @@ export class VouchersController {
   }
 
   @Post()
+  @RequirePermissions("campaign:create")
   create(
     @Body() body: { productId: string; giftNote?: string; redemptionDestination?: string; metadata?: Record<string, unknown> },
     @Req() request: WorkspaceContextRequest
@@ -27,16 +29,19 @@ export class VouchersController {
   }
 
   @Post(":id/share")
+  @RequirePermissions("campaign:create")
   share(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.vouchers.shareVoucher(id, workspaceContextFromRequest(request));
   }
 
   @Post(":id/reveal")
+  @RequirePermissions("campaign:create")
   reveal(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.vouchers.revealVoucher(id, workspaceContextFromRequest(request));
   }
 
   @Post(":id/redeem")
+  @RequirePermissions("campaign:create")
   redeem(
     @Param("id") id: string,
     @Body() body: Record<string, unknown>,

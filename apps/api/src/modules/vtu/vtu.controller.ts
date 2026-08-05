@@ -18,6 +18,7 @@ import type {
 import { VtuService } from "./vtu.service";
 
 @Controller("vtu")
+@RequirePermissions("analytics:read")
 export class VtuController {
   constructor(@Inject(VtuService) private readonly vtu: VtuService) {}
 

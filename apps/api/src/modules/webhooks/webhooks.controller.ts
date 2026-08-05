@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, Inject, Param, Post, Query, Req } from "@nestjs/common";
 import type { RawBodyRequest } from "@nestjs/common";
 
-import { RequirePermissions } from "../authorization.decorators";
+import { Public, RequirePermissions } from "../authorization.decorators";
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
 import { IncomingWebhooksService } from "./incoming-webhooks.service";
 import { ProviderWebhooksService } from "./provider-webhooks.service";
@@ -57,6 +57,7 @@ export class IncomingWebhooksController {
 }
 
 @Controller("webhooks")
+@Public()
 export class ProviderWebhooksController {
   constructor(@Inject(ProviderWebhooksService) private readonly provider: ProviderWebhooksService) {}
 

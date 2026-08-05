@@ -19,6 +19,7 @@ import type {
 import { RewardsService } from "./rewards.service";
 
 @Controller("rewards")
+@RequirePermissions("analytics:read")
 export class RewardsController {
   constructor(@Inject(RewardsService) private readonly rewards: RewardsService) {}
 
@@ -77,6 +78,7 @@ export class RewardsController {
   }
 
   @Get("campaigns/:id/leaderboard")
+  @Public()
   getLeaderboard(
     @Param("id") id: string,
     @Query("page") page?: string,

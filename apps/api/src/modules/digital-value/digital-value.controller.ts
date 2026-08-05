@@ -19,6 +19,7 @@ import type {
 } from './digital-value.dtos';
 
 @Controller('digital-value')
+@RequirePermissions('analytics:read')
 export class DigitalValueController {
   constructor(@Inject(DigitalValueService) private readonly service: DigitalValueService) {}
 

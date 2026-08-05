@@ -32,6 +32,7 @@ export type AuthCredentials = {
   password: string;
   confirmPassword?: string;
   displayName?: string;
+  totpCode?: string;
 };
 
 export type AuthResult = {
@@ -204,6 +205,12 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   } catch (caught) {
     if (controller.signal.aborted) {
       throw new ApiClientError("Admin API request timed out. Check NEXT_PUBLIC_API_URL and API health.", 408);
+    }
+    if (caught instanceof TypeError) {
+      throw new ApiClientError(
+        `Could not reach the Admin API at ${getApiBaseUrl()}. Check the admin app API URL and CORS allowlist.`,
+        0
+      );
     }
     throw caught;
   } finally {
