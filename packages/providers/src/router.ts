@@ -130,6 +130,48 @@ export function selectProviders(
   });
 }
 
+export interface AffinityResult {
+  providerName: string;
+  available: boolean;
+  reason?: "provider_not_configured" | "provider_disabled" | "provider_unhealthy";
+}
+
+/**
+ * Route a lifecycle operation (renew, resolve, top-up — anything acting on a resource
+ * that was already provisioned) back to the provider that originally fulfilled it.
+ *
+ * This is deliberately NOT selectProviders(): a new resource may re-rank freely across
+ * healthy candidates, but an existing resource's lifecycle must stay pinned to its
+ * origin provider. If that provider is unhealthy, the correct move is to hold the
+ * operation and flag it for ops review — never silently migrate the resource to a
+ * different provider out from under the customer.
+ *
+ * Callers should treat `available: false` as "hold and flag", not as "try someone
+ * else." The one exception (per the handbook) is read-only operations — balance or
+ * history reads — which may fall back to last-known-good data instead of blocking;
+ * that fallback is the caller's responsibility, not this function's.
+ */
+export function selectAffinityProvider(
+  providerName: string,
+  configs: ProviderConfigLike[],
+  healthMap: Map<string, ProviderHealthLike>
+): AffinityResult {
+  const config = configs.find((c) => c.name === providerName && !c.deletedAt);
+  if (!config) {
+    return { providerName, available: false, reason: "provider_not_configured" };
+  }
+  if (config.status === "DISABLED") {
+    return { providerName, available: false, reason: "provider_disabled" };
+  }
+
+  const effectiveStatus = healthMap.get(providerName)?.status ?? config.status;
+  if (effectiveStatus === "DOWN") {
+    return { providerName, available: false, reason: "provider_unhealthy" };
+  }
+
+  return { providerName, available: true };
+}
+
 /**
  * Build a Map<providerName, latestHealth> from a flat array of health records.
  * Deduplicates by providerName keeping the most recent checkedAt.

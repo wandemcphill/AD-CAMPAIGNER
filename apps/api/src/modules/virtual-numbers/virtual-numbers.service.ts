@@ -10,10 +10,12 @@ import { Prisma, type DatabaseClient } from "@fliptrybe/database";
 import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
+  buildHealthMap,
   createFiveSimRentalAdapter,
   createMockVirtualNumberAdapter,
   createSmsPoolAdapter,
   createSmsPvaAdapter,
+  selectAffinityProvider,
   type NumberOffer,
   type VirtualNumberProviderAdapter
 } from "@fliptrybe/providers";
@@ -139,6 +141,48 @@ export class VirtualNumbersService {
       const status = latestStatus.get(name);
       return status !== "DOWN" && status !== "DISABLED";
     });
+  }
+
+  // Lifecycle ops (renew) must route back to the resource's origin provider — never
+  // silently re-rank it onto a different one. If the origin provider is unhealthy,
+  // hold and flag for ops review rather than proceeding.
+  private async assertProviderAffinity(providerName: string, resourceLabel: string) {
+    const [config, healthRows] = await Promise.all([
+      this.db.providerConfig.findFirst({ where: { name: providerName, deletedAt: null } }),
+      this.db.providerHealth.findMany({
+        where: { providerName, domain: "VIRTUAL_NUMBER" },
+        orderBy: { checkedAt: "desc" },
+        take: 1
+      })
+    ]);
+
+    const affinity = selectAffinityProvider(
+      providerName,
+      config
+        ? [
+            {
+              name: config.name,
+              domain: config.domain,
+              status: config.status,
+              priority: config.priority,
+              enabledCountries: config.enabledCountries,
+              enabledNetworks: config.enabledNetworks,
+              enabledProductTypes: config.enabledProductTypes,
+              deletedAt: config.deletedAt
+            }
+          ]
+        : [],
+      buildHealthMap(healthRows)
+    );
+
+    if (!affinity.available) {
+      this.logger.error(
+        `Provider affinity hold: ${resourceLabel} is pinned to ${providerName} (${affinity.reason}). Flagging for ops review instead of re-routing.`
+      );
+      throw new BadRequestException(
+        `${providerName} is temporarily unavailable for this number. This has been flagged for review — no other provider will be used automatically.`
+      );
+    }
   }
 
   // ─── Hardening & limits ──────────────────────────────────────────────────────
@@ -648,6 +692,8 @@ export class VirtualNumbersService {
     if (number.status !== "ACTIVE" && number.status !== "EXPIRING") {
       throw new BadRequestException("Only active or expiring numbers can be renewed.");
     }
+
+    await this.assertProviderAffinity(number.providerName, number.e164);
 
     const adapter = this.buildAdapter(number.providerName);
     const product = await this.db.virtualNumberProduct.findUnique({
