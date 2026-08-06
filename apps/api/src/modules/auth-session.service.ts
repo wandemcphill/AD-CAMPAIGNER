@@ -21,6 +21,7 @@ import type { Permission, Role } from "@fliptrybe/types";
 import { PrismaService } from "./prisma.service";
 import {
   authenticatedContextFromHeaders,
+  optionalAuthenticatedContextFromHeaders,
   bearerTokenFromHeaders,
   metadataContextFromHeaders,
   type AuthenticatedRequestContext,
@@ -318,8 +319,13 @@ export class AuthSessionService {
   constructor(private readonly prismaService: PrismaService) {}
 
   async getSession(headers: HeaderBag) {
-    const scope = await this.getValidatedScope(headers);
+    const context = optionalAuthenticatedContextFromHeaders(headers);
 
+    if (!context?.userId) {
+      return null;
+    }
+
+    const scope = await this.getValidatedScope(headers);
     return this.toSessionPayload(scope);
   }
 
