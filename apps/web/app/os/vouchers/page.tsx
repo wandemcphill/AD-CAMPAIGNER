@@ -37,6 +37,9 @@ export default function VouchersPage() {
   const [error, setError] = useState<string>();
   const [shareLink, setShareLink] = useState<string>();
   const [copied, setCopied] = useState(false);
+  const [epinNetwork, setEpinNetwork] = useState<string>("MTN");
+  const [epinValue, setEpinValue] = useState<string>("10000");
+  const [dataPlanId, setDataPlanId] = useState<string>("");
 
   const refresh = useCallback(async () => {
     setError(undefined);
@@ -77,9 +80,24 @@ export default function VouchersPage() {
   async function issueVoucher() {
     if (!currentProduct) return;
 
+    const metadata: Record<string, unknown> = {};
+
+    if (currentProduct.id === "airtime-epin-voucher") {
+      metadata.network = epinNetwork;
+      metadata.valueMinor = parseInt(epinValue, 10);
+    } else if (currentProduct.id === "data-epin-voucher") {
+      metadata.network = epinNetwork;
+      metadata.providerPlanId = dataPlanId;
+    }
+
     await run(
       "issue",
-      () => createVoucher({ productId: currentProduct.id, giftNote: "Shared from FlipTrybe" }),
+      () =>
+        createVoucher({
+          productId: currentProduct.id,
+          giftNote: "Shared from FlipTrybe",
+          ...(Object.keys(metadata).length > 0 ? { metadata } : {})
+        }),
       "We could not issue that voucher. No credit has been deducted."
     );
   }
@@ -220,6 +238,64 @@ export default function VouchersPage() {
           <p className="mt-5 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm leading-6 text-[var(--ft-text-secondary)]">
             Issue a voucher, share it while sealed, then reveal and redeem from this same view.
           </p>
+
+          {currentProduct?.id === "airtime-epin-voucher" && (
+            <div className="mt-5 grid gap-3 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4">
+              <label className="grid gap-2 text-sm font-medium">
+                <span className="text-[var(--ft-text-primary)]">Network</span>
+                <select
+                  className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  value={epinNetwork}
+                  onChange={(e) => setEpinNetwork(e.target.value)}
+                >
+                  <option value="MTN">MTN</option>
+                  <option value="GLO">Glo</option>
+                  <option value="AIRTEL">Airtel</option>
+                  <option value="NINE_MOBILE">9mobile</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                <span className="text-[var(--ft-text-primary)]">Value (₦)</span>
+                <select
+                  className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  value={epinValue}
+                  onChange={(e) => setEpinValue(e.target.value)}
+                >
+                  <option value="10000">₦100</option>
+                  <option value="20000">₦200</option>
+                  <option value="50000">₦500</option>
+                </select>
+              </label>
+            </div>
+          )}
+
+          {currentProduct?.id === "data-epin-voucher" && (
+            <div className="mt-5 grid gap-3 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4">
+              <label className="grid gap-2 text-sm font-medium">
+                <span className="text-[var(--ft-text-primary)]">Network</span>
+                <select
+                  className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  value={epinNetwork}
+                  onChange={(e) => setEpinNetwork(e.target.value)}
+                >
+                  <option value="MTN">MTN</option>
+                  <option value="GLO">Glo</option>
+                  <option value="AIRTEL">Airtel</option>
+                  <option value="NINE_MOBILE">9mobile</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                <span className="text-[var(--ft-text-primary)]">Data Plan ID</span>
+                <input
+                  className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  placeholder="e.g. 1000 for MTN 1GB"
+                  type="text"
+                  value={dataPlanId}
+                  onChange={(e) => setDataPlanId(e.target.value)}
+                />
+              </label>
+            </div>
+          )}
         </Panel>
 
         <div className="grid gap-5">

@@ -23,12 +23,17 @@ import { featureFlags } from "@fliptrybe/feature-flags";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   BuyAirtimeDto,
+  BuyAirtimeEpinDto,
   BuyDataDto,
+  BuyDataEpinDto,
   BillsOrderQueryDto,
+  BuyBetFundingDto,
   BuyCableDto,
+  BuyEducationDto,
   BuyElectricityDto,
   ValidateMeterDto
 } from "./vtu.dtos";
+import type { VtuEpin } from "@fliptrybe/providers";
 
 type DbClient = DatabaseClient | Prisma.TransactionClient;
 
@@ -89,6 +94,27 @@ const DEFAULT_CABLE_PACKAGES: Array<{
   { cableProvider: "dstv", packageCode: "dstv3", displayName: "DStv Premium", costMinor: 4450000 },
   { cableProvider: "dstv", packageCode: "dstv10", displayName: "DStv Premium-Asia", costMinor: 5050000 },
   { cableProvider: "dstv", packageCode: "dstv9", displayName: "DStv Premium-French", costMinor: 6900000 }
+];
+
+// Verified via /APIBettingTypeV2.asp (2026-08-06) — PRODUCT_CODE values, not display names.
+const BETTING_COMPANIES: Array<{ code: string; name: string }> = [
+  { code: "product-nairabet", name: "NairaBet" },
+  { code: "product-bang-bet", name: "BangBet" },
+  { code: "product-bet-way", name: "BetWay" },
+  { code: "product-bet-land", name: "BetLand" },
+  { code: "product-bet-king", name: "BetKing" },
+  { code: "product-1x-bet", name: "1xBet" },
+  { code: "product-naija-bet", name: "NaijaBet" },
+  { code: "prd-sporty-bet", name: "Sporty Bet" },
+  { code: "product-merry-bet", name: "MerryBet" }
+];
+
+// Verified via /APIWAECPackagesV2.asp (2026-08-06). JAMB exam types (de, utme-mock,
+// utme-no-mock) come back empty from /APIJAMBPackagesV2.asp at this account tier —
+// keep the JAMB code path but its ExamType list is not currently priced here.
+const EDUCATION_PLANS: Array<{ examType: string; displayName: string; costMinor: number }> = [
+  { examType: "waecdirect", displayName: "WAEC Result Checker PIN", costMinor: 535000 },
+  { examType: "waec-registraion", displayName: "WAEC Registration PIN", costMinor: 3750000 }
 ];
 
 function applyMarkup(costMinor: number): number {
@@ -510,6 +536,278 @@ export class VtuService {
     return this.db.vtuOrder.findUniqueOrThrow({ where: { id: orderId } });
   }
 
+  // ─── Airtime EPIN (printed recharge PIN) ─────────────────────────────────────
+  // Distinct from buyAirtime: no msisdn, provider returns pin+serialNumber instead of
+  // crediting a phone directly. Used by the voucher engine to seal a real ClubKonnect
+  // PIN into a Voucher instead of FlipTrybe's own locally-generated code.
+
+  async buyAirtimeEpin(
+    ctx: AuthenticatedRequestContext,
+    dto: BuyAirtimeEpinDto
+  ): Promise<{ order: Prisma.VtuOrderGetPayload<Record<string, never>>; epins: VtuEpin[] }> {
+    const { workspaceId } = ctx;
+
+    if (![10_000, 20_000, 50_000].includes(dto.valueMinor)) {
+      throw new BadRequestException("Airtime EPIN value must be ₦100, ₦200, or ₦500.");
+    }
+    if (!Number.isInteger(dto.quantity) || dto.quantity < 1 || dto.quantity > 100) {
+      throw new BadRequestException("quantity must be between 1 and 100.");
+    }
+
+    const adapter = await this.selectAdapter("AIRTIME", dto.network);
+    if (!adapter.purchaseAirtimeEpin) {
+      throw new BadRequestException("Selected provider does not support airtime EPIN issuance.");
+    }
+
+    // No wholesale-discount API for EPIN (unlike direct recharge) — charge face value + markup.
+    const costMinor = dto.valueMinor * dto.quantity;
+    const chargeMinor = applyMarkup(costMinor);
+    const orderId = uid("vtu");
+    const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
+
+    const order = await this.db.$transaction(async (tx) => {
+      const wallet = await this.getWallet(workspaceId, tx);
+      const entries = (await tx.ledgerEntry.findMany({
+        where: { walletId: wallet.id }
+      })) as DbLedgerEntryRow[];
+      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+      if (available.amountMinor < chargeMinor) {
+        throw new ForbiddenException(
+          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+        );
+      }
+
+      const newOrder = await tx.vtuOrder.create({
+        data: {
+          id: orderId,
+          workspaceId,
+          productType: "AIRTIME_EPIN",
+          network: dto.network,
+          msisdnMasked: "EPIN",
+          msisdnEncrypted: "",
+          faceValueMinor: dto.valueMinor,
+          amountMinor: chargeMinor,
+          costMinor,
+          currency: "NGN",
+          providerName: adapter.name,
+          providerReference: reference,
+          status: "SUBMITTED",
+          idempotencyKey: `vtu_order_${orderId}`,
+          metadata: { quantity: dto.quantity }
+        }
+      });
+
+      await this.debitWallet(
+        wallet.id,
+        workspaceId,
+        chargeMinor,
+        `Airtime EPIN ${dto.network} ₦${(dto.valueMinor / 100).toFixed(0)} x${dto.quantity}`,
+        orderId,
+        tx
+      );
+
+      return newOrder;
+    });
+
+    try {
+      const result = await adapter.purchaseAirtimeEpin({
+        network: dto.network,
+        valueMinor: dto.valueMinor,
+        quantity: dto.quantity,
+        reference: order.providerReference!
+      });
+
+      if (result.status === "DELIVERED" && result.epins?.length) {
+        await this.db.vtuOrder.update({
+          where: { id: order.id },
+          data: { status: "DELIVERED", metadata: { quantity: dto.quantity, epins: result.epins } as unknown as Prisma.InputJsonValue }
+        });
+        return { order: await this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } }), epins: result.epins };
+      }
+
+      // Failed or no PINs — reverse the charge, this purchase did not deliver.
+      await this.reverseVtuCharge(order.id, ctx);
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: { status: "REVERSED", failureReason: result.failureReason ?? "No EPINs returned." }
+      });
+      throw new BadRequestException(result.failureReason ?? "Airtime EPIN purchase failed.");
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`VTU airtime EPIN submit error for ${order.id}: ${String(err)}`);
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: { status: "AMBIGUOUS" }
+      });
+      await this.queue.enqueueVtuOpsReview(order.id);
+      throw new BadRequestException("Airtime EPIN purchase could not be confirmed. It has been queued for review.");
+    }
+  }
+
+  // ─── Data EPIN (printed data-bundle recharge PIN) ────────────────────────────
+
+  async buyDataEpin(
+    ctx: AuthenticatedRequestContext,
+    dto: BuyDataEpinDto
+  ): Promise<{ order: Prisma.VtuOrderGetPayload<Record<string, never>>; epins: VtuEpin[] }> {
+    const { workspaceId } = ctx;
+
+    if (!dto.providerPlanId) throw new BadRequestException("providerPlanId is required.");
+    if (!Number.isInteger(dto.quantity) || dto.quantity < 1 || dto.quantity > 100) {
+      throw new BadRequestException("quantity must be between 1 and 100.");
+    }
+
+    const adapter = await this.selectAdapter("DATA", dto.network);
+    if (!adapter.purchaseDataEpin) {
+      throw new BadRequestException("Selected provider does not support data EPIN issuance.");
+    }
+
+    const plan = await this.db.vtuDataPlan.findFirst({
+      where: {
+        providerName: adapter.name,
+        providerPlanId: dto.providerPlanId,
+        network: dto.network,
+        active: true
+      }
+    });
+    if (!plan) throw new NotFoundException("Data plan not found or unavailable.");
+
+    const costMinor = plan.costMinor * dto.quantity;
+    const chargeMinor = applyMarkup(costMinor);
+    const orderId = uid("vtu");
+    const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
+
+    const order = await this.db.$transaction(async (tx) => {
+      const wallet = await this.getWallet(workspaceId, tx);
+      const entries = (await tx.ledgerEntry.findMany({
+        where: { walletId: wallet.id }
+      })) as DbLedgerEntryRow[];
+      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+      if (available.amountMinor < chargeMinor) {
+        throw new ForbiddenException(
+          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+        );
+      }
+
+      const newOrder = await tx.vtuOrder.create({
+        data: {
+          id: orderId,
+          workspaceId,
+          productType: "DATA_EPIN",
+          network: dto.network,
+          msisdnMasked: "EPIN",
+          msisdnEncrypted: "",
+          planId: plan.id,
+          amountMinor: chargeMinor,
+          costMinor,
+          currency: "NGN",
+          providerName: adapter.name,
+          providerReference: reference,
+          status: "SUBMITTED",
+          idempotencyKey: `vtu_order_${orderId}`,
+          metadata: { quantity: dto.quantity }
+        }
+      });
+
+      await this.debitWallet(
+        wallet.id,
+        workspaceId,
+        chargeMinor,
+        `Data EPIN ${plan.displayName} x${dto.quantity}`,
+        orderId,
+        tx
+      );
+
+      return newOrder;
+    });
+
+    try {
+      const result = await adapter.purchaseDataEpin({
+        network: dto.network,
+        providerPlanId: dto.providerPlanId,
+        quantity: dto.quantity,
+        reference: order.providerReference!
+      });
+
+      if (result.status === "DELIVERED" && result.epins?.length) {
+        await this.db.vtuOrder.update({
+          where: { id: order.id },
+          data: { status: "DELIVERED", metadata: { quantity: dto.quantity, epins: result.epins } as unknown as Prisma.InputJsonValue }
+        });
+        return { order: await this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } }), epins: result.epins };
+      }
+
+      if (result.status === "SUBMITTED") {
+        // Data EPIN can queue (ORDER_RECEIVED) before rows are ready — poll like other
+        // asynchronous ClubKonnect products rather than treating this as a failure.
+        await this.db.vtuOrder.update({ where: { id: order.id }, data: { status: "SUBMITTED" } });
+        await this.queue.enqueueVtuPollStatus(order.id);
+        throw new BadRequestException(
+          "Data EPIN purchase was queued by the provider. Check order status shortly."
+        );
+      }
+
+      await this.reverseVtuCharge(order.id, ctx);
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: { status: "REVERSED", failureReason: result.failureReason ?? "No EPINs returned." }
+      });
+      throw new BadRequestException(result.failureReason ?? "Data EPIN purchase failed.");
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      this.logger.error(`VTU data EPIN submit error for ${order.id}: ${String(err)}`);
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: { status: "AMBIGUOUS" }
+      });
+      await this.queue.enqueueVtuOpsReview(order.id);
+      throw new BadRequestException("Data EPIN purchase could not be confirmed. It has been queued for review.");
+    }
+  }
+
+  private async reverseVtuCharge(orderId: string, ctx: AuthenticatedRequestContext) {
+    const charge = await this.db.vtuWalletCharge.findFirst({
+      where: { orderId, status: "CHARGED" }
+    });
+    if (!charge) return;
+
+    const ledgerId = uid("led");
+    const idemKey = `vtu_reversal_${orderId}`;
+
+    const reversalEntry = await this.db.ledgerEntry.create({
+      data: {
+        id: ledgerId,
+        walletId: charge.walletId,
+        kind: "REVERSAL",
+        amountMinor: charge.amountMinor,
+        currency: "NGN",
+        reference: idemKey,
+        description: `Reversal: VTU order ${orderId}`,
+        idempotencyKey: idemKey,
+        sourceType: "VtuWalletCharge",
+        sourceId: charge.id
+      }
+    });
+
+    await this.db.vtuWalletCharge.update({
+      where: { id: charge.id },
+      data: { status: "REFUNDED", refundLedgerEntryId: reversalEntry.id }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        action: "VTU_EPIN_REVERSED",
+        actorUserId: ctx.userId,
+        entityType: "VtuOrder",
+        entityId: orderId,
+        metadata: {}
+      }
+    });
+  }
+
   // ─── Data plan catalog ───────────────────────────────────────────────────────
 
   async listDataPlans(network?: VtuNetwork) {
@@ -655,7 +953,7 @@ export class VtuService {
   // VtuProviderRoute rows with productType=ELECTRICITY / productType=CABLE and no network.
 
   private async selectBillsAdapter(
-    productType: "ELECTRICITY" | "CABLE",
+    productType: "ELECTRICITY" | "CABLE" | "BETTING" | "EDUCATION",
     db: DbClient = this.db
   ): Promise<VtuProviderAdapter> {
     const routes = await db.vtuProviderRoute.findMany({
@@ -1028,6 +1326,277 @@ export class VtuService {
     );
   }
 
+  // ─── Bet funding ──────────────────────────────────────────────────────────────
+
+  async verifyBetting(dto: { bettingCompany: string; customerId: string }) {
+    if (!featureFlags.billsBetting) {
+      throw new BadRequestException("Bet funding is not yet available.");
+    }
+
+    const adapter = await this.selectBillsAdapter("BETTING");
+    if (!adapter.verifyBettingCustomer) {
+      throw new BadRequestException("Selected provider does not support betting verification.");
+    }
+
+    return adapter.verifyBettingCustomer({
+      bettingCompany: dto.bettingCompany,
+      customerId: dto.customerId
+    });
+  }
+
+  async buyBetFunding(ctx: AuthenticatedRequestContext, dto: BuyBetFundingDto) {
+    if (!featureFlags.billsBetting) {
+      throw new BadRequestException("Bet funding is not yet available.");
+    }
+
+    const { workspaceId } = ctx;
+    if (!dto.bettingCompany) throw new BadRequestException("bettingCompany is required.");
+    if (!dto.customerId) throw new BadRequestException("customerId is required.");
+    if (dto.amountMinor < 10_000) {
+      throw new BadRequestException("Minimum bet funding is ₦100.");
+    }
+
+    const adapter = await this.selectBillsAdapter("BETTING");
+    if (!adapter.purchaseBetFunding) {
+      throw new BadRequestException("Selected provider does not support bet funding.");
+    }
+
+    if (adapter.verifyBettingCustomer) {
+      const validation = await adapter.verifyBettingCustomer({
+        bettingCompany: dto.bettingCompany,
+        customerId: dto.customerId
+      });
+      if (!validation.valid) {
+        throw new BadRequestException(
+          "Betting account verification failed. Verify the customer ID and try again."
+        );
+      }
+    }
+
+    const chargeMinor = applyMarkup(dto.amountMinor);
+    const orderId = uid("vtu");
+    const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
+    const customerIdMasked =
+      dto.customerId.length > 4
+        ? dto.customerId.slice(0, 2) + "****" + dto.customerId.slice(-2)
+        : "****";
+
+    const order = await this.db.$transaction(async (tx) => {
+      const wallet = await this.getWallet(workspaceId, tx);
+      const entries = (await tx.ledgerEntry.findMany({
+        where: { walletId: wallet.id }
+      })) as DbLedgerEntryRow[];
+      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+      if (available.amountMinor < chargeMinor) {
+        throw new ForbiddenException(
+          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+        );
+      }
+
+      const newOrder = await tx.vtuOrder.create({
+        data: {
+          id: orderId,
+          workspaceId,
+          productType: "BETTING",
+          msisdnMasked: customerIdMasked,
+          msisdnEncrypted: dto.customerId,
+          amountMinor: chargeMinor,
+          costMinor: dto.amountMinor,
+          currency: "NGN",
+          providerName: adapter.name,
+          providerReference: reference,
+          status: "SUBMITTED",
+          idempotencyKey: `vtu_order_${orderId}`,
+          metadata: { bettingCompany: dto.bettingCompany }
+        }
+      });
+
+      await this.debitWallet(
+        wallet.id,
+        workspaceId,
+        chargeMinor,
+        `Bet funding ${dto.bettingCompany} ₦${(dto.amountMinor / 100).toFixed(0)} → ${customerIdMasked}`,
+        orderId,
+        tx
+      );
+
+      return newOrder;
+    });
+
+    try {
+      const result = await adapter.purchaseBetFunding({
+        bettingCompany: dto.bettingCompany,
+        customerId: dto.customerId,
+        amountMinor: dto.amountMinor,
+        reference: order.providerReference!
+      });
+
+      const finalStatus =
+        result.status === "DELIVERED"
+          ? "DELIVERED"
+          : result.status === "SUBMITTED"
+            ? "SUBMITTED"
+            : "AMBIGUOUS";
+
+      await this.db.vtuOrder.update({ where: { id: order.id }, data: { status: finalStatus } });
+
+      if (finalStatus === "AMBIGUOUS") {
+        await this.queue.enqueueVtuOpsReview(order.id);
+      } else if (finalStatus === "SUBMITTED") {
+        await this.queue.enqueueVtuPollStatus(order.id);
+      }
+    } catch (err) {
+      this.logger.error(`VTU bet funding submit error for ${order.id}: ${String(err)}`);
+      await this.db.vtuOrder.update({ where: { id: order.id }, data: { status: "AMBIGUOUS" } });
+      await this.queue.enqueueVtuOpsReview(order.id);
+    }
+
+    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } });
+  }
+
+  // ─── Education (WAEC / JAMB) ────────────────────────────────────────────────
+
+  async verifyJamb(dto: { profileId: string }) {
+    if (!featureFlags.billsEducation) {
+      throw new BadRequestException("Education services are not yet available.");
+    }
+
+    const adapter = await this.selectBillsAdapter("EDUCATION");
+    if (!adapter.verifyJambProfile) {
+      throw new BadRequestException("Selected provider does not support JAMB verification.");
+    }
+
+    return adapter.verifyJambProfile({ profileId: dto.profileId });
+  }
+
+  async buyEducation(ctx: AuthenticatedRequestContext, dto: BuyEducationDto) {
+    if (!featureFlags.billsEducation) {
+      throw new BadRequestException("Education services are not yet available.");
+    }
+
+    const { workspaceId } = ctx;
+    if (!dto.examType) throw new BadRequestException("examType is required.");
+    if (!dto.phoneNumber.match(/^\+?[1-9]\d{6,14}$/)) {
+      throw new BadRequestException("Invalid phone number format.");
+    }
+
+    const isJamb = dto.examType === "de" || dto.examType.startsWith("utme");
+    const adapter = await this.selectBillsAdapter("EDUCATION");
+    if (!adapter.purchaseEducation) {
+      throw new BadRequestException("Selected provider does not support education purchases.");
+    }
+
+    if (isJamb) {
+      if (!dto.profileId) throw new BadRequestException("profileId is required for JAMB.");
+      if (adapter.verifyJambProfile) {
+        const validation = await adapter.verifyJambProfile({ profileId: dto.profileId });
+        if (!validation.valid) {
+          throw new BadRequestException(
+            "JAMB profile verification failed. Verify the profile ID and try again."
+          );
+        }
+      }
+    }
+
+    const plan = EDUCATION_PLANS.find((p) => p.examType === dto.examType);
+    if (!plan) throw new NotFoundException("Education plan not found or unavailable.");
+
+    const chargeMinor = applyMarkup(plan.costMinor);
+    const orderId = uid("vtu");
+    const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
+    const phoneMasked = dto.phoneNumber.slice(0, 4) + "****" + dto.phoneNumber.slice(-3);
+
+    const order = await this.db.$transaction(async (tx) => {
+      const wallet = await this.getWallet(workspaceId, tx);
+      const entries = (await tx.ledgerEntry.findMany({
+        where: { walletId: wallet.id }
+      })) as DbLedgerEntryRow[];
+      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+      if (available.amountMinor < chargeMinor) {
+        throw new ForbiddenException(
+          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+        );
+      }
+
+      const newOrder = await tx.vtuOrder.create({
+        data: {
+          id: orderId,
+          workspaceId,
+          productType: "EDUCATION",
+          msisdnMasked: phoneMasked,
+          msisdnEncrypted: dto.phoneNumber,
+          amountMinor: chargeMinor,
+          costMinor: plan.costMinor,
+          currency: "NGN",
+          providerName: adapter.name,
+          providerReference: reference,
+          status: "SUBMITTED",
+          idempotencyKey: `vtu_order_${orderId}`,
+          metadata: { examType: dto.examType, ...(dto.profileId ? { profileId: dto.profileId } : {}) }
+        }
+      });
+
+      await this.debitWallet(
+        wallet.id,
+        workspaceId,
+        chargeMinor,
+        `Education ${plan.displayName} → ${phoneMasked}`,
+        orderId,
+        tx
+      );
+
+      return newOrder;
+    });
+
+    try {
+      const result = await adapter.purchaseEducation({
+        examType: dto.examType,
+        phoneNumber: dto.phoneNumber,
+        ...(dto.profileId ? { profileId: dto.profileId } : {}),
+        reference: order.providerReference!
+      });
+
+      const finalStatus =
+        result.status === "DELIVERED"
+          ? "DELIVERED"
+          : result.status === "SUBMITTED"
+            ? "SUBMITTED"
+            : "AMBIGUOUS";
+
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: {
+          status: finalStatus,
+          ...(result.pin
+            ? { metadata: { examType: dto.examType, pin: result.pin, serialNumber: result.serialNumber } }
+            : {})
+        }
+      });
+
+      if (finalStatus === "AMBIGUOUS") {
+        await this.queue.enqueueVtuOpsReview(order.id);
+      } else if (finalStatus === "SUBMITTED") {
+        await this.queue.enqueueVtuPollStatus(order.id);
+      }
+    } catch (err) {
+      this.logger.error(`VTU education submit error for ${order.id}: ${String(err)}`);
+      await this.db.vtuOrder.update({ where: { id: order.id }, data: { status: "AMBIGUOUS" } });
+      await this.queue.enqueueVtuOpsReview(order.id);
+    }
+
+    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } });
+  }
+
+  async listBettingCompanies() {
+    return BETTING_COMPANIES;
+  }
+
+  async listEducationPlans() {
+    return EDUCATION_PLANS.map((p) => ({ ...p, costMinor: applyMarkup(p.costMinor) }));
+  }
+
   // ─── Bills order list ────────────────────────────────────────────────────────
 
   async listBillsOrders(ctx: AuthenticatedRequestContext, query: BillsOrderQueryDto) {
@@ -1037,7 +1606,7 @@ export class VtuService {
       workspaceId: ctx.workspaceId,
       productType: query.productType
         ? { in: [query.productType] as never[] }
-        : { in: ["ELECTRICITY", "CABLE"] as never[] },
+        : { in: ["ELECTRICITY", "CABLE", "BETTING", "EDUCATION"] as never[] },
       ...(query.status ? { status: query.status as never } : {})
     };
 
@@ -1071,7 +1640,7 @@ export class VtuService {
       where: {
         productType: query.productType
           ? { in: [query.productType as never] }
-          : { in: ["ELECTRICITY", "CABLE"] as never[] },
+          : { in: ["ELECTRICITY", "CABLE", "BETTING", "EDUCATION"] as never[] },
         ...(query.status ? { status: query.status as never } : {}),
         createdAt: { gte: since }
       },

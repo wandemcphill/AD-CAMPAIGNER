@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 
 import { Prisma, type DatabaseClient } from '@fliptrybe/database';
-import { calculateAvailableBalance } from '@fliptrybe/payments';
+import { calculateAvailableBalance, runChargeSaga } from '@fliptrybe/payments';
 import type { CurrencyCode, LedgerEntry } from '@fliptrybe/types';
 import {
   createReloadlyGiftCardAdapter,
@@ -350,110 +350,138 @@ export class DigitalValueService {
     const transactionId = uid('gcp');
     const idempotencyKey = `gift_card_purchase_${transactionId}`;
 
-    const transaction = await this.db.$transaction(async (tx) => {
-      const wallet = await this.getWallet(ctx.workspaceId, tx);
-      const entries = (await tx.ledgerEntry.findMany({
-        where: { walletId: wallet.id }
-      })) as DbLedgerEntryRow[];
-      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+    const outcome = await runChargeSaga({
+      // hold_and_flag (default): the supplier may have already fulfilled the order
+      // even if our request timed out — auto-reversing here risks double-crediting
+      // a gift card the customer already received. Ops resolves ambiguous cases.
+      debit: async () => {
+        const transaction = await this.db.$transaction(async (tx) => {
+          const wallet = await this.getWallet(ctx.workspaceId, tx);
+          const entries = (await tx.ledgerEntry.findMany({
+            where: { walletId: wallet.id }
+          })) as DbLedgerEntryRow[];
+          const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
-      if (available.amountMinor < quote.customerPriceNgn) {
-        throw new ForbiddenException(
-          `Insufficient balance. Required ₦${(quote.customerPriceNgn / 100).toFixed(2)}.`
-        );
+          if (available.amountMinor < quote.customerPriceNgn) {
+            throw new ForbiddenException(
+              `Insufficient balance. Required ₦${(quote.customerPriceNgn / 100).toFixed(2)}.`
+            );
+          }
+
+          const ledgerId = uid('led');
+          const chargeId = uid('gpc');
+
+          const ledgerEntry = await tx.ledgerEntry.create({
+            data: {
+              id: ledgerId,
+              walletId: wallet.id,
+              kind: 'DEBIT',
+              amountMinor: quote.customerPriceNgn,
+              currency: 'NGN',
+              reference: idempotencyKey,
+              description: `Gift Card Purchase: ${quote.brand} ${quote.denomination}`,
+              idempotencyKey,
+              sourceType: 'GiftCardWalletCharge',
+              sourceId: chargeId
+            }
+          });
+
+          const charge = await tx.giftCardWalletCharge.create({
+            data: {
+              id: chargeId,
+              workspaceId: ctx.workspaceId,
+              walletId: wallet.id,
+              transactionId,
+              idempotencyKey,
+              amountMinor: quote.customerPriceNgn,
+              currency: 'NGN',
+              status: 'CHARGED',
+              debitLedgerEntryId: ledgerEntry.id
+            }
+          });
+
+          const newTransaction = await tx.giftCardPurchaseTransaction.create({
+            data: {
+              id: transactionId,
+              workspaceId: ctx.workspaceId,
+              userId: ctx.userId,
+              quoteId: dto.quoteId,
+              brand: quote.brand,
+              region: quote.region,
+              denomination: quote.denomination,
+              supplierName: quote.supplierName,
+              supplierProductId: quote.id,
+              supplierCostNgn: quote.supplierCostNgn,
+              fliptrybeMarkupBps: quote.fliptrybeMarkupBps,
+              fliptrybeMarginNgn: quote.fliptrybeMarginNgn,
+              customerPriceNgn: quote.customerPriceNgn,
+              status: 'PAYMENT_CONFIRMED' as any,
+              idempotencyKey,
+              walletId: wallet.id,
+              ledgerEntryId: ledgerEntry.id,
+              chargeId: charge.id,
+              paymentConfirmedAt: new Date()
+            }
+          });
+
+          return newTransaction;
+        });
+
+        return {
+          chargeId: transaction.chargeId as string,
+          walletId: transaction.walletId as string,
+          amountMinor: quote.customerPriceNgn,
+          currency: 'NGN' as CurrencyCode,
+          debitLedgerEntryId: transaction.ledgerEntryId as string | null,
+          transaction
+        };
+      },
+
+      execute: async ({ transaction }) => {
+        const result = await this.giftCardBuyProvider!.purchase({
+          reference: transaction.id,
+          productId: quote.id,
+          quantity: 1,
+          recipient: {
+            ...(dto.recipientEmail ? { email: dto.recipientEmail } : {}),
+            ...(dto.recipientPhone ? { phone: dto.recipientPhone } : {})
+          }
+        });
+
+        await this.db.giftCardPurchaseTransaction.update({
+          where: { id: transaction.id },
+          data: {
+            status: 'PURCHASING' as any,
+            supplierOrderId: result.supplierOrderId
+          }
+        });
+
+        await this.queue.enqueueDigitalValueProcessing(transaction.id, 'GIFT_CARD_BUY');
+        return result;
       }
-
-      const ledgerId = uid('led');
-      const chargeId = uid('gpc');
-
-      const ledgerEntry = await tx.ledgerEntry.create({
-        data: {
-          id: ledgerId,
-          walletId: wallet.id,
-          kind: 'DEBIT',
-          amountMinor: quote.customerPriceNgn,
-          currency: 'NGN',
-          reference: idempotencyKey,
-          description: `Gift Card Purchase: ${quote.brand} ${quote.denomination}`,
-          idempotencyKey,
-          sourceType: 'GiftCardWalletCharge',
-          sourceId: chargeId
-        }
-      });
-
-      const charge = await tx.giftCardWalletCharge.create({
-        data: {
-          id: chargeId,
-          workspaceId: ctx.workspaceId,
-          walletId: wallet.id,
-          transactionId,
-          idempotencyKey,
-          amountMinor: quote.customerPriceNgn,
-          currency: 'NGN',
-          status: 'CHARGED',
-          debitLedgerEntryId: ledgerEntry.id
-        }
-      });
-
-      const newTransaction = await tx.giftCardPurchaseTransaction.create({
-        data: {
-          id: transactionId,
-          workspaceId: ctx.workspaceId,
-          userId: ctx.userId,
-          quoteId: dto.quoteId,
-          brand: quote.brand,
-          region: quote.region,
-          denomination: quote.denomination,
-          supplierName: quote.supplierName,
-          supplierProductId: quote.id,
-          supplierCostNgn: quote.supplierCostNgn,
-          fliptrybeMarkupBps: quote.fliptrybeMarkupBps,
-          fliptrybeMarginNgn: quote.fliptrybeMarginNgn,
-          customerPriceNgn: quote.customerPriceNgn,
-          status: 'PAYMENT_CONFIRMED' as any,
-          idempotencyKey,
-          walletId: wallet.id,
-          ledgerEntryId: ledgerEntry.id,
-          chargeId: charge.id,
-          paymentConfirmedAt: new Date()
-        }
-      });
-
-      return newTransaction;
     });
 
-    try {
-      const result = await this.giftCardBuyProvider.purchase({
-        reference: transaction.id,
-        productId: quote.id,
-        quantity: 1,
-        recipient: {
-          ...(dto.recipientEmail ? { email: dto.recipientEmail } : {}),
-          ...(dto.recipientPhone ? { phone: dto.recipientPhone } : {})
-        }
-      });
-
+    if (outcome.status === 'held') {
+      this.logger.error(
+        `Gift card purchase ${transactionId} needs ops review: ${String(outcome.error)}`
+      );
       await this.db.giftCardPurchaseTransaction.update({
-        where: { id: transaction.id },
-        data: {
-          status: 'PURCHASING' as any,
-          supplierOrderId: result.supplierOrderId
-        }
+        where: { id: transactionId },
+        data: { status: 'AMBIGUOUS' as any }
       });
-
-      await this.queue.enqueueDigitalValueProcessing(transaction.id, 'GIFT_CARD_BUY');
-    } catch (err) {
-      this.logger.error(`Gift card purchase error: ${String(err)}`);
-      await this.db.giftCardPurchaseTransaction.update({
-        where: { id: transaction.id },
-        data: { status: 'FAILED' as any }
+      await this.db.giftCardWalletCharge.update({
+        where: { transactionId },
+        data: { status: 'AMBIGUOUS' as any }
       });
     }
 
     return {
-      transactionId: transaction.id,
-      status: 'PAYMENT_CONFIRMED',
-      message: 'Gift card payment confirmed, processing order'
+      transactionId,
+      status: outcome.status === 'held' ? 'AMBIGUOUS' : 'PAYMENT_CONFIRMED',
+      message:
+        outcome.status === 'held'
+          ? 'Gift card payment was charged but the order could not be confirmed. This has been flagged for review.'
+          : 'Gift card payment confirmed, processing order'
     };
   }
 

@@ -8,13 +8,19 @@ import { RequirePermissions } from "../authorization.decorators";
 import type {
   AdminVtuRouteUpdateDto,
   BillsOrderQueryDto,
+  BuyAirtimeEpinDto,
+  BuyDataEpinDto,
+  BuyBetFundingDto,
   BuyCableDto,
+  BuyEducationDto,
   BuyElectricityDto,
   BuyAirtimeDto,
   BuyDataDto,
   CablePackagesQueryDto,
   ValidateMeterDto,
+  VerifyBettingDto,
   VerifyCableDto,
+  VerifyJambDto,
   VtuOrderQueryDto
 } from "./vtu.dtos";
 import { VtuService } from "./vtu.service";
@@ -45,6 +51,18 @@ export class VtuController {
   @RequirePermissions("campaign:create")
   buyData(@Body() body: BuyDataDto, @Req() request: WorkspaceContextRequest) {
     return this.vtu.buyData(workspaceContextFromRequest(request), body);
+  }
+
+  @Post("airtime/epin")
+  @RequirePermissions("campaign:create")
+  buyAirtimeEpin(@Body() body: BuyAirtimeEpinDto, @Req() request: WorkspaceContextRequest) {
+    return this.vtu.buyAirtimeEpin(workspaceContextFromRequest(request), body);
+  }
+
+  @Post("data/epin")
+  @RequirePermissions("campaign:create")
+  buyDataEpin(@Body() body: BuyDataEpinDto, @Req() request: WorkspaceContextRequest) {
+    return this.vtu.buyDataEpin(workspaceContextFromRequest(request), body);
   }
 
   // Phase 5 — Bills & Cable
@@ -85,6 +103,44 @@ export class VtuController {
     @Req() request: WorkspaceContextRequest
   ) {
     return this.vtu.listBillsOrders(workspaceContextFromRequest(request), query);
+  }
+
+  // ─── Bet funding ────────────────────────────────────────────────────────────
+
+  @Get("betting/companies")
+  listBettingCompanies() {
+    return this.vtu.listBettingCompanies();
+  }
+
+  @Post("betting/verify")
+  @RequirePermissions("campaign:create")
+  verifyBetting(@Body() body: VerifyBettingDto) {
+    return this.vtu.verifyBetting(body);
+  }
+
+  @Post("betting")
+  @RequirePermissions("campaign:create")
+  buyBetFunding(@Body() body: BuyBetFundingDto, @Req() request: WorkspaceContextRequest) {
+    return this.vtu.buyBetFunding(workspaceContextFromRequest(request), body);
+  }
+
+  // ─── Education (WAEC / JAMB) ────────────────────────────────────────────────
+
+  @Get("education/plans")
+  listEducationPlans() {
+    return this.vtu.listEducationPlans();
+  }
+
+  @Post("education/verify-jamb")
+  @RequirePermissions("campaign:create")
+  verifyJamb(@Body() body: VerifyJambDto) {
+    return this.vtu.verifyJamb(body);
+  }
+
+  @Post("education")
+  @RequirePermissions("campaign:create")
+  buyEducation(@Body() body: BuyEducationDto, @Req() request: WorkspaceContextRequest) {
+    return this.vtu.buyEducation(workspaceContextFromRequest(request), body);
   }
 }
 

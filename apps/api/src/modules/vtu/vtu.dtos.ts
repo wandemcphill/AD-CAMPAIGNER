@@ -12,6 +12,19 @@ export interface BuyDataDto {
   providerPlanId: string;
 }
 
+export interface BuyAirtimeEpinDto {
+  network: VtuNetwork;
+  /** Face value in NGN kobo. ClubKonnect only allows 10_000 / 20_000 / 50_000 (₦100/200/500). */
+  valueMinor: number;
+  quantity: number;
+}
+
+export interface BuyDataEpinDto {
+  network: VtuNetwork;
+  providerPlanId: string;
+  quantity: number;
+}
+
 export interface VtuOrderQueryDto {
   page?: number;
   limit?: number;
@@ -63,9 +76,33 @@ export interface CablePackagesQueryDto {
   provider?: string;
 }
 
+export interface VerifyBettingDto {
+  bettingCompany: string;
+  customerId: string;
+}
+
+export interface BuyBetFundingDto {
+  bettingCompany: string;
+  customerId: string;
+  /** Amount to fund in NGN kobo (minor units). */
+  amountMinor: number;
+}
+
+export interface VerifyJambDto {
+  profileId: string;
+}
+
+export interface BuyEducationDto {
+  /** e.g. "waecdirect", "waec-registraion", "de", "utme-mock", "utme-no-mock" */
+  examType: string;
+  phoneNumber: string;
+  /** Required for JAMB exam types; verified via /vtu/education/verify-jamb first. */
+  profileId?: string;
+}
+
 export interface BillsOrderQueryDto {
   page?: number;
   limit?: number;
-  productType?: "ELECTRICITY" | "CABLE";
+  productType?: "ELECTRICITY" | "CABLE" | "BETTING" | "EDUCATION";
   status?: string;
 }

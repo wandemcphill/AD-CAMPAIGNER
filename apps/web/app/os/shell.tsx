@@ -4,14 +4,17 @@ import { type ReactNode, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Banknote,
   BarChart3,
   Bell,
+  Bitcoin,
   Bot,
   Briefcase,
   CreditCard,
   FileText,
   Folder,
   Gift,
+  GraduationCap,
   Globe,
   KeyRound,
   LayoutDashboard,
@@ -93,6 +96,10 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Data", href: "/os/data", icon: Wifi },
       { label: "Electricity", href: "/os/utilities", icon: Lightbulb },
       { label: "Cable TV", href: "/os/utilities?tab=cable", icon: Tv },
+      { label: "Bet Funding", href: "/os/utilities?tab=betting", icon: Trophy },
+      { label: "Education", href: "/os/utilities?tab=education", icon: GraduationCap },
+      { label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin },
+      { label: "Buy RMB", href: "/os/rmb", icon: Banknote },
     ],
   },
   {

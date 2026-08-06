@@ -2608,3 +2608,5 @@ export * from './vtu.js';
 export * from './virtual-numbers.js';
 export * from './gift-cards.js';
 export * from './airtime-cashout.js';
+export * from './crypto.js';
+export * from './rmb.js';

@@ -10,6 +10,8 @@ import { createPrismaClient } from "../src/index";
 const NETWORKS = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] as const;
 const PRODUCT_TYPES = ["AIRTIME", "DATA"] as const;
 const BILLS_PRODUCT_TYPES = ["ELECTRICITY", "CABLE"] as const;
+// Betting/education support on VTpass is not verified — ClubKonnect only for now.
+const CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES = ["BETTING", "EDUCATION"] as const;
 
 const ROUTE_PRIORITY = {
   clubkonnect: 10,
@@ -152,6 +154,31 @@ async function seedBillsRoutes(db: ReturnType<typeof createPrismaClient>) {
       });
       created++;
     }
+  }
+
+  for (const productType of CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES) {
+    const provider = "clubkonnect";
+    const priority = ROUTE_PRIORITY.clubkonnect;
+    const existing = await db.vtuProviderRoute.findFirst({
+      where: { productType, network: null, provider }
+    });
+
+    if (existing) {
+      skipped++;
+      continue;
+    }
+
+    await db.vtuProviderRoute.create({
+      data: {
+        productType,
+        network: null,
+        provider,
+        priority,
+        active: true,
+        note: "Seeded primary bills route (only provider verified for this product)"
+      }
+    });
+    created++;
   }
 
   console.log(`VtuProviderRoute (bills): ${created} created, ${skipped} already existed`);

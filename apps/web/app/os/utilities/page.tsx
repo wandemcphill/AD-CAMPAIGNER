@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Clock, Lightbulb, Sparkles, Tv, Zap } from "lucide-react";
+import {
+  CheckCircle2,
+  Clock,
+  GraduationCap,
+  Lightbulb,
+  Sparkles,
+  Trophy,
+  Tv,
+  Zap
+} from "lucide-react";
 import { motion } from "framer-motion";
 
 import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
@@ -9,16 +18,24 @@ import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import {
+  buyBetFunding,
   buyCable,
+  buyEducation,
   buyElectricity,
+  loadBettingCompanies,
   loadBillsOrders,
   loadCablePackages,
+  loadEducationPlans,
   validateMeter,
+  verifyBetting,
   verifyCable,
+  verifyJamb,
   CABLE_PROVIDERS,
   ELECTRIC_COMPANIES,
+  type BettingCompany,
   type BillsOrder,
   type CablePackage,
+  type EducationPlan,
   type MeterType,
   type MeterValidation
 } from "./vtu-api";
@@ -26,6 +43,8 @@ import {
 const TABS = [
   { id: "electricity", label: "Electricity" },
   { id: "cable", label: "Cable TV" },
+  { id: "betting", label: "Bet Funding" },
+  { id: "education", label: "Education" },
   { id: "history", label: "History" }
 ];
 
@@ -57,6 +76,22 @@ export default function UtilitiesPage() {
   const [cardValidating, setCardValidating] = useState(false);
   const [loadingPackages, setLoadingPackages] = useState(false);
 
+  // Betting state
+  const [bettingCompanies, setBettingCompanies] = useState<BettingCompany[]>([]);
+  const [bettingCompany, setBettingCompany] = useState<string>();
+  const [customerId, setCustomerId] = useState("");
+  const [betAmountNaira, setBetAmountNaira] = useState<number>(1000);
+  const [betValidation, setBetValidation] = useState<MeterValidation>();
+  const [betValidating, setBetValidating] = useState(false);
+
+  // Education state
+  const [educationPlans, setEducationPlans] = useState<EducationPlan[]>([]);
+  const [examType, setExamType] = useState<string>();
+  const [eduPhone, setEduPhone] = useState("");
+  const [profileId, setProfileId] = useState("");
+  const [jambValidation, setJambValidation] = useState<MeterValidation>();
+  const [jambValidating, setJambValidating] = useState(false);
+
   const [orders, setOrders] = useState<BillsOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -83,8 +118,24 @@ export default function UtilitiesPage() {
   }, []);
 
   useEffect(() => {
+    const deepLinkTab = new URLSearchParams(window.location.search).get("tab");
+    if (deepLinkTab && TABS.some((t) => t.id === deepLinkTab)) {
+      setTab(deepLinkTab);
+    }
     setLoading(true);
     void refreshOrders().finally(() => setLoading(false));
+    void loadBettingCompanies()
+      .then((companies) => {
+        setBettingCompanies(companies);
+        setBettingCompany((prev) => prev ?? companies[0]?.code);
+      })
+      .catch(() => setBettingCompanies([]));
+    void loadEducationPlans()
+      .then((plans) => {
+        setEducationPlans(plans);
+        setExamType((prev) => prev ?? plans[0]?.examType);
+      })
+      .catch(() => setEducationPlans([]));
   }, [refreshOrders]);
 
   useEffect(() => {
@@ -99,6 +150,17 @@ export default function UtilitiesPage() {
   useEffect(() => {
     setCardValidation(undefined);
   }, [cableProvider, smartCardNumber]);
+
+  useEffect(() => {
+    setBetValidation(undefined);
+  }, [bettingCompany, customerId]);
+
+  useEffect(() => {
+    setJambValidation(undefined);
+  }, [profileId]);
+
+  const isJambExam = examType === "de" || (examType?.startsWith("utme") ?? false);
+  const selectedEducationPlan = educationPlans.find((p) => p.examType === examType);
 
   const selectedPackage = useMemo(
     () => packages.find((p) => p.packageCode === selectedPackageCode),
@@ -189,6 +251,96 @@ export default function UtilitiesPage() {
       setSmartCardNumber("");
       setCardValidation(undefined);
       setSelectedPackageCode(undefined);
+      await refreshOrders();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "We could not complete this purchase. No wallet balance has moved."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitVerifyBetting() {
+    if (!bettingCompany || !customerId.trim()) return;
+    setBetValidating(true);
+    setError(undefined);
+    setBetValidation(undefined);
+    try {
+      const result = await verifyBetting({ bettingCompany, customerId: customerId.trim() });
+      setBetValidation(result);
+      if (!result.valid) {
+        setError("Betting account verification failed. Check the customer ID.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "We could not verify this account.");
+    } finally {
+      setBetValidating(false);
+    }
+  }
+
+  async function submitBetFunding() {
+    if (!bettingCompany || !customerId.trim() || betAmountNaira <= 0 || !betValidation?.valid) return;
+    setSubmitting(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const order = await buyBetFunding({
+        bettingCompany,
+        customerId: customerId.trim(),
+        amountMinor: Math.round(betAmountNaira * 100)
+      });
+      setSuccess(order);
+      setCustomerId("");
+      setBetValidation(undefined);
+      await refreshOrders();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "We could not complete this purchase. No wallet balance has moved."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitVerifyJamb() {
+    if (!profileId.trim()) return;
+    setJambValidating(true);
+    setError(undefined);
+    setJambValidation(undefined);
+    try {
+      const result = await verifyJamb({ profileId: profileId.trim() });
+      setJambValidation(result);
+      if (!result.valid) {
+        setError("JAMB profile verification failed. Check the profile ID.");
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "We could not verify this profile.");
+    } finally {
+      setJambValidating(false);
+    }
+  }
+
+  async function submitEducation() {
+    if (!examType || !eduPhone.trim()) return;
+    if (isJambExam && (!profileId.trim() || !jambValidation?.valid)) return;
+    setSubmitting(true);
+    setError(undefined);
+    setSuccess(undefined);
+    try {
+      const order = await buyEducation({
+        examType,
+        phoneNumber: eduPhone.trim(),
+        ...(isJambExam ? { profileId: profileId.trim() } : {})
+      });
+      setSuccess(order);
+      setEduPhone("");
+      setProfileId("");
+      setJambValidation(undefined);
       await refreshOrders();
     } catch (caught) {
       setError(
@@ -482,6 +634,190 @@ export default function UtilitiesPage() {
           </motion.div>
         )}
 
+        {tab === "betting" && (
+          <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
+            {success ? (
+              SuccessPanel
+            ) : (
+              <Panel className="p-5">
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
+                    Betting platform
+                  </label>
+                  <select
+                    className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                    onChange={(e) => setBettingCompany(e.target.value)}
+                    value={bettingCompany ?? ""}
+                  >
+                    {bettingCompanies.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
+                    Customer ID
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      className="h-12 flex-1 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+                      onChange={(e) => setCustomerId(e.target.value)}
+                      placeholder="57025731"
+                      value={customerId}
+                    />
+                    <Button
+                      disabled={!customerId.trim() || betValidating}
+                      onClick={() => void submitVerifyBetting()}
+                      variant="secondary"
+                    >
+                      {betValidating ? "Checking..." : "Verify"}
+                    </Button>
+                  </div>
+                  {betValidation?.valid && (
+                    <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--ft-green)]/30 bg-[var(--ft-green)]/5 p-3 text-sm">
+                      <div className="font-medium">
+                        {betValidation.customerName ?? "Account verified"}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Amount</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {QUICK_AMOUNTS_NAIRA.map((amt) => (
+                      <button
+                        className={cn(
+                          "rounded-[var(--radius-md)] border py-2 text-sm font-medium transition",
+                          betAmountNaira === amt
+                            ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5"
+                            : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
+                        )}
+                        key={amt}
+                        onClick={() => setBetAmountNaira(amt)}
+                        type="button"
+                      >
+                        ₦{amt.toLocaleString()}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    className="mt-2 h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+                    min={100}
+                    onChange={(e) => setBetAmountNaira(Number(e.target.value))}
+                    placeholder="Custom amount (₦)"
+                    type="number"
+                    value={betAmountNaira}
+                  />
+                </div>
+
+                <Button
+                  className="mt-4 w-full justify-center"
+                  disabled={
+                    !bettingCompany ||
+                    !customerId.trim() ||
+                    betAmountNaira <= 0 ||
+                    !betValidation?.valid ||
+                    submitting
+                  }
+                  onClick={() => void submitBetFunding()}
+                >
+                  <Sparkles className="size-4" />
+                  {submitting ? "Processing..." : `Fund ₦${betAmountNaira.toLocaleString()}`}
+                </Button>
+              </Panel>
+            )}
+          </motion.div>
+        )}
+
+        {tab === "education" && (
+          <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
+            {success ? (
+              SuccessPanel
+            ) : (
+              <Panel className="p-5">
+                <div>
+                  <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
+                    Exam / PIN type
+                  </label>
+                  <select
+                    className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                    onChange={(e) => setExamType(e.target.value)}
+                    value={examType ?? ""}
+                  >
+                    {educationPlans.map((p) => (
+                      <option key={p.examType} value={p.examType}>
+                        {p.displayName} — {formatNaira(p.costMinor)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {isJambExam && (
+                  <div className="mt-4">
+                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
+                      JAMB profile ID
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        className="h-12 flex-1 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+                        onChange={(e) => setProfileId(e.target.value)}
+                        placeholder="1234567890"
+                        value={profileId}
+                      />
+                      <Button
+                        disabled={!profileId.trim() || jambValidating}
+                        onClick={() => void submitVerifyJamb()}
+                        variant="secondary"
+                      >
+                        {jambValidating ? "Checking..." : "Verify"}
+                      </Button>
+                    </div>
+                    {jambValidation?.valid && (
+                      <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--ft-green)]/30 bg-[var(--ft-green)]/5 p-3 text-sm">
+                        <div className="font-medium">
+                          {jambValidation.customerName ?? "Profile verified"}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
+                    Phone number
+                  </label>
+                  <input
+                    className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+                    onChange={(e) => setEduPhone(e.target.value)}
+                    placeholder="0803 000 0000"
+                    value={eduPhone}
+                  />
+                </div>
+
+                <Button
+                  className="mt-4 w-full justify-center"
+                  disabled={
+                    !examType ||
+                    !eduPhone.trim() ||
+                    (isJambExam && (!profileId.trim() || !jambValidation?.valid)) ||
+                    submitting
+                  }
+                  onClick={() => void submitEducation()}
+                >
+                  <Sparkles className="size-4" />
+                  {submitting
+                    ? "Processing..."
+                    : `Buy ${selectedEducationPlan ? formatNaira(selectedEducationPlan.costMinor) : ""} PIN`}
+                </Button>
+              </Panel>
+            )}
+          </motion.div>
+        )}
+
         {tab === "history" && (
           <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
             <Panel className="p-5">
@@ -504,6 +840,10 @@ export default function UtilitiesPage() {
                       <div className="grid size-9 place-items-center rounded-full bg-[var(--ft-accent)]/10">
                         {o.productType === "CABLE" ? (
                           <Tv className="size-4 text-[var(--ft-accent)]" />
+                        ) : o.productType === "BETTING" ? (
+                          <Trophy className="size-4 text-[var(--ft-accent)]" />
+                        ) : o.productType === "EDUCATION" ? (
+                          <GraduationCap className="size-4 text-[var(--ft-accent)]" />
                         ) : (
                           <Zap className="size-4 text-[var(--ft-accent)]" />
                         )}

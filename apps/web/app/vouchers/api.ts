@@ -44,7 +44,12 @@ export async function loadVouchers() {
   return apiRequest<VoucherRecord[]>("/vouchers");
 }
 
-export async function createVoucher(input: { productId: string; giftNote?: string; redemptionDestination?: string }) {
+export async function createVoucher(input: {
+  productId: string;
+  giftNote?: string;
+  redemptionDestination?: string;
+  metadata?: Record<string, unknown>;
+}) {
   return apiRequest<VoucherRecord>("/vouchers", {
     method: "POST",
     body: JSON.stringify(input)

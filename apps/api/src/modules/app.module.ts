@@ -54,6 +54,8 @@ import { ApiKeysModule } from "./api-keys/api-keys.module";
 import { ProvidersModule } from "./providers/providers.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
 import { TrustEngineModule } from "./trust-engine/trust-engine.module";
+import { CryptoModule } from "./crypto/crypto.module";
+import { RmbModule } from "./rmb/rmb.module";
 
 @Module({
   imports: [
@@ -87,6 +89,8 @@ import { TrustEngineModule } from "./trust-engine/trust-engine.module";
     ProvidersModule,
     WebhooksModule,
     TrustEngineModule,
+    CryptoModule,
+    RmbModule,
 
   ],
   controllers: [

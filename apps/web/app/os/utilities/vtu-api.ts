@@ -23,12 +23,23 @@ export interface MeterValidation {
 
 export interface BillsOrder {
   id: string;
-  productType: "ELECTRICITY" | "CABLE";
+  productType: "ELECTRICITY" | "CABLE" | "BETTING" | "EDUCATION";
   msisdnMasked: string;
   amountMinor: number;
   status: BillsOrderStatus;
   providerName: string | null;
   createdAt: string;
+}
+
+export interface BettingCompany {
+  code: string;
+  name: string;
+}
+
+export interface EducationPlan {
+  examType: string;
+  displayName: string;
+  costMinor: number;
 }
 
 export interface CablePackage {
@@ -105,6 +116,50 @@ export async function buyCable(input: {
   phoneNumber: string;
 }) {
   return apiRequest<BillsOrder>("/vtu/cable", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function loadBettingCompanies() {
+  return apiRequest<BettingCompany[]>("/vtu/betting/companies");
+}
+
+export async function verifyBetting(input: { bettingCompany: string; customerId: string }) {
+  return apiRequest<MeterValidation>("/vtu/betting/verify", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function buyBetFunding(input: {
+  bettingCompany: string;
+  customerId: string;
+  amountMinor: number;
+}) {
+  return apiRequest<BillsOrder>("/vtu/betting", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function loadEducationPlans() {
+  return apiRequest<EducationPlan[]>("/vtu/education/plans");
+}
+
+export async function verifyJamb(input: { profileId: string }) {
+  return apiRequest<MeterValidation>("/vtu/education/verify-jamb", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export async function buyEducation(input: {
+  examType: string;
+  phoneNumber: string;
+  profileId?: string;
+}) {
+  return apiRequest<BillsOrder>("/vtu/education", {
     method: "POST",
     body: JSON.stringify(input)
   });

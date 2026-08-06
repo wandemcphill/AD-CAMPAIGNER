@@ -2,16 +2,18 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 import { Prisma, type PrismaClient } from "@fliptrybe/database";
+import type { VtuNetwork } from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import { OutgoingWebhooksService } from "../webhooks/outgoing-webhooks.service";
+import { VtuService } from "../vtu/vtu.service";
 
 type VoucherProductSeed = {
   id: string;
   name: string;
   category: "CAMPAIGN" | "TELECOM";
-  handler: "WALLET_CREDIT" | "VTU_TOPUP";
+  handler: "WALLET_CREDIT" | "PROVIDER_EPIN";
   provider?: string;
   providerServiceId?: string;
   targetWalletType?: "CAMPAIGN";
@@ -28,19 +30,36 @@ const productSeeds: VoucherProductSeed[] = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false }
   },
   {
-    id: "airtime-data-voucher",
-    name: "Airtime & Data Voucher",
+    id: "airtime-epin-voucher",
+    name: "Airtime EPIN Voucher",
     category: "TELECOM",
-    handler: "VTU_TOPUP",
-    provider: "vtu",
-    providerServiceId: "airtime-data",
+    handler: "PROVIDER_EPIN",
+    provider: "clubkonnect",
+    providerServiceId: "airtime-epin",
     inputSchema: {
       type: "object",
       properties: {
-        phoneNumber: { type: "string" },
-        network: { type: "string" }
+        network: { type: "string", enum: ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] },
+        valueMinor: { type: "number", enum: [10_000, 20_000, 50_000] }
       },
-      required: ["phoneNumber", "network"],
+      required: ["network", "valueMinor"],
+      additionalProperties: false
+    }
+  },
+  {
+    id: "data-epin-voucher",
+    name: "Data EPIN Voucher",
+    category: "TELECOM",
+    handler: "PROVIDER_EPIN",
+    provider: "clubkonnect",
+    providerServiceId: "data-epin",
+    inputSchema: {
+      type: "object",
+      properties: {
+        network: { type: "string", enum: ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] },
+        providerPlanId: { type: "string" }
+      },
+      required: ["network", "providerPlanId"],
       additionalProperties: false
     }
   }
@@ -115,7 +134,8 @@ type TransactionClient = Parameters<PrismaClient["$transaction"]>[0] extends (pr
 export class VouchersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly webhooks: OutgoingWebhooksService
+    private readonly webhooks: OutgoingWebhooksService,
+    private readonly vtu: VtuService
   ) {}
 
   async listProducts() {
@@ -141,10 +161,27 @@ export class VouchersService {
       throw new NotFoundException("Voucher product not found.");
     }
 
-    const pin = voucherPin();
+    let pin: string;
+    let sealedSerialNumber: string;
+    let sealedMetadata: Record<string, unknown> | undefined = input.metadata;
+
+    if (product.handler === "PROVIDER_EPIN") {
+      const epin = await this.purchaseProviderEpin(product, input.metadata ?? {}, scope);
+      pin = epin.pin;
+      sealedSerialNumber = epin.serialNumber;
+      sealedMetadata = {
+        ...(input.metadata ?? {}),
+        providerBatchNo: epin.batchNo,
+        providerOrderId: epin.providerOrderId
+      };
+    } else {
+      pin = voucherPin();
+      sealedSerialNumber = serialNumber();
+    }
+
     const voucher = await this.prisma.client.voucher.create({
       data: {
-        serialNumber: serialNumber(),
+        serialNumber: sealedSerialNumber,
         pinEncrypted: encryptPin(pin),
         workspaceId: scope.workspaceId,
         productId: product.id,
@@ -155,7 +192,7 @@ export class VouchersService {
         expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
         ...(input.giftNote === undefined ? {} : { giftNote: input.giftNote }),
         ...(input.redemptionDestination === undefined ? {} : { redemptionDestination: input.redemptionDestination }),
-        ...(input.metadata === undefined ? {} : { metadata: jsonValue(input.metadata) })
+        ...(sealedMetadata === undefined ? {} : { metadata: jsonValue(sealedMetadata) })
       },
       include: { product: true, purchaser: true, owner: true, claimTokens: true }
     });
@@ -297,11 +334,9 @@ export class VouchersService {
         });
       }
 
-      if (voucher.product.handler === "VTU_TOPUP") {
-        throw new BadRequestException(
-          "Airtime and data vouchers require phone number, network, and plan fulfillment before redemption."
-        );
-      }
+      // PROVIDER_EPIN vouchers already had their real PIN purchased and sealed at
+      // creation time (see purchaseProviderEpin) — redemption is just the buyer
+      // revealing/using a PIN they already hold, so no further provider call here.
 
       return tx.voucher.update({
         where: { id: voucher.id },
@@ -338,6 +373,66 @@ export class VouchersService {
     });
   }
 
+  // Buys a real ClubKonnect airtime/data EPIN and returns it for sealing into the voucher's
+  // own pinEncrypted field — this is the moment the provider is actually charged and the
+  // PIN is "printed"; redemption later is just the buyer using a PIN they already hold.
+  private async purchaseProviderEpin(
+    product: { providerServiceId: string | null },
+    rawInput: Record<string, unknown>,
+    scope: AuthenticatedRequestContext
+  ): Promise<{ pin: string; serialNumber: string; batchNo?: string; providerOrderId: string }> {
+    const network = rawInput["network"];
+    if (typeof network !== "string" || !["MTN", "GLO", "AIRTEL", "NINE_MOBILE"].includes(network)) {
+      throw new BadRequestException("A valid network (MTN, GLO, AIRTEL, NINE_MOBILE) is required.");
+    }
+
+    if (product.providerServiceId === "airtime-epin") {
+      const valueMinor = rawInput["valueMinor"];
+      if (typeof valueMinor !== "number") {
+        throw new BadRequestException("valueMinor is required for an airtime EPIN voucher.");
+      }
+
+      const { order, epins } = await this.vtu.buyAirtimeEpin(scope, {
+        network: network as VtuNetwork,
+        valueMinor,
+        quantity: 1
+      });
+      const epin = epins[0];
+      if (!epin) throw new BadRequestException("Provider did not return an airtime EPIN.");
+
+      return {
+        pin: epin.pin,
+        serialNumber: epin.serialNumber,
+        ...(epin.batchNo === undefined ? {} : { batchNo: epin.batchNo }),
+        providerOrderId: order.id
+      };
+    }
+
+    if (product.providerServiceId === "data-epin") {
+      const providerPlanId = rawInput["providerPlanId"];
+      if (typeof providerPlanId !== "string" || !providerPlanId) {
+        throw new BadRequestException("providerPlanId is required for a data EPIN voucher.");
+      }
+
+      const { order, epins } = await this.vtu.buyDataEpin(scope, {
+        network: network as VtuNetwork,
+        providerPlanId,
+        quantity: 1
+      });
+      const epin = epins[0];
+      if (!epin) throw new BadRequestException("Provider did not return a data EPIN.");
+
+      return {
+        pin: epin.pin,
+        serialNumber: epin.serialNumber,
+        ...(epin.batchNo === undefined ? {} : { batchNo: epin.batchNo }),
+        providerOrderId: order.id
+      };
+    }
+
+    throw new BadRequestException("This voucher product is not configured with a known EPIN service.");
+  }
+
   private async getOwnedVoucher(voucherId: string, userId: string, workspaceId: string) {
     const voucher = await this.prisma.client.voucher.findFirst({
       where: {
@@ -363,7 +458,13 @@ export class VouchersService {
       if (existing) {
         await this.prisma.client.voucherProduct.update({
           where: { id: existing.id },
-          data: { active: true }
+          data: {
+            active: true,
+            handler: seed.handler,
+            ...(seed.provider === undefined ? {} : { provider: seed.provider }),
+            ...(seed.providerServiceId === undefined ? {} : { providerServiceId: seed.providerServiceId }),
+            inputSchema: jsonValue(seed.inputSchema)
+          }
         });
         continue;
       }
@@ -381,5 +482,12 @@ export class VouchersService {
         }
       });
     }
+
+    // Superseded by airtime-epin-voucher / data-epin-voucher (real ClubKonnect EPINs
+    // instead of a VTU_TOPUP handler that always threw on redemption).
+    await this.prisma.client.voucherProduct.updateMany({
+      where: { name: "Airtime & Data Voucher" },
+      data: { active: false }
+    });
   }
 }

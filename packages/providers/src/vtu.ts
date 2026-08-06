@@ -81,6 +81,13 @@ export interface VtuCablePackageOffer {
   currency: string;
 }
 
+/** A single printed recharge PIN — airtime or data EPIN, sealed and handed to the buyer. */
+export interface VtuEpin {
+  pin: string;
+  serialNumber: string;
+  batchNo?: string;
+}
+
 export interface VtuProviderAdapter extends ProviderAdapterBase {
   readonly domain: "VTU";
 
@@ -150,6 +157,23 @@ export interface VtuProviderAdapter extends ProviderAdapterBase {
     profileId?: string;
     reference: string;
   }): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }>;
+
+  // EPIN (printed recharge PIN) — distinct from purchaseAirtime/purchaseData, which credit
+  // a phone number directly. EPIN generates a PIN the buyer redeems themselves later
+  // (dial *311*PIN# or enter at recharge); no msisdn is involved in the purchase call.
+  purchaseAirtimeEpin?(input: {
+    network: VtuNetwork;
+    /** Face value in minor units. Provider-restricted set — see adapter docs. */
+    valueMinor: number;
+    quantity: number;
+    reference: string;
+  }): Promise<VtuSubmitResult & { epins?: VtuEpin[] }>;
+  purchaseDataEpin?(input: {
+    network: VtuNetwork;
+    providerPlanId: string;
+    quantity: number;
+    reference: string;
+  }): Promise<VtuSubmitResult & { epins?: VtuEpin[] }>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -942,6 +966,229 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
           providerReference: input.reference,
           status: "FAILED" as const,
           failureReason: err instanceof Error ? err.message : "Cable subscription error"
+        };
+      }
+    },
+
+    // ─── Betting & Education ─────────────────────────────────────────────────────
+
+    async verifyBettingCustomer(input): Promise<VtuMeterValidation> {
+      const res = (await ckGet(config, "/APIVerifyBettingV1.asp", {
+        BettingCompany: input.bettingCompany,
+        CustomerID: input.customerId
+      })) as { customer_name?: string };
+
+      const name = res.customer_name ?? "";
+      if (!name || name.toUpperCase().includes("INVALID") || name.toUpperCase().includes("ERROR")) {
+        return { valid: false };
+      }
+      return { valid: true, customerName: name };
+    },
+
+    async purchaseBetFunding(input): Promise<VtuSubmitResult> {
+      try {
+        const res = (await ckGet(config, "/APIBettingV1.asp", {
+          BettingCompany: input.bettingCompany,
+          CustomerID: input.customerId,
+          Amount: (input.amountMinor / 100).toFixed(2),
+          RequestID: input.reference,
+          ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
+        })) as {
+          status?: string;
+          statuscode?: string | number;
+          remark?: string;
+          orderid?: string | number;
+        };
+
+        return ckOutcome(res, input.reference);
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Bet funding error"
+        };
+      }
+    },
+
+    async verifyJambProfile(input): Promise<VtuMeterValidation> {
+      const res = (await ckGet(config, "/APIVerifyJAMBV1.asp", {
+        ExamType: "jamb",
+        ProfileID: input.profileId
+      })) as { customer_name?: string };
+
+      const name = res.customer_name ?? "";
+      if (!name || name.toUpperCase().includes("INVALID") || name.toUpperCase().includes("ERROR")) {
+        return { valid: false };
+      }
+      return { valid: true, customerName: name };
+    },
+
+    async purchaseEducation(input): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }> {
+      try {
+        // WAEC and JAMB share the same request shape (ExamType + PhoneNo) but different
+        // endpoints — dispatch on the exam type prefix rather than a separate flag.
+        const isJamb = input.examType === "de" || input.examType.startsWith("utme");
+        const path = isJamb ? "/APIJAMBV1.asp" : "/APIWAECV1.asp";
+
+        const res = (await ckGet(config, path, {
+          ExamType: input.examType,
+          PhoneNo: input.phoneNumber,
+          RequestID: input.reference,
+          ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
+        })) as {
+          status?: string;
+          statuscode?: string | number;
+          remark?: string;
+          orderid?: string | number;
+          carddetails?: string;
+        };
+
+        const outcome = ckOutcome(res, input.reference);
+        if (!res.carddetails) return outcome;
+
+        // carddetails looks like "Serial No:WRN200343867, pin: 572871474684".
+        const serialMatch = res.carddetails.match(/Serial No\s*:\s*([^\s,]+)/i);
+        const pinMatch = res.carddetails.match(/pin\s*:\s*([^\s,]+)/i);
+        return {
+          ...outcome,
+          ...(serialMatch ? { serialNumber: serialMatch[1] } : {}),
+          ...(pinMatch ? { pin: pinMatch[1] } : {})
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Education purchase error"
+        };
+      }
+    },
+
+    // ─── EPIN (printed airtime / data recharge PINs) ────────────────────────────
+    // /APIEPINV1.asp and /APIDatabundleEPINV1.asp — separate product family from the
+    // direct-recharge endpoints above. Response is synchronous JSON with a TXN_EPIN /
+    // TXN_EPIN_DATABUNDLE array (one entry per unit of `quantity`), each carrying its
+    // own `pin` + `sno` (serial number). No msisdn/CallBackURL round-trip is needed —
+    // the PIN itself is the deliverable, not a credited phone number.
+
+    async purchaseAirtimeEpin(input): Promise<VtuSubmitResult & { epins?: VtuEpin[] }> {
+      const allowedValues = new Set([10_000, 20_000, 50_000]); // ₦100 / ₦200 / ₦500 in kobo
+      if (!allowedValues.has(input.valueMinor)) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: "ClubKonnect airtime EPIN value must be ₦100, ₦200, or ₦500."
+        };
+      }
+
+      try {
+        const res = (await ckGet(config, "/APIEPINV1.asp", {
+          MobileNetwork: CK_NETWORK[input.network],
+          Value: (input.valueMinor / 100).toFixed(0),
+          Quantity: String(input.quantity),
+          RequestID: input.reference,
+          ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
+        })) as {
+          TXN_EPIN?: Array<{ pin?: string; sno?: string; batchno?: string; transactionid?: string }>;
+          status?: string;
+          statuscode?: string | number;
+          remark?: string;
+        };
+
+        const rows = res.TXN_EPIN ?? [];
+        if (rows.length === 0) {
+          const outcome = ckOutcome(
+            {
+              ...(res.status !== undefined ? { status: res.status } : {}),
+              ...(res.statuscode !== undefined ? { statuscode: res.statuscode } : {}),
+              ...(res.remark !== undefined ? { remark: res.remark } : {})
+            },
+            input.reference
+          );
+          return outcome.status === "DELIVERED"
+            ? { ...outcome, status: "FAILED" as const, failureReason: "No EPINs returned." }
+            : outcome;
+        }
+
+        const epins: VtuEpin[] = rows
+          .filter((r) => r.pin && r.sno)
+          .map((r) => ({
+            pin: r.pin!,
+            serialNumber: r.sno!,
+            ...(r.batchno ? { batchNo: r.batchno } : {})
+          }));
+
+        if (epins.length === 0) {
+          return {
+            providerReference: input.reference,
+            status: "FAILED" as const,
+            failureReason: "ClubKonnect returned EPIN rows without a pin/serial."
+          };
+        }
+
+        return { providerReference: input.reference, status: "DELIVERED" as const, epins };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Airtime EPIN purchase error"
+        };
+      }
+    },
+
+    async purchaseDataEpin(input): Promise<VtuSubmitResult & { epins?: VtuEpin[] }> {
+      try {
+        const res = (await ckGet(config, "/APIDatabundleEPINV1.asp", {
+          MobileNetwork: CK_NETWORK[input.network],
+          DataPlan: input.providerPlanId,
+          Quantity: String(input.quantity),
+          RequestID: input.reference,
+          ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
+        })) as {
+          TXN_EPIN_DATABUNDLE?: Array<{ pin?: string; sno?: string; batchno?: string; transactionid?: string }>;
+          orderid?: string | number;
+          status?: string;
+          statuscode?: string | number;
+          remark?: string;
+        };
+
+        const rows = res.TXN_EPIN_DATABUNDLE ?? [];
+        if (rows.length === 0) {
+          // Databundle EPIN can respond ORDER_RECEIVED (queued) before rows are ready —
+          // caller should poll getOrderStatus(reference) in that case, same as other
+          // asynchronous ClubKonnect products.
+          const outcome = ckOutcome(
+            {
+              ...(res.status !== undefined ? { status: res.status } : {}),
+              ...(res.statuscode !== undefined ? { statuscode: res.statuscode } : {}),
+              ...(res.remark !== undefined ? { remark: res.remark } : {})
+            },
+            input.reference
+          );
+          return outcome;
+        }
+
+        const epins: VtuEpin[] = rows
+          .filter((r) => r.pin && r.sno)
+          .map((r) => ({
+            pin: r.pin!,
+            serialNumber: r.sno!,
+            ...(r.batchno ? { batchNo: r.batchno } : {})
+          }));
+
+        if (epins.length === 0) {
+          return {
+            providerReference: input.reference,
+            status: "FAILED" as const,
+            failureReason: "ClubKonnect returned data EPIN rows without a pin/serial."
+          };
+        }
+
+        return { providerReference: input.reference, status: "DELIVERED" as const, epins };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Data EPIN purchase error"
         };
       }
     }
@@ -1801,6 +2048,29 @@ export function createMockVtuAdapter(
       return Promise.resolve({
         providerReference: reference,
         status: deliveredByDefault ? "DELIVERED" : "SUBMITTED"
+      });
+    },
+
+    verifyBettingCustomer() {
+      return Promise.resolve({ valid: true, customerName: "MOCK CUSTOMER" });
+    },
+
+    purchaseBetFunding({ reference }) {
+      return Promise.resolve({
+        providerReference: reference,
+        status: deliveredByDefault ? "DELIVERED" : "SUBMITTED"
+      });
+    },
+
+    verifyJambProfile() {
+      return Promise.resolve({ valid: true, customerName: "MOCK CUSTOMER" });
+    },
+
+    purchaseEducation({ reference }) {
+      return Promise.resolve({
+        providerReference: reference,
+        status: deliveredByDefault ? "DELIVERED" : "SUBMITTED",
+        ...(deliveredByDefault ? { pin: "0000-MOCK-PIN", serialNumber: "MOCK-SERIAL" } : {})
       });
     }
   };
