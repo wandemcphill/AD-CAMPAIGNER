@@ -131,6 +131,25 @@ export interface VtuProviderAdapter extends ProviderAdapterBase {
     phoneNumber: string;
     reference: string;
   }): Promise<VtuSubmitResult>;
+
+  verifyBettingCustomer?(input: {
+    bettingCompany: string;
+    customerId: string;
+  }): Promise<VtuMeterValidation>;
+  purchaseBetFunding?(input: {
+    bettingCompany: string;
+    customerId: string;
+    amountMinor: number;
+    reference: string;
+  }): Promise<VtuSubmitResult>;
+
+  verifyJambProfile?(input: { profileId: string }): Promise<VtuMeterValidation>;
+  purchaseEducation?(input: {
+    examType: string;
+    phoneNumber: string;
+    profileId?: string;
+    reference: string;
+  }): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }>;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -611,52 +630,48 @@ async function ckGet(
   }
 }
 
-// Error/validation codes ClubKonnect returns as the literal value of "status" (not
-// a distinct HTTP error or envelope) — see nellobytesystems.com API docs "Status Codes".
-const CK_ERROR_STATUSES = new Set([
-  "INVALID_CREDENTIALS",
-  "MISSING_CREDENTIALS",
-  "MISSING_USERID",
-  "MISSING_APIKEY",
-  "MISSING_MOBILENETWORK",
-  "MISSING_AMOUNT",
-  "INVALID_AMOUNT",
-  "MINIMUM_50",
-  "MINIMUM_200000",
-  "INVALID_RECIPIENT",
-  "MISSING_DATAPLAN",
-  "INVALID_DATAPLAN",
-  "MISSING_ELECTRICITY",
-  "MISSING_METERTYPE",
-  "INVALID_METERNO",
-  "METERTYPE_NOT_AVAILABLE",
-  "MISSING_CABLETV",
-  "MISSING_PACKAGE",
-  "INVALID_SMARTCARDNO",
-  "PACKAGE_NOT_AVAILABLE"
-]);
+// Business status codes are authoritative — the "status" string alone is NOT enough
+// to classify an order. ClubKonnect groups multiple, materially different outcomes
+// under the same status string: e.g. statusCode 200 ("Success") and 201 ("Network
+// Unresponsive", auto-retried up to 1hr, not yet delivered) and 299 ("Unspecified
+// Error") all report status="ORDER_COMPLETED". Classifying on status alone would
+// mark network-unresponsive holds as DELIVERED. Verified against ClubKonnect's
+// "API Status Codes & Dispute Resolution Guide" (2026-08-06).
+function mapCkOutcome(statusCode?: string | number, status?: string): VtuSubmitStatus {
+  const code = Number(statusCode);
 
-function mapCkStatus(status?: string): VtuSubmitStatus {
+  if (Number.isFinite(code) && code > 0) {
+    if (code === 200) return "DELIVERED";
+    if (code === 100 || code === 300) return "SUBMITTED";
+    // 201 (network unresponsive, provider auto-retries up to 1hr) also belongs here —
+    // not delivered yet, but not a hard failure either; our own poll job re-checks.
+    if (code === 201 || code === 199 || code === 399 || code === 299) return "AMBIGUOUS";
+    if (code >= 400 && code <= 499) return "FAILED";
+    // ORDER_ONHOLD range: 602 explicitly means "credited back for failed txn" — terminal
+    // failure. The rest are non-terminal holds ClubKonnect retries automatically.
+    if (code === 602) return "FAILED";
+    if (code >= 600 && code <= 699) return "SUBMITTED";
+    if (code >= 500 && code <= 599) return "FAILED";
+  }
+
+  // Fallback when statusCode is absent (older/undocumented responses) — string-only.
   const s = (status ?? "").toUpperCase();
-  if (CK_ERROR_STATUSES.has(s)) return "FAILED";
-  if (s === "ORDER_RECEIVED") return "SUBMITTED";
+  if (s === "ORDER_RECEIVED" || s === "ORDER_PROCESSED" || s === "ORDER_ONHOLD") return "SUBMITTED";
   if (s === "ORDER_COMPLETED") return "DELIVERED";
-  if (s === "ORDER_CANCELLED" || s === "ORDER_REFUNDED") return "FAILED";
-  // ORDER_ONHOLD and any other unrecognized terminal-ish value: needs ops eyes,
-  // not an auto-classification either way.
+  if (s === "ORDER_CANCELLED" || s === "ORDER_ERROR") return "FAILED";
   return "AMBIGUOUS";
 }
 
 function ckOutcome(
-  res: { status?: string; orderid?: string | number },
+  res: { status?: string; statuscode?: string | number; remark?: string; orderid?: string | number },
   reference: string
 ): VtuSubmitResult {
-  const status = mapCkStatus(res.status);
+  const status = mapCkOutcome(res.statuscode, res.status);
   if (status === "FAILED") {
     return {
       providerReference: reference,
       status: "FAILED",
-      failureReason: res.status ?? "ClubKonnect request failed"
+      failureReason: res.remark ?? res.status ?? "ClubKonnect request failed"
     };
   }
   return { providerReference: reference, status };
@@ -751,6 +766,8 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
       };
       const res = (await ckGet(config, "/APIAirtimeV1.asp", params)) as {
         status?: string;
+        statuscode?: string | number;
+        remark?: string;
         orderid?: string | number;
       };
       return ckOutcome(res, reference);
@@ -766,6 +783,8 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
       };
       const res = (await ckGet(config, "/APIDatabundleV1.asp", params)) as {
         status?: string;
+        statuscode?: string | number;
+        remark?: string;
         orderid?: string | number;
       };
       return ckOutcome(res, reference);
@@ -774,7 +793,7 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
     async getOrderStatus(reference) {
       const res = (await ckGet(config, "/APIQueryV1.asp", {
         RequestID: reference
-      })) as { status?: string; remark?: string };
+      })) as { status?: string; statuscode?: string | number; remark?: string };
 
       const outcome = ckOutcome(res, reference);
       return {
@@ -784,11 +803,15 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
       };
     },
 
-    getBalance() {
-      // Not exposed by the documented Nellobyte API surface for this account tier.
-      return Promise.reject(
-        new Error("ClubKonnect does not expose a wallet balance endpoint for this integration.")
-      );
+    async getBalance() {
+      const res = (await ckGet(config, "/APIWalletBalanceV1.asp", {})) as {
+        balance?: string | number;
+      };
+      return {
+        providerName: "clubkonnect",
+        balanceMinor: Math.round(parseFloat(String(res.balance ?? 0)) * 100),
+        currency: "NGN"
+      };
     },
 
     async checkHealth() {
@@ -835,6 +858,8 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
           ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
         })) as {
           status?: string;
+          statuscode?: string | number;
+          remark?: string;
           orderid?: string | number;
           metertoken?: string;
         };
@@ -906,6 +931,8 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
           ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
         })) as {
           status?: string;
+          statuscode?: string | number;
+          remark?: string;
           orderid?: string | number;
         };
 
@@ -1750,7 +1777,7 @@ export function createMockVtuAdapter(
       return Promise.resolve({
         providerReference: reference,
         status: deliveredByDefault ? "DELIVERED" : "SUBMITTED",
-        token: deliveredByDefault ? "0000-MOCK-TOKEN" : undefined
+        ...(deliveredByDefault ? { token: "0000-MOCK-TOKEN" } : {})
       });
     },
 

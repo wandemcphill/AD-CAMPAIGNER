@@ -2068,6 +2068,21 @@ model VtuDataPlan {
   @@index([network, planType, active])
 }
 
+model VtuCablePackage {
+  id            String    @id @default(uuid())
+  providerName  String
+  cableProvider String
+  packageCode   String
+  displayName   String
+  costMinor     Int
+  currency      String    @default("NGN")
+  active        Boolean   @default(true)
+  lastSyncedAt  DateTime  @default(now())
+
+  @@unique([providerName, packageCode])
+  @@index([cableProvider, active])
+}
+
 model VtuOrder {
   id                String            @id @default(uuid())
   workspaceId       String

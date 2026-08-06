@@ -248,6 +248,73 @@ export async function processPlanCatalogSync(job: Job<VtuFulfilmentJob>): Promis
   return `plan_catalog_sync: ${providerName} synced ${offers.length} plans, ${staleIds.length} deactivated`;
 }
 
+// ─── cable_catalog_sync ────────────────────────────────────────────────────────
+// Refreshes VtuCablePackage from a live provider adapter. Same stale-marking pattern
+// as plan_catalog_sync: packages the provider no longer lists are deactivated, not
+// deleted, since VtuOrder.metadata references packageCode and shouldn't dangle.
+
+export async function processCableCatalogSync(job: Job<VtuFulfilmentJob>): Promise<string> {
+  const providerName = job.data.providerName;
+  if (!providerName) return "cable_catalog_sync skipped: no providerName";
+
+  const db = getDb();
+  const adapter = buildAdapter(providerName);
+  if (!adapter.listCablePackages) {
+    return `cable_catalog_sync: ${providerName} does not support cable package discovery`;
+  }
+
+  const offers = await adapter.listCablePackages();
+  const seenCodes = new Set<string>();
+
+  for (const offer of offers) {
+    seenCodes.add(offer.packageCode);
+
+    await db.vtuCablePackage.upsert({
+      where: {
+        providerName_packageCode: {
+          providerName,
+          packageCode: offer.packageCode
+        }
+      },
+      create: {
+        providerName,
+        cableProvider: offer.cableProvider,
+        packageCode: offer.packageCode,
+        displayName: offer.displayName,
+        costMinor: offer.costMinor,
+        currency: offer.currency,
+        active: true,
+        lastSyncedAt: new Date()
+      },
+      update: {
+        cableProvider: offer.cableProvider,
+        displayName: offer.displayName,
+        costMinor: offer.costMinor,
+        currency: offer.currency,
+        active: true,
+        lastSyncedAt: new Date()
+      }
+    });
+  }
+
+  const existing = await db.vtuCablePackage.findMany({
+    where: { providerName, active: true },
+    select: { id: true, packageCode: true }
+  });
+  const staleIds = existing
+    .filter((p) => !seenCodes.has(p.packageCode))
+    .map((p) => p.id);
+
+  if (staleIds.length > 0) {
+    await db.vtuCablePackage.updateMany({
+      where: { id: { in: staleIds } },
+      data: { active: false }
+    });
+  }
+
+  return `cable_catalog_sync: ${providerName} synced ${offers.length} packages, ${staleIds.length} deactivated`;
+}
+
 // ─── provider_health ───────────────────────────────────────────────────────────
 
 export async function processProviderHealth(job: Job<VtuFulfilmentJob>): Promise<string> {
@@ -289,6 +356,8 @@ export async function processVtuFulfilmentJob(job: Job<VtuFulfilmentJob>): Promi
       return processReconcile();
     case "plan_catalog_sync":
       return processPlanCatalogSync(job);
+    case "cable_catalog_sync":
+      return processCableCatalogSync(job);
     case "provider_health":
       return processProviderHealth(job);
     case "ops_review":

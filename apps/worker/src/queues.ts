@@ -71,6 +71,7 @@ export type VtuFulfilmentJobName =
   | "poll_status"
   | "reconcile"
   | "plan_catalog_sync"
+  | "cable_catalog_sync"
   | "provider_health"
   | "ops_review";
 

@@ -12,7 +12,9 @@ import type {
   BuyElectricityDto,
   BuyAirtimeDto,
   BuyDataDto,
+  CablePackagesQueryDto,
   ValidateMeterDto,
+  VerifyCableDto,
   VtuOrderQueryDto
 } from "./vtu.dtos";
 import { VtuService } from "./vtu.service";
@@ -57,6 +59,17 @@ export class VtuController {
   @RequirePermissions("campaign:create")
   buyElectricity(@Body() body: BuyElectricityDto, @Req() request: WorkspaceContextRequest) {
     return this.vtu.buyElectricity(workspaceContextFromRequest(request), body);
+  }
+
+  @Get("cable/packages")
+  listCablePackages(@Query() query: CablePackagesQueryDto) {
+    return this.vtu.listCablePackages(query.provider);
+  }
+
+  @Post("cable/verify")
+  @RequirePermissions("campaign:create")
+  verifyCable(@Body() body: VerifyCableDto) {
+    return this.vtu.verifyCable(body);
   }
 
   @Post("cable")

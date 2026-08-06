@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 
 import { Prisma, type DatabaseClient } from "@fliptrybe/database";
-import { calculateAvailableBalance } from "@fliptrybe/payments";
+import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
   createMockVtuAdapter,
@@ -38,6 +38,11 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
 const MARKUP_BPS = 200;
 const VTU_NETWORKS: VtuNetwork[] = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
 const DEFAULT_VTU_PROVIDER = "clubkonnect";
+
+// Verified against the live ClubKonnect (Nellobyte) account on 2026-08-05 via
+// /APIDatabundlePlansV2.asp — real PRODUCT_ID values, not invented placeholders.
+// The plan_catalog_sync worker job (apps/worker/src/vtu-processor.ts) refreshes and
+// supersedes this on the account's schedule; this is only the immediate bootstrap set.
 const DEFAULT_DATA_PLANS: Array<{
   network: VtuNetwork;
   providerPlanId: string;
@@ -45,32 +50,46 @@ const DEFAULT_DATA_PLANS: Array<{
   sizeMb: number;
   validityDays: number;
   costMinor: number;
-}> = VTU_NETWORKS.flatMap((network) => [
-  {
-    network,
-    providerPlanId: `${network.toLowerCase()}_1gb_30d`,
-    displayName: `${network.replace("_", " ")} 1GB - 30 days`,
-    sizeMb: 1024,
-    validityDays: 30,
-    costMinor: 45000
-  },
-  {
-    network,
-    providerPlanId: `${network.toLowerCase()}_2gb_30d`,
-    displayName: `${network.replace("_", " ")} 2GB - 30 days`,
-    sizeMb: 2048,
-    validityDays: 30,
-    costMinor: 85000
-  },
-  {
-    network,
-    providerPlanId: `${network.toLowerCase()}_5gb_30d`,
-    displayName: `${network.replace("_", " ")} 5GB - 30 days`,
-    sizeMb: 5120,
-    validityDays: 30,
-    costMinor: 200000
-  }
-]);
+}> = [
+  { network: "MTN", providerPlanId: "500", displayName: "MTN 500MB - Weekly (SME)", sizeMb: 500, validityDays: 7, costMinor: 30700 },
+  { network: "MTN", providerPlanId: "1000", displayName: "MTN 1GB - Weekly (SME)", sizeMb: 1024, validityDays: 7, costMinor: 41000 },
+  { network: "MTN", providerPlanId: "1000.00", displayName: "MTN 1GB - Monthly (SME)", sizeMb: 1024, validityDays: 30, costMinor: 56300 },
+  { network: "MTN", providerPlanId: "2000.00", displayName: "MTN 2GB - Monthly (SME)", sizeMb: 2048, validityDays: 30, costMinor: 111700 },
+  { network: "MTN", providerPlanId: "3000.00", displayName: "MTN 3GB - Monthly (SME)", sizeMb: 3072, validityDays: 30, costMinor: 162900 },
+  { network: "MTN", providerPlanId: "5000.00", displayName: "MTN 5GB - Monthly (SME)", sizeMb: 5120, validityDays: 30, costMinor: 251100 },
+  { network: "GLO", providerPlanId: "1000", displayName: "Glo 1GB - 30 days (SME)", sizeMb: 1024, validityDays: 30, costMinor: 46100 },
+  { network: "GLO", providerPlanId: "2000", displayName: "Glo 2GB - 30 days (SME)", sizeMb: 2048, validityDays: 30, costMinor: 92200 },
+  { network: "GLO", providerPlanId: "3000", displayName: "Glo 3GB - 30 days (SME)", sizeMb: 3072, validityDays: 30, costMinor: 138300 },
+  { network: "GLO", providerPlanId: "5000", displayName: "Glo 5GB - 30 days (SME)", sizeMb: 5120, validityDays: 30, costMinor: 230600 },
+  { network: "GLO", providerPlanId: "10000", displayName: "Glo 10GB - 30 days (SME)", sizeMb: 10240, validityDays: 30, costMinor: 461200 },
+  { network: "AIRTEL", providerPlanId: "1499.93", displayName: "Airtel 2GB - 30 days (Direct Data)", sizeMb: 2048, validityDays: 30, costMinor: 145493 },
+  { network: "AIRTEL", providerPlanId: "1999.91", displayName: "Airtel 3GB - 30 days (Direct Data)", sizeMb: 3072, validityDays: 30, costMinor: 193991 },
+  { network: "AIRTEL", providerPlanId: "2999.92", displayName: "Airtel 8GB - 30 days (Direct Data)", sizeMb: 8192, validityDays: 30, costMinor: 290992 },
+  { network: "AIRTEL", providerPlanId: "3999.91", displayName: "Airtel 10GB - 30 days (Direct Data)", sizeMb: 10240, validityDays: 30, costMinor: 387991 },
+  { network: "NINE_MOBILE", providerPlanId: "1000", displayName: "9mobile 1GB - 30 days (SME)", sizeMb: 1024, validityDays: 30, costMinor: 49200 },
+  { network: "NINE_MOBILE", providerPlanId: "2000", displayName: "9mobile 2GB - 30 days (SME)", sizeMb: 2048, validityDays: 30, costMinor: 98400 },
+  { network: "NINE_MOBILE", providerPlanId: "5000", displayName: "9mobile 5GB - 30 days (SME)", sizeMb: 5120, validityDays: 30, costMinor: 246000 },
+  { network: "NINE_MOBILE", providerPlanId: "10000", displayName: "9mobile 10GB - 30 days (SME)", sizeMb: 10240, validityDays: 30, costMinor: 492000 }
+];
+
+// Verified DStv package list from ClubKonnect docs (2026-08-05). GOtv/StarTimes/Showmax
+// packages are populated live by the cable_catalog_sync worker job — not hand-verified
+// here, so they're intentionally omitted from this bootstrap set.
+const DEFAULT_CABLE_PACKAGES: Array<{
+  cableProvider: string;
+  packageCode: string;
+  displayName: string;
+  costMinor: number;
+}> = [
+  { cableProvider: "dstv", packageCode: "dstv-padi", displayName: "DStv Padi", costMinor: 440000 },
+  { cableProvider: "dstv", packageCode: "dstv-yanga", displayName: "DStv Yanga", costMinor: 600000 },
+  { cableProvider: "dstv", packageCode: "dstv-confam", displayName: "DStv Confam", costMinor: 1100000 },
+  { cableProvider: "dstv", packageCode: "dstv79", displayName: "DStv Compact", costMinor: 1900000 },
+  { cableProvider: "dstv", packageCode: "dstv7", displayName: "DStv Compact Plus", costMinor: 3000000 },
+  { cableProvider: "dstv", packageCode: "dstv3", displayName: "DStv Premium", costMinor: 4450000 },
+  { cableProvider: "dstv", packageCode: "dstv10", displayName: "DStv Premium-Asia", costMinor: 5050000 },
+  { cableProvider: "dstv", packageCode: "dstv9", displayName: "DStv Premium-French", costMinor: 6900000 }
+];
 
 function applyMarkup(costMinor: number): number {
   return Math.ceil(costMinor * (1 + MARKUP_BPS / 10_000));
@@ -268,87 +287,102 @@ export class VtuService {
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const msisdnMasked = dto.msisdn.slice(0, 4) + "****" + dto.msisdn.slice(-3);
 
-    const order = await this.db.$transaction(async (tx) => {
-      const wallet = await this.getWallet(workspaceId, tx);
-      const entries = (await tx.ledgerEntry.findMany({
-        where: { walletId: wallet.id }
-      })) as DbLedgerEntryRow[];
-      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+    const outcome = await runChargeSaga({
+      debit: async () => {
+        const order = await this.db.$transaction(async (tx) => {
+          const wallet = await this.getWallet(workspaceId, tx);
+          const entries = (await tx.ledgerEntry.findMany({
+            where: { walletId: wallet.id }
+          })) as DbLedgerEntryRow[];
+          const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
-      if (available.amountMinor < chargeMinor) {
-        throw new ForbiddenException(
-          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
-        );
-      }
+          if (available.amountMinor < chargeMinor) {
+            throw new ForbiddenException(
+              `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+            );
+          }
 
-      const newOrder = await tx.vtuOrder.create({
-        data: {
-          id: orderId,
-          workspaceId,
-          productType: "AIRTIME",
+          const newOrder = await tx.vtuOrder.create({
+            data: {
+              id: orderId,
+              workspaceId,
+              productType: "AIRTIME",
+              network: dto.network,
+              msisdnMasked,
+              msisdnEncrypted: dto.msisdn,
+              faceValueMinor: dto.faceValueMinor,
+              amountMinor: chargeMinor,
+              costMinor: wholesaleCost,
+              currency: "NGN",
+              providerName: adapter.name,
+              providerReference: reference,
+              status: "SUBMITTED",
+              idempotencyKey: `vtu_order_${orderId}`
+            }
+          });
+
+          const { charge } = await this.debitWallet(
+            wallet.id,
+            workspaceId,
+            chargeMinor,
+            `Airtime ${dto.network} ₦${(dto.faceValueMinor / 100).toFixed(0)} → ${msisdnMasked}`,
+            orderId,
+            tx
+          );
+
+          return { order: newOrder, charge: {
+            chargeId: charge.id,
+            walletId: charge.walletId,
+            amountMinor: charge.amountMinor,
+            currency: charge.currency as CurrencyCode,
+            debitLedgerEntryId: charge.debitLedgerEntryId
+          }};
+        });
+        return order;
+      },
+
+      execute: async (order) => {
+        const result = await adapter.purchaseAirtime({
           network: dto.network,
-          msisdnMasked,
-          msisdnEncrypted: dto.msisdn, // encrypt-at-rest in Phase 4
+          msisdn: dto.msisdn,
           faceValueMinor: dto.faceValueMinor,
-          amountMinor: chargeMinor,
-          costMinor: wholesaleCost,
-          currency: "NGN",
-          providerName: adapter.name,
-          providerReference: reference,
-          status: "SUBMITTED",
-          idempotencyKey: `vtu_order_${orderId}`
+          reference: order.providerReference!
+        });
+
+        const finalStatus =
+          result.status === "DELIVERED"
+            ? "DELIVERED"
+            : result.status === "SUBMITTED"
+              ? "SUBMITTED"
+              : "AMBIGUOUS";
+
+        await this.db.vtuOrder.update({
+          where: { id: order.id },
+          data: { status: finalStatus }
+        });
+
+        if (finalStatus === "AMBIGUOUS") {
+          await this.queue.enqueueVtuOpsReview(order.id);
+        } else if (finalStatus === "SUBMITTED") {
+          await this.queue.enqueueVtuPollStatus(order.id);
         }
-      });
 
-      await this.debitWallet(
-        wallet.id,
-        workspaceId,
-        chargeMinor,
-        `Airtime ${dto.network} ₦${(dto.faceValueMinor / 100).toFixed(0)} → ${msisdnMasked}`,
-        orderId,
-        tx
-      );
+        return result;
+      },
 
-      return newOrder;
+      compensate: async () => {}
     });
 
-    // Submit outside the transaction — network timeout must not roll back the debit.
-    try {
-      const result = await adapter.purchaseAirtime({
-        network: dto.network,
-        msisdn: dto.msisdn,
-        faceValueMinor: dto.faceValueMinor,
-        reference: order.providerReference!
-      });
-
-      const finalStatus =
-        result.status === "DELIVERED"
-          ? "DELIVERED"
-          : result.status === "SUBMITTED"
-            ? "SUBMITTED"
-            : "AMBIGUOUS";
-
+    if (outcome.status === "held") {
+      this.logger.error(`VTU airtime submit error for ${orderId}: ${String(outcome.error)}`);
       await this.db.vtuOrder.update({
-        where: { id: order.id },
-        data: { status: finalStatus }
-      });
-
-      if (finalStatus === "AMBIGUOUS") {
-        await this.queue.enqueueVtuOpsReview(order.id);
-      } else if (finalStatus === "SUBMITTED") {
-        // Async delivery — poll the provider until it reports a terminal state.
-        await this.queue.enqueueVtuPollStatus(order.id);
-      }
-    } catch (err) {
-      this.logger.error(`VTU airtime submit error for ${order.id}: ${String(err)}`);
-      await this.db.vtuOrder.update({
-        where: { id: order.id },
+        where: { id: orderId },
         data: { status: "AMBIGUOUS" }
       });
-      await this.queue.enqueueVtuOpsReview(order.id);
+      await this.queue.enqueueVtuOpsReview(orderId);
     }
 
-    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } });
+    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: orderId } });
   }
 
   // ─── Data purchase ───────────────────────────────────────────────────────────
@@ -378,86 +412,102 @@ export class VtuService {
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const msisdnMasked = dto.msisdn.slice(0, 4) + "****" + dto.msisdn.slice(-3);
 
-    const order = await this.db.$transaction(async (tx) => {
-      const wallet = await this.getWallet(workspaceId, tx);
-      const entries = (await tx.ledgerEntry.findMany({
-        where: { walletId: wallet.id }
-      })) as DbLedgerEntryRow[];
-      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+    const outcome = await runChargeSaga({
+      debit: async () => {
+        const order = await this.db.$transaction(async (tx) => {
+          const wallet = await this.getWallet(workspaceId, tx);
+          const entries = (await tx.ledgerEntry.findMany({
+            where: { walletId: wallet.id }
+          })) as DbLedgerEntryRow[];
+          const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
-      if (available.amountMinor < chargeMinor) {
-        throw new ForbiddenException(
-          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
-        );
-      }
+          if (available.amountMinor < chargeMinor) {
+            throw new ForbiddenException(
+              `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+            );
+          }
 
-      const newOrder = await tx.vtuOrder.create({
-        data: {
-          id: orderId,
-          workspaceId,
-          productType: "DATA",
+          const newOrder = await tx.vtuOrder.create({
+            data: {
+              id: orderId,
+              workspaceId,
+              productType: "DATA",
+              network: dto.network,
+              msisdnMasked,
+              msisdnEncrypted: dto.msisdn,
+              planId: plan.id,
+              amountMinor: chargeMinor,
+              costMinor: plan.costMinor,
+              currency: "NGN",
+              providerName: adapter.name,
+              providerReference: reference,
+              status: "SUBMITTED",
+              idempotencyKey: `vtu_order_${orderId}`
+            }
+          });
+
+          const { charge } = await this.debitWallet(
+            wallet.id,
+            workspaceId,
+            chargeMinor,
+            `Data ${plan.displayName} ${dto.network} → ${msisdnMasked}`,
+            orderId,
+            tx
+          );
+
+          return { order: newOrder, charge: {
+            chargeId: charge.id,
+            walletId: charge.walletId,
+            amountMinor: charge.amountMinor,
+            currency: charge.currency as CurrencyCode,
+            debitLedgerEntryId: charge.debitLedgerEntryId
+          }};
+        });
+        return order;
+      },
+
+      execute: async (order) => {
+        const result = await adapter.purchaseData({
           network: dto.network,
-          msisdnMasked,
-          msisdnEncrypted: dto.msisdn,
-          planId: plan.id,
-          amountMinor: chargeMinor,
-          costMinor: plan.costMinor,
-          currency: "NGN",
-          providerName: adapter.name,
-          providerReference: reference,
-          status: "SUBMITTED",
-          idempotencyKey: `vtu_order_${orderId}`
+          msisdn: dto.msisdn,
+          providerPlanId: dto.providerPlanId,
+          reference: order.providerReference!
+        });
+
+        const finalStatus =
+          result.status === "DELIVERED"
+            ? "DELIVERED"
+            : result.status === "SUBMITTED"
+              ? "SUBMITTED"
+              : "AMBIGUOUS";
+
+        await this.db.vtuOrder.update({
+          where: { id: order.id },
+          data: { status: finalStatus }
+        });
+
+        if (finalStatus === "AMBIGUOUS") {
+          await this.queue.enqueueVtuOpsReview(order.id);
+        } else if (finalStatus === "SUBMITTED") {
+          await this.queue.enqueueVtuPollStatus(order.id);
         }
-      });
 
-      await this.debitWallet(
-        wallet.id,
-        workspaceId,
-        chargeMinor,
-        `Data ${plan.displayName} ${dto.network} → ${msisdnMasked}`,
-        orderId,
-        tx
-      );
+        return result;
+      },
 
-      return newOrder;
+      compensate: async () => {}
     });
 
-    try {
-      const result = await adapter.purchaseData({
-        network: dto.network,
-        msisdn: dto.msisdn,
-        providerPlanId: dto.providerPlanId,
-        reference: order.providerReference!
-      });
-
-      const finalStatus =
-        result.status === "DELIVERED"
-          ? "DELIVERED"
-          : result.status === "SUBMITTED"
-            ? "SUBMITTED"
-            : "AMBIGUOUS";
-
+    if (outcome.status === "held") {
+      this.logger.error(`VTU data submit error for ${orderId}: ${String(outcome.error)}`);
       await this.db.vtuOrder.update({
-        where: { id: order.id },
-        data: { status: finalStatus }
-      });
-
-      if (finalStatus === "AMBIGUOUS") {
-        await this.queue.enqueueVtuOpsReview(order.id);
-      } else if (finalStatus === "SUBMITTED") {
-        // Async delivery — poll the provider until it reports a terminal state.
-        await this.queue.enqueueVtuPollStatus(order.id);
-      }
-    } catch (err) {
-      this.logger.error(`VTU data submit error for ${order.id}: ${String(err)}`);
-      await this.db.vtuOrder.update({
-        where: { id: order.id },
+        where: { id: orderId },
         data: { status: "AMBIGUOUS" }
       });
-      await this.queue.enqueueVtuOpsReview(order.id);
+      await this.queue.enqueueVtuOpsReview(orderId);
     }
 
-    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } });
+    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: orderId } });
   }
 
   // ─── Data plan catalog ───────────────────────────────────────────────────────
@@ -600,9 +650,9 @@ export class VtuService {
 
   // ─── Bills adapter selector ──────────────────────────────────────────────────
   // Bills (electricity/cable) don't route by VtuNetwork (mobile carrier); they use a
-  // separate routing query with no network filter. VTpass is primary for all Nigerian
-  // DISCOs; ClubKonnect is configured as fallback via VtuProviderRoute rows with
-  // productType=ELECTRICITY / productType=CABLE and no network.
+  // separate routing query with no network filter. ClubKonnect is primary for all
+  // Nigerian DISCOs and cable billers; VTpass is configured as fallback via
+  // VtuProviderRoute rows with productType=ELECTRICITY / productType=CABLE and no network.
 
   private async selectBillsAdapter(
     productType: "ELECTRICITY" | "CABLE",
@@ -614,8 +664,8 @@ export class VtuService {
     });
 
     if (routes.length === 0) {
-      // Fall back to vtpass which is the standard Nigerian bills provider
-      return this.buildAdapter("vtpass");
+      // Fall back to clubkonnect, the default Nigerian bills provider.
+      return this.buildAdapter(DEFAULT_VTU_PROVIDER);
     }
 
     const healthRows = await db.providerHealth.findMany({
@@ -630,7 +680,7 @@ export class VtuService {
       return status !== "DOWN" && status !== "DISABLED";
     });
 
-    return this.buildAdapter(healthy?.provider ?? "vtpass");
+    return this.buildAdapter(healthy?.provider ?? DEFAULT_VTU_PROVIDER);
   }
 
   // ─── Meter validation (pre-flight, free) ────────────────────────────────────
@@ -663,6 +713,9 @@ export class VtuService {
     if (!dto.disco) throw new BadRequestException("disco is required.");
     if (!dto.meterNumber.match(/^\d{10,13}$/)) {
       throw new BadRequestException("Invalid meter number format (10-13 digits).");
+    }
+    if (!dto.phoneNumber.match(/^\+?[1-9]\d{6,14}$/)) {
+      throw new BadRequestException("Invalid phone number format.");
     }
     if (dto.amountMinor < 50_000) {
       throw new BadRequestException("Minimum electricity purchase is ₦500.");
@@ -748,6 +801,7 @@ export class VtuService {
         meterNumber: dto.meterNumber,
         meterType: dto.meterType,
         amountMinor: dto.amountMinor,
+        phoneNumber: dto.phoneNumber,
         reference: order.providerReference!
       });
 
@@ -788,26 +842,189 @@ export class VtuService {
 
   // ─── Cable subscription ──────────────────────────────────────────────────────
 
+  async listCablePackages(cableProvider?: string) {
+    await this.ensureDefaultCablePackages();
+    return this.db.vtuCablePackage.findMany({
+      where: { active: true, ...(cableProvider ? { cableProvider } : {}) },
+      orderBy: [{ cableProvider: "asc" }, { costMinor: "asc" }]
+    });
+  }
+
+  async verifyCable(dto: { provider: string; smartCardNumber: string }) {
+    if (!featureFlags.billsCable) {
+      throw new BadRequestException("Cable subscriptions are not yet available.");
+    }
+
+    const adapter = await this.selectBillsAdapter("CABLE");
+    if (!adapter.verifyCableCustomer) {
+      throw new BadRequestException("Selected provider does not support smartcard verification.");
+    }
+
+    return adapter.verifyCableCustomer({
+      provider: dto.provider,
+      smartCardNumber: dto.smartCardNumber
+    });
+  }
+
   async buyCable(ctx: AuthenticatedRequestContext, dto: BuyCableDto) {
     if (!featureFlags.billsCable) {
       throw new BadRequestException("Cable subscriptions are not yet available.");
     }
 
+    const { workspaceId } = ctx;
     if (!dto.provider) throw new BadRequestException("provider is required.");
-    if (!dto.smartCardNumber) throw new BadRequestException("smartCardNumber is required.");
+    if (!dto.smartCardNumber.match(/^\d{5,12}$/)) {
+      throw new BadRequestException("Invalid smartcard/IUC number format.");
+    }
     if (!dto.packageCode) throw new BadRequestException("packageCode is required.");
+    if (!dto.phoneNumber.match(/^\+?[1-9]\d{6,14}$/)) {
+      throw new BadRequestException("Invalid phone number format.");
+    }
 
     const adapter = await this.selectBillsAdapter("CABLE");
     if (!adapter.purchaseCable) {
       throw new BadRequestException("Selected provider does not support cable purchase.");
     }
 
-    // Look up the cable package cost from provider catalog (VtuDataPlan reused for cable bundles)
-    // If no catalog entry found, caller must specify amountMinor separately (not yet implemented
-    // in DTOs — for now we require a catalog-backed amount to prevent overcharging).
-    // NOTE: cable package catalog sync is a follow-up worker job; for now throw if no catalog.
-    throw new BadRequestException(
-      "Cable subscription requires package catalog. Contact support to enable cable for your account."
+    await this.ensureDefaultCablePackages();
+    const pkg = await this.db.vtuCablePackage.findFirst({
+      where: {
+        providerName: adapter.name,
+        packageCode: dto.packageCode,
+        cableProvider: dto.provider,
+        active: true
+      }
+    });
+    if (!pkg) throw new NotFoundException("Cable package not found or unavailable.");
+
+    // Pre-flight verification before charging the wallet.
+    if (adapter.verifyCableCustomer) {
+      const validation = await adapter.verifyCableCustomer({
+        provider: dto.provider,
+        smartCardNumber: dto.smartCardNumber
+      });
+      if (!validation.valid) {
+        throw new BadRequestException(
+          "Smartcard verification failed. Verify the smartcard/IUC number and try again."
+        );
+      }
+    }
+
+    const chargeMinor = applyMarkup(pkg.costMinor);
+    const orderId = uid("vtu");
+    const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
+    const cardMasked = dto.smartCardNumber.slice(0, 3) + "****" + dto.smartCardNumber.slice(-2);
+
+    const order = await this.db.$transaction(async (tx) => {
+      const wallet = await this.getWallet(workspaceId, tx);
+      const entries = (await tx.ledgerEntry.findMany({
+        where: { walletId: wallet.id }
+      })) as DbLedgerEntryRow[];
+      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+      if (available.amountMinor < chargeMinor) {
+        throw new ForbiddenException(
+          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+        );
+      }
+
+      const newOrder = await tx.vtuOrder.create({
+        data: {
+          id: orderId,
+          workspaceId,
+          productType: "CABLE",
+          msisdnMasked: cardMasked,
+          msisdnEncrypted: dto.smartCardNumber,
+          amountMinor: chargeMinor,
+          costMinor: pkg.costMinor,
+          currency: "NGN",
+          providerName: adapter.name,
+          providerReference: reference,
+          status: "SUBMITTED",
+          idempotencyKey: `vtu_order_${orderId}`,
+          metadata: { cableProvider: dto.provider, packageCode: dto.packageCode }
+        }
+      });
+
+      await this.debitWallet(
+        wallet.id,
+        workspaceId,
+        chargeMinor,
+        `Cable ${pkg.displayName} → ${cardMasked}`,
+        orderId,
+        tx
+      );
+
+      return newOrder;
+    });
+
+    // Submit outside the transaction — network timeout must not roll back the debit.
+    try {
+      const result = await adapter.purchaseCable({
+        provider: dto.provider,
+        smartCardNumber: dto.smartCardNumber,
+        packageCode: dto.packageCode,
+        phoneNumber: dto.phoneNumber,
+        reference: order.providerReference!
+      });
+
+      const finalStatus =
+        result.status === "DELIVERED"
+          ? "DELIVERED"
+          : result.status === "SUBMITTED"
+            ? "SUBMITTED"
+            : "AMBIGUOUS";
+
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: { status: finalStatus }
+      });
+
+      if (finalStatus === "AMBIGUOUS") {
+        await this.queue.enqueueVtuOpsReview(order.id);
+      } else if (finalStatus === "SUBMITTED") {
+        await this.queue.enqueueVtuPollStatus(order.id);
+      }
+    } catch (err) {
+      this.logger.error(`VTU cable submit error for ${order.id}: ${String(err)}`);
+      await this.db.vtuOrder.update({
+        where: { id: order.id },
+        data: { status: "AMBIGUOUS" }
+      });
+      await this.queue.enqueueVtuOpsReview(order.id);
+    }
+
+    return this.db.vtuOrder.findUniqueOrThrow({ where: { id: order.id } });
+  }
+
+  private async ensureDefaultCablePackages(db: DbClient = this.db) {
+    const existing = await db.vtuCablePackage.count({
+      where: { providerName: DEFAULT_VTU_PROVIDER }
+    });
+    if (existing > 0) return;
+
+    await Promise.all(
+      DEFAULT_CABLE_PACKAGES.map((pkg) =>
+        db.vtuCablePackage.upsert({
+          where: {
+            providerName_packageCode: {
+              providerName: DEFAULT_VTU_PROVIDER,
+              packageCode: pkg.packageCode
+            }
+          },
+          update: {},
+          create: {
+            id: uid("vcpkg"),
+            providerName: DEFAULT_VTU_PROVIDER,
+            cableProvider: pkg.cableProvider,
+            packageCode: pkg.packageCode,
+            displayName: pkg.displayName,
+            costMinor: pkg.costMinor,
+            currency: "NGN",
+            active: true
+          }
+        })
+      )
     );
   }
 

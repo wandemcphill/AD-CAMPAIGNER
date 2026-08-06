@@ -40,6 +40,14 @@ export interface BuyElectricityDto {
   meterType: MeterType;
   /** Amount to purchase in NGN kobo (minor units). Minimum ₦500 = 50_000 */
   amountMinor: number;
+  /** Recipient phone number for provider notifications — required by ClubKonnect. */
+  phoneNumber: string;
+}
+
+export interface VerifyCableDto {
+  /** e.g. "dstv", "gotv", "startimes", "showmax" */
+  provider: string;
+  smartCardNumber: string;
 }
 
 export interface BuyCableDto {
@@ -47,6 +55,12 @@ export interface BuyCableDto {
   provider: string;
   smartCardNumber: string;
   packageCode: string;
+  /** Recipient phone number for provider notifications — required by ClubKonnect. */
+  phoneNumber: string;
+}
+
+export interface CablePackagesQueryDto {
+  provider?: string;
 }
 
 export interface BillsOrderQueryDto {

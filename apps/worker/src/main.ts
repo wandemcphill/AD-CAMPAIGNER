@@ -61,6 +61,12 @@ async function scheduleVtuRecurringJobs() {
     );
 
     await queue.upsertJobScheduler(
+      `vtu-cable-sync-${providerName}`,
+      { every: 24 * 60 * 60_000 }, // daily
+      { name: "cable_catalog_sync", data: { providerName } }
+    );
+
+    await queue.upsertJobScheduler(
       `vtu-health-${providerName}`,
       { every: 5 * 60_000 }, // every 5 minutes
       { name: "provider_health", data: { providerName } }
