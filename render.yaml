@@ -261,10 +261,6 @@ services:
     autoDeployTrigger: commit
     buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/admin build
     staticPublishPath: apps/admin/out
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
     envVars:
       - key: NODE_VERSION
         value: 22.12.0
