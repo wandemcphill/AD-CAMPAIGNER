@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import type { ProviderAdapterBase } from "./contract.js";
 import type {
   Campaign,
   CampaignObjective,
@@ -2468,8 +2469,8 @@ export interface GiftCardSellRate {
   rateTimestamp: Date;
 }
 
-export interface GiftCardSellProvider {
-  readonly name: string;
+export interface GiftCardSellProvider extends ProviderAdapterBase {
+  readonly domain: 'GIFT_CARD';
 
   listSupportedBrands(): Promise<string[]>;
   getRate(brand: string, region: string, denomination: number): Promise<GiftCardSellRate>;
@@ -2489,7 +2490,6 @@ export interface GiftCardSellProvider {
     payout?: number;
     payoutCurrency?: string;
   }>;
-  checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number }>;
 }
 
 // ─── Gift Card Purchase Provider ────────────────────────────────────────────────
@@ -2506,8 +2506,8 @@ export interface GiftCardProduct {
   available: boolean;
 }
 
-export interface GiftCardPurchaseProvider {
-  readonly name: string;
+export interface GiftCardPurchaseProvider extends ProviderAdapterBase {
+  readonly domain: 'GIFT_CARD';
 
   getProducts(filters?: { brand?: string; region?: string; country?: string }): Promise<GiftCardProduct[]>;
   getProduct(productId: string): Promise<GiftCardProduct>;
@@ -2527,13 +2527,12 @@ export interface GiftCardPurchaseProvider {
     codes?: string[];
     failureReason?: string;
   }>;
-  checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number; balance?: number }>;
 }
 
 // ─── Airtime Cashout Provider ──────────────────────────────────────────────────
 
-export interface AirtimeCashoutProvider {
-  readonly name: string;
+export interface AirtimeCashoutProvider extends ProviderAdapterBase {
+  readonly domain: 'AIRTIME_CASHOUT';
 
   getSupportedNetworks(): Promise<string[]>;
   requestOtp(phone: string, network: string): Promise<{ sessionId?: string; message: string }>;
@@ -2576,7 +2575,6 @@ export interface AirtimeCashoutProvider {
     payout?: number;
     payoutCurrency?: string;
   }>;
-  checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number }>;
 }
 
 // ─── Airtime Purchase Provider ────────────────────────────────────────────────
@@ -2604,6 +2602,7 @@ export interface AirtimePurchaseProvider {
   checkHealth(): Promise<{ status: 'HEALTHY' | 'DEGRADED' | 'DOWN'; latencyMs: number; balance?: number }>;
 }
 
+export * from './contract.js';
 export * from './router.js';
 export * from './vtu.js';
 export * from './virtual-numbers.js';

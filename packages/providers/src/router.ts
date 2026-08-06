@@ -1,8 +1,7 @@
 // Minimal structural types so the router doesn't depend on generated Prisma types directly.
 // The caller passes real Prisma model objects — they satisfy these interfaces structurally.
 
-export type ProviderDomain = "VIRTUAL_NUMBER" | "VTU";
-export type ProviderStatus = "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED";
+import type { ProviderDomain, ProviderStatus } from "./contract.js";
 
 export interface ProviderConfigLike {
   name: string;

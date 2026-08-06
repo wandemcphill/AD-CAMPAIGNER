@@ -1,5 +1,16 @@
 import type { CurrencyCode, LedgerEntry, Money } from "@fliptrybe/types";
 
+export {
+  runChargeSaga,
+  type SagaOutcome,
+  type SagaSteps,
+  type ChargeRecord,
+  type FailurePolicy,
+  type DebitStep,
+  type ExecuteStep,
+  type CompensateStep
+} from "./saga.js";
+
 export function money(amountMinor: number, currency: CurrencyCode): Money {
   if (!Number.isInteger(amountMinor)) {
     throw new Error("Money values must be stored in minor units");

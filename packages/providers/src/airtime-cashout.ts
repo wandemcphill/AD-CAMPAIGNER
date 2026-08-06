@@ -2,6 +2,21 @@
 // AirtimeToCash API adapter + mock for testing.
 
 import type { AirtimeCashoutProvider } from './index.js';
+import {
+  CURRENT_INTERFACE_VERSION,
+  type ProviderCapabilities,
+  type ProviderHealthSnapshot
+} from './contract.js';
+
+function airtimeCashoutCapabilities(idempotency: 'strong' | 'weak'): ProviderCapabilities {
+  return {
+    domain: 'AIRTIME_CASHOUT',
+    countries: ['NG'],
+    productTypes: ['AIRTIME_CASHOUT'],
+    networks: ['MTN', 'AIRTEL', 'GLO', '9MOBILE'],
+    reliability: { idempotency, ordering: 'none', webhookSignature: 'none' }
+  };
+}
 
 // ─── AirtimeToCash Adapter ──────────────────────────────────────────────────────
 
@@ -51,6 +66,9 @@ export function createAirtimeToCashAdapter(
 
   return {
     name: 'airtimetocash',
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'AIRTIME_CASHOUT' as const,
+    getCapabilities: () => airtimeCashoutCapabilities('weak'),
 
     getSupportedNetworks(): Promise<string[]> {
       return Promise.resolve(['MTN', 'AIRTEL', 'GLO', '9MOBILE']);
@@ -183,7 +201,7 @@ export function createAirtimeToCashAdapter(
       });
     },
 
-    async checkHealth() {
+    async checkHealth(): Promise<ProviderHealthSnapshot> {
       const start = Date.now();
       try {
         const response = await f(`${baseUrl}/api/v1/check/quota/availability`, {
@@ -201,11 +219,13 @@ export function createAirtimeToCashAdapter(
 
         const data = (await response.json()) as AirtimeToCashResponse;
         return {
+          providerName: 'airtimetocash',
           status: data.code === 5030 ? ('HEALTHY' as const) : ('DEGRADED' as const),
           latencyMs: Date.now() - start
         };
       } catch {
         return {
+          providerName: 'airtimetocash',
           status: 'DOWN' as const,
           latencyMs: Date.now() - start
         };
@@ -221,6 +241,9 @@ export function createMockAirtimeCashoutAdapter(
 ): AirtimeCashoutProvider {
   return {
     name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'AIRTIME_CASHOUT' as const,
+    getCapabilities: () => airtimeCashoutCapabilities('strong'),
 
     getSupportedNetworks(): Promise<string[]> {
       return Promise.resolve(['MTN', 'AIRTEL', 'GLO', '9MOBILE']);
@@ -276,8 +299,9 @@ export function createMockAirtimeCashoutAdapter(
       });
     },
 
-    checkHealth() {
+    checkHealth(): Promise<ProviderHealthSnapshot> {
       return Promise.resolve({
+        providerName: name,
         status: 'HEALTHY' as const,
         latencyMs: 30
       });

@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 
 import { Prisma, type DatabaseClient } from "@fliptrybe/database";
-import { calculateAvailableBalance } from "@fliptrybe/payments";
+import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
   createFiveSimRentalAdapter,
@@ -457,109 +457,123 @@ export class VirtualNumbersService {
   ) {
     const { workspaceId } = ctx;
 
-    const order = await this.db.$transaction(async (tx) => {
-      const wallet = await this.getWallet(workspaceId, tx);
-      const entries = (await tx.ledgerEntry.findMany({
-        where: { walletId: wallet.id }
-      })) as DbLedgerEntryRow[];
-      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+    const outcome = await runChargeSaga({
+      failurePolicy: "compensate",
 
-      if (available.amountMinor < chargeMinor) {
-        throw new ForbiddenException(
-          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+      debit: async () => {
+        const order = await this.db.$transaction(async (tx) => {
+          const wallet = await this.getWallet(workspaceId, tx);
+          const entries = (await tx.ledgerEntry.findMany({
+            where: { walletId: wallet.id }
+          })) as DbLedgerEntryRow[];
+          const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+          if (available.amountMinor < chargeMinor) {
+            throw new ForbiddenException(
+              `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+            );
+          }
+
+          const newOrder = await tx.virtualNumberOrder.create({
+            data: {
+              id: orderId,
+              workspaceId,
+              userId: ctx.userId,
+              productId: product.id,
+              kind: "PURCHASE",
+              status: "CHARGED",
+              amountMinor: chargeMinor,
+              currency: "NGN",
+              supplierCostMinor: offer.costMinorUsd,
+              supplierCurrency: "USD",
+              fxRateId: rate.fxRateId,
+              fxRateMicrosApplied: rate.rateMicros,
+              providerName: adapter.name,
+              idempotencyKey
+            }
+          });
+
+          const { charge } = await this.debitWallet(
+            wallet.id,
+            workspaceId,
+            chargeMinor,
+            `${product.displayName} — ${offer.countryCode} number`,
+            orderId,
+            tx
+          );
+
+          return { order: newOrder, charge: {
+            chargeId: charge.id,
+            walletId: charge.walletId,
+            amountMinor: charge.amountMinor,
+            currency: charge.currency as CurrencyCode,
+            debitLedgerEntryId: charge.debitLedgerEntryId
+          }};
+        });
+        return order;
+      },
+
+      execute: async (order) => {
+        const reservation = await adapter.reserveNumber(offer);
+        const provisioned = await adapter.provisionNumber({
+          reservationId: reservation.reservationId,
+          offer
+        });
+
+        const numberId = uid("vn");
+        const number = await this.db.virtualNumber.create({
+          data: {
+            id: numberId,
+            workspaceId,
+            userId: ctx.userId,
+            productId: product.id,
+            providerName: adapter.name,
+            providerNumberId: provisioned.providerNumberId,
+            e164: provisioned.e164,
+            countryCode: product.countryCode,
+            status: "ACTIVE",
+            provisionedAt: new Date(),
+            activatedAt: new Date(),
+            expiresAt: new Date(provisioned.expiresAt),
+            supplierCostMinor: offer.costMinorUsd,
+            supplierCurrency: "USD"
+          }
+        });
+
+        await this.db.virtualNumberOrder.update({
+          where: { id: order.id },
+          data: { status: "FULFILLED", virtualNumberId: number.id, providerReference: provisioned.providerNumberId }
+        });
+
+        await this.trackMarginAnalytics(
+          order.id,
+          product.countryCode,
+          adapter.name,
+          offer.costMinorUsd,
+          chargeMinor,
+          rate
         );
+
+        return provisioned;
+      },
+
+      compensate: async () => {
+        await this.db.$transaction(async (tx) => {
+          await this.reverseCharge(orderId, `Provisioning failed`, tx);
+          await tx.virtualNumberOrder.update({
+            where: { id: orderId },
+            data: { status: "FAILED" }
+          });
+        });
       }
-
-      const newOrder = await tx.virtualNumberOrder.create({
-        data: {
-          id: orderId,
-          workspaceId,
-          userId: ctx.userId,
-          productId: product.id,
-          kind: "PURCHASE",
-          status: "CHARGED",
-          amountMinor: chargeMinor,
-          currency: "NGN",
-          supplierCostMinor: offer.costMinorUsd,
-          supplierCurrency: "USD",
-          fxRateId: rate.fxRateId,
-          fxRateMicrosApplied: rate.rateMicros,
-          providerName: adapter.name,
-          idempotencyKey
-        }
-      });
-
-      await this.debitWallet(
-        wallet.id,
-        workspaceId,
-        chargeMinor,
-        `${product.displayName} — ${offer.countryCode} number`,
-        orderId,
-        tx
-      );
-
-      return newOrder;
     });
 
-    try {
-      const reservation = await adapter.reserveNumber(offer);
-      const provisioned = await adapter.provisionNumber({
-        reservationId: reservation.reservationId,
-        offer
-      });
-
-      const numberId = uid("vn");
-      const number = await this.db.virtualNumber.create({
-        data: {
-          id: numberId,
-          workspaceId,
-          userId: ctx.userId,
-          productId: product.id,
-          providerName: adapter.name,
-          providerNumberId: provisioned.providerNumberId,
-          e164: provisioned.e164,
-          countryCode: product.countryCode,
-          status: "ACTIVE",
-          provisionedAt: new Date(),
-          activatedAt: new Date(),
-          expiresAt: new Date(provisioned.expiresAt),
-          supplierCostMinor: offer.costMinorUsd,
-          supplierCurrency: "USD"
-        }
-      });
-
-      await this.db.virtualNumberOrder.update({
-        where: { id: order.id },
-        data: { status: "FULFILLED", virtualNumberId: number.id, providerReference: provisioned.providerNumberId }
-      });
-
-      // Track margin analytics for reporting
-      await this.trackMarginAnalytics(
-        order.id,
-        product.countryCode,
-        adapter.name,
-        offer.costMinorUsd,
-        chargeMinor,
-        rate
-      );
-
-      return this.db.virtualNumberOrder.findUniqueOrThrow({ where: { id: order.id } });
-    } catch (err) {
-      // Provisioning is synchronously confirmable (unlike VTU's telco submit), so a
-      // failure here is auto-reversed — the customer is never left charged for a
-      // number that does not exist.
-      this.logger.error(`Provisioning failed for order ${order.id}: ${String(err)}`);
-
-      await this.db.$transaction(async (tx) => {
-        await this.reverseCharge(order.id, `Provisioning failed: ${String(err)}`, tx);
-        await tx.virtualNumberOrder.update({
-          where: { id: order.id },
-          data: { status: "FAILED", failureReason: err instanceof Error ? err.message : String(err) }
-        });
-      });
-
+    if (outcome.status === "compensated") {
+      this.logger.error(`Provisioning failed for order ${orderId}: ${String(outcome.error)}`);
       throw new BadRequestException("Could not provision this number. Your wallet was not charged.");
     }
+
+    return this.db.virtualNumberOrder.findUniqueOrThrow({ where: { id: orderId } });
   }
 
   // ─── My numbers ──────────────────────────────────────────────────────────────
@@ -645,98 +659,113 @@ export class VirtualNumbersService {
     const orderId = uid("vno");
     const idempotencyKey = `vn_order_${orderId}`;
 
-    const order = await this.db.$transaction(async (tx) => {
-      const wallet = await this.getWallet(ctx.workspaceId, tx);
-      const entries = (await tx.ledgerEntry.findMany({
-        where: { walletId: wallet.id }
-      })) as DbLedgerEntryRow[];
-      const available = calculateAvailableBalance(entries.map(toTypedEntry));
+    const outcome = await runChargeSaga({
+      failurePolicy: "compensate",
 
-      if (available.amountMinor < chargeMinor) {
-        throw new ForbiddenException(
-          `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
-        );
-      }
+      debit: async () => {
+        const order = await this.db.$transaction(async (tx) => {
+          const wallet = await this.getWallet(ctx.workspaceId, tx);
+          const entries = (await tx.ledgerEntry.findMany({
+            where: { walletId: wallet.id }
+          })) as DbLedgerEntryRow[];
+          const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
-      const newOrder = await tx.virtualNumberOrder.create({
-        data: {
-          id: orderId,
-          workspaceId: ctx.workspaceId,
-          userId: ctx.userId,
-          productId: product.id,
-          virtualNumberId: number.id,
-          kind: "RENEWAL",
-          status: "CHARGED",
-          amountMinor: chargeMinor,
-          currency: "NGN",
-          supplierCostMinor: offer.costMinorUsd,
-          supplierCurrency: "USD",
-          fxRateId: rate.fxRateId,
-          fxRateMicrosApplied: rate.rateMicros,
-          providerName: adapter.name,
-          idempotencyKey
+          if (available.amountMinor < chargeMinor) {
+            throw new ForbiddenException(
+              `Insufficient balance. Required ₦${(chargeMinor / 100).toFixed(2)}.`
+            );
+          }
+
+          const newOrder = await tx.virtualNumberOrder.create({
+            data: {
+              id: orderId,
+              workspaceId: ctx.workspaceId,
+              userId: ctx.userId,
+              productId: product.id,
+              virtualNumberId: number.id,
+              kind: "RENEWAL",
+              status: "CHARGED",
+              amountMinor: chargeMinor,
+              currency: "NGN",
+              supplierCostMinor: offer.costMinorUsd,
+              supplierCurrency: "USD",
+              fxRateId: rate.fxRateId,
+              fxRateMicrosApplied: rate.rateMicros,
+              providerName: adapter.name,
+              idempotencyKey
+            }
+          });
+
+          const { charge } = await this.debitWallet(
+            wallet.id,
+            ctx.workspaceId,
+            chargeMinor,
+            `Renew ${number.e164} (+${dto.durationDays}d)`,
+            orderId,
+            tx
+          );
+
+          return { order: newOrder, charge: {
+            chargeId: charge.id,
+            walletId: charge.walletId,
+            amountMinor: charge.amountMinor,
+            currency: charge.currency as CurrencyCode,
+            debitLedgerEntryId: charge.debitLedgerEntryId
+          }};
+        });
+        return order;
+      },
+
+      execute: async (order) => {
+        const result = await adapter.renewNumber(number.providerNumberId, dto.durationDays);
+
+        if (!result.sameNumber) {
+          throw new Error(`${adapter.name} cannot guarantee the same number on renewal`);
         }
-      });
 
-      await this.debitWallet(
-        wallet.id,
-        ctx.workspaceId,
-        chargeMinor,
-        `Renew ${number.e164} (+${dto.durationDays}d)`,
-        orderId,
-        tx
-      );
+        await this.db.virtualNumber.update({
+          where: { id: number.id },
+          data: {
+            expiresAt: new Date(result.expiresAt),
+            status: "ACTIVE",
+            renewalCount: { increment: 1 }
+          }
+        });
 
-      return newOrder;
+        await this.db.virtualNumberOrder.update({
+          where: { id: order.id },
+          data: { status: "FULFILLED" }
+        });
+
+        await this.trackMarginAnalytics(
+          order.id,
+          number.countryCode,
+          adapter.name,
+          offer.costMinorUsd,
+          chargeMinor,
+          rate
+        );
+
+        return result;
+      },
+
+      compensate: async () => {
+        await this.db.$transaction(async (tx) => {
+          await this.reverseCharge(orderId, `Renewal failed`, tx);
+          await tx.virtualNumberOrder.update({
+            where: { id: orderId },
+            data: { status: "FAILED" }
+          });
+        });
+      }
     });
 
-    try {
-      const result = await adapter.renewNumber(number.providerNumberId, dto.durationDays);
-
-      if (!result.sameNumber) {
-        // Provider can't guarantee the same number on renewal — treat as a hard
-        // failure and reverse rather than silently swap the customer's number.
-        throw new Error(`${adapter.name} cannot guarantee the same number on renewal`);
-      }
-
-      await this.db.virtualNumber.update({
-        where: { id: number.id },
-        data: {
-          expiresAt: new Date(result.expiresAt),
-          status: "ACTIVE",
-          renewalCount: { increment: 1 }
-        }
-      });
-
-      await this.db.virtualNumberOrder.update({
-        where: { id: order.id },
-        data: { status: "FULFILLED" }
-      });
-
-      // Track margin analytics for renewal
-      await this.trackMarginAnalytics(
-        order.id,
-        number.countryCode,
-        adapter.name,
-        offer.costMinorUsd,
-        chargeMinor,
-        rate
-      );
-
-      return { order: await this.db.virtualNumberOrder.findUniqueOrThrow({ where: { id: order.id } }), sameNumber: true };
-    } catch (err) {
-      this.logger.error(`Renewal failed for order ${order.id}: ${String(err)}`);
-
-      await this.db.$transaction(async (tx) => {
-        await this.reverseCharge(order.id, `Renewal failed: ${String(err)}`, tx);
-        await tx.virtualNumberOrder.update({
-          where: { id: order.id },
-          data: { status: "FAILED", failureReason: err instanceof Error ? err.message : String(err) }
-        });
-      });
-
+    if (outcome.status === "compensated") {
+      this.logger.error(`Renewal failed for order ${orderId}: ${String(outcome.error)}`);
       throw new BadRequestException("Could not renew this number. Your wallet was not charged.");
     }
+
+    return { order: await this.db.virtualNumberOrder.findUniqueOrThrow({ where: { id: orderId } }), sameNumber: true };
   }
 
   // ─── Release ─────────────────────────────────────────────────────────────────

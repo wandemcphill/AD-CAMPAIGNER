@@ -1,6 +1,13 @@
 // Virtual Number (international SMS rental) provider adapter contract + adapters.
 // SMS receive only — no VoIP, dialer, calling, forwarding, or voicemail capability.
 
+import {
+  CURRENT_INTERFACE_VERSION,
+  type ProviderAdapterBase,
+  type ProviderCapabilities,
+  type ProviderHealthSnapshot
+} from './contract.js';
+
 export type NumberCapability = "SMS";
 export type NumberRentalKind = "TEMPORARY" | "STANDARD" | "EXTENDED" | "LONG_TERM";
 
@@ -37,15 +44,22 @@ export interface VirtualNumberProviderBalance {
   balanceMinorUsd: number;
 }
 
-export interface VirtualNumberHealthSnapshot {
-  providerName: string;
-  status: "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED";
-  latencyMs: number;
-  reason?: string;
+export type VirtualNumberHealthSnapshot = ProviderHealthSnapshot;
+
+function virtualNumberCapabilities(
+  idempotency: 'strong' | 'weak',
+  numberKinds: string[]
+): ProviderCapabilities {
+  return {
+    domain: 'VIRTUAL_NUMBER',
+    countries: [],
+    productTypes: numberKinds,
+    reliability: { idempotency, ordering: 'none', webhookSignature: 'none' }
+  };
 }
 
-export interface VirtualNumberProviderAdapter {
-  readonly name: string;
+export interface VirtualNumberProviderAdapter extends ProviderAdapterBase {
+  readonly domain: "VIRTUAL_NUMBER";
 
   listCountries(): Promise<NumberCountryAvailability[]>;
   searchNumbers(input: {
@@ -100,6 +114,9 @@ async function smsPoolPost(
 export function createSmsPoolAdapter(config: SmsPoolConfig): VirtualNumberProviderAdapter {
   return {
     name: "smspool",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VIRTUAL_NUMBER" as const,
+    getCapabilities: () => virtualNumberCapabilities('weak', ['STANDARD', 'LONG_TERM']),
 
     async listCountries() {
       const res = (await smsPoolPost(config, "/country/retrieve_all", {})) as Array<{
@@ -244,6 +261,9 @@ async function fiveSimGet(config: FiveSimConfig, path: string): Promise<unknown>
 export function createFiveSimRentalAdapter(config: FiveSimConfig): VirtualNumberProviderAdapter {
   return {
     name: "5sim",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VIRTUAL_NUMBER" as const,
+    getCapabilities: () => virtualNumberCapabilities('weak', ['TEMPORARY', 'STANDARD']),
 
     async listCountries() {
       const res = (await fiveSimGet(config, "/guest/countries")) as Record<
@@ -398,6 +418,9 @@ async function smsPvaGet(
 export function createSmsPvaAdapter(config: SmsPvaConfig): VirtualNumberProviderAdapter {
   return {
     name: "smspva",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VIRTUAL_NUMBER" as const,
+    getCapabilities: () => virtualNumberCapabilities('weak', ['STANDARD', 'EXTENDED']),
 
     async listCountries() {
       const res = (await smsPvaGet(config, { metod: "getcountries" })) as Record<
@@ -537,6 +560,9 @@ export function createSmsPvaAdapter(config: SmsPvaConfig): VirtualNumberProvider
 export function createMockVirtualNumberAdapter(name = "mock-numbers"): VirtualNumberProviderAdapter {
   return {
     name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VIRTUAL_NUMBER" as const,
+    getCapabilities: () => virtualNumberCapabilities('strong', ['TEMPORARY', 'STANDARD', 'LONG_TERM', 'EXTENDED']),
     listCountries() {
       return Promise.resolve([
         { countryCode: "US", countryName: "United States", minPriceMinorUsd: 1800 },

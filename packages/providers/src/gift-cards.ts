@@ -5,6 +5,29 @@ import type {
   GiftCardSellProvider,
   GiftCardPurchaseProvider
 } from './index.js';
+import {
+  CURRENT_INTERFACE_VERSION,
+  type ProviderCapabilities,
+  type ProviderHealthSnapshot
+} from './contract.js';
+
+function giftCardSellCapabilities(): ProviderCapabilities {
+  return {
+    domain: 'GIFT_CARD',
+    countries: [],
+    productTypes: ['GIFT_CARD_SELL'],
+    reliability: { idempotency: 'strong', ordering: 'none', webhookSignature: 'none' }
+  };
+}
+
+function giftCardBuyCapabilities(idempotency: 'strong' | 'weak'): ProviderCapabilities {
+  return {
+    domain: 'GIFT_CARD',
+    countries: [],
+    productTypes: ['GIFT_CARD_BUY'],
+    reliability: { idempotency, ordering: 'none', webhookSignature: 'none' }
+  };
+}
 
 // ─── Reloadly Gift Card Purchase Adapter ──────────────────────────────────────
 
@@ -125,6 +148,9 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
 
   return {
     name: 'reloadly',
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'GIFT_CARD' as const,
+    getCapabilities: () => giftCardBuyCapabilities('weak'),
 
     async getProducts(filters) {
       const token = await getReloadlyToken(config);
@@ -278,7 +304,7 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
       };
     },
 
-    async checkHealth() {
+    async checkHealth(): Promise<ProviderHealthSnapshot> {
       const start = Date.now();
       try {
         const token = await getReloadlyToken(config);
@@ -287,11 +313,13 @@ export function createReloadlyGiftCardAdapter(config: ReloadlyConfig): GiftCardP
         });
 
         return {
+          providerName: 'reloadly',
           status: response.ok ? ('HEALTHY' as const) : ('DEGRADED' as const),
           latencyMs: Date.now() - start
         };
       } catch {
         return {
+          providerName: 'reloadly',
           status: 'DOWN' as const,
           latencyMs: Date.now() - start
         };
@@ -381,6 +409,9 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
 
   return {
     name: 'SOGO',
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'GIFT_CARD' as const,
+    getCapabilities: () => ({ ...giftCardSellCapabilities(), reliability: { idempotency: 'strong' as const, ordering: 'none' as const, webhookSignature: 'none' as const } }),
 
     async listSupportedBrands() {
       const catalog = await fetchCatalog();
@@ -493,7 +524,7 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
       });
     },
 
-    async checkHealth() {
+    async checkHealth(): Promise<ProviderHealthSnapshot> {
       const start = Date.now();
       try {
         const response = await f(`${baseUrl}/gift-cards/sell/catalog`, {
@@ -501,11 +532,13 @@ export function createSogoGiftCardAdapter(config: SogoConfig): GiftCardSellProvi
         });
 
         return {
+          providerName: 'SOGO',
           status: response.ok ? ('HEALTHY' as const) : ('DEGRADED' as const),
           latencyMs: Date.now() - start
         };
       } catch {
         return {
+          providerName: 'SOGO',
           status: 'DOWN' as const,
           latencyMs: Date.now() - start
         };
@@ -521,6 +554,9 @@ export function createMockGiftCardSellProvider(
 ): GiftCardSellProvider {
   return {
     name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'GIFT_CARD' as const,
+    getCapabilities: () => giftCardSellCapabilities(),
 
     listSupportedBrands(): Promise<string[]> {
       return Promise.resolve(['Apple', 'Amazon', 'Steam', 'Google Play', 'PlayStation', 'Xbox']);
@@ -552,8 +588,9 @@ export function createMockGiftCardSellProvider(
       });
     },
 
-    checkHealth() {
+    checkHealth(): Promise<ProviderHealthSnapshot> {
       return Promise.resolve({
+        providerName: name,
         status: 'HEALTHY' as const,
         latencyMs: 50
       });
@@ -568,6 +605,9 @@ export function createMockGiftCardPurchaseAdapter(
 ): GiftCardPurchaseProvider {
   return {
     name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'GIFT_CARD' as const,
+    getCapabilities: () => giftCardBuyCapabilities('strong'),
 
     getProducts() {
       return Promise.resolve([
@@ -626,11 +666,11 @@ export function createMockGiftCardPurchaseAdapter(
       });
     },
 
-    checkHealth() {
+    checkHealth(): Promise<ProviderHealthSnapshot> {
       return Promise.resolve({
+        providerName: name,
         status: 'HEALTHY' as const,
-        latencyMs: 50,
-        balance: 50000
+        latencyMs: 50
       });
     }
   };

@@ -2,6 +2,13 @@
 // Each adapter takes a config struct and optional fetcher (for testability).
 // None of them read env vars directly — callers inject credentials.
 
+import {
+  CURRENT_INTERFACE_VERSION,
+  type ProviderAdapterBase,
+  type ProviderCapabilities,
+  type ProviderHealthSnapshot
+} from './contract.js';
+
 export type VtuNetwork = "MTN" | "GLO" | "AIRTEL" | "NINE_MOBILE";
 export type VtuPlanType = "SME" | "CG" | "GIFTING" | "CORPORATE";
 
@@ -39,11 +46,22 @@ export interface VtuProviderBalance {
   currency: string;
 }
 
-export interface VtuHealthSnapshot {
-  providerName: string;
-  status: "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED";
-  latencyMs: number;
-  reason?: string;
+export type VtuHealthSnapshot = ProviderHealthSnapshot;
+
+export const VTU_PRODUCT_TYPES = ['AIRTIME', 'DATA', 'CABLE', 'ELECTRICITY'] as const;
+export type VtuCapabilityProduct = (typeof VTU_PRODUCT_TYPES)[number];
+
+export function vtuCapabilities(
+  idempotency: 'strong' | 'weak',
+  productTypes: readonly string[] = VTU_PRODUCT_TYPES
+): ProviderCapabilities {
+  return {
+    domain: 'VTU',
+    countries: ['NG'],
+    productTypes: [...productTypes],
+    networks: ['MTN', 'AIRTEL', 'GLO', '9MOBILE'],
+    reliability: { idempotency, ordering: 'none', webhookSignature: 'none' }
+  };
 }
 
 // Optional methods for bills/cable (Phase 5) — designed now so the pipeline
@@ -55,8 +73,16 @@ export interface VtuMeterValidation {
   minAmountMinor?: number;
 }
 
-export interface VtuProviderAdapter {
-  readonly name: string;
+export interface VtuCablePackageOffer {
+  cableProvider: string;
+  packageCode: string;
+  displayName: string;
+  costMinor: number;
+  currency: string;
+}
+
+export interface VtuProviderAdapter extends ProviderAdapterBase {
+  readonly domain: "VTU";
 
   /** Generate a provider-format reference for this order. Called once before submit; persisted. */
   buildReference(order: { id: string; createdAt: Date }): string;
@@ -90,12 +116,19 @@ export interface VtuProviderAdapter {
     meterNumber: string;
     meterType: "PREPAID" | "POSTPAID";
     amountMinor: number;
+    phoneNumber: string;
     reference: string;
   }): Promise<VtuSubmitResult & { token?: string; units?: string }>;
+  verifyCableCustomer?(input: {
+    provider: string;
+    smartCardNumber: string;
+  }): Promise<VtuMeterValidation>;
+  listCablePackages?(): Promise<VtuCablePackageOffer[]>;
   purchaseCable?(input: {
     provider: string;
     smartCardNumber: string;
     packageCode: string;
+    phoneNumber: string;
     reference: string;
   }): Promise<VtuSubmitResult>;
 }
@@ -192,6 +225,9 @@ async function vtpassPost(
 export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
   return {
     name: "vtpass",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () => vtuCapabilities('strong', VTU_PRODUCT_TYPES),
 
     buildReference(order) {
       return vtpassRequestId(order.id, order.createdAt);
@@ -491,9 +527,11 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
   };
 }
 
-// ─── ClubKonnect adapter ──────────────────────────────────────────────────────
-// HTTPS GET only. UserID + APIKey in query string — never log raw URLs.
-// No sandbox. Test with a small funded account only.
+// ─── ClubKonnect (Nellobyte) adapter ──────────────────────────────────────────
+// HTTPS GET only, UserID + APIKey in query string — never log raw URLs.
+// Endpoints, param names, and response shapes below are verified against a live
+// funded account on 2026-08-05 (https://www.nellobytesystems.com API docs + live
+// discovery-endpoint calls). No sandbox exists — this always hits production.
 
 export interface ClubKonnectConfig {
   userId: string;
@@ -503,11 +541,45 @@ export interface ClubKonnectConfig {
   fetcher?: typeof fetch;
 }
 
+// Confirmed via /APIAirtimeNetworkV2.asp and /APIDatabundleNetworkV2.asp — NOT the
+// generic 01=MTN/02=GLO/03=AIRTEL/04=9MOBILE convention other providers use.
 const CK_NETWORK: Record<VtuNetwork, string> = {
+  MTN: "01",
+  GLO: "02",
+  NINE_MOBILE: "03", // listed as "t2mobile" in ClubKonnect's own network table
+  AIRTEL: "04"
+};
+
+// Data plan discovery groups plans under these exact keys (APIDatabundlePlansV2.asp).
+const CK_DATA_NETWORK_KEY: Record<VtuNetwork, string> = {
   MTN: "MTN",
-  GLO: "GLO",
-  AIRTEL: "AIRTEL",
-  NINE_MOBILE: "9MOBILE"
+  GLO: "Glo",
+  NINE_MOBILE: "m_9mobile",
+  AIRTEL: "Airtel"
+};
+
+// Fixed disco table from /APIElectricityTypeV2.asp — stable enough to hardcode;
+// codes are what ElectricCompany expects, not slugs.
+export const CK_ELECTRIC_COMPANIES: Array<{ code: string; name: string }> = [
+  { code: "01", name: "Eko Electric (EKEDC)" },
+  { code: "02", name: "Ikeja Electric (IKEDC)" },
+  { code: "03", name: "Abuja Electric (AEDC)" },
+  { code: "04", name: "Kano Electric (KEDC)" },
+  { code: "05", name: "Port Harcourt Electric (PHEDC)" },
+  { code: "06", name: "Jos Electric (JEDC)" },
+  { code: "07", name: "Ibadan Electric (IBEDC)" },
+  { code: "08", name: "Kaduna Electric (KAEDC)" },
+  { code: "09", name: "Enugu Electric (EEDC)" },
+  { code: "10", name: "Benin Electric (BEDC)" },
+  { code: "11", name: "Yola Electric (YEDC)" },
+  { code: "12", name: "Aba Electric (APLE)" }
+];
+
+const CK_CABLE_PROVIDER_KEY: Record<string, string> = {
+  dstv: "DStv",
+  gotv: "GOtv",
+  startimes: "Startimes",
+  showmax: "Showmax"
 };
 
 function ckScrubUrl(url: string): string {
@@ -539,78 +611,133 @@ async function ckGet(
   }
 }
 
+// Error/validation codes ClubKonnect returns as the literal value of "status" (not
+// a distinct HTTP error or envelope) — see nellobytesystems.com API docs "Status Codes".
+const CK_ERROR_STATUSES = new Set([
+  "INVALID_CREDENTIALS",
+  "MISSING_CREDENTIALS",
+  "MISSING_USERID",
+  "MISSING_APIKEY",
+  "MISSING_MOBILENETWORK",
+  "MISSING_AMOUNT",
+  "INVALID_AMOUNT",
+  "MINIMUM_50",
+  "MINIMUM_200000",
+  "INVALID_RECIPIENT",
+  "MISSING_DATAPLAN",
+  "INVALID_DATAPLAN",
+  "MISSING_ELECTRICITY",
+  "MISSING_METERTYPE",
+  "INVALID_METERNO",
+  "METERTYPE_NOT_AVAILABLE",
+  "MISSING_CABLETV",
+  "MISSING_PACKAGE",
+  "INVALID_SMARTCARDNO",
+  "PACKAGE_NOT_AVAILABLE"
+]);
+
 function mapCkStatus(status?: string): VtuSubmitStatus {
-  const s = (status ?? "").toLowerCase();
-  if (s === "successful" || s === "success" || s === "delivered") return "DELIVERED";
-  if (s === "processing" || s === "pending") return "SUBMITTED";
-  if (s === "failed") return "FAILED";
+  const s = (status ?? "").toUpperCase();
+  if (CK_ERROR_STATUSES.has(s)) return "FAILED";
+  if (s === "ORDER_RECEIVED") return "SUBMITTED";
+  if (s === "ORDER_COMPLETED") return "DELIVERED";
+  if (s === "ORDER_CANCELLED" || s === "ORDER_REFUNDED") return "FAILED";
+  // ORDER_ONHOLD and any other unrecognized terminal-ish value: needs ops eyes,
+  // not an auto-classification either way.
   return "AMBIGUOUS";
+}
+
+function ckOutcome(
+  res: { status?: string; orderid?: string | number },
+  reference: string
+): VtuSubmitResult {
+  const status = mapCkStatus(res.status);
+  if (status === "FAILED") {
+    return {
+      providerReference: reference,
+      status: "FAILED",
+      failureReason: res.status ?? "ClubKonnect request failed"
+    };
+  }
+  return { providerReference: reference, status };
 }
 
 export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProviderAdapter {
   return {
     name: "clubkonnect",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () => vtuCapabilities("weak", ["AIRTIME", "DATA", "ELECTRICITY", "CABLE"]),
 
     buildReference(order) {
-      // CK accepts any alphanumeric OrderID up to 20 chars.
+      // CK accepts any alphanumeric RequestID up to 20 chars.
       return `CK${order.id.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
     },
 
     async listDataPlans(network) {
       const networks: VtuNetwork[] = network ? [network] : ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
+      const res = (await ckGet(config, "/APIDatabundlePlansV2.asp", {})) as {
+        MOBILE_NETWORK?: Record<
+          string,
+          Array<{
+            PRODUCT_ID?: string;
+            PRODUCT_NAME?: string;
+            PRODUCT_AMOUNT?: string | number;
+          }>
+        >;
+      };
+      const byNetwork = res.MOBILE_NETWORK ?? {};
       const results: VtuPlanOffer[] = [];
 
       for (const net of networks) {
-        try {
-          const res = (await ckGet(config, "/api/v1/data/plans", {
-            NetworkID: CK_NETWORK[net]
-          })) as Array<{
-            PlanID?: string | number;
-            Plan?: string;
-            Amount?: string | number;
-            Validity?: string;
-            PlanType?: string;
-          }>;
+        const plans = byNetwork[CK_DATA_NETWORK_KEY[net]] ?? [];
 
-          for (const p of Array.isArray(res) ? res : []) {
-            const name = p.Plan ?? String(p.PlanID ?? "");
-            const cost = Math.round(parseFloat(String(p.Amount ?? 0)) * 100);
-            const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
-            const mbMatch = name.match(/(\d+)\s*MB/i);
-            const dayMatch = (p.Validity ?? name).match(/(\d+)/);
-            const sizeMb = gbMatch
-              ? Math.round(parseFloat(gbMatch[1]!) * 1024)
-              : mbMatch
-                ? parseInt(mbMatch[1]!)
-                : 0;
-            const validityDays = dayMatch ? parseInt(dayMatch[1]!) : 30;
-            const rawType = (p.PlanType ?? "SME").toUpperCase();
-            const planType: VtuPlanType =
-              rawType === "CG" ? "CG" : rawType === "GIFTING" ? "GIFTING" : "SME";
+        for (const p of plans) {
+          const name = p.PRODUCT_NAME ?? String(p.PRODUCT_ID ?? "");
+          const cost = Math.round(parseFloat(String(p.PRODUCT_AMOUNT ?? 0)) * 100);
+          const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
+          const mbMatch = name.match(/(\d+)\s*MB/i);
+          const dayMatch = name.match(/(\d+)\s*day/i);
+          const sizeMb = gbMatch
+            ? Math.round(parseFloat(gbMatch[1]!) * 1024)
+            : mbMatch
+              ? parseInt(mbMatch[1]!)
+              : 0;
+          const validityDays = dayMatch ? parseInt(dayMatch[1]!) : 30;
+          const planType: VtuPlanType = /gifting/i.test(name)
+            ? "GIFTING"
+            : /\bcg\b/i.test(name)
+              ? "CG"
+              : "SME";
 
-            results.push({
-              providerPlanId: String(p.PlanID ?? ""),
-              network: net,
-              planType,
-              displayName: name,
-              sizeMb,
-              validityDays,
-              costMinor: cost,
-              currency: "NGN"
-            });
-          }
-        } catch {
-          // Skip network on error.
+          if (!p.PRODUCT_ID || cost <= 0) continue;
+
+          results.push({
+            providerPlanId: String(p.PRODUCT_ID),
+            network: net,
+            planType,
+            displayName: name,
+            sizeMb,
+            validityDays,
+            costMinor: cost,
+            currency: "NGN"
+          });
         }
       }
 
       return results;
     },
 
-    getAirtimeDiscountBps() {
-      // Resolve in blocking test §5.8 — placeholder until funded account confirms rate.
-      // Conservative floor from published consumer page; API tier may differ.
-      return Promise.resolve(500);
+    getAirtimeDiscountBps(network) {
+      // Confirmed discount rates from /APIAirtimeNetworkV2.asp (2026-08-05):
+      // MTN 3%, Glo 8%, t2mobile/9mobile 7%, Airtel 3%.
+      const bps: Record<VtuNetwork, number> = {
+        MTN: 300,
+        GLO: 800,
+        NINE_MOBILE: 700,
+        AIRTEL: 300
+      };
+      return Promise.resolve(bps[network]);
     },
 
     async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
@@ -622,80 +749,53 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
         RequestID: reference,
         ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
       };
-      const res = (await ckGet(config, "/api/v1/airtime/request", params)) as {
-        Status?: string;
-        OrderID?: string | number;
-        ErrorMessage?: string;
-        Response?: string;
+      const res = (await ckGet(config, "/APIAirtimeV1.asp", params)) as {
+        status?: string;
+        orderid?: string | number;
       };
-
-      const status = mapCkStatus(res.Status);
-      if (status === "FAILED") {
-        return {
-          providerReference: reference,
-          status: "FAILED",
-          failureReason: res.ErrorMessage ?? res.Response ?? "ClubKonnect airtime failed"
-        };
-      }
-      return { providerReference: reference, status };
+      return ckOutcome(res, reference);
     },
 
     async purchaseData({ network, msisdn, providerPlanId, reference }) {
       const params: Record<string, string> = {
-        NetworkID: CK_NETWORK[network],
-        PlanID: providerPlanId,
+        MobileNetwork: CK_NETWORK[network],
+        DataPlan: providerPlanId,
         MobileNumber: msisdn,
         RequestID: reference,
         ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
       };
-      const res = (await ckGet(config, "/api/v1/data/request", params)) as {
-        Status?: string;
-        OrderID?: string | number;
-        ErrorMessage?: string;
-        Response?: string;
+      const res = (await ckGet(config, "/APIDatabundleV1.asp", params)) as {
+        status?: string;
+        orderid?: string | number;
       };
-
-      const status = mapCkStatus(res.Status);
-      if (status === "FAILED") {
-        return {
-          providerReference: reference,
-          status: "FAILED",
-          failureReason: res.ErrorMessage ?? res.Response ?? "ClubKonnect data failed"
-        };
-      }
-      return { providerReference: reference, status };
+      return ckOutcome(res, reference);
     },
 
     async getOrderStatus(reference) {
-      // Query by RequestID.
-      const res = (await ckGet(config, "/api/v1/query", {
+      const res = (await ckGet(config, "/APIQueryV1.asp", {
         RequestID: reference
-      })) as { Status?: string; ErrorMessage?: string };
+      })) as { status?: string; remark?: string };
 
+      const outcome = ckOutcome(res, reference);
       return {
         providerReference: reference,
-        status: mapCkStatus(res.Status),
-        ...(res.ErrorMessage ? { failureReason: res.ErrorMessage } : {})
+        status: outcome.status,
+        ...(outcome.failureReason ? { failureReason: outcome.failureReason } : {})
       };
     },
 
-    async getBalance() {
-      const res = (await ckGet(config, "/api/v1/balance", {})) as {
-        Balance?: string | number;
-        WalletBalance?: string | number;
-      };
-      const raw = res.Balance ?? res.WalletBalance ?? 0;
-      return {
-        providerName: "clubkonnect",
-        balanceMinor: Math.round(parseFloat(String(raw)) * 100),
-        currency: "NGN"
-      };
+    getBalance() {
+      // Not exposed by the documented Nellobyte API surface for this account tier.
+      return Promise.reject(
+        new Error("ClubKonnect does not expose a wallet balance endpoint for this integration.")
+      );
     },
 
     async checkHealth() {
       const start = Date.now();
       try {
-        await this.getBalance();
+        // Side-effect-free connectivity probe — this endpoint only requires UserID.
+        await ckGet(config, "/APIAirtimeNetworkV2.asp", {});
         return { providerName: "clubkonnect", status: "HEALTHY", latencyMs: Date.now() - start };
       } catch (err) {
         return {
@@ -707,48 +807,40 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
       }
     },
 
-    // Phase 5 — Bills & Cable (ClubKonnect has limited bill support; primarily used for failover)
+    // ─── Bills & Cable ──────────────────────────────────────────────────────────
 
-    validateMeter(): Promise<VtuMeterValidation> {
-      // ClubKonnect doesn't expose a direct validate endpoint; assume validation happens at purchase
-      return Promise.resolve({ valid: true });
+    async validateMeter(input): Promise<VtuMeterValidation> {
+      const res = (await ckGet(config, "/APIVerifyElectricityV1.asp", {
+        ElectricCompany: input.disco,
+        MeterNo: input.meterNumber,
+        MeterType: input.meterType === "PREPAID" ? "01" : "02"
+      })) as { customer_name?: string };
+
+      const name = res.customer_name ?? "";
+      if (!name || name.toUpperCase().includes("INVALID")) {
+        return { valid: false };
+      }
+      return { valid: true, customerName: name };
     },
 
     async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
       try {
-        const res = (await ckGet(config, "/api/v1/bill", {
-          BillerCode: input.disco.toUpperCase(),
-          CustomerRef: input.meterNumber,
+        const res = (await ckGet(config, "/APIElectricityV1.asp", {
+          ElectricCompany: input.disco,
+          MeterType: input.meterType === "PREPAID" ? "01" : "02",
+          MeterNo: input.meterNumber,
           Amount: (input.amountMinor / 100).toFixed(2),
-          RequestID: input.reference
+          PhoneNo: input.phoneNumber,
+          RequestID: input.reference,
+          ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
         })) as {
-          Status?: string;
-          Token?: string;
-          Units?: string;
-          ErrorMessage?: string;
+          status?: string;
+          orderid?: string | number;
+          metertoken?: string;
         };
 
-        const status = mapCkStatus(res.Status);
-
-        if (status === "DELIVERED") {
-          const result: VtuSubmitResult & { token?: string; units?: string } = {
-            providerReference: input.reference,
-            status
-          };
-          if (res.Token) result.token = res.Token;
-          if (res.Units) result.units = res.Units;
-          return result;
-        }
-
-        if (status === "SUBMITTED") {
-          return { providerReference: input.reference, status };
-        }
-
-        return {
-          providerReference: input.reference,
-          status: "FAILED" as const,
-          failureReason: res.ErrorMessage ?? "Electricity purchase failed"
-        };
+        const outcome = ckOutcome(res, input.reference);
+        return res.metertoken ? { ...outcome, token: res.metertoken } : outcome;
       } catch (err) {
         return {
           providerReference: input.reference,
@@ -758,29 +850,66 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
       }
     },
 
+    async verifyCableCustomer(input): Promise<VtuMeterValidation> {
+      const res = (await ckGet(config, "/APIVerifyCableTVV1.asp", {
+        CableTV: input.provider,
+        SmartCardNo: input.smartCardNumber
+      })) as { customer_name?: string };
+
+      const name = res.customer_name ?? "";
+      if (!name || name.toUpperCase().includes("INVALID")) {
+        return { valid: false };
+      }
+      return { valid: true, customerName: name };
+    },
+
+    async listCablePackages(): Promise<VtuCablePackageOffer[]> {
+      const res = (await ckGet(config, "/APICableTVPackagesV2.asp", {})) as Record<
+        string,
+        Array<{
+          PRODUCT?: Array<{
+            PACKAGE_ID?: string;
+            PACKAGE_NAME?: string;
+            PACKAGE_AMOUNT?: string | number;
+          }>;
+        }>
+      >;
+      const offers: VtuCablePackageOffer[] = [];
+
+      for (const [cableProvider, providerKey] of Object.entries(CK_CABLE_PROVIDER_KEY)) {
+        const entries = res[providerKey] ?? [];
+        for (const entry of entries) {
+          for (const pkg of entry.PRODUCT ?? []) {
+            if (!pkg.PACKAGE_ID) continue;
+            offers.push({
+              cableProvider,
+              packageCode: pkg.PACKAGE_ID,
+              displayName: pkg.PACKAGE_NAME ?? pkg.PACKAGE_ID,
+              costMinor: Math.round(parseFloat(String(pkg.PACKAGE_AMOUNT ?? 0)) * 100),
+              currency: "NGN"
+            });
+          }
+        }
+      }
+
+      return offers;
+    },
+
     async purchaseCable(input): Promise<VtuSubmitResult> {
       try {
-        const res = (await ckGet(config, "/api/v1/cable", {
-          BillerCode: input.provider.toUpperCase(),
-          CustomerRef: input.smartCardNumber,
-          PackageCode: input.packageCode,
-          RequestID: input.reference
+        const res = (await ckGet(config, "/APICableTVV1.asp", {
+          CableTV: input.provider,
+          Package: input.packageCode,
+          SmartCardNo: input.smartCardNumber,
+          PhoneNo: input.phoneNumber,
+          RequestID: input.reference,
+          ...(config.callbackUrl ? { CallBackURL: config.callbackUrl } : {})
         })) as {
-          Status?: string;
-          ErrorMessage?: string;
+          status?: string;
+          orderid?: string | number;
         };
 
-        const status = mapCkStatus(res.Status);
-
-        if (status === "DELIVERED" || status === "SUBMITTED") {
-          return { providerReference: input.reference, status };
-        }
-
-        return {
-          providerReference: input.reference,
-          status: "FAILED" as const,
-          failureReason: res.ErrorMessage ?? "Cable subscription failed"
-        };
+        return ckOutcome(res, input.reference);
       } catch (err) {
         return {
           providerReference: input.reference,
@@ -838,6 +967,9 @@ function mapMnStatus(status?: string): VtuSubmitStatus {
 export function createMobileNigAdapter(config: MobileNigConfig): VtuProviderAdapter {
   return {
     name: "mobilenig",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () => vtuCapabilities('weak', ['AIRTIME', 'DATA']),
 
     buildReference(order) {
       return `MN${order.id.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
@@ -1019,6 +1151,9 @@ function mapCdhStatus(status?: string): VtuSubmitStatus {
 export function createCheapDataHubAdapter(config: CheapDataHubConfig): VtuProviderAdapter {
   return {
     name: "cheapdatahub",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () => vtuCapabilities('weak', ['AIRTIME', 'DATA']),
 
     buildReference(order) {
       return `CDH${order.id.replace(/-/g, "").slice(0, 17).toUpperCase()}`;
@@ -1225,6 +1360,9 @@ function createEBillsAdapter(config: EBillsConfig): VtuProviderAdapter {
 
   return {
     name: "ebills",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () => vtuCapabilities('weak', ['AIRTIME', 'DATA']),
 
     buildReference(order) {
       return `EB${order.id.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
@@ -1397,6 +1535,9 @@ export function createSmeDataAdapter(config: SmeDataConfig): VtuProviderAdapter 
 
   return {
     name: "smedata",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () => vtuCapabilities('weak', ['AIRTIME', 'DATA']),
 
     buildReference(order) {
       return `SD${order.id.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
@@ -1536,6 +1677,9 @@ export function createMockVtuAdapter(
 ): VtuProviderAdapter {
   return {
     name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () => vtuCapabilities('strong', VTU_PRODUCT_TYPES),
 
     buildReference(order) {
       return `MOCK${order.id.replace(/-/g, "").slice(0, 16).toUpperCase()}`;
@@ -1595,6 +1739,41 @@ export function createMockVtuAdapter(
         providerName: name,
         status: "HEALTHY",
         latencyMs: 5
+      });
+    },
+
+    validateMeter() {
+      return Promise.resolve({ valid: true, customerName: "MOCK CUSTOMER" });
+    },
+
+    purchaseElectricity({ reference }) {
+      return Promise.resolve({
+        providerReference: reference,
+        status: deliveredByDefault ? "DELIVERED" : "SUBMITTED",
+        token: deliveredByDefault ? "0000-MOCK-TOKEN" : undefined
+      });
+    },
+
+    verifyCableCustomer() {
+      return Promise.resolve({ valid: true, customerName: "MOCK CUSTOMER" });
+    },
+
+    listCablePackages() {
+      return Promise.resolve([
+        {
+          cableProvider: "dstv",
+          packageCode: "mock-dstv-padi",
+          displayName: "DStv Padi (Mock)",
+          costMinor: 440000,
+          currency: "NGN"
+        }
+      ]);
+    },
+
+    purchaseCable({ reference }) {
+      return Promise.resolve({
+        providerReference: reference,
+        status: deliveredByDefault ? "DELIVERED" : "SUBMITTED"
       });
     }
   };
