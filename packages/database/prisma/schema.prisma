@@ -1545,6 +1545,29 @@ model ProviderConfig {
   @@index([deletedAt])
 }
 
+// Gap 5, stage 1/2 of the convergence plan: a chokepoint for "which provider
+// fulfilled this resource" that doesn't require reading it off the resource's
+// own inline providerName/providerReference columns. Those columns still exist
+// and are still the source of truth for now — this table is populated by a
+// one-off backfill (packages/database/prisma/backfill-provider-mapping.ts) and
+// kept in sync going forward is a follow-up, not done by this migration.
+// Removing the inline columns and adding DB-role separation is explicitly
+// deferred (stage 3) — see the plan's Gap 5 note.
+model ProviderMapping {
+  id                String         @id @default(uuid())
+  entityType        String
+  entityId          String
+  domain            ProviderDomain
+  providerName      String
+  providerReference String?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  @@unique([entityType, entityId])
+  @@index([providerName, providerReference])
+  @@index([domain])
+}
+
 model ProviderHealth {
   id             String         @id @default(uuid())
   providerName   String
