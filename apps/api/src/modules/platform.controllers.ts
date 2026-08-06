@@ -69,6 +69,7 @@ export class AuthController {
   constructor(@Inject(AuthSessionService) private readonly auth: AuthSessionService) {}
 
   @Get("session")
+  @Public()
   getSession(@Headers() headers: HeaderBag) {
     return this.auth.getSession(headers);
   }
