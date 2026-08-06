@@ -573,6 +573,8 @@ model User {
   memberships                    TeamMember[]
   sessions                       Session[]
   auditLogs                      AuditLog[]                      @relation("AuditActor")
+  approvalRequestsMade           ApprovalRequest[]               @relation("ApprovalRequestedBy")
+  approvalRequestsDecided        ApprovalRequest[]               @relation("ApprovalDecidedBy")
   digitalAccessRequests          DigitalAccessRequest[]
   companyProfiles                CompanyProfile[]                @relation("CompanyProfileOwner")
   mediaAssets                    MediaAsset[]                    @relation("MediaAssetUploader")
@@ -654,6 +656,7 @@ model Workspace {
   supportTickets                 SupportTicket[]
   referralAccounts               ReferralAccount[]
   auditLogs                      AuditLog[]
+  approvalRequests               ApprovalRequest[]
   adAccounts                     AdAccount[]
   personas                       Persona[]
   automationWorkflows            AutomationWorkflow[]
@@ -2596,6 +2599,44 @@ model AuditLog {
   @@index([workspaceId, createdAt])
   @@index([actorUserId, createdAt])
   @@index([entityType, entityId])
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXECUTED
+  EXECUTION_FAILED
+}
+
+// Dual-approval gate for actions that move real money outside the normal
+// customer-initiated flow (refunds, reversals, re-routes). The requester and the
+// approver must be different users — enforced in ApprovalsService, not here, since
+// Prisma can't express a cross-column inequality constraint.
+model ApprovalRequest {
+  id              String         @id @default(uuid())
+  workspaceId     String?
+  action          String
+  entityType      String
+  entityId        String
+  reason          String
+  payload         Json           @default("{}")
+  status          ApprovalStatus @default(PENDING)
+  requestedByUserId String
+  decidedByUserId String?
+  decidedAt       DateTime?
+  decisionNote    String?
+  executedAt      DateTime?
+  executionError  String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  workspace       Workspace?     @relation(fields: [workspaceId], references: [id])
+  requestedBy     User           @relation("ApprovalRequestedBy", fields: [requestedByUserId], references: [id])
+  decidedBy       User?          @relation("ApprovalDecidedBy", fields: [decidedByUserId], references: [id])
+
+  @@index([workspaceId, status, createdAt])
+  @@index([entityType, entityId])
+  @@index([status, createdAt])
 }
 
 enum PersonaType {

@@ -4,11 +4,12 @@ import { PrismaModule } from "../prisma.module";
 import { QueueProducerService } from "../queue-producer.service";
 import { AuthSessionService } from "../auth-session.service";
 import { WorkspaceContextMiddleware } from "../workspace-context.middleware";
+import { ApprovalsModule } from "../approvals/approvals.module";
 import { AdminDigitalAccessController, DigitalAccessController } from "./digital-access.controller";
 import { DigitalAccessHubService } from "./digital-access.service";
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, ApprovalsModule],
   controllers: [DigitalAccessController, AdminDigitalAccessController],
   providers: [
     QueueProducerService,

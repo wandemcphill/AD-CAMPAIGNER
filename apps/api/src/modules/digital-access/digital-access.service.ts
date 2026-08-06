@@ -32,6 +32,7 @@ import type {
 
 import { PrismaService } from "../prisma.service";
 import { QueueProducerService } from "../queue-producer.service";
+import { ApprovalsService } from "../approvals/approvals.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   CreateDigitalAccessRequestDto,
@@ -220,7 +221,8 @@ export class DigitalAccessHubService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly queueProducer?: QueueProducerService
+    private readonly queueProducer?: QueueProducerService,
+    private readonly approvals?: ApprovalsService
   ) {}
 
   async listCategories() {
@@ -847,6 +849,40 @@ export class DigitalAccessHubService {
     context: AuthenticatedRequestContext
   ) {
     this.ensureAdminEnabled();
+
+    // Refunds require a second admin's approval (handbook 08 §9 / 11 §5) — this
+    // transition alone moves real money back out of the platform. Only gate when
+    // ApprovalsService is actually wired in (it's optional so unit tests that
+    // construct this service directly, without the full Nest module graph, keep
+    // exercising the transition logic unchanged).
+    if (this.approvals && (status === "failed" || status === "cancelled")) {
+      const scope = await this.resolveAdminScope(this.db, context);
+      const existing = await this.getStoredRequest(requestId, this.db, scope.workspaceId);
+      const currentStatus = toDomainStatus(existing.status);
+
+      if (currentStatus !== status) {
+        const approval = await this.approvals.request({
+          workspaceId: scope.workspaceId,
+          action: "digital_access.refund",
+          entityType: "DigitalAccessRequest",
+          entityId: requestId,
+          reason: `Transition to "${status}" triggers a refund.`,
+          payload: { requestId, status },
+          requestedByUserId: context.userId
+        });
+
+        return { pending: true, approvalRequestId: approval.id };
+      }
+    }
+
+    return this.performStatusUpdate(requestId, status, context);
+  }
+
+  private async performStatusUpdate(
+    requestId: string,
+    status: DigitalAccessRequestStatus,
+    context: AuthenticatedRequestContext
+  ) {
     const requestedScope = this.requireTenantContext(context);
 
     const outcome = await this.db.$transaction(
@@ -959,6 +995,38 @@ export class DigitalAccessHubService {
     }
 
     return outcome.response;
+  }
+
+  async approveRefund(approvalRequestId: string, context: AuthenticatedRequestContext, note?: string) {
+    this.ensureAdminEnabled();
+    if (!this.approvals) {
+      throw new BadRequestException("Approvals are not enabled for this deployment.");
+    }
+
+    await this.approvals.decide(approvalRequestId, {
+      decidedByUserId: context.userId,
+      approve: true,
+      ...(note === undefined ? {} : { note })
+    });
+
+    return this.approvals.execute(approvalRequestId, async () => {
+      const approval = await this.approvals!.get(approvalRequestId);
+      const payload = approval.payload as { requestId: string; status: DigitalAccessRequestStatus };
+      return this.performStatusUpdate(payload.requestId, payload.status, context);
+    });
+  }
+
+  async rejectRefund(approvalRequestId: string, context: AuthenticatedRequestContext, note?: string) {
+    this.ensureAdminEnabled();
+    if (!this.approvals) {
+      throw new BadRequestException("Approvals are not enabled for this deployment.");
+    }
+
+    return this.approvals.decide(approvalRequestId, {
+      decidedByUserId: context.userId,
+      approve: false,
+      ...(note === undefined ? {} : { note })
+    });
   }
 
   async assignRequest(

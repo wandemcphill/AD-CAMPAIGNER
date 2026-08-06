@@ -156,6 +156,27 @@ export class AdminDigitalAccessController {
     return this.hub.updateRequestStatus(id, body.status, workspaceContextFromRequest(request));
   }
 
+  // A refund-triggering status transition doesn't execute inline — updateRequestStatus
+  // above returns { pending: true, approvalRequestId } instead. A second admin (not the
+  // one who requested it — enforced in ApprovalsService) must call one of these.
+  @Post("approvals/:id/approve")
+  approveRefund(
+    @Param("id") id: string,
+    @Body() body: { note?: string },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.hub.approveRefund(id, workspaceContextFromRequest(request), body.note);
+  }
+
+  @Post("approvals/:id/reject")
+  rejectRefund(
+    @Param("id") id: string,
+    @Body() body: { note?: string },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.hub.rejectRefund(id, workspaceContextFromRequest(request), body.note);
+  }
+
   @Patch("requests/:id/assign")
   assign(
     @Param("id") id: string,

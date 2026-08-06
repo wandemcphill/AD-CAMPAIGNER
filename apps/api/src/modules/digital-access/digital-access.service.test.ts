@@ -89,4 +89,58 @@ describe("DigitalAccessHubService", () => {
     ).rejects.toThrow("Digital Access plan price must be a non-negative minor-unit amount.");
     expect(digitalAccessPlanCreate).not.toHaveBeenCalled();
   });
+
+  it("gates a refund-triggering status transition behind approval instead of executing it", async () => {
+    const transactionSpy = vi.fn();
+    const approvalsRequest = vi.fn(() => Promise.resolve({ id: "appr_1" }));
+    const db = {
+      workspace: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: "workspace_test",
+            defaultCurrency: "NGN",
+            organization: {
+              id: "organization_test",
+              members: [{ role: "OWNER", permissions: ["digital_access:manage"] }]
+            }
+          })
+        )
+      },
+      digitalAccessRequest: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: "dar_1",
+            status: "PENDING",
+            workspaceId: "workspace_test",
+            deletedAt: null,
+            service: {},
+            plan: {},
+            walletCharges: []
+          })
+        )
+      },
+      $transaction: transactionSpy
+    };
+    const service = new DigitalAccessHubService(
+      { client: db } as unknown as PrismaService,
+      undefined,
+      { request: approvalsRequest } as unknown as import("../approvals/approvals.service").ApprovalsService
+    );
+
+    const result = await service.updateRequestStatus("dar_1", "failed", {
+      userId: "user_test",
+      workspaceId: "workspace_test"
+    });
+
+    expect(result).toEqual({ pending: true, approvalRequestId: "appr_1" });
+    expect(approvalsRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "digital_access.refund",
+        entityType: "DigitalAccessRequest",
+        entityId: "dar_1",
+        requestedByUserId: "user_test"
+      })
+    );
+    expect(transactionSpy).not.toHaveBeenCalled();
+  });
 });
