@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-import { BadRequestException, Body, Controller, Get, Headers, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Headers, Inject, Logger, Param, Post, Query, Req } from "@nestjs/common";
 
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
 import { Public, RequirePermissions } from "../authorization.decorators";
+import { withGraceWindow } from "../grace-window";
 import type {
   MessagesListQueryDto,
   NumbersListQueryDto,
@@ -12,8 +13,15 @@ import type {
 } from "./virtual-numbers.dtos";
 import { VirtualNumbersService } from "./virtual-numbers.service";
 
+// Matches the id shape virtual-numbers.service.ts generates internally when no
+// orderId is passed in — kept identical here since it becomes the envelope's
+// resourceId before the order row is guaranteed to exist.
+const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+
 @Controller("virtual-numbers")
 export class VirtualNumbersController {
+  private readonly logger = new Logger(VirtualNumbersController.name);
+
   constructor(
     @Inject(VirtualNumbersService) private readonly numbers: VirtualNumbersService
   ) {}
@@ -33,7 +41,15 @@ export class VirtualNumbersController {
   @Post("orders")
   @RequirePermissions("campaign:create")
   purchase(@Body() body: PurchaseNumberDto, @Req() request: WorkspaceContextRequest) {
-    return this.numbers.purchaseNumber(workspaceContextFromRequest(request), body);
+    const orderId = uid("vno");
+    const ctx = workspaceContextFromRequest(request);
+    return withGraceWindow({
+      resourceId: orderId,
+      run: () => this.numbers.purchaseNumber(ctx, body, orderId),
+      toStatus: (order) => (order.status === "FULFILLED" ? "active" : order.status === "FAILED" ? "failed" : "pending"),
+      onBackgroundError: (error) =>
+        this.logger.error(`Purchase order ${orderId} failed after grace window: ${String(error)}`)
+    });
   }
 
   @Get("numbers")
@@ -65,7 +81,16 @@ export class VirtualNumbersController {
     @Body() body: RenewNumberDto,
     @Req() request: WorkspaceContextRequest
   ) {
-    return this.numbers.renewNumber(workspaceContextFromRequest(request), id, body);
+    const orderId = uid("vno");
+    const ctx = workspaceContextFromRequest(request);
+    return withGraceWindow({
+      resourceId: orderId,
+      run: () => this.numbers.renewNumber(ctx, id, body, orderId),
+      toStatus: ({ order }) =>
+        order.status === "FULFILLED" ? "active" : order.status === "FAILED" ? "failed" : "pending",
+      onBackgroundError: (error) =>
+        this.logger.error(`Renewal order ${orderId} failed after grace window: ${String(error)}`)
+    });
   }
 
   @Post("numbers/:id/release")

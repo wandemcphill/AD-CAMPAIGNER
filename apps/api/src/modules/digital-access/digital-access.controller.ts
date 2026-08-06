@@ -6,6 +6,7 @@ import {
   type WorkspaceContextRequest
 } from "../request-context";
 import { Public, RequirePermissions } from "../authorization.decorators";
+import { toEnvelope } from "../grace-window";
 import type {
   CreateDigitalAccessRequestDto,
   DigitalAccessAssignDto,
@@ -53,13 +54,23 @@ export class DigitalAccessController {
 
   @Post("requests")
   @RequirePermissions("campaign:create")
-  createRequest(
+  async createRequest(
     @Body() body: CreateDigitalAccessRequestDto,
     @Req() request: WorkspaceContextRequest
   ) {
-    return this.hub.createRequest(body, {
+    const result = await this.hub.createRequest(body, {
       ...workspaceContextFromRequest(request),
       ...metadataContextFromRequest(request)
+    });
+    return toEnvelope({
+      resourceId: result.request.id,
+      data: result,
+      toStatus: ({ request: r }) =>
+        r.status === "fulfilled"
+          ? "active"
+          : r.status === "failed" || r.status === "cancelled"
+            ? "failed"
+            : "pending"
     });
   }
 }

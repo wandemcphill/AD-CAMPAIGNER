@@ -378,7 +378,11 @@ export class VirtualNumbersService {
 
   // ─── Purchase ────────────────────────────────────────────────────────────────
 
-  async purchaseNumber(ctx: AuthenticatedRequestContext, dto: PurchaseNumberDto) {
+  async purchaseNumber(
+    ctx: AuthenticatedRequestContext,
+    dto: PurchaseNumberDto,
+    orderId: string = uid("vno")
+  ) {
     const product = await this.db.virtualNumberProduct.findUnique({
       where: { id: dto.productId }
     });
@@ -400,7 +404,6 @@ export class VirtualNumbersService {
     // Check purchase limits before proceeding
     await this.checkPurchaseLimits(ctx);
 
-    const orderId = uid("vno");
     const idempotencyKey = `vn_order_${orderId}`;
 
     // Try candidates in preference order; each attempt is independent so a mid-flight
@@ -635,7 +638,12 @@ export class VirtualNumbersService {
 
   // ─── Renewal ─────────────────────────────────────────────────────────────────
 
-  async renewNumber(ctx: AuthenticatedRequestContext, numberId: string, dto: RenewNumberDto) {
+  async renewNumber(
+    ctx: AuthenticatedRequestContext,
+    numberId: string,
+    dto: RenewNumberDto,
+    orderId: string = uid("vno")
+  ) {
     const number = await this.getNumber(ctx, numberId);
     if (number.status !== "ACTIVE" && number.status !== "EXPIRING") {
       throw new BadRequestException("Only active or expiring numbers can be renewed.");
@@ -656,7 +664,6 @@ export class VirtualNumbersService {
 
     const rate = await this.fx.getActiveRate();
     const chargeMinor = usdMinorToNgnMinor(applyMarkup(offer.costMinorUsd), rate.rateMicros);
-    const orderId = uid("vno");
     const idempotencyKey = `vn_order_${orderId}`;
 
     const outcome = await runChargeSaga({
