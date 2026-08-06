@@ -56,6 +56,7 @@ import { WebhooksModule } from "./webhooks/webhooks.module";
 import { TrustEngineModule } from "./trust-engine/trust-engine.module";
 import { CryptoModule } from "./crypto/crypto.module";
 import { RmbModule } from "./rmb/rmb.module";
+import { FinancialProductsModule } from "./financial-products/financial-products.module";
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { RmbModule } from "./rmb/rmb.module";
     TrustEngineModule,
     CryptoModule,
     RmbModule,
+    FinancialProductsModule,
 
   ],
   controllers: [

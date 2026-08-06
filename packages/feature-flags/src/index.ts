@@ -24,7 +24,10 @@ export const featureFlags = {
   airtimeCashout: true,
   digitalValueAdmin: true,
   trustEngine: false,
-  trustEngineAdmin: false
+  trustEngineAdmin: false,
+  virtualAccounts: true,
+  virtualCards: true,
+  remittance: true
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

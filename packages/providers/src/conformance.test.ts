@@ -42,6 +42,11 @@ import {
   createAirtimeToCashAdapter,
   createMockAirtimeCashoutAdapter
 } from "./airtime-cashout";
+import {
+  createMockRemittanceProvider,
+  createMockVirtualAccountProvider,
+  createMockVirtualCardProvider
+} from "./financial-products";
 
 const stubFetch: typeof fetch = () =>
   Promise.resolve(new Response("{}", { status: 200 }));
@@ -147,14 +152,20 @@ const adapters: Array<{ label: string; adapter: ProviderAdapterBase }> = [
       fetcher: stubFetch
     })
   },
-  { label: "mock-airtime-cashout", adapter: createMockAirtimeCashoutAdapter() }
+  { label: "mock-airtime-cashout", adapter: createMockAirtimeCashoutAdapter() },
+  { label: "mock-virtual-account", adapter: createMockVirtualAccountProvider() },
+  { label: "mock-virtual-card", adapter: createMockVirtualCardProvider() },
+  { label: "mock-remittance", adapter: createMockRemittanceProvider() }
 ];
 
 const VALID_DOMAINS: ProviderDomain[] = [
   "VIRTUAL_NUMBER",
   "VTU",
   "GIFT_CARD",
-  "AIRTIME_CASHOUT"
+  "AIRTIME_CASHOUT",
+  "VIRTUAL_ACCOUNT",
+  "VIRTUAL_CARD",
+  "REMITTANCE"
 ];
 
 describe.each(adapters)("adapter conformance: $label", ({ adapter }) => {

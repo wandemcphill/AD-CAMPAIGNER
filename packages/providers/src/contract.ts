@@ -18,7 +18,10 @@ export type ProviderDomain =
   | "GIFT_CARD"
   | "AIRTIME_CASHOUT"
   | "CRYPTO"
-  | "RMB";
+  | "RMB"
+  | "VIRTUAL_ACCOUNT"
+  | "VIRTUAL_CARD"
+  | "REMITTANCE";
 
 /** Matches the ProviderStatus enum in packages/database/prisma/schema.prisma. */
 export type ProviderStatus = "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED";

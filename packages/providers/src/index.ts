@@ -2610,3 +2610,4 @@ export * from './gift-cards.js';
 export * from './airtime-cashout.js';
 export * from './crypto.js';
 export * from './rmb.js';
+export * from './financial-products.js';

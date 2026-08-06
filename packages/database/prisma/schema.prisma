@@ -373,6 +373,9 @@ enum ProviderDomain {
   AIRTIME_CASHOUT
   CRYPTO
   RMB
+  VIRTUAL_ACCOUNT
+  VIRTUAL_CARD
+  REMITTANCE
 }
 
 enum ProviderTier {
@@ -1919,6 +1922,140 @@ model GiftCardPurchaseTransaction {
   @@index([supplierName])
   @@index([supplierOrderId])
   @@index([walletId])
+}
+
+// ─── Financial Products (Phase E) ────────────────────────────────────────────
+// Accounts, cards, and remittance. No real provider is contracted yet — see
+// packages/providers/src/financial-products.ts. All three are wired end-to-end
+// against a mock adapter so the API surface, saga, and schema are ready to
+// swap a real adapter in without touching anything above this layer.
+
+enum VirtualAccountStatus {
+  ACTIVE
+  CLOSED
+}
+
+model VirtualAccount {
+  id                String               @id @default(uuid())
+  workspaceId       String
+  userId            String?
+  providerName      String
+  providerAccountId String
+  accountNumber     String
+  bankName          String
+  bankCode          String
+  accountName       String
+  currency          String               @default("NGN")
+  status            VirtualAccountStatus @default(ACTIVE)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  closedAt          DateTime?
+
+  @@unique([providerName, providerAccountId])
+  @@index([workspaceId, status])
+}
+
+enum VirtualCardStatus {
+  ACTIVE
+  FROZEN
+  TERMINATED
+}
+
+model VirtualCard {
+  id             String            @id @default(uuid())
+  workspaceId    String
+  userId         String?
+  providerName   String
+  providerCardId String
+  last4          String
+  expiryMonth    Int
+  expiryYear     Int
+  brand          String
+  currency       String            @default("NGN")
+  status         VirtualCardStatus @default(ACTIVE)
+  idempotencyKey String            @unique
+  walletId       String?
+  ledgerEntryId  String?
+  chargeId       String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  terminatedAt   DateTime?
+
+  @@unique([providerName, providerCardId])
+  @@index([workspaceId, status])
+}
+
+model VirtualCardWalletCharge {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  walletId            String
+  cardId              String
+  idempotencyKey      String   @unique
+  amountMinor         Int
+  currency            String   @default("NGN")
+  status              String   @default("CHARGED")
+  debitLedgerEntryId  String?
+  refundLedgerEntryId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([cardId])
+}
+
+enum RemittanceTransferStatus {
+  QUOTED
+  CHARGED
+  PROCESSING
+  COMPLETED
+  FAILED
+  DISPUTED
+}
+
+model RemittanceTransfer {
+  id                     String                    @id @default(uuid())
+  workspaceId            String
+  userId                 String?
+  providerName           String
+  providerReference      String?
+  quoteId                String
+  recipientName          String
+  recipientAccountNumber String
+  recipientBankCode      String
+  recipientCountry       String
+  sourceAmountMinor      Int
+  sourceCurrency         String
+  destinationAmountMinor Int
+  destinationCurrency    String
+  feeMinor               Int
+  status                 RemittanceTransferStatus @default(QUOTED)
+  idempotencyKey         String                    @unique
+  walletId               String?
+  ledgerEntryId          String?
+  chargeId               String?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  completedAt            DateTime?
+
+  @@index([workspaceId, status])
+}
+
+model RemittanceWalletCharge {
+  id                  String   @id @default(uuid())
+  workspaceId         String
+  walletId            String
+  transferId          String
+  idempotencyKey      String   @unique
+  amountMinor         Int
+  currency            String   @default("NGN")
+  status              String   @default("CHARGED")
+  debitLedgerEntryId  String?
+  refundLedgerEntryId String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([transferId])
 }
 
 model GiftCardWalletCharge {
