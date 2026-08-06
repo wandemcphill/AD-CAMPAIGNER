@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access */
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 
+import type { ProviderDomain } from "@fliptrybe/providers";
 import { PrismaService } from "../prisma.service";
+import type { AuthenticatedRequestContext } from "../request-context";
 
 const VTU_PROVIDERS = ["clubkonnect", "vtpass"];
 const VIRTUAL_NUMBER_PROVIDERS = ["smspool", "5sim", "smspva"];
@@ -161,5 +163,48 @@ export class ProvidersService {
         }
       ]
     };
+  }
+
+  // ─── Emergency disable ───────────────────────────────────────────────────────
+  // ProviderConfig.status is already the hard gate scoreCandidate()/selectProviders()
+  // check (handbook 11 §6's "feature_flag_override" is this column, not a separate
+  // mechanism — see the plan's amendment note for Gap 8). This is the admin action
+  // that flips it, with an audit trail distinct from the routing decision log.
+
+  async setProviderStatus(
+    domain: ProviderDomain,
+    name: string,
+    status: "HEALTHY" | "DISABLED",
+    context: Partial<AuthenticatedRequestContext>,
+    reason?: string
+  ) {
+    if (!context.userId) {
+      throw new BadRequestException("An authenticated admin user is required.");
+    }
+
+    const config = await this.db.providerConfig.findFirst({
+      where: { name, domain, deletedAt: null }
+    });
+    if (!config) {
+      throw new NotFoundException(`No ProviderConfig row exists for ${domain}/${name}.`);
+    }
+
+    const previousStatus = config.status;
+    const updated = await this.db.providerConfig.update({
+      where: { id: config.id },
+      data: { status }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        actorUserId: context.userId,
+        action: status === "DISABLED" ? "provider.emergency_disable" : "provider.re_enable",
+        entityType: "ProviderConfig",
+        entityId: config.id,
+        metadata: { domain, name, previousStatus, nextStatus: status, reason: reason ?? null }
+      }
+    });
+
+    return { name: updated.name, domain: updated.domain, status: updated.status, previousStatus };
   }
 }

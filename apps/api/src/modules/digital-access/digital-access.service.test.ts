@@ -2,6 +2,7 @@ import { BadRequestException } from "@nestjs/common";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PrismaService } from "../prisma.service";
+import type { ApprovalsService } from "../approvals/approvals.service";
 import { DigitalAccessHubService } from "./digital-access.service";
 
 const prisma = {
@@ -124,7 +125,7 @@ describe("DigitalAccessHubService", () => {
     const service = new DigitalAccessHubService(
       { client: db } as unknown as PrismaService,
       undefined,
-      { request: approvalsRequest } as unknown as import("../approvals/approvals.service").ApprovalsService
+      { request: approvalsRequest } as unknown as ApprovalsService
     );
 
     const result = await service.updateRequestStatus("dar_1", "failed", {

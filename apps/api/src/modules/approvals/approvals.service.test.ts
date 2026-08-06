@@ -79,17 +79,14 @@ describe("ApprovalsService", () => {
     const service = new ApprovalsService({ client: db } as unknown as PrismaService);
 
     await service.execute("appr_1", () => Promise.resolve("ok"));
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ status: "EXECUTED" }) })
-    );
+    const executedCall = update.mock.calls[0]?.[0] as { data: Record<string, unknown> };
+    expect(executedCall.data["status"]).toBe("EXECUTED");
 
     await expect(
       service.execute("appr_1", () => Promise.reject(new Error("provider down")))
     ).rejects.toThrow("provider down");
-    expect(update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ status: "EXECUTION_FAILED", executionError: "provider down" })
-      })
-    );
+    const failedCall = update.mock.calls[1]?.[0] as { data: Record<string, unknown> };
+    expect(failedCall.data["status"]).toBe("EXECUTION_FAILED");
+    expect(failedCall.data["executionError"]).toBe("provider down");
   });
 });
