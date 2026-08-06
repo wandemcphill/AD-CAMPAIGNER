@@ -684,4 +684,4 @@ export interface ReferralAccount extends Timestamped {
   commissionRateBps: number;
 }
 
-export * from "./envelope.js";
+export * from "./envelope";

@@ -256,7 +256,6 @@ export default function RmbPage() {
                     </label>
                     {qrPreviewUrl ? (
                       <div className="relative mt-1 w-fit">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           alt="QR code preview"
                           className="h-40 w-40 rounded-[var(--radius-md)] border border-[var(--ft-border)] object-contain"
