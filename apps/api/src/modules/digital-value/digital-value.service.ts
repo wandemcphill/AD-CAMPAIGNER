@@ -25,6 +25,7 @@ import {
 import { PrismaService } from '../prisma.service';
 import { QueueProducerService } from '../queue-producer.service';
 import { FxService } from '../fx/fx.service';
+import { ApprovalsService } from '../approvals/approvals.service';
 import { featureFlags } from '@fliptrybe/feature-flags';
 import type { AuthenticatedRequestContext } from '../request-context';
 import type {
@@ -37,6 +38,14 @@ import type {
   AirtimeCashoutQuoteDto,
   AirtimeCashoutInitiateDto
 } from './digital-value.dtos';
+import {
+  validateGiftCardECode,
+  hashGiftCardCode,
+  computeGiftCardFraudScore,
+  isKnownGiftCardBrand,
+  isKnownGiftCardRegion,
+  FRAUD_REVIEW_THRESHOLD
+} from './gift-card-validation';
 
 type DbClient = DatabaseClient | Prisma.TransactionClient;
 type DbLedgerEntryRow = {
@@ -83,7 +92,8 @@ export class DigitalValueService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly queue: QueueProducerService,
-    private readonly fx: FxService
+    private readonly fx: FxService,
+    private readonly approvals: ApprovalsService
   ) {
     this.initializeProviders();
   }
@@ -210,32 +220,149 @@ export class DigitalValueService {
     const transactionId = uid('gcs');
     const idempotencyKey = `gift_card_sell_${transactionId}`;
 
+    // ─── Validation gate ─────────────────────────────────────────────────────
+    // Format/duplicate failures are hard rejects — never sent to SOGO. Fraud
+    // scoring routes ambiguous-but-not-provably-invalid submissions to manual
+    // review instead of auto-submitting. Every outcome is persisted for audit.
+    const ecodeResult = validateGiftCardECode(
+      dto.brand,
+      dto.region,
+      dto.denomination,
+      dto.cardInfo?.cardCode
+    );
+    const cardCodeHash = ecodeResult.normalizedCode ? hashGiftCardCode(ecodeResult.normalizedCode) : null;
+    // Fallback enum values so a rejected-submission audit row can always be persisted,
+    // even when the claimed brand/region isn't one FlipTrybe recognizes.
+    const dbBrand = (isKnownGiftCardBrand(dto.brand) ? dto.brand : 'OTHER') as any;
+    const dbRegion = (isKnownGiftCardRegion(dto.region) ? dto.region : 'GLOBAL') as any;
+
+    const baseTransactionData = {
+      id: transactionId,
+      workspaceId: ctx.workspaceId,
+      userId: ctx.userId,
+      region: dbRegion,
+      denomination: dto.denomination,
+      currency: 'USD',
+      providerName: this.giftCardSellProvider.name,
+      providerRate,
+      providerRateTimestamp,
+      providerPayoutNgn: quotedCustomerPayoutNgn,
+      fliptrybeFeeMicro: 0,
+      fliptrybeCommissionNgn: 0,
+      quotedCustomerPayoutNgn,
+      ...(quote ? { quoteId: quote.id } : {}),
+      cardInfoRequired: dto.cardInfo ? Object.keys(dto.cardInfo) : [],
+      idempotencyKey,
+      cardCodeHash
+    };
+
+    if (!ecodeResult.valid) {
+      const transaction = await this.db.giftCardSellTransaction.create({
+        data: {
+          ...baseTransactionData,
+          brand: dbBrand,
+          status: 'REJECTED' as any,
+          validationStatus: 'REJECTED',
+          validationReasons: ecodeResult.reasons,
+          metadata: { claimedBrand: dto.brand, ...(quote ? { quoteId: quote.id } : {}) }
+        }
+      });
+
+      await this.logValidationAudit(ctx, transaction.id, 'gift_card_sell.rejected_validation', ecodeResult.reasons);
+
+      throw new BadRequestException(
+        `Gift card submission rejected: ${ecodeResult.reasons.join(', ')}`
+      );
+    }
+
+    const duplicate = cardCodeHash
+      ? await this.db.giftCardSellTransaction.findFirst({
+          where: { cardCodeHash, status: { notIn: ['REJECTED', 'FAILED', 'CANCELLED'] } }
+        })
+      : null;
+
+    if (duplicate) {
+      const transaction = await this.db.giftCardSellTransaction.create({
+        data: {
+          ...baseTransactionData,
+          brand: dbBrand,
+          status: 'REJECTED' as any,
+          validationStatus: 'REJECTED',
+          validationReasons: ['ECODE_DUPLICATE']
+        }
+      });
+
+      await this.logValidationAudit(ctx, transaction.id, 'gift_card_sell.rejected_duplicate', ['ECODE_DUPLICATE']);
+
+      throw new BadRequestException('This gift card code has already been submitted.');
+    }
+
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const [recentSubmissionCount, workspace] = await Promise.all([
+      this.db.giftCardSellTransaction.count({
+        where: { userId: ctx.userId, createdAt: { gte: tenMinutesAgo } }
+      }),
+      this.db.workspace.findUnique({ where: { id: ctx.workspaceId }, select: { createdAt: true } })
+    ]);
+    const workspaceAgeHours = workspace
+      ? (Date.now() - workspace.createdAt.getTime()) / (1000 * 60 * 60)
+      : 0;
+
+    const fraud = computeGiftCardFraudScore({
+      denomination: dto.denomination,
+      currency: dto.cardInfo.currency,
+      brand: dto.brand,
+      region: dto.region,
+      recentSubmissionCount,
+      workspaceAgeHours
+    });
+    const flagged = fraud.score >= FRAUD_REVIEW_THRESHOLD;
+
     const transaction = await this.db.giftCardSellTransaction.create({
       data: {
-        id: transactionId,
-        workspaceId: ctx.workspaceId,
-        userId: ctx.userId,
-        brand: dto.brand as any,
-        region: dto.region as any,
-        denomination: dto.denomination,
-        currency: 'USD',
-        providerName: this.giftCardSellProvider.name,
-        providerRate,
-        providerRateTimestamp,
-        providerPayoutNgn: quotedCustomerPayoutNgn,
-        fliptrybeFeeMicro: 0,
-        fliptrybeCommissionNgn: 0,
-        quotedCustomerPayoutNgn,
-        status: 'SUBMITTED' as any,
-        ...(quote ? { quoteId: quote.id } : {}),
-        cardInfoRequired: Object.keys(dto.cardInfo),
-        idempotencyKey,
+        ...baseTransactionData,
+        brand: dbBrand,
+        status: (flagged ? 'FLAGGED_FOR_REVIEW' : 'SUBMITTED') as any,
+        validationStatus: flagged ? 'FLAGGED' : 'PASSED',
+        validationReasons: fraud.reasons,
+        fraudScore: fraud.score,
         metadata: {
-          cardInfo: dto.cardInfo,
+          cardInfo: { currency: dto.cardInfo.currency, cardType: dto.cardInfo.cardType ?? 'ecode' },
           ...(quote ? { quoteId: quote.id } : {})
         }
       }
     });
+
+    if (flagged) {
+      const approval = await this.approvals.request({
+        workspaceId: ctx.workspaceId,
+        action: 'digital_value.gift_card_sell.review',
+        entityType: 'GiftCardSellTransaction',
+        entityId: transaction.id,
+        reason: fraud.reasons.join('; ') || 'Fraud score threshold exceeded',
+        payload: {
+          fraudScore: fraud.score,
+          brand: dto.brand,
+          region: dto.region,
+          denomination: dto.denomination
+        },
+        requestedByUserId: ctx.userId
+      });
+
+      await this.db.giftCardSellTransaction.update({
+        where: { id: transaction.id },
+        data: { approvalRequestId: approval.id }
+      });
+
+      await this.queue.enqueueGiftCardSellOpsReview(transaction.id);
+
+      return {
+        transactionId: transaction.id,
+        status: 'FLAGGED_FOR_REVIEW',
+        message:
+          'This submission needs manual review before it can be processed. We will notify you once it is resolved.'
+      };
+    }
 
     try {
       const result = await this.giftCardSellProvider.submitCard({
@@ -243,7 +370,11 @@ export class DigitalValueService {
         brand: dto.brand,
         region: dto.region,
         denomination: dto.denomination,
-        cardInfo: dto.cardInfo
+        cardInfo: {
+          currency: dto.cardInfo.currency,
+          cardCode: ecodeResult.normalizedCode,
+          cardType: dto.cardInfo.cardType ?? 'ecode'
+        }
       });
 
       await this.db.giftCardSellTransaction.update({
@@ -268,6 +399,97 @@ export class DigitalValueService {
       status: 'SUBMITTED',
       message: 'Gift card submitted for processing'
     };
+  }
+
+  /** Admin action: after an ops reviewer approves a flagged submission, actually submit it to SOGO. */
+  async executeApprovedGiftCardSell(approvalId: string, decidedByUserId: string, note?: string) {
+    if (!this.giftCardSellProvider) {
+      throw new BadRequestException('Gift card selling is not available.');
+    }
+
+    const transaction = await this.db.giftCardSellTransaction.findFirst({
+      where: { approvalRequestId: approvalId }
+    });
+    if (!transaction) {
+      throw new NotFoundException('No gift card sell transaction is linked to this approval.');
+    }
+    if (transaction.status !== 'FLAGGED_FOR_REVIEW') {
+      throw new BadRequestException(`Transaction is ${transaction.status}, not awaiting review.`);
+    }
+
+    const metadata = (transaction.metadata ?? {}) as { cardInfo?: Record<string, string> };
+    const cardInfo = metadata.cardInfo;
+    if (!cardInfo?.currency) {
+      throw new BadRequestException('Original submission payload is missing; cannot resubmit.');
+    }
+
+    await this.approvals.decide(approvalId, { decidedByUserId, approve: true, ...(note ? { note } : {}) });
+
+    // The raw code was never persisted (only its hash) — ops approval means "let this
+    // transaction proceed," but we no longer have the code to forward to SOGO. The
+    // submitter must resubmit once notified of the approval.
+    await this.approvals.execute(approvalId, () =>
+      this.db.giftCardSellTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          status: 'APPROVED' as any,
+          validationStatus: 'APPROVED_PENDING_RESUBMISSION'
+        }
+      })
+    );
+
+    return {
+      transactionId: transaction.id,
+      status: 'APPROVED',
+      message: 'Submission approved. Ask the customer to resubmit the code to complete the sale.'
+    };
+  }
+
+  async rejectFlaggedGiftCardSell(approvalId: string, decidedByUserId: string, note?: string) {
+    const transaction = await this.db.giftCardSellTransaction.findFirst({
+      where: { approvalRequestId: approvalId }
+    });
+    if (!transaction) {
+      throw new NotFoundException('No gift card sell transaction is linked to this approval.');
+    }
+
+    await this.approvals.decide(approvalId, { decidedByUserId, approve: false, ...(note ? { note } : {}) });
+
+    await this.db.giftCardSellTransaction.update({
+      where: { id: transaction.id },
+      data: { status: 'REJECTED' as any, validationStatus: 'REJECTED_BY_OPS' }
+    });
+
+    return { transactionId: transaction.id, status: 'REJECTED' };
+  }
+
+  async listFlaggedGiftCardSells(workspaceId?: string) {
+    return this.db.giftCardSellTransaction.findMany({
+      where: {
+        status: 'FLAGGED_FOR_REVIEW' as any,
+        ...(workspaceId ? { workspaceId } : {})
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200
+    });
+  }
+
+  private async logValidationAudit(
+    ctx: AuthenticatedRequestContext,
+    transactionId: string,
+    action: string,
+    reasons: string[]
+  ) {
+    await this.db.auditLog.create({
+      data: {
+        workspaceId: ctx.workspaceId,
+        actorUserId: ctx.userId,
+        action,
+        entityType: 'GiftCardSellTransaction',
+        entityId: transactionId,
+        metadata: { reasons }
+      }
+    });
   }
 
   // ─── Gift Card Buy ────────────────────────────────────────────────────────────

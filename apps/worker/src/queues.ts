@@ -118,7 +118,8 @@ export type DigitalValueProcessingJobType =
   | "GIFT_CARD_SELL"
   | "GIFT_CARD_BUY"
   | "AIRTIME_CASHOUT"
-  | "AIRTIME_BUY";
+  | "AIRTIME_BUY"
+  | "GIFT_CARD_SELL_OPS_REVIEW";
 
 export interface DigitalValueProcessingJob {
   transactionId: string;

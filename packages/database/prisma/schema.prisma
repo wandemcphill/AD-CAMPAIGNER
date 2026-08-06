@@ -1778,6 +1778,7 @@ enum GiftCardSellStatus {
   FAILED
   CANCELLED
   DISPUTED
+  FLAGGED_FOR_REVIEW
 }
 
 enum GiftCardPurchaseStatus {
@@ -1854,6 +1855,13 @@ model GiftCardSellTransaction {
   cardInfoRequired        String[]           @default([])
   idempotencyKey          String             @unique
   metadata                Json               @default("{}")
+  // Fraud/validation gate (SOGO Gift Card API compliance): populated at submission
+  // time, before any provider call. See gift-card-validation.ts.
+  cardCodeHash            String?
+  validationStatus        String             @default("PENDING")
+  validationReasons       String[]           @default([])
+  fraudScore              Int                @default(0)
+  approvalRequestId       String?
   createdAt               DateTime           @default(now())
   updatedAt               DateTime           @updatedAt
   submittedAt             DateTime?
@@ -1863,6 +1871,8 @@ model GiftCardSellTransaction {
   @@index([userId])
   @@index([providerName])
   @@index([providerTransactionId])
+  @@index([cardCodeHash])
+  @@index([approvalRequestId])
 }
 
 model GiftCardPurchaseQuote {

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Inject, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   workspaceContextFromRequest,
@@ -15,7 +16,8 @@ import type {
   AirtimeCashoutRequestOtpDto,
   AirtimeCashoutVerifyOtpDto,
   AirtimeCashoutQuoteDto,
-  AirtimeCashoutInitiateDto
+  AirtimeCashoutInitiateDto,
+  DecideGiftCardSellReviewDto
 } from './digital-value.dtos';
 
 @Controller('digital-value')
@@ -27,6 +29,7 @@ export class DigitalValueController {
 
   @Post('gift-cards/sell/rate')
   @RequirePermissions('campaign:create')
+  @Throttle({ short: { limit: 20, ttl: 60_000 } })
   getGiftCardSellRate(
     @Body() body: GiftCardSellRateDto,
     @Req() request: WorkspaceContextRequest
@@ -36,6 +39,7 @@ export class DigitalValueController {
 
   @Post('gift-cards/sell')
   @RequirePermissions('campaign:create')
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   submitGiftCardSell(
     @Body() body: GiftCardSubmitDto,
     @Req() request: WorkspaceContextRequest
@@ -120,5 +124,21 @@ export class DigitalValueController {
 export class AdminDigitalValueController {
   constructor(@Inject(DigitalValueService) private readonly service: DigitalValueService) {}
 
-  // Placeholder for admin operations (transaction list, provider health, etc.)
+  @Get('gift-cards/sell/flagged')
+  listFlaggedGiftCardSells(@Query('workspaceId') workspaceId?: string) {
+    return this.service.listFlaggedGiftCardSells(workspaceId);
+  }
+
+  @Post('gift-cards/sell/:approvalId/decide')
+  decideFlaggedGiftCardSell(
+    @Param('approvalId') approvalId: string,
+    @Body() body: DecideGiftCardSellReviewDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    const ctx = workspaceContextFromRequest(request);
+
+    return body.approve
+      ? this.service.executeApprovedGiftCardSell(approvalId, ctx.userId, body.note)
+      : this.service.rejectFlaggedGiftCardSell(approvalId, ctx.userId, body.note);
+  }
 }

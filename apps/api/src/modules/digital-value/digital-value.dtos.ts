@@ -1,4 +1,5 @@
-import { IsString, IsInt, IsOptional, IsEmail } from 'class-validator';
+import { IsString, IsInt, IsOptional, IsEmail, IsBoolean, ValidateNested, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
 
 // ─── Gift Card Sell DTOs ───────────────────────────────────────────────────────
 
@@ -24,6 +25,20 @@ export class GiftCardSellRateResponseDto {
   rateTimestamp!: Date;
 }
 
+export class GiftCardCodeInfoDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(64)
+  cardCode!: string;
+
+  @IsString()
+  currency!: string;
+
+  @IsOptional()
+  @IsString()
+  cardType?: string;
+}
+
 export class GiftCardSubmitDto {
   @IsOptional()
   @IsString()
@@ -38,7 +53,19 @@ export class GiftCardSubmitDto {
   @IsInt()
   denomination!: number;
 
-  cardInfo!: Record<string, string>;
+  @ValidateNested()
+  @Type(() => GiftCardCodeInfoDto)
+  cardInfo!: GiftCardCodeInfoDto;
+}
+
+export class DecideGiftCardSellReviewDto {
+  @IsBoolean()
+  approve!: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }
 
 // ─── Gift Card Buy DTOs ────────────────────────────────────────────────────────

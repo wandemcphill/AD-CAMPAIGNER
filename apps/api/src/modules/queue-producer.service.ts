@@ -112,6 +112,16 @@ export class QueueProducerService implements OnModuleDestroy {
     });
   }
 
+  async enqueueGiftCardSellOpsReview(transactionId: string): Promise<QueueProducerResult> {
+    const type = "GIFT_CARD_SELL_OPS_REVIEW" as const;
+    return this.enqueue("digital-value-processing", type, { transactionId, type }, {
+      jobId: `dv_ops_review_${transactionId}`,
+      attempts: 1,
+      removeOnComplete: { age: 604_800, count: 20_000 },
+      removeOnFail: { age: 2_592_000, count: 20_000 }
+    });
+  }
+
   async enqueueTrustEngineValidation(submissionId: string): Promise<QueueProducerResult> {
     return this.enqueue("trust-engine", "validate", { submissionId }, {
       jobId: `trust_engine_${submissionId}`,

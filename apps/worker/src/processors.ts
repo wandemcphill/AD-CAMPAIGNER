@@ -324,6 +324,21 @@ export function processQueueJob(
     }
     case "digital-value-processing": {
       const data = job.data as QueuePayloads["digital-value-processing"];
+
+      if (data.type === "GIFT_CARD_SELL_OPS_REVIEW") {
+        return {
+          queue,
+          status: "processed",
+          detail: `Gift card sell transaction ${data.transactionId} flagged for manual review; awaiting ops decision via /admin/digital-value`,
+          details: {
+            transactionId: data.transactionId,
+            type: data.type,
+            sideEffects: false
+          },
+          processedAt
+        };
+      }
+
       return {
         queue,
         status: "processed",

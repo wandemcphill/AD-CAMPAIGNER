@@ -5,9 +5,10 @@ import { DigitalValueController, AdminDigitalValueController } from './digital-v
 import { PrismaModule } from '../prisma.module';
 import { QueueProducerService } from '../queue-producer.service';
 import { FxModule } from '../fx/fx.module';
+import { ApprovalsModule } from '../approvals/approvals.module';
 
 @Module({
-  imports: [FxModule, PrismaModule],
+  imports: [FxModule, PrismaModule, ApprovalsModule],
   providers: [QueueProducerService, DigitalValueService],
   controllers: [DigitalValueController, AdminDigitalValueController],
   exports: [DigitalValueService]
