@@ -18,11 +18,11 @@ export const featureFlags = {
   rewards: true,
   rewardsAdmin: true,
   giftCardSell: true,
-  giftCardBuy: false,
+  giftCardBuy: true,
   cryptoSell: true,
   rmbBuy: true,
-  airtimeCashout: false,
-  digitalValueAdmin: false,
+  airtimeCashout: true,
+  digitalValueAdmin: true,
   trustEngine: false,
   trustEngineAdmin: false
 } as const;

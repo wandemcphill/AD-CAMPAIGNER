@@ -9,7 +9,7 @@ import {
 
 import { Prisma, type DatabaseClient } from '@fliptrybe/database';
 import { calculateAvailableBalance, runChargeSaga } from '@fliptrybe/payments';
-import type { CurrencyCode, LedgerEntry } from '@fliptrybe/types';
+import type { LedgerEntry } from '@fliptrybe/types';
 import {
   createReloadlyGiftCardAdapter,
   createSogoGiftCardAdapter,
@@ -428,16 +428,18 @@ export class DigitalValueService {
         });
 
         return {
-          chargeId: transaction.chargeId as string,
-          walletId: transaction.walletId as string,
-          amountMinor: quote.customerPriceNgn,
-          currency: 'NGN' as CurrencyCode,
-          debitLedgerEntryId: transaction.ledgerEntryId as string | null,
-          transaction
+          order: transaction,
+          charge: {
+            chargeId: transaction.chargeId as string,
+            walletId: transaction.walletId as string,
+            amountMinor: quote.customerPriceNgn,
+            currency: 'NGN',
+            debitLedgerEntryId: transaction.ledgerEntryId
+          }
         };
       },
 
-      execute: async ({ transaction }) => {
+      execute: async (transaction) => {
         const result = await this.giftCardBuyProvider!.purchase({
           reference: transaction.id,
           productId: quote.id,
@@ -458,7 +460,11 @@ export class DigitalValueService {
 
         await this.queue.enqueueDigitalValueProcessing(transaction.id, 'GIFT_CARD_BUY');
         return result;
-      }
+      },
+
+      // No-op: hold_and_flag is the failure policy here (see the note above debit),
+      // so compensate is never invoked, but SagaSteps requires it be provided.
+      compensate: async () => {}
     });
 
     if (outcome.status === 'held') {
@@ -467,17 +473,17 @@ export class DigitalValueService {
       );
       await this.db.giftCardPurchaseTransaction.update({
         where: { id: transactionId },
-        data: { status: 'AMBIGUOUS' as any }
+        data: { status: 'DISPUTED' as any }
       });
-      await this.db.giftCardWalletCharge.update({
+      await this.db.giftCardWalletCharge.updateMany({
         where: { transactionId },
-        data: { status: 'AMBIGUOUS' as any }
+        data: { status: 'AMBIGUOUS' }
       });
     }
 
     return {
       transactionId,
-      status: outcome.status === 'held' ? 'AMBIGUOUS' : 'PAYMENT_CONFIRMED',
+      status: outcome.status === 'held' ? 'DISPUTED' : 'PAYMENT_CONFIRMED',
       message:
         outcome.status === 'held'
           ? 'Gift card payment was charged but the order could not be confirmed. This has been flagged for review.'
