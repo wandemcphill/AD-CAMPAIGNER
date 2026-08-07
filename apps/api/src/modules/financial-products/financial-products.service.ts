@@ -130,6 +130,7 @@ export class FinancialProductsService {
       case "yativo":
         return createYativoRemittanceProvider({
           apiKey: process.env["YATIVO_API_KEY"] ?? "",
+          accountId: process.env["YATIVO_ACCOUNT_ID"] ?? "",
           ...(process.env["YATIVO_BASE_URL"] ? { baseUrl: process.env["YATIVO_BASE_URL"] } : {})
         });
       default:
