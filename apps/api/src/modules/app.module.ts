@@ -58,6 +58,8 @@ import { TrustEngineModule } from "./trust-engine/trust-engine.module";
 import { CryptoModule } from "./crypto/crypto.module";
 import { RmbModule } from "./rmb/rmb.module";
 import { FinancialProductsModule } from "./financial-products/financial-products.module";
+import { GuestCheckoutModule } from "./guest-checkout/guest-checkout.module";
+import { SupportModule } from "./support/support.module";
 
 @Module({
   imports: [
@@ -95,7 +97,8 @@ import { FinancialProductsModule } from "./financial-products/financial-products
     CryptoModule,
     RmbModule,
     FinancialProductsModule,
-
+    GuestCheckoutModule,
+    SupportModule
   ],
   controllers: [
     RootController,

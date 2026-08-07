@@ -28,7 +28,9 @@ export const featureFlags = {
   virtualAccounts: true,
   virtualCards: true,
   remittance: true,
-  telecomGateway: true
+  telecomGateway: true,
+  guestCheckout: true,
+  support: true
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

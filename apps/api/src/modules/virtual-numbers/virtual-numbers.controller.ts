@@ -231,4 +231,25 @@ export class AdminVirtualNumbersController {
   setPurchaseLimit(@Body() body: { workspaceId: string; limitMinor: number; periodType?: string }) {
     return this.numbers.adminSetPurchaseLimit(body);
   }
+
+  @Get("compatibility")
+  listCompatibility(@Query() query: { providerName?: string; countryCode?: string }) {
+    return this.numbers.adminListCompatibility(query);
+  }
+
+  @Post("compatibility")
+  upsertCompatibility(
+    @Body()
+    body: {
+      serviceKey: string;
+      countryCode?: string;
+      providerName?: string;
+      numberType?: string;
+      level?: "UNKNOWN" | "TESTED_WORKING" | "LIKELY_WORKS" | "VARIES" | "NOT_SUPPORTED";
+      blocked?: boolean;
+      evidence?: string;
+    }
+  ) {
+    return this.numbers.adminUpsertCompatibility(body);
+  }
 }

@@ -3,12 +3,16 @@ import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req } from "@
 import type { ProviderDomain } from "@fliptrybe/providers";
 import { authenticatedContextFromHeaders, type WorkspaceContextRequest } from "../request-context";
 import { RequirePermissions } from "../authorization.decorators";
+import { PricingRuleService } from "./pricing-rule.service";
 import { ProvidersService } from "./providers.service";
 
 @Controller("admin/providers")
 @RequirePermissions("admin:access")
 export class ProvidersController {
-  constructor(@Inject(ProvidersService) private readonly providers: ProvidersService) {}
+  constructor(
+    @Inject(ProvidersService) private readonly providers: ProvidersService,
+    @Inject(PricingRuleService) private readonly pricingRules: PricingRuleService
+  ) {}
 
   @Get()
   overview() {
@@ -63,5 +67,31 @@ export class ProvidersController {
       authenticatedContextFromHeaders(request.headers),
       body.reason
     );
+  }
+
+  @Get("pricing-rules")
+  listPricingRules(@Query("domain") domain?: ProviderDomain) {
+    return this.pricingRules.list(domain);
+  }
+
+  @Post("pricing-rules")
+  createPricingRule(
+    @Body()
+    body: {
+      domain: ProviderDomain;
+      countryCode?: string;
+      network?: string;
+      productType?: string;
+      providerName?: string;
+      markupBps: number;
+      specificity?: number;
+    }
+  ) {
+    return this.pricingRules.create(body);
+  }
+
+  @Patch("pricing-rules/:id")
+  setPricingRuleActive(@Param("id") id: string, @Body() body: { active: boolean }) {
+    return this.pricingRules.setActive(id, body.active);
   }
 }

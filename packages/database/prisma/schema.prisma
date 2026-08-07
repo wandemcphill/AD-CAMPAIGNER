@@ -318,16 +318,6 @@ enum NotificationStatus {
   FAILED
 }
 
-enum SmmOrderStatus {
-  DRAFT
-  QUEUED
-  PROCESSING
-  COMPLETED
-  PARTIAL
-  FAILED
-  CANCELLED
-}
-
 enum GrowthServicePlatform {
   TIKTOK
   INSTAGRAM
@@ -378,6 +368,7 @@ enum ProviderDomain {
   VIRTUAL_ACCOUNT
   VIRTUAL_CARD
   REMITTANCE
+  TELECOM
 }
 
 enum ProviderTier {
@@ -648,7 +639,6 @@ model Workspace {
   campaigns                      Campaign[]
   wallets                        Wallet[]
   paymentIntents                 PaymentIntent[]
-  smmOrders                      SmmOrder[]
   growthOrders                   GrowthOrder[]
   vtuOrders                      VtuOrder[]
   vtuWalletCharges               VtuWalletCharge[]
@@ -1445,24 +1435,6 @@ model EventOutbox {
 
   @@index([workspaceId, status, createdAt])
   @@index([entityType, entityId])
-}
-
-model SmmOrder {
-  id                String          @id @default(uuid())
-  workspaceId       String
-  serviceKind       String
-  destinationKind   DestinationKind
-  destinationUrl    String?
-  quantity          Int
-  status            SmmOrderStatus  @default(DRAFT)
-  supplierReference String?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  deletedAt         DateTime?
-  workspace         Workspace       @relation(fields: [workspaceId], references: [id])
-
-  @@index([workspaceId, status])
-  @@index([supplierReference])
 }
 
 model GrowthOrder {
@@ -2463,6 +2435,71 @@ model VtuWalletCharge {
   @@index([walletId, createdAt])
 }
 
+// ─── Guest Checkout (unauthenticated bill payments) ───────────────────────────
+// Deliberately independent of Workspace/User/Wallet — guests never hold a
+// balance, so there is nothing to lock or debit. Payment is collected directly
+// via the payment gateway per-transaction and fulfilment is a direct provider
+// call, not a ledger operation. See GuestCheckoutModule for the flow.
+
+enum GuestProductType {
+  AIRTIME
+  DATA
+  ELECTRICITY
+  CABLE
+  BETTING
+  EDUCATION
+}
+
+enum GuestPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum GuestFulfilmentStatus {
+  PENDING
+  PROCESSING
+  DELIVERED
+  FAILED
+  REFUNDED
+}
+
+model GuestTransaction {
+  id                 String                 @id @default(uuid())
+  reference          String                 @unique
+  idempotencyKey     String                 @unique
+  email              String
+  phone              String?
+  productType        GuestProductType
+  provider           String
+  beneficiaryMasked  String
+  beneficiaryEncrypted String
+  amountMinor        Int
+  currency           String                 @default("NGN")
+  paymentMethod      String?
+  paymentProvider    String?
+  paymentReference   String?
+  paymentStatus      GuestPaymentStatus     @default(PENDING)
+  fulfilmentStatus   GuestFulfilmentStatus  @default(PENDING)
+  providerReference  String?
+  failureReason      String?
+  attemptCount       Int                    @default(0)
+  requestIpAddress   String?
+  requestUserAgent   String?
+  receiptEmailedAt   DateTime?
+  migratedToUserId   String?
+  migratedAt         DateTime?
+  metadata           Json                   @default("{}")
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@index([email, createdAt])
+  @@index([phone, createdAt])
+  @@index([requestIpAddress, createdAt])
+  @@index([paymentStatus, fulfilmentStatus, createdAt])
+  @@index([paymentReference])
+}
+
 // ─── Phase 2: Virtual Numbers (International SMS) ────────────────────────────
 
 model NumberCountry {
@@ -2878,17 +2915,31 @@ model NotificationPreference {
 }
 
 model SupportTicket {
-  id              String    @id @default(uuid())
+  id              String              @id @default(uuid())
   workspaceId     String
   requesterUserId String
   subject         String
-  status          String    @default("OPEN")
-  priority        String    @default("NORMAL")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  workspace       Workspace @relation(fields: [workspaceId], references: [id])
+  body            String              @default("")
+  status          String              @default("OPEN")
+  priority        String              @default("NORMAL")
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  workspace       Workspace           @relation(fields: [workspaceId], references: [id])
+  replies         SupportTicketReply[]
 
   @@index([workspaceId, status, priority])
+}
+
+model SupportTicketReply {
+  id             String        @id @default(uuid())
+  ticketId       String
+  authorUserId   String
+  authorType     String
+  body           String
+  createdAt      DateTime      @default(now())
+  ticket         SupportTicket @relation(fields: [ticketId], references: [id])
+
+  @@index([ticketId, createdAt])
 }
 
 model ReferralAccount {

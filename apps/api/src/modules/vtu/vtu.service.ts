@@ -19,6 +19,7 @@ import {
 
 import { PrismaService } from "../prisma.service";
 import { QueueProducerService } from "../queue-producer.service";
+import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing-rule.service";
 import { featureFlags } from "@fliptrybe/feature-flags";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
@@ -117,10 +118,6 @@ const EDUCATION_PLANS: Array<{ examType: string; displayName: string; costMinor:
   { examType: "waec-registraion", displayName: "WAEC Registration PIN", costMinor: 3750000 }
 ];
 
-function applyMarkup(costMinor: number): number {
-  return Math.ceil(costMinor * (1 + MARKUP_BPS / 10_000));
-}
-
 interface DbLedgerEntryRow {
   id: string;
   walletId: string;
@@ -159,11 +156,19 @@ export class VtuService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly queue: QueueProducerService
+    private readonly queue: QueueProducerService,
+    private readonly pricingRules: PricingRuleService
   ) {}
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
+  }
+
+  // A PricingRule row (domain=VTU) overrides MARKUP_BPS when one matches; otherwise
+  // this falls back to the same 2% margin that was hardcoded before.
+  private async applyMarkup(costMinor: number, filter: PricingRuleFilter = {}): Promise<number> {
+    const bps = await this.pricingRules.resolveMarkupBps("VTU", filter, MARKUP_BPS);
+    return Math.ceil(costMinor * (1 + bps / 10_000));
   }
 
   // ─── Adapter factory ────────────────────────────────────────────────────────
@@ -307,7 +312,11 @@ export class VtuService {
     const adapter = await this.selectAdapter("AIRTIME", dto.network);
     const discountBps = await adapter.getAirtimeDiscountBps(dto.network);
     const wholesaleCost = Math.ceil(dto.faceValueMinor * (1 - discountBps / 10_000));
-    const chargeMinor = applyMarkup(wholesaleCost);
+    const chargeMinor = await this.applyMarkup(wholesaleCost, {
+      network: dto.network,
+      productType: "AIRTIME",
+      providerName: adapter.name
+    });
 
     const orderId = uid("vtu");
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
@@ -433,7 +442,11 @@ export class VtuService {
     });
     if (!plan) throw new NotFoundException("Data plan not found or unavailable.");
 
-    const chargeMinor = applyMarkup(plan.costMinor);
+    const chargeMinor = await this.applyMarkup(plan.costMinor, {
+      network: dto.network,
+      productType: "DATA",
+      providerName: adapter.name
+    });
     const orderId = uid("vtu");
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const msisdnMasked = dto.msisdn.slice(0, 4) + "****" + dto.msisdn.slice(-3);
@@ -561,7 +574,11 @@ export class VtuService {
 
     // No wholesale-discount API for EPIN (unlike direct recharge) — charge face value + markup.
     const costMinor = dto.valueMinor * dto.quantity;
-    const chargeMinor = applyMarkup(costMinor);
+    const chargeMinor = await this.applyMarkup(costMinor, {
+      network: dto.network,
+      productType: "AIRTIME",
+      providerName: adapter.name
+    });
     const orderId = uid("vtu");
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
 
@@ -674,7 +691,11 @@ export class VtuService {
     if (!plan) throw new NotFoundException("Data plan not found or unavailable.");
 
     const costMinor = plan.costMinor * dto.quantity;
-    const chargeMinor = applyMarkup(costMinor);
+    const chargeMinor = await this.applyMarkup(costMinor, {
+      network: dto.network,
+      productType: "DATA",
+      providerName: adapter.name
+    });
     const orderId = uid("vtu");
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
 
@@ -1208,7 +1229,7 @@ export class VtuService {
       }
     }
 
-    const chargeMinor = applyMarkup(pkg.costMinor);
+    const chargeMinor = await this.applyMarkup(pkg.costMinor, { productType: "CABLE" });
     const orderId = uid("vtu");
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const cardMasked = dto.smartCardNumber.slice(0, 3) + "****" + dto.smartCardNumber.slice(-2);
@@ -1373,7 +1394,7 @@ export class VtuService {
       }
     }
 
-    const chargeMinor = applyMarkup(dto.amountMinor);
+    const chargeMinor = await this.applyMarkup(dto.amountMinor, { productType: "BETTING" });
     const orderId = uid("vtu");
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const customerIdMasked =
@@ -1505,7 +1526,7 @@ export class VtuService {
     });
     if (!plan) throw new NotFoundException("Education plan not found or unavailable.");
 
-    const chargeMinor = applyMarkup(plan.costMinor);
+    const chargeMinor = await this.applyMarkup(plan.costMinor, { productType: "EDUCATION" });
     const orderId = uid("vtu");
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const phoneMasked = dto.phoneNumber.slice(0, 4) + "****" + dto.phoneNumber.slice(-3);
@@ -1606,7 +1627,8 @@ export class VtuService {
       where: { active: true },
       orderBy: { costMinor: "asc" }
     });
-    return plans.map((p) => ({ ...p, costMinor: applyMarkup(p.costMinor) }));
+    const bps = await this.pricingRules.resolveMarkupBps("VTU", { productType: "EDUCATION" }, MARKUP_BPS);
+    return plans.map((p) => ({ ...p, costMinor: Math.ceil(p.costMinor * (1 + bps / 10_000)) }));
   }
 
   private async ensureDefaultBettingCompanies(db: DbClient = this.db) {

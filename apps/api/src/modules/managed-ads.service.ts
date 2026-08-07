@@ -302,6 +302,8 @@ function normalizeDestinationKind(input: Record<string, any>) {
   return "INSTAGRAM_REEL";
 }
 
+const LIVE_DESTINATION_KINDS = new Set(["TIKTOK_LIVE", "INSTAGRAM_LIVE", "FACEBOOK_LIVE"]);
+
 function normalizeCampaignStatus(value: unknown) {
   const status = String(value ?? "").toUpperCase().replace(/[\s-]+/g, "_");
 
@@ -1221,6 +1223,15 @@ export class ManagedAdsService {
               metadata: normalizeJsonObject(input.destinationMetadata)
             }
           },
+          livePromotion: LIVE_DESTINATION_KINDS.has(destinationKind)
+            ? {
+                create: {
+                  destinationKind,
+                  realtimeBoostEnabled: Boolean(input.realtimeBoostEnabled),
+                  expectedStartAt: startsAt
+                }
+              }
+            : undefined,
           statusHistory: {
             create: {
               toStatus: "DRAFT",
@@ -3887,6 +3898,14 @@ export class ManagedAdsService {
           reason
         }
       });
+      if (status === "RUNNING" || status === "COMPLETED") {
+        await tx.livePromotion
+          .update({
+            where: { campaignId },
+            data: status === "RUNNING" ? { actualStartedAt: now() } : { actualEndedAt: now() }
+          })
+          .catch(() => undefined); // no-op unless this campaign has a LivePromotion row
+      }
       await this.audit(tx, scope, "campaign.status.updated", "Campaign", campaignId, {
         fromStatus: existing.status,
         toStatus: status,

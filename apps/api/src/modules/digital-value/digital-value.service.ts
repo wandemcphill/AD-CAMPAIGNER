@@ -520,6 +520,8 @@ export class DigitalValueService {
     }
 
     const products = await this.giftCardBuyProvider.getProducts(filters);
+    void this.cacheGiftCardCatalog(products);
+
     return products.map((p) => ({
       productId: p.productId,
       brand: p.brand,
@@ -530,6 +532,60 @@ export class DigitalValueService {
       priceNgn: Math.ceil((p.retailPrice * 100) / 0.95),
       available: p.available
     }));
+  }
+
+  // Best-effort admin-visibility cache of the live provider catalog — never
+  // blocks or fails the actual buy-side response above.
+  private async cacheGiftCardCatalog(
+    products: Array<{ brand: string; region: string; currency: string; denomination: number; available: boolean }>
+  ): Promise<void> {
+    const byBrandRegion = new Map<
+      string,
+      { brand: string; region: string; currency: string; denominations: Set<number>; active: boolean }
+    >();
+
+    for (const p of products) {
+      const key = `${p.brand}:${p.region}`;
+      const entry = byBrandRegion.get(key) ?? {
+        brand: p.brand,
+        region: p.region,
+        currency: p.currency,
+        denominations: new Set<number>(),
+        active: false
+      };
+      entry.denominations.add(p.denomination);
+      entry.active = entry.active || p.available;
+      byBrandRegion.set(key, entry);
+    }
+
+    try {
+      await Promise.all(
+        [...byBrandRegion.values()].map((entry) => {
+          const denominations = [...entry.denominations].sort((a, b) => a - b);
+          return this.db.giftCardProduct.upsert({
+            where: { brand_region: { brand: entry.brand as any, region: entry.region as any } },
+            update: {
+              currencyCode: entry.currency,
+              minDenomination: denominations[0]!,
+              maxDenomination: denominations[denominations.length - 1]!,
+              denominations,
+              active: entry.active
+            },
+            create: {
+              brand: entry.brand as any,
+              region: entry.region as any,
+              currencyCode: entry.currency,
+              minDenomination: denominations[0]!,
+              maxDenomination: denominations[denominations.length - 1]!,
+              denominations,
+              active: entry.active
+            }
+          });
+        })
+      );
+    } catch (err) {
+      this.logger.warn(`Could not cache gift card catalog: ${String(err)}`);
+    }
   }
 
   async getGiftCardBuyQuote(ctx: AuthenticatedRequestContext, dto: GiftCardBuyQuoteDto) {

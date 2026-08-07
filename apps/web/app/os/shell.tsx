@@ -20,6 +20,7 @@ import {
   Globe2,
   KeyRound,
   LayoutDashboard,
+  LifeBuoy,
   Lightbulb,
   LogOut,
   Megaphone,
@@ -133,6 +134,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Team", href: "/os/team", icon: Users },
       { label: "Notifications", href: "/os/notifications", icon: Bell },
+      { label: "Support", href: "/os/support", icon: LifeBuoy },
       { label: "Profile", href: "/os/profile", icon: UserCircle },
       { label: "Settings", href: "/os/settings", icon: Settings },
     ],
@@ -193,9 +195,8 @@ export function OsShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="hidden w-[240px] shrink-0 flex-col border-r border-[var(--ft-border)] bg-[var(--ft-bg-surface)] lg:flex">
         <div className="flex h-14 items-center gap-3 border-b border-[var(--ft-border)] px-5">
-          <div className="grid size-8 place-items-center rounded-[var(--radius-sm)] bg-[var(--ft-accent)] font-mono text-[10px] font-bold text-[var(--ft-text-inverse)]">
-            FT
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img alt="FlipTrybe" className="size-8" src="/brand/icon-mark.svg" />
           <div>
             <div className="text-sm font-bold">FlipTrybe</div>
             <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">

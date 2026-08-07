@@ -6,6 +6,7 @@ import { featureFlags } from "@fliptrybe/feature-flags";
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
+import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing-rule.service";
 import { PhoneNumberService } from "./phone-number.service";
 import { TelecomRoutingService } from "./telecom-routing.service";
 import { TelecomCatalogService } from "./telecom-catalog.service";
@@ -74,11 +75,19 @@ export class TelecomGatewayService {
     private readonly phoneNumbers: PhoneNumberService,
     private readonly routing: TelecomRoutingService,
     private readonly catalog: TelecomCatalogService,
-    private readonly health: TelecomHealthService
+    private readonly health: TelecomHealthService,
+    private readonly pricingRules: PricingRuleService
   ) {}
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
+  }
+
+  // A PricingRule row (domain=TELECOM) overrides MARKUP_BPS when one matches; otherwise
+  // falls back to the same 2% margin that was hardcoded before.
+  private async applyMarkup(costMinor: number, filter: PricingRuleFilter = {}): Promise<number> {
+    const bps = await this.pricingRules.resolveMarkupBps("TELECOM", filter, MARKUP_BPS);
+    return Math.ceil(costMinor * (1 + bps / 10_000));
   }
 
   private assertEnabled() {
@@ -208,7 +217,11 @@ export class TelecomGatewayService {
 
     const discountBps = product.discountBps ?? 0;
     const wholesaleCost = Math.ceil(dto.amountMinor * (1 - discountBps / 10_000));
-    const chargeMinor = Math.ceil(wholesaleCost * (1 + MARKUP_BPS / 10_000));
+    const chargeMinor = await this.applyMarkup(wholesaleCost, {
+      countryCode: detected.countryIso,
+      productType: "AIRTIME",
+      providerName: adapter.name
+    });
 
     const orderId = uid("tel");
     const reference = `TG${orderId.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
@@ -304,7 +317,11 @@ export class TelecomGatewayService {
     const bundle = bundles.find((b) => b.bundleId === dto.bundleId);
     if (!bundle) throw new BadRequestException("Data bundle not found or unavailable for this operator.");
 
-    const chargeMinor = Math.ceil(bundle.costMinor * (1 + MARKUP_BPS / 10_000));
+    const chargeMinor = await this.applyMarkup(bundle.costMinor, {
+      countryCode: detected.countryIso,
+      productType: "DATA",
+      providerName: adapter.name
+    });
     const orderId = uid("tel");
     const reference = `TG${orderId.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
     const msisdnMasked = maskMsisdn(detected.msisdn);

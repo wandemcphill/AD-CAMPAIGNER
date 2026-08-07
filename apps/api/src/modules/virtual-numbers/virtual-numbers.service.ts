@@ -126,6 +126,7 @@ export class VirtualNumbersService {
 
   private async candidateProviders(
     preferredProviders: string[],
+    countryCode?: string,
     db: DbClient = this.db
   ): Promise<string[]> {
     if (preferredProviders.length === 0) return [];
@@ -137,10 +138,26 @@ export class VirtualNumbersService {
     });
     const latestStatus = new Map(healthRows.map((h) => [h.providerName, h.status]));
 
-    return preferredProviders.filter((name) => {
+    const healthy = preferredProviders.filter((name) => {
       const status = latestStatus.get(name);
       return status !== "DOWN" && status !== "DISABLED";
     });
+    if (healthy.length === 0 || !countryCode) return healthy;
+
+    // Known bad provider/country combinations (from test evidence or repeated failures) are
+    // recorded in NumberCompatibility. A row with blocked=true and no serviceKey applies
+    // regardless of which service the buyer intends to verify with.
+    const blockedRows = await db.numberCompatibility.findMany({
+      where: {
+        providerName: { in: healthy },
+        countryCode,
+        blocked: true
+      }
+    });
+    if (blockedRows.length === 0) return healthy;
+
+    const blockedProviders = new Set(blockedRows.map((row) => row.providerName));
+    return healthy.filter((name) => !blockedProviders.has(name));
   }
 
   // Lifecycle ops (renew) must route back to the resource's origin provider — never
@@ -434,7 +451,7 @@ export class VirtualNumbersService {
       throw new NotFoundException("This number product is not available.");
     }
 
-    const candidates = await this.candidateProviders(product.preferredProviders);
+    const candidates = await this.candidateProviders(product.preferredProviders, product.countryCode);
     if (candidates.length === 0) {
       throw new BadRequestException(
         `No healthy provider is configured for ${product.displayName}.`
@@ -1170,5 +1187,57 @@ export class VirtualNumbersService {
       periodStart: limit.periodStart.toISOString(),
       periodEnd: limit.periodEnd.toISOString()
     };
+  }
+
+  async adminListCompatibility(query: { providerName?: string; countryCode?: string } = {}) {
+    return this.db.numberCompatibility.findMany({
+      where: {
+        ...(query.providerName ? { providerName: query.providerName } : {}),
+        ...(query.countryCode ? { countryCode: query.countryCode } : {})
+      },
+      orderBy: { updatedAt: "desc" }
+    });
+  }
+
+  async adminUpsertCompatibility(data: {
+    serviceKey: string;
+    countryCode?: string;
+    providerName?: string;
+    numberType?: string;
+    level?: "UNKNOWN" | "TESTED_WORKING" | "LIKELY_WORKS" | "VARIES" | "NOT_SUPPORTED";
+    blocked?: boolean;
+    evidence?: string;
+  }) {
+    const level = data.level ?? (data.blocked ? "NOT_SUPPORTED" : "UNKNOWN");
+    const countryCode = data.countryCode ?? "";
+    const providerName = data.providerName ?? "";
+    const numberType = data.numberType ?? "";
+
+    return this.db.numberCompatibility.upsert({
+      where: {
+        serviceKey_countryCode_providerName_numberType: {
+          serviceKey: data.serviceKey,
+          countryCode,
+          providerName,
+          numberType
+        }
+      },
+      update: {
+        level,
+        blocked: data.blocked ?? false,
+        ...(data.evidence ? { evidence: data.evidence } : {}),
+        lastTestedAt: new Date()
+      },
+      create: {
+        serviceKey: data.serviceKey,
+        countryCode,
+        providerName,
+        numberType,
+        level,
+        blocked: data.blocked ?? false,
+        ...(data.evidence ? { evidence: data.evidence } : {}),
+        lastTestedAt: new Date()
+      }
+    });
   }
 }

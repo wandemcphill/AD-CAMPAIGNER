@@ -21,7 +21,8 @@ export type ProviderDomain =
   | "RMB"
   | "VIRTUAL_ACCOUNT"
   | "VIRTUAL_CARD"
-  | "REMITTANCE";
+  | "REMITTANCE"
+  | "TELECOM";
 
 /** Matches the ProviderStatus enum in packages/database/prisma/schema.prisma. */
 export type ProviderStatus = "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED";

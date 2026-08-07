@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, Network, RefreshCcw } from "lucide-react";
+import { ArrowUpDown, Network, Plus, RefreshCcw, ShieldOff, Tags } from "lucide-react";
 
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
+import { TabBar } from "@fliptrybe/ui/components";
 
 import { apiRequest } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
@@ -45,8 +46,41 @@ const DOMAIN_LABEL: Record<string, string> = {
   RMB: "RMB",
   VIRTUAL_ACCOUNT: "Virtual Accounts",
   VIRTUAL_CARD: "Virtual Cards",
-  REMITTANCE: "Remittance"
+  REMITTANCE: "Remittance",
+  TELECOM: "International Telecom"
 };
+
+const DOMAINS = Object.keys(DOMAIN_LABEL);
+
+interface PricingRuleRow {
+  id: string;
+  domain: string;
+  countryCode: string | null;
+  network: string | null;
+  productType: string | null;
+  providerName: string | null;
+  markupBps: number;
+  active: boolean;
+  specificity: number;
+}
+
+interface NumberCompatibilityRow {
+  id: string;
+  serviceKey: string;
+  countryCode: string | null;
+  providerName: string | null;
+  numberType: string | null;
+  level: string;
+  blocked: boolean;
+  evidence: string | null;
+  updatedAt: string;
+}
+
+const TABS = [
+  { id: "registry", label: "Registry" },
+  { id: "pricing", label: "Pricing Rules" },
+  { id: "compatibility", label: "Number Compatibility" }
+];
 
 const STATUS_TONE: Record<ProviderStatus, "success" | "warning" | "danger" | "neutral"> = {
   HEALTHY: "success",
@@ -66,16 +100,39 @@ function formatMoney(minor: number | null, currency: string | null) {
 
 export default function AdminProvidersPage() {
   const { error: sessionError, loading: sessionLoading, session } = useApiSession();
+  const [tab, setTab] = useState("registry");
   const [entries, setEntries] = useState<ProviderRegistryEntry[]>([]);
+  const [pricingRules, setPricingRules] = useState<PricingRuleRow[]>([]);
+  const [compatRows, setCompatRows] = useState<NumberCompatibilityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [savingId, setSavingId] = useState<string>();
 
+  const [ruleDomain, setRuleDomain] = useState(DOMAINS[0]!);
+  const [ruleCountry, setRuleCountry] = useState("");
+  const [ruleProductType, setRuleProductType] = useState("");
+  const [ruleProvider, setRuleProvider] = useState("");
+  const [ruleMarkupBps, setRuleMarkupBps] = useState("200");
+  const [ruleSubmitting, setRuleSubmitting] = useState(false);
+
+  const [compatServiceKey, setCompatServiceKey] = useState("");
+  const [compatCountry, setCompatCountry] = useState("");
+  const [compatProvider, setCompatProvider] = useState("");
+  const [compatBlocked, setCompatBlocked] = useState(true);
+  const [compatEvidence, setCompatEvidence] = useState("");
+  const [compatSubmitting, setCompatSubmitting] = useState(false);
+
   const refresh = useCallback(async () => {
     setError(undefined);
     try {
-      const data = await apiRequest<ProviderRegistryEntry[]>("/admin/providers/registry");
-      setEntries(data);
+      const [registryRes, rulesRes, compatRes] = await Promise.all([
+        apiRequest<ProviderRegistryEntry[]>("/admin/providers/registry"),
+        apiRequest<PricingRuleRow[]>("/admin/providers/pricing-rules"),
+        apiRequest<NumberCompatibilityRow[]>("/admin/digital-products/compatibility")
+      ]);
+      setEntries(registryRes);
+      setPricingRules(rulesRes);
+      setCompatRows(compatRes);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load the provider registry.");
     } finally {
@@ -92,6 +149,83 @@ export default function AdminProvidersPage() {
       void refresh();
     }
   }, [sessionLoading, session, refresh]);
+
+  async function submitPricingRule() {
+    const markupBps = Number(ruleMarkupBps);
+    if (!Number.isFinite(markupBps) || markupBps < 0) {
+      setError("Enter a valid non-negative markup (basis points).");
+      return;
+    }
+    setRuleSubmitting(true);
+    setError(undefined);
+    try {
+      await apiRequest("/admin/providers/pricing-rules", {
+        method: "POST",
+        body: JSON.stringify({
+          domain: ruleDomain,
+          ...(ruleCountry.trim() ? { countryCode: ruleCountry.trim().toUpperCase() } : {}),
+          ...(ruleProductType.trim() ? { productType: ruleProductType.trim().toUpperCase() } : {}),
+          ...(ruleProvider.trim() ? { providerName: ruleProvider.trim() } : {}),
+          markupBps
+        })
+      });
+      setRuleCountry("");
+      setRuleProductType("");
+      setRuleProvider("");
+      setRuleMarkupBps("200");
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not create this pricing rule.");
+    } finally {
+      setRuleSubmitting(false);
+    }
+  }
+
+  async function toggleRuleActive(rule: PricingRuleRow) {
+    setSavingId(rule.id);
+    setError(undefined);
+    try {
+      await apiRequest(`/admin/providers/pricing-rules/${encodeURIComponent(rule.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ active: !rule.active })
+      });
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update this pricing rule.");
+    } finally {
+      setSavingId(undefined);
+    }
+  }
+
+  async function submitCompatibility() {
+    if (!compatServiceKey.trim()) {
+      setError("A service key is required.");
+      return;
+    }
+    setCompatSubmitting(true);
+    setError(undefined);
+    try {
+      await apiRequest("/admin/digital-products/compatibility", {
+        method: "POST",
+        body: JSON.stringify({
+          serviceKey: compatServiceKey.trim(),
+          ...(compatCountry.trim() ? { countryCode: compatCountry.trim().toUpperCase() } : {}),
+          ...(compatProvider.trim() ? { providerName: compatProvider.trim() } : {}),
+          blocked: compatBlocked,
+          ...(compatEvidence.trim() ? { evidence: compatEvidence.trim() } : {})
+        })
+      });
+      setCompatServiceKey("");
+      setCompatCountry("");
+      setCompatProvider("");
+      setCompatEvidence("");
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save this compatibility record.");
+    } finally {
+      setCompatSubmitting(false);
+    }
+  }
 
   const groups = useMemo(() => {
     const byDomain = new Map<string, ProviderRegistryEntry[]>();
@@ -185,6 +319,11 @@ export default function AdminProvidersPage() {
           </div>
         )}
 
+        <div className="mt-4">
+          <TabBar items={TABS} onChange={setTab} value={tab} />
+        </div>
+
+        {tab === "registry" && (
         <div className="mt-6 grid gap-4">
           {loading ? (
             <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">Loading providers...</Panel>
@@ -273,6 +412,169 @@ export default function AdminProvidersPage() {
             ))
           )}
         </div>
+        )}
+
+        {tab === "pricing" && (
+          <div className="mt-6 grid gap-4">
+            <Panel className="p-5">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <Plus className="size-4 text-[var(--ft-accent)]" />
+                New pricing rule
+              </div>
+              <p className="mt-1 text-xs text-[var(--ft-text-muted)]">
+                Leave a field blank to match any value for that dimension — more populated fields
+                win over less specific rules. Overrides the hardcoded default markup when active.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <select
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setRuleDomain(e.target.value)}
+                  value={ruleDomain}
+                >
+                  {DOMAINS.map((d) => (
+                    <option key={d} value={d}>
+                      {DOMAIN_LABEL[d] ?? d}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setRuleCountry(e.target.value)}
+                  placeholder="Country code (optional)"
+                  value={ruleCountry}
+                />
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setRuleProductType(e.target.value)}
+                  placeholder="Product type (optional)"
+                  value={ruleProductType}
+                />
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setRuleProvider(e.target.value)}
+                  placeholder="Provider name (optional)"
+                  value={ruleProvider}
+                />
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setRuleMarkupBps(e.target.value)}
+                  placeholder="Markup (bps, e.g. 200 = 2%)"
+                  type="number"
+                  value={ruleMarkupBps}
+                />
+                <Button disabled={ruleSubmitting} onClick={() => void submitPricingRule()}>
+                  Create rule
+                </Button>
+              </div>
+            </Panel>
+
+            {pricingRules.length === 0 ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">
+                No pricing rules yet — every vertical is using its hardcoded default markup.
+              </Panel>
+            ) : (
+              pricingRules.map((rule) => (
+                <Panel className="flex items-center gap-4 p-4" key={rule.id}>
+                  <Tags className="size-4 text-[var(--ft-accent)]" />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">
+                      {DOMAIN_LABEL[rule.domain] ?? rule.domain} · {(rule.markupBps / 100).toFixed(2)}% markup
+                    </div>
+                    <div className="text-xs text-[var(--ft-text-muted)]">
+                      {[rule.countryCode, rule.productType, rule.providerName].filter(Boolean).join(" · ") ||
+                        "matches any country/product/provider"}
+                    </div>
+                  </div>
+                  <Badge tone={rule.active ? "success" : "neutral"}>
+                    {rule.active ? "active" : "inactive"}
+                  </Badge>
+                  <Button
+                    disabled={savingId !== undefined}
+                    onClick={() => void toggleRuleActive(rule)}
+                    variant="secondary"
+                  >
+                    {rule.active ? "Deactivate" : "Activate"}
+                  </Button>
+                </Panel>
+              ))
+            )}
+          </div>
+        )}
+
+        {tab === "compatibility" && (
+          <div className="mt-6 grid gap-4">
+            <Panel className="p-5">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <ShieldOff className="size-4 text-[var(--ft-accent)]" />
+                Record compatibility test result
+              </div>
+              <p className="mt-1 text-xs text-[var(--ft-text-muted)]">
+                A blocked provider+country combination is excluded from virtual-number purchase
+                routing automatically.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setCompatServiceKey(e.target.value)}
+                  placeholder="Service key (e.g. whatsapp)"
+                  value={compatServiceKey}
+                />
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setCompatCountry(e.target.value)}
+                  placeholder="Country code"
+                  value={compatCountry}
+                />
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setCompatProvider(e.target.value)}
+                  placeholder="Provider name"
+                  value={compatProvider}
+                />
+                <label className="flex h-10 items-center gap-2 text-sm">
+                  <input
+                    checked={compatBlocked}
+                    onChange={(e) => setCompatBlocked(e.target.checked)}
+                    type="checkbox"
+                  />
+                  Blocked
+                </label>
+                <input
+                  className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)] sm:col-span-2"
+                  onChange={(e) => setCompatEvidence(e.target.value)}
+                  placeholder="Evidence / note (optional)"
+                  value={compatEvidence}
+                />
+                <Button disabled={compatSubmitting} onClick={() => void submitCompatibility()}>
+                  Save
+                </Button>
+              </div>
+            </Panel>
+
+            {compatRows.length === 0 ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">
+                No compatibility test results recorded yet.
+              </Panel>
+            ) : (
+              compatRows.map((row) => (
+                <Panel className="flex items-center gap-4 p-4" key={row.id}>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">
+                      {row.serviceKey} · {row.countryCode ?? "any country"} · {row.providerName ?? "any provider"}
+                    </div>
+                    <div className="text-xs text-[var(--ft-text-muted)]">
+                      {row.level.toLowerCase().replace(/_/g, " ")}
+                      {row.evidence ? ` · ${row.evidence}` : ""} · {new Date(row.updatedAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <Badge tone={row.blocked ? "danger" : "success"}>
+                    {row.blocked ? "blocked" : "allowed"}
+                  </Badge>
+                </Panel>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </main>
   );

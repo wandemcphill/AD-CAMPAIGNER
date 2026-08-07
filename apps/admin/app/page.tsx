@@ -10,6 +10,7 @@ import {
   FileSearch,
   Gift,
   Globe,
+  LifeBuoy,
   LockKeyhole,
   Network,
   Radar,
@@ -63,9 +64,8 @@ export default function AdminPage() {
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[260px_1fr]">
         <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-4 xl:border-r xl:border-b-0">
           <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-md bg-[var(--ft-accent)] text-sm font-semibold text-[var(--ft-text-inverse)]">
-              FA
-            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img alt="FlipTrybe" className="size-10" src="/brand/icon-mark.svg" />
             <div>
               <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
                 FlipTrybe Admin
@@ -87,6 +87,7 @@ export default function AdminPage() {
               { label: "Digital Products", href: "/digital-products/", icon: Globe },
               { label: "Digital Value", href: "/digital-value/", icon: CircleDollarSign },
               { label: "Webhooks", href: "/webhooks/", icon: Webhook },
+              { label: "Support", href: "/support/", icon: LifeBuoy },
               { label: "Rewards", href: "/rewards/", icon: Gift },
               { label: "Marketplace", href: "/marketplace/applications/", icon: Store },
               { label: "Guest Checkout", href: "/guest-checkout/", icon: ShoppingCart }
