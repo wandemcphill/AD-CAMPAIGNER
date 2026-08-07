@@ -783,6 +783,10 @@ export function createMockPaymentGateway(): PaymentGatewayAdapter {
   };
 }
 
+// Verified against https://developers.korapay.com/docs/checkout-redirect (checked 2026-08-07):
+// base URL https://api.korapay.com, POST /merchant/api/v1/charges/initialize, Bearer secret-key
+// auth, response contains `reference` and `checkout_url` for redirect. Matches this adapter as-is;
+// no changes made.
 export function createKorapayPaymentGateway(
   config: KorapayPaymentGatewayConfig
 ): PaymentGatewayAdapter {
@@ -845,6 +849,10 @@ export function createKorapayPaymentGateway(
   };
 }
 
+// Verified against https://paystack.com/docs/api/transaction/ (checked 2026-08-07): base URL
+// https://api.paystack.co, POST /transaction/initialize + GET /transaction/verify/:reference,
+// Bearer secret-key auth, `{status:false, message}` error shape. Matches this adapter as-is;
+// no changes made.
 export function createPaystackPaymentGateway(
   config: PaystackPaymentGatewayConfig
 ): PaymentGatewayAdapter {
@@ -982,6 +990,16 @@ export function parseSmmServiceMap(value?: string): Partial<Record<SmmServiceKin
   return parseSmmServiceMapValue(value);
 }
 
+// Perfect Panel API convention verified against https://peakerr.com/api (checked 2026-08-07,
+// reachable and confirmed live): base URL https://peakerr.com/api/v2, single POST endpoint with
+// `key` + `action` in {services, add, status, refill, cancel, balance}, `order`/`orders` for
+// status/refill/cancel, response fields order/charge/status/remains/currency — matches this
+// adapter's action names and postPerfectPanelApi shape as-is.
+// justanotherpanel.com/api and app.sizzlesocial.ng/api/v1 render client-side JS and returned no
+// parsable technical spec via fetch; smdpanel.com/api/v2 was not independently reachable either.
+// www.smmraja.com/api (and the ?page=api redirect target) also render client-side and could not
+// be confirmed to actually be v3 vs. the more common v2 — no public source verifies the configured
+// SMMRAJA_API_URL version, so it is left unchanged rather than "fixed" on a guess.
 export function createPerfectPanelSmmSupplier(
   config: PerfectPanelSmmSupplierConfig
 ): SmmSupplierAdapter {
