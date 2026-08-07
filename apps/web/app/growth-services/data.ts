@@ -12,6 +12,8 @@ export type GrowthService = {
   category: string;
   description: string;
   price: string;
+  pricingModel: "PER_1000" | "FLAT";
+  destinationKind: string;
   minimumQuantity: number;
   maximumQuantity: number;
   quantityStep: number;
@@ -34,7 +36,8 @@ export type GrowthOrder = {
   id: string;
   serviceName: string;
   platform: string;
-  destinationUrl: string;
+  destinationUrl?: string;
+  deliveryContact?: string;
   quantityOrdered: number;
   quantityDelivered: number;
   status: GrowthOrderStatus;

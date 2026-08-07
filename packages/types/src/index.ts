@@ -48,7 +48,8 @@ export const destinationKinds = [
   "WEBSITE",
   "APP",
   "ECOMMERCE_STORE",
-  "FLIPTRYBE_STORE"
+  "FLIPTRYBE_STORE",
+  "DELIVERY_CONTACT"
 ] as const;
 export type DestinationKind = (typeof destinationKinds)[number];
 
@@ -89,7 +90,10 @@ export const smmServiceKinds = [
   "COMMENTS",
   "SHARES",
   "LIVE_VIEWERS",
-  "CHANNEL_MEMBERS"
+  "CHANNEL_MEMBERS",
+  "ACCOUNT_SALE",
+  "VPN_SUBSCRIPTION",
+  "STREAMING_SUBSCRIPTION"
 ] as const;
 export type SmmServiceKind = (typeof smmServiceKinds)[number];
 
@@ -98,7 +102,8 @@ export const growthServicePlatforms = [
   "INSTAGRAM",
   "YOUTUBE",
   "TELEGRAM",
-  "WEBSITE"
+  "WEBSITE",
+  "DIGITAL_GOODS"
 ] as const;
 export type GrowthServicePlatform = (typeof growthServicePlatforms)[number];
 
@@ -214,8 +219,12 @@ export interface TeamMember extends Timestamped {
 
 export interface PromotionDestination {
   kind: DestinationKind;
-  url: string;
+  /** Required for URL-based destinations; omitted when kind is DELIVERY_CONTACT. */
+  url?: string;
   handle?: string;
+  /** WhatsApp number or email the order is fulfilled to, when kind is DELIVERY_CONTACT. */
+  contactType?: DigitalAccessContactType;
+  contactValue?: string;
   metadata?: Record<string, string | number | boolean>;
 }
 
@@ -295,7 +304,7 @@ export interface GrowthServiceCatalogItem {
   destinationKind: DestinationKind;
   description: string;
   enabled: boolean;
-  pricingModel: "PER_1000";
+  pricingModel: "PER_1000" | "FLAT";
   baseRate: Money;
   minimumQuantity: number;
   maximumQuantity: number;
@@ -317,7 +326,8 @@ export interface GrowthOrder extends Timestamped {
   platform: GrowthServicePlatform;
   serviceKind: SmmServiceKind;
   destinationKind: DestinationKind;
-  destinationUrl: string;
+  destinationUrl?: string;
+  deliveryContact?: string;
   quantityOrdered: number;
   quantityDelivered: number;
   status: GrowthOrderStatus;

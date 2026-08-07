@@ -23,6 +23,7 @@ export type AdminGrowthService = {
   platform: string;
   enabled: boolean;
   price: string;
+  pricingModel: "PER_1000" | "FLAT";
   marginBps: number;
   maximumQuantity: number;
   expectedCompletion: string;
@@ -36,7 +37,8 @@ export type AdminGrowthOrder = {
   id: string;
   serviceName: string;
   platform: string;
-  destinationUrl: string;
+  destinationUrl?: string;
+  deliveryContact?: string;
   quantityOrdered: number;
   quantityDelivered: number;
   status: AdminGrowthStatus;

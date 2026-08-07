@@ -6,6 +6,9 @@ import {
   Heart,
   MousePointerClick,
   Send,
+  Shield,
+  Tv,
+  UserCircle,
   UserPlus,
   Users,
   type LucideIcon
@@ -49,6 +52,8 @@ type ApiGrowthService = {
   description: string;
   enabled: boolean;
   baseRate: ApiMoney;
+  pricingModel: "PER_1000" | "FLAT";
+  destinationKind: string;
   minimumQuantity: number;
   maximumQuantity: number;
   quantityStep: number;
@@ -60,7 +65,8 @@ type ApiGrowthOrder = {
   id: string;
   serviceName: string;
   platform: string;
-  destinationUrl: string;
+  destinationUrl?: string;
+  deliveryContact?: string;
   quantityOrdered: number;
   quantityDelivered: number;
   status: GrowthOrderStatus;
@@ -72,7 +78,8 @@ type ApiGrowthOrder = {
 type CreateOrderInput = {
   serviceCode: string;
   quantity: number;
-  destinationUrl: string;
+  destinationUrl?: string;
+  deliveryContact?: string;
 };
 
 type CreateOrderResponse = {
@@ -111,6 +118,15 @@ function serviceIcon(service: Pick<ApiGrowthService, "code" | "name" | "platform
   }
   if (haystack.includes("member")) {
     return Users;
+  }
+  if (haystack.includes("account")) {
+    return UserCircle;
+  }
+  if (haystack.includes("vpn")) {
+    return Shield;
+  }
+  if (haystack.includes("netflix") || haystack.includes("stream")) {
+    return Tv;
   }
 
   return BarChart3;
@@ -157,7 +173,12 @@ function mapService(service: ApiGrowthService): GrowthService {
     platform: normalizePlatform(service.platform),
     category: service.category,
     description: service.description,
-    price: `${formatMoney(service.baseRate)} / 1k`,
+    price:
+      service.pricingModel === "FLAT"
+        ? formatMoney(service.baseRate)
+        : `${formatMoney(service.baseRate)} / 1k`,
+    pricingModel: service.pricingModel,
+    destinationKind: service.destinationKind,
     minimumQuantity: service.minimumQuantity,
     maximumQuantity: service.maximumQuantity,
     quantityStep: service.quantityStep,
@@ -174,7 +195,8 @@ function mapOrder(order: ApiGrowthOrder): GrowthOrder {
     id: order.id,
     serviceName: order.serviceName,
     platform: normalizePlatform(order.platform),
-    destinationUrl: order.destinationUrl,
+    ...(order.destinationUrl ? { destinationUrl: order.destinationUrl } : {}),
+    ...(order.deliveryContact ? { deliveryContact: order.deliveryContact } : {}),
     quantityOrdered: order.quantityOrdered,
     quantityDelivered: order.quantityDelivered,
     status: order.status,

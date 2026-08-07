@@ -150,7 +150,8 @@ export const destinationLabels: Record<DestinationKind, string> = {
   WEBSITE: "Website",
   APP: "App",
   ECOMMERCE_STORE: "Ecommerce store",
-  FLIPTRYBE_STORE: "FlipTrybe store"
+  FLIPTRYBE_STORE: "FlipTrybe store",
+  DELIVERY_CONTACT: "Delivery contact"
 };
 
 export const objectiveLabels: Record<CampaignObjective, string> = {

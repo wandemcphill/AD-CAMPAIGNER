@@ -879,7 +879,10 @@ export class PlatformService {
       COMMENTS: { label: "Comments", delivery: "Manual review" },
       SHARES: { label: "Shares", delivery: "1-6 hours" },
       LIVE_VIEWERS: { label: "Live viewers", delivery: "Realtime" },
-      CHANNEL_MEMBERS: { label: "Channel members", delivery: "2-48 hours" }
+      CHANNEL_MEMBERS: { label: "Channel members", delivery: "2-48 hours" },
+      ACCOUNT_SALE: { label: "Account sale", delivery: "Within 1 hour" },
+      VPN_SUBSCRIPTION: { label: "VPN subscription", delivery: "Within 30 minutes" },
+      STREAMING_SUBSCRIPTION: { label: "Streaming subscription", delivery: "Within 30 minutes" }
     } as const;
 
     return defaultSmmPricingRules.map((rule) => ({
@@ -1016,7 +1019,18 @@ export class PlatformService {
     }
 
     const timestamp = now();
-    const destinationUrl = input.destinationUrl?.trim() || getDefaultGrowthDestinationUrl(service);
+    const isDeliveryContact = service.destinationKind === "DELIVERY_CONTACT";
+    const deliveryContact = input.deliveryContact?.trim();
+
+    if (isDeliveryContact && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(deliveryContact ?? "")) {
+      throw new BadRequestException(
+        "A valid delivery email is required to fulfill this product."
+      );
+    }
+
+    const destinationUrl = isDeliveryContact
+      ? undefined
+      : input.destinationUrl?.trim() || getDefaultGrowthDestinationUrl(service);
     const idempotencyKey = input.idempotencyKey?.trim() || id("growth_idempotency");
     const existingRow = await this.db.growthOrder.findUnique({ where: { idempotencyKey } });
 
@@ -1044,7 +1058,9 @@ export class PlatformService {
       where: {
         workspaceId: scope.workspaceId,
         serviceCode: service.code,
-        destinationUrl: { equals: destinationUrl, mode: "insensitive" },
+        ...(isDeliveryContact
+          ? { deliveryContact: { equals: deliveryContact, mode: "insensitive" } }
+          : { destinationUrl: { equals: destinationUrl, mode: "insensitive" } }),
         quantityOrdered: quantity,
         status: { in: Array.from(growthActiveStatuses) },
         deletedAt: null
@@ -1067,10 +1083,16 @@ export class PlatformService {
       id: id("smm"),
       workspaceId: scope.workspaceId,
       serviceKind: service.serviceKind,
-      destination: {
-        kind: service.destinationKind,
-        url: destinationUrl
-      },
+      destination: isDeliveryContact
+        ? {
+            kind: service.destinationKind,
+            contactType: "email",
+            contactValue: deliveryContact!
+          }
+        : {
+            kind: service.destinationKind,
+            url: destinationUrl!
+          },
       quantity,
       status: "QUEUED",
       createdAt: timestamp,
@@ -1136,6 +1158,7 @@ export class PlatformService {
             serviceKind: service.serviceKind,
             destinationKind: service.destinationKind,
             destinationUrl,
+            ...(deliveryContact ? { deliveryContact } : {}),
             quantityOrdered: quantity,
             quantityDelivered: 0,
             status: "PENDING",
@@ -1600,6 +1623,7 @@ export class PlatformService {
       serviceKind: row.serviceKind,
       destinationKind: row.destinationKind,
       destinationUrl: row.destinationUrl,
+      ...(row.deliveryContact ? { deliveryContact: row.deliveryContact } : {}),
       quantityOrdered: row.quantityOrdered,
       quantityDelivered: row.quantityDelivered,
       status: row.status,

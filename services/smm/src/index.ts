@@ -64,7 +64,8 @@ export interface SmmFulfillmentQueueJob {
   workspaceId: string;
   serviceKind: SmmServiceKind;
   destinationKind: DestinationKind;
-  destinationUrl: string;
+  destinationUrl?: string;
+  deliveryContact?: string;
   quantity: number;
   supplierName?: string;
   supplierCost: Money;
@@ -493,6 +494,43 @@ export const defaultGrowthServicesCatalog: GrowthServiceCatalogItem[] = [
         "Disable by default until traffic source quality, bot filtering, and analytics exclusions are approved."
       ]
     }
+  },
+  {
+    code: "social-account-instagram",
+    name: "Instagram Account (2026, Instant)",
+    platform: "DIGITAL_GOODS",
+    category: "Accounts",
+    serviceKind: "ACCOUNT_SALE",
+    destinationKind: "DELIVERY_CONTACT",
+    description:
+      "Instant-delivery Instagram account, sourced from Sizzle's digital account marketplace. Credentials are emailed as soon as the order completes.",
+    enabled: true,
+    pricingModel: "PER_1000",
+    // Representative of Sizzle's live catalog (23 SKUs at this writing, rate 327,377.81-744,977.81
+    // per 1000 as of 2026-08-05); createGrowthOrder always requotes live via quoteService, so this
+    // is a display estimate only, not the charged price.
+    baseRate: { amountMinor: 32738, currency: "NGN" },
+    minimumQuantity: 1,
+    maximumQuantity: 1,
+    quantityStep: 1,
+    estimatedDeliveryMinutes: 15,
+    expectedCompletion: "Instant to 1 hour",
+    marginBps: 2500,
+    supportsRefill: false,
+    supportsCancel: false,
+    supplierRouting: {
+      strategy: "PREFERRED_FIRST",
+      preferredSupplier: "sizzle",
+      fallbackSuppliers: []
+    },
+    risk: {
+      platformPolicyRisk: "MEDIUM",
+      accountRisk: "MEDIUM",
+      refundRisk: "MEDIUM",
+      reputationRisk: "LOW",
+      summary: "Account resale can violate platform terms of service if detected.",
+      mitigations: sharedHighRiskMitigations
+    }
   }
 ];
 
@@ -574,6 +612,13 @@ function getRisk(score: number): Pick<SmmFraudAssessment, "action" | "riskLevel"
 }
 
 function hasValidPublicUrl(destination: PromotionDestination) {
+  if (destination.kind === "DELIVERY_CONTACT") {
+    return Boolean(destination.contactValue?.trim());
+  }
+  if (!destination.url) {
+    return false;
+  }
+
   try {
     const url = new URL(destination.url);
     const hostname = url.hostname.toLowerCase();
@@ -820,7 +865,10 @@ export function createSmmFulfillmentQueueJob(input: {
     workspaceId: input.order.workspaceId,
     serviceKind: input.order.serviceKind,
     destinationKind: input.order.destination.kind,
-    destinationUrl: input.order.destination.url,
+    ...(input.order.destination.url ? { destinationUrl: input.order.destination.url } : {}),
+    ...(input.order.destination.contactValue
+      ? { deliveryContact: input.order.destination.contactValue }
+      : {}),
     quantity: input.order.quantity,
     supplierCost: input.pricedQuote.supplierCost,
     customerPrice: input.pricedQuote.customerPrice,

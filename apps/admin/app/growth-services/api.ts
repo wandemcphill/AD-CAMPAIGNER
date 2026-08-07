@@ -41,6 +41,7 @@ type ApiService = {
   platform: string;
   enabled: boolean;
   baseRate: ApiMoney;
+  pricingModel: "PER_1000" | "FLAT";
   marginBps: number;
   maximumQuantity: number;
   expectedCompletion: string;
@@ -56,7 +57,8 @@ type ApiOrder = {
   id: string;
   serviceName: string;
   platform: string;
-  destinationUrl: string;
+  destinationUrl?: string;
+  deliveryContact?: string;
   quantityOrdered: number;
   quantityDelivered: number;
   status: AdminGrowthStatus;
@@ -174,7 +176,11 @@ function mapService(service: ApiService): AdminGrowthService {
     name: service.name,
     platform: normalizePlatform(service.platform),
     enabled: service.enabled,
-    price: `${formatMoney(service.baseRate)} / 1k`,
+    price:
+      service.pricingModel === "FLAT"
+        ? formatMoney(service.baseRate)
+        : `${formatMoney(service.baseRate)} / 1k`,
+    pricingModel: service.pricingModel,
     marginBps: service.marginBps,
     maximumQuantity: service.maximumQuantity,
     expectedCompletion: service.expectedCompletion,
@@ -190,7 +196,8 @@ function mapOrder(order: ApiOrder): AdminGrowthOrder {
     id: order.id,
     serviceName: order.serviceName,
     platform: normalizePlatform(order.platform),
-    destinationUrl: order.destinationUrl,
+    ...(order.destinationUrl ? { destinationUrl: order.destinationUrl } : {}),
+    ...(order.deliveryContact ? { deliveryContact: order.deliveryContact } : {}),
     quantityOrdered: order.quantityOrdered,
     quantityDelivered: order.quantityDelivered,
     status: order.status,

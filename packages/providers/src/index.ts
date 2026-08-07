@@ -569,6 +569,12 @@ function getServiceKeywordGroups(serviceKind: SmmServiceKind) {
       return [["live"], ["viewer", "viewers"]];
     case "CHANNEL_MEMBERS":
       return [["member", "members", "subscriber", "subscribers"]];
+    case "ACCOUNT_SALE":
+      return [["account", "accounts"]];
+    case "VPN_SUBSCRIPTION":
+      return [["vpn"]];
+    case "STREAMING_SUBSCRIPTION":
+      return [["netflix", "streaming", "subscription"]];
   }
 }
 
@@ -1045,6 +1051,8 @@ export function createPerfectPanelSmmSupplier(
       // Some Perfect Panel-compatible providers do not expose quote; rate-based math remains valid.
     }
 
+    // Digital account/subscription rates are stored per-1000 units just like engagement
+    // services (e.g. a rate of 2,780,000 charges 2,780 for one account at quantity=1).
     return moneyFromRate(service.rate, quantity, currency);
   }
 
@@ -1072,12 +1080,25 @@ export function createPerfectPanelSmmSupplier(
         quantity: order.quantity,
         destination: order.destination
       });
-      const response = (await postPerfectPanelApi(config, {
-        action: "add",
-        service: String(service.service),
-        link: order.destination.url,
-        quantity: String(order.quantity)
-      })) as { order?: string | number };
+      // Digital account services (Sizzle's Instagram-account marketplace, and any future
+      // VPN/streaming equivalents) don't take a target link — they deliver credentials to
+      // an email via destination_email. Everything else keeps the usual link/quantity add.
+      const response = (await postPerfectPanelApi(
+        config,
+        order.destination.kind === "DELIVERY_CONTACT"
+          ? {
+              action: "add",
+              service: String(service.service),
+              quantity: String(order.quantity),
+              destination_email: order.destination.contactValue ?? ""
+            }
+          : {
+              action: "add",
+              service: String(service.service),
+              link: order.destination.url ?? "",
+              quantity: String(order.quantity)
+            }
+      )) as { order?: string | number };
 
       if (!response.order) {
         throw new Error(`${config.name} did not return an order id.`);

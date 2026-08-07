@@ -41,6 +41,8 @@ export interface CreateGrowthOrderDto {
   serviceCode?: string;
   quantity?: number;
   destinationUrl?: string;
+  /** Delivery email, required when the service's destinationKind is DELIVERY_CONTACT. */
+  deliveryContact?: string;
   idempotencyKey?: string;
 }
 

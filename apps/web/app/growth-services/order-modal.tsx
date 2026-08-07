@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { CheckCircle2, Link2, ShoppingCart, X } from "lucide-react";
+import { CheckCircle2, Link2, Mail, ShoppingCart, X } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
@@ -14,6 +14,8 @@ export function OrderGrowthServiceButton({ service }: { service: GrowthService }
   const [open, setOpen] = useState(false);
   const [quantity, setQuantity] = useState(service.minimumQuantity);
   const [destinationUrl, setDestinationUrl] = useState("");
+  const [deliveryContact, setDeliveryContact] = useState("");
+  const isDeliveryContact = service.destinationKind === "DELIVERY_CONTACT";
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string>();
@@ -31,11 +33,11 @@ export function OrderGrowthServiceButton({ service }: { service: GrowthService }
     setSubmitting(true);
     try {
       if (growthEnabled) {
-        const response = await createGrowthOrder({
-          serviceCode: service.code,
-          quantity,
-          destinationUrl
-        });
+        const response = await createGrowthOrder(
+          isDeliveryContact
+            ? { serviceCode: service.code, quantity, deliveryContact }
+            : { serviceCode: service.code, quantity, destinationUrl }
+        );
 
         setResult(
           response.reviewRequired
@@ -100,35 +102,59 @@ export function OrderGrowthServiceButton({ service }: { service: GrowthService }
               </div>
             ) : (
               <form className="mt-6 grid gap-4" onSubmit={(event) => void submitOrder(event)}>
-                <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
-                  Public destination URL
-                  <div className="grid grid-cols-[auto_1fr] items-center rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
-                    <span className="grid size-11 place-items-center text-[var(--ft-text-muted)]">
-                      <Link2 className="size-4" />
+                {isDeliveryContact ? (
+                  <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
+                    Delivery email
+                    <div className="grid grid-cols-[auto_1fr] items-center rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
+                      <span className="grid size-11 place-items-center text-[var(--ft-text-muted)]">
+                        <Mail className="size-4" />
+                      </span>
+                      <input
+                        className="h-11 bg-transparent pr-3 text-[var(--ft-text-primary)] outline-none"
+                        onChange={(event) => setDeliveryContact(event.target.value)}
+                        placeholder="you@example.com"
+                        required
+                        type="email"
+                        value={deliveryContact}
+                      />
+                    </div>
+                    <span className="text-xs font-normal text-[var(--ft-text-muted)]">
+                      Credentials are delivered to this email address.
                     </span>
-                    <input
-                      className="h-11 bg-transparent pr-3 text-[var(--ft-text-primary)] outline-none"
-                      onChange={(event) => setDestinationUrl(event.target.value)}
-                      placeholder="https://..."
-                      required
-                      type="url"
-                      value={destinationUrl}
-                    />
-                  </div>
-                </label>
+                  </label>
+                ) : (
+                  <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
+                    Public destination URL
+                    <div className="grid grid-cols-[auto_1fr] items-center rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
+                      <span className="grid size-11 place-items-center text-[var(--ft-text-muted)]">
+                        <Link2 className="size-4" />
+                      </span>
+                      <input
+                        className="h-11 bg-transparent pr-3 text-[var(--ft-text-primary)] outline-none"
+                        onChange={(event) => setDestinationUrl(event.target.value)}
+                        placeholder="https://..."
+                        required
+                        type="url"
+                        value={destinationUrl}
+                      />
+                    </div>
+                  </label>
+                )}
 
-                <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
-                  Quantity
-                  <input
-                    className="h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-[var(--ft-text-primary)]"
-                    max={service.maximumQuantity}
-                    min={service.minimumQuantity}
-                    onChange={(event) => setQuantity(Number(event.target.value))}
-                    step={service.quantityStep}
-                    type="number"
-                    value={quantity}
-                  />
-                </label>
+                {service.minimumQuantity < service.maximumQuantity && (
+                  <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
+                    Quantity
+                    <input
+                      className="h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-[var(--ft-text-primary)]"
+                      max={service.maximumQuantity}
+                      min={service.minimumQuantity}
+                      onChange={(event) => setQuantity(Number(event.target.value))}
+                      step={service.quantityStep}
+                      type="number"
+                      value={quantity}
+                    />
+                  </label>
+                )}
 
                 <div className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
                   <div className="flex items-center justify-between gap-3">

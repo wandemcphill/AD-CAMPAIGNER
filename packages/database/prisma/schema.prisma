@@ -68,6 +68,7 @@ enum DestinationKind {
   WEBSITE
   APP
   ECOMMERCE_STORE
+  DELIVERY_CONTACT
   FLIPTRYBE_STORE
 }
 
@@ -333,6 +334,7 @@ enum GrowthServicePlatform {
   YOUTUBE
   TELEGRAM
   WEBSITE
+  DIGITAL_GOODS
 }
 
 enum GrowthOrderStatus {
@@ -1450,7 +1452,7 @@ model SmmOrder {
   workspaceId       String
   serviceKind       String
   destinationKind   DestinationKind
-  destinationUrl    String
+  destinationUrl    String?
   quantity          Int
   status            SmmOrderStatus  @default(DRAFT)
   supplierReference String?
@@ -1472,7 +1474,8 @@ model GrowthOrder {
   platform                 GrowthServicePlatform
   serviceKind              String
   destinationKind          DestinationKind
-  destinationUrl           String
+  destinationUrl           String?
+  deliveryContact          String?
   quantityOrdered          Int
   quantityDelivered        Int                      @default(0)
   status                   GrowthOrderStatus        @default(PENDING)
