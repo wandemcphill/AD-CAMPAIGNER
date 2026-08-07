@@ -541,7 +541,7 @@ describe("AuthSessionService", () => {
     expect(sessions.size).toBe(1);
     expect(issued.workspace.id).toBe("workspace_123");
 
-    const session = await service.getSession({ authorization: `Bearer ${issued.token}` });
+    const session = (await service.getSession({ authorization: `Bearer ${issued.token}` })) as any;
     const context = await service.getWorkspaceContext({ authorization: `Bearer ${issued.token}` });
 
     expect(session.user.id).toBe("user_123");
