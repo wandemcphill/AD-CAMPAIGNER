@@ -228,6 +228,31 @@ function mapVtpassStatus(status?: string): VtuSubmitStatus {
   return "AMBIGUOUS";
 }
 
+// serviceID strings confirmed against VTpass's live per-DISCO documentation pages
+// (vtpass.com/documentation/<disco>-.../, checked 2026-08-07), e.g.
+// "Service ID as specified by VTpass. In this case, it is ikeja-electric". Keyed by
+// the same 01-12 disco code space ClubKonnect's ElectricCompany param uses (see
+// CK_ELECTRIC_COMPANIES below) since that's the disco identifier callers pass through
+// this adapter's shared `disco` field.
+const VTPASS_ELECTRIC_SERVICE_ID: Record<string, string> = {
+  "01": "eko-electric",
+  "02": "ikeja-electric",
+  "03": "abuja-electric",
+  "04": "kano-electric",
+  "05": "portharcourt-electric",
+  "06": "jos-electric",
+  "07": "ibadan-electric",
+  "08": "kaduna-electric",
+  "09": "enugu-electric",
+  "10": "benin-electric",
+  "11": "yola-electric",
+  "12": "aba-electric"
+};
+
+function vtpassElectricServiceId(disco: string): string {
+  return VTPASS_ELECTRIC_SERVICE_ID[disco] ?? disco.toLowerCase();
+}
+
 // ─── VTpass adapter ───────────────────────────────────────────────────────────
 // Use sandbox.vtpass.com for development/CI; vtpass.com for production.
 // Auth: api-key header on all requests; public-key on GET, secret-key on POST.
@@ -421,10 +446,14 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
     },
 
     async getBalance() {
+      // Response wrapper key is "contents" (plural) — confirmed against VTpass docs
+      // (vtpass.com/documentation/get-vtpass-wallet-balance/, checked 2026-08-07):
+      // { "code":1, "contents":{ "balance":1081.82 } }. Was previously read from
+      // "data.balance", which VTpass's /balance response never populates.
       const res = (await vtpassGet(config, "/balance")) as {
-        data?: { balance?: string | number }
+        contents?: { balance?: string | number }
       };
-      const raw = res?.data?.balance ?? 0;
+      const raw = res?.contents?.balance ?? 0;
       return {
         providerName: "vtpass",
         balanceMinor: Math.round(parseFloat(String(raw)) * 100),
@@ -455,9 +484,14 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
 
     async validateMeter(input): Promise<VtuMeterValidation> {
       try {
-        const res = (await vtpassPost(config, "/bills/validate", {
-          serviceID: `${input.disco.toUpperCase()}-BILL`,
-          billersCode: input.meterNumber
+        // Endpoint confirmed as POST /merchant-verify (not /bills/validate, which
+        // doesn't exist in VTpass's API) — see e.g. vtpass.com/documentation/
+        // gotv-subscription-api/ and .../ikedc-.../ (checked 2026-08-07): "billersCode
+        // (Mandatory) ... serviceID (Mandatory) ... type (Mandatory, prepaid/postpaid)".
+        const res = (await vtpassPost(config, "/merchant-verify", {
+          serviceID: vtpassElectricServiceId(input.disco),
+          billersCode: input.meterNumber,
+          type: input.meterType === "PREPAID" ? "prepaid" : "postpaid"
         })) as {
           code?: string;
           content?: {
@@ -485,13 +519,18 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
     },
 
     async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
+      // /pay body fields confirmed against vtpass.com/documentation/ikedc-.../
+      // (checked 2026-08-07): request_id, serviceID, billersCode, variation_code
+      // (prepaid/postpaid — NOT "type", which is only used by /merchant-verify),
+      // amount, phone. There is no "quantity" field for electricity purchases; the
+      // old body sent the meter number as "quantity", which the docs don't document.
       const body = {
         request_id: input.reference,
-        serviceID: `${input.disco.toUpperCase()}-BILL`,
+        serviceID: vtpassElectricServiceId(input.disco),
         billersCode: input.meterNumber,
+        variation_code: input.meterType === "PREPAID" ? "prepaid" : "postpaid",
         amount: (input.amountMinor / 100).toFixed(2),
-        phone: "",
-        quantity: input.meterNumber
+        phone: input.phoneNumber
       };
 
       try {
@@ -545,12 +584,18 @@ export function createVtpassAdapter(config: VtpassConfig): VtuProviderAdapter {
 
     async purchaseCable(input): Promise<VtuSubmitResult> {
       try {
+        // serviceID is lowercase (dstv/gotv/startimes/showmax) — confirmed against
+        // vtpass.com/documentation/{dstv,gotv,startimes,showmax}-subscription-api/
+        // (checked 2026-08-07), e.g. "https://vtpass.com/api/service-variations?
+        // serviceID=gotv". input.provider already carries this lowercase slug (same
+        // convention as ClubKonnect's CK_CABLE_PROVIDER_KEY keys) — uppercasing it
+        // produced an invalid serviceID.
         const res = (await vtpassPost(config, "/pay", {
           request_id: input.reference,
-          serviceID: input.provider.toUpperCase(),
+          serviceID: input.provider.toLowerCase(),
           billersCode: input.smartCardNumber,
           variation_code: input.packageCode,
-          phone: ""
+          phone: input.phoneNumber
         })) as {
           code?: string;
           content?: { transactions?: { status?: string } };
