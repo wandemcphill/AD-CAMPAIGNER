@@ -1009,14 +1009,14 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
 
     // ─── Betting & Education ─────────────────────────────────────────────────────
 
-    // NOTE: ClubKonnect's public docs do not clearly document a dedicated GET catalog
-    // endpoint for betting companies analogous to /APICableTVPackagesV2.asp for cable.
-    // /APIBettingTypeV2.asp is assumed by naming convention (mirrors the
-    // /API{Category}{V2|V1}.asp pattern used elsewhere in this file) but has not been
-    // confirmed against a live response shape. ASSUMPTION — verify against real
-    // ClubKonnect documentation / a live sandbox call before relying on this in production.
-    // If the endpoint doesn't exist or returns a different shape, this falls back to the
-    // static reference table below (same codes previously hardcoded in vtu.service.ts).
+    // /APIBettingTypeV2.asp is confirmed against ClubKonnect's live API docs
+    // (clubkonnect.com/APIParaGetBettingV1.asp, checked 2026-08-07): "You can fetch the
+    // current list of betting companies in JSON using: .../APIBettingTypeV2.asp?UserID=".
+    // The exact JSON response shape (PRODUCT_CODE/PRODUCT_NAME field names, top-level
+    // array vs. keyed object) is still an inference from the sibling cable/data endpoints'
+    // shape, not verified by a live call in this environment — if parsing fails, this
+    // falls back to the static reference table below (same codes previously hardcoded
+    // in vtu.service.ts).
     async listBettingCompanies(): Promise<VtuBettingCompanyOffer[]> {
       try {
         const res = (await ckGet(config, "/APIBettingTypeV2.asp", {})) as
@@ -1081,10 +1081,11 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
       }
     },
 
-    // Same ASSUMPTION caveat as listBettingCompanies above — /APIWAECPackagesV2.asp is
-    // named by convention with the existing /APIWAECV1.asp purchase endpoint but its
-    // exact response shape has not been confirmed against live ClubKonnect docs. Falls
-    // back to the static reference table (JAMB intentionally omitted — see historical
+    // /APIWAECPackagesV2.asp is confirmed against ClubKonnect's live API docs
+    // (clubkonnect.com/APIParaGetWAECV1.asp, checked 2026-08-07): "Use this endpoint to
+    // retrieve supported ExamType values in JSON: APIWAECPackagesV2.asp". Same response-shape
+    // caveat as listBettingCompanies above — field names are inferred, not verified live.
+    // Falls back to the static reference table (JAMB intentionally omitted — see historical
     // comment: JAMB ExamType list comes back empty at this account tier).
     async listEducationPlans(): Promise<VtuEducationPlanOffer[]> {
       try {
