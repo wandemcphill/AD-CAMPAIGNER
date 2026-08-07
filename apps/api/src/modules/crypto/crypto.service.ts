@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from "@nestjs/common";
 
-import { createMockCryptoSellProvider, createSogoCryptoAdapter, type CryptoSellProvider } from "@fliptrybe/providers";
+import { createSogoCryptoAdapter, type CryptoSellProvider } from "@fliptrybe/providers";
 import { featureFlags } from "@fliptrybe/feature-flags";
 
 import { PrismaService } from "../prisma.service";
@@ -14,14 +14,16 @@ export class CryptoService {
 
   constructor(private readonly prismaService: PrismaService) {
     const apiKey = process.env["SOGO_API_KEY"] ?? process.env["SOGO_SECRET_KEY"];
-    this.provider =
-      featureFlags.cryptoSell && apiKey
-        ? createSogoCryptoAdapter({
-            apiKey,
-            sandbox: process.env["SOGO_SANDBOX"] === "true",
-            ...(process.env["SOGO_BASE_URL"] ? { baseUrl: process.env["SOGO_BASE_URL"] } : {})
-          })
-        : createMockCryptoSellProvider();
+    if (!apiKey) {
+      throw new Error(
+        "SOGO_API_KEY is required to initialize the crypto sell provider — no mock fallback in this build"
+      );
+    }
+    this.provider = createSogoCryptoAdapter({
+      apiKey,
+      sandbox: process.env["SOGO_SANDBOX"] === "true",
+      ...(process.env["SOGO_BASE_URL"] ? { baseUrl: process.env["SOGO_BASE_URL"] } : {})
+    });
   }
 
   private get db() {

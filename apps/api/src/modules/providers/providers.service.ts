@@ -165,6 +165,100 @@ export class ProvidersService {
     };
   }
 
+  // ─── Provider registry (generic, all domains) ───────────────────────────────
+  // Reads/writes ProviderConfig directly, joined with the latest ProviderHealth
+  // row per provider. Generalizes the VTU-only admin routing pattern
+  // (apps/admin/app/vtu/page.tsx + AdminVtuController) across every
+  // ProviderDomain instead of hand-listing providers per vertical.
+
+  async listRegistry(domain?: ProviderDomain) {
+    const configs = await this.db.providerConfig.findMany({
+      where: { deletedAt: null, ...(domain ? { domain } : {}) },
+      orderBy: [{ domain: "asc" }, { priority: "asc" }]
+    });
+
+    if (configs.length === 0) {
+      return [];
+    }
+
+    const names = configs.map((c: any) => c.name);
+    const healthRows = await this.db.providerHealth.findMany({
+      where: { providerName: { in: names } },
+      orderBy: { checkedAt: "desc" },
+      distinct: ["providerName"]
+    });
+
+    return configs.map((config: any) => {
+      const health = healthRows.find((h: any) => h.providerName === config.name);
+      return {
+        id: config.id,
+        name: config.name,
+        domain: config.domain,
+        tier: config.tier,
+        status: config.status,
+        priority: config.priority,
+        enabledCountries: config.enabledCountries,
+        enabledNetworks: config.enabledNetworks,
+        enabledProductTypes: config.enabledProductTypes,
+        credentialsRef: config.credentialsRef,
+        updatedAt: config.updatedAt,
+        health: health
+          ? {
+              status: health.status,
+              latencyMs: health.latencyMs,
+              successRateBps: health.successRateBps,
+              balanceMinor: health.balanceMinor,
+              currency: health.currency,
+              reason: health.reason,
+              checkedAt: health.checkedAt
+            }
+          : null
+      };
+    });
+  }
+
+  async updateRegistryEntry(
+    id: string,
+    dto: { priority?: number; status?: "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED" },
+    context: Partial<AuthenticatedRequestContext>
+  ) {
+    if (!context.userId) {
+      throw new BadRequestException("An authenticated admin user is required.");
+    }
+
+    const config = await this.db.providerConfig.findFirst({ where: { id, deletedAt: null } });
+    if (!config) {
+      throw new NotFoundException(`No ProviderConfig row exists with id ${id}.`);
+    }
+
+    const updated = await this.db.providerConfig.update({
+      where: { id },
+      data: {
+        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+        ...(dto.status !== undefined ? { status: dto.status } : {})
+      }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        actorUserId: context.userId,
+        action: "provider.registry_update",
+        entityType: "ProviderConfig",
+        entityId: config.id,
+        metadata: {
+          domain: config.domain,
+          name: config.name,
+          previousPriority: config.priority,
+          previousStatus: config.status,
+          nextPriority: updated.priority,
+          nextStatus: updated.status
+        }
+      }
+    });
+
+    return updated;
+  }
+
   // ─── Emergency disable ───────────────────────────────────────────────────────
   // ProviderConfig.status is already the hard gate scoreCandidate()/selectProviders()
   // check (handbook 11 §6's "feature_flag_override" is this column, not a separate

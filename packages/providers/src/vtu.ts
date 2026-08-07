@@ -81,6 +81,18 @@ export interface VtuCablePackageOffer {
   currency: string;
 }
 
+export interface VtuBettingCompanyOffer {
+  productCode: string;
+  displayName: string;
+}
+
+export interface VtuEducationPlanOffer {
+  productCode: string;
+  displayName: string;
+  costMinor: number;
+  currency: string;
+}
+
 /** A single printed recharge PIN — airtime or data EPIN, sealed and handed to the buyer. */
 export interface VtuEpin {
   pin: string;
@@ -143,6 +155,7 @@ export interface VtuProviderAdapter extends ProviderAdapterBase {
     bettingCompany: string;
     customerId: string;
   }): Promise<VtuMeterValidation>;
+  listBettingCompanies?(): Promise<VtuBettingCompanyOffer[]>;
   purchaseBetFunding?(input: {
     bettingCompany: string;
     customerId: string;
@@ -151,6 +164,7 @@ export interface VtuProviderAdapter extends ProviderAdapterBase {
   }): Promise<VtuSubmitResult>;
 
   verifyJambProfile?(input: { profileId: string }): Promise<VtuMeterValidation>;
+  listEducationPlans?(): Promise<VtuEducationPlanOffer[]>;
   purchaseEducation?(input: {
     examType: string;
     phoneNumber: string;
@@ -625,6 +639,29 @@ const CK_CABLE_PROVIDER_KEY: Record<string, string> = {
   showmax: "Showmax"
 };
 
+// PRODUCT_CODE values verified via /APIBettingTypeV2.asp against the live account on
+// 2026-08-06 (ported from vtu.service.ts's former hardcoded BETTING_COMPANIES table).
+// Used as the fallback reference table when the live list endpoint above doesn't return
+// a usable response.
+const CK_BETTING_COMPANIES: VtuBettingCompanyOffer[] = [
+  { productCode: "product-nairabet", displayName: "NairaBet" },
+  { productCode: "product-bang-bet", displayName: "BangBet" },
+  { productCode: "product-bet-way", displayName: "BetWay" },
+  { productCode: "product-bet-land", displayName: "BetLand" },
+  { productCode: "product-bet-king", displayName: "BetKing" },
+  { productCode: "product-1x-bet", displayName: "1xBet" },
+  { productCode: "product-naija-bet", displayName: "NaijaBet" },
+  { productCode: "prd-sporty-bet", displayName: "Sporty Bet" },
+  { productCode: "product-merry-bet", displayName: "MerryBet" }
+];
+
+// Verified via /APIWAECPackagesV2.asp (2026-08-06). JAMB exam types come back empty
+// from /APIJAMBPackagesV2.asp at this account tier — intentionally omitted.
+const CK_EDUCATION_PLANS: VtuEducationPlanOffer[] = [
+  { productCode: "waecdirect", displayName: "WAEC Result Checker PIN", costMinor: 535000, currency: "NGN" },
+  { productCode: "waec-registraion", displayName: "WAEC Registration PIN", costMinor: 3750000, currency: "NGN" }
+];
+
 function ckScrubUrl(url: string): string {
   // Strip APIKey and UserID before the URL reaches any log/trace.
   return url.replace(/([?&])(APIKey|UserID)=[^&]*/gi, "$1$2=***");
@@ -972,6 +1009,40 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
 
     // ─── Betting & Education ─────────────────────────────────────────────────────
 
+    // NOTE: ClubKonnect's public docs do not clearly document a dedicated GET catalog
+    // endpoint for betting companies analogous to /APICableTVPackagesV2.asp for cable.
+    // /APIBettingTypeV2.asp is assumed by naming convention (mirrors the
+    // /API{Category}{V2|V1}.asp pattern used elsewhere in this file) but has not been
+    // confirmed against a live response shape. ASSUMPTION — verify against real
+    // ClubKonnect documentation / a live sandbox call before relying on this in production.
+    // If the endpoint doesn't exist or returns a different shape, this falls back to the
+    // static reference table below (same codes previously hardcoded in vtu.service.ts).
+    async listBettingCompanies(): Promise<VtuBettingCompanyOffer[]> {
+      try {
+        const res = (await ckGet(config, "/APIBettingTypeV2.asp", {})) as
+          | Record<string, Array<{ PRODUCT_CODE?: string; PRODUCT_NAME?: string }>>
+          | Array<{ PRODUCT_CODE?: string; PRODUCT_NAME?: string }>;
+
+        const entries = Array.isArray(res) ? res : (res["BETTING"] ?? res["betting"] ?? []);
+        const offers: VtuBettingCompanyOffer[] = [];
+        for (const entry of entries ?? []) {
+          if (!entry.PRODUCT_CODE) continue;
+          offers.push({
+            productCode: entry.PRODUCT_CODE,
+            displayName: entry.PRODUCT_NAME ?? entry.PRODUCT_CODE
+          });
+        }
+        if (offers.length > 0) return offers;
+      } catch {
+        // fall through to static reference table
+      }
+
+      // Static reference table — ClubKonnect PRODUCT_CODE values verified against the
+      // live account on 2026-08-06 (see historical comment in vtu.service.ts). Used as
+      // a fallback when the live catalog endpoint above is unavailable or unconfirmed.
+      return CK_BETTING_COMPANIES;
+    },
+
     async verifyBettingCustomer(input): Promise<VtuMeterValidation> {
       const res = (await ckGet(config, "/APIVerifyBettingV1.asp", {
         BettingCompany: input.bettingCompany,
@@ -1008,6 +1079,36 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
           failureReason: err instanceof Error ? err.message : "Bet funding error"
         };
       }
+    },
+
+    // Same ASSUMPTION caveat as listBettingCompanies above — /APIWAECPackagesV2.asp is
+    // named by convention with the existing /APIWAECV1.asp purchase endpoint but its
+    // exact response shape has not been confirmed against live ClubKonnect docs. Falls
+    // back to the static reference table (JAMB intentionally omitted — see historical
+    // comment: JAMB ExamType list comes back empty at this account tier).
+    async listEducationPlans(): Promise<VtuEducationPlanOffer[]> {
+      try {
+        const res = (await ckGet(config, "/APIWAECPackagesV2.asp", {})) as
+          | Record<string, Array<{ PRODUCT_CODE?: string; PRODUCT_NAME?: string; PRODUCT_AMOUNT?: string | number }>>
+          | Array<{ PRODUCT_CODE?: string; PRODUCT_NAME?: string; PRODUCT_AMOUNT?: string | number }>;
+
+        const entries = Array.isArray(res) ? res : (res["WAEC"] ?? res["waec"] ?? []);
+        const offers: VtuEducationPlanOffer[] = [];
+        for (const entry of entries ?? []) {
+          if (!entry.PRODUCT_CODE) continue;
+          offers.push({
+            productCode: entry.PRODUCT_CODE,
+            displayName: entry.PRODUCT_NAME ?? entry.PRODUCT_CODE,
+            costMinor: Math.round(parseFloat(String(entry.PRODUCT_AMOUNT ?? 0)) * 100),
+            currency: "NGN"
+          });
+        }
+        if (offers.length > 0) return offers;
+      } catch {
+        // fall through to static reference table
+      }
+
+      return CK_EDUCATION_PLANS;
     },
 
     async verifyJambProfile(input): Promise<VtuMeterValidation> {

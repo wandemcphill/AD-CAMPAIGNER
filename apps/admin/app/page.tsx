@@ -80,6 +80,7 @@ export default function AdminPage() {
               { label: "Audit", href: "/campaign-ops/activity/", icon: FileSearch },
               { label: "Access", href: "/digital-access/", icon: LockKeyhole },
               { label: "VTU", href: "/vtu/", icon: Smartphone },
+              { label: "Providers", href: "/providers/", icon: Network },
               { label: "Digital Products", href: "/digital-products/", icon: Globe },
               { label: "Rewards", href: "/rewards/", icon: Gift },
               { label: "Marketplace", href: "/marketplace/applications/", icon: Store }

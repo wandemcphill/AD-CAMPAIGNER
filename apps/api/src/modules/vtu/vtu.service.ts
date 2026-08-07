@@ -1499,7 +1499,10 @@ export class VtuService {
       }
     }
 
-    const plan = EDUCATION_PLANS.find((p) => p.examType === dto.examType);
+    await this.ensureDefaultEducationPlans();
+    const plan = await this.db.vtuEducationPlan.findFirst({
+      where: { providerName: adapter.name, productCode: dto.examType, active: true }
+    });
     if (!plan) throw new NotFoundException("Education plan not found or unavailable.");
 
     const chargeMinor = applyMarkup(plan.costMinor);
@@ -1590,11 +1593,78 @@ export class VtuService {
   }
 
   async listBettingCompanies() {
-    return BETTING_COMPANIES;
+    await this.ensureDefaultBettingCompanies();
+    return this.db.vtuBettingCompany.findMany({
+      where: { active: true },
+      orderBy: { displayName: "asc" }
+    });
   }
 
   async listEducationPlans() {
-    return EDUCATION_PLANS.map((p) => ({ ...p, costMinor: applyMarkup(p.costMinor) }));
+    await this.ensureDefaultEducationPlans();
+    const plans = await this.db.vtuEducationPlan.findMany({
+      where: { active: true },
+      orderBy: { costMinor: "asc" }
+    });
+    return plans.map((p) => ({ ...p, costMinor: applyMarkup(p.costMinor) }));
+  }
+
+  private async ensureDefaultBettingCompanies(db: DbClient = this.db) {
+    const existing = await db.vtuBettingCompany.count({
+      where: { providerName: DEFAULT_VTU_PROVIDER }
+    });
+    if (existing > 0) return;
+
+    await Promise.all(
+      BETTING_COMPANIES.map((company) =>
+        db.vtuBettingCompany.upsert({
+          where: {
+            providerName_productCode: {
+              providerName: DEFAULT_VTU_PROVIDER,
+              productCode: company.code
+            }
+          },
+          update: {},
+          create: {
+            id: uid("vbet"),
+            providerName: DEFAULT_VTU_PROVIDER,
+            productCode: company.code,
+            displayName: company.name,
+            active: true
+          }
+        })
+      )
+    );
+  }
+
+  private async ensureDefaultEducationPlans(db: DbClient = this.db) {
+    const existing = await db.vtuEducationPlan.count({
+      where: { providerName: DEFAULT_VTU_PROVIDER }
+    });
+    if (existing > 0) return;
+
+    await Promise.all(
+      EDUCATION_PLANS.map((plan) =>
+        db.vtuEducationPlan.upsert({
+          where: {
+            providerName_productCode: {
+              providerName: DEFAULT_VTU_PROVIDER,
+              productCode: plan.examType
+            }
+          },
+          update: {},
+          create: {
+            id: uid("vedu"),
+            providerName: DEFAULT_VTU_PROVIDER,
+            productCode: plan.examType,
+            displayName: plan.displayName,
+            costMinor: plan.costMinor,
+            currency: "NGN",
+            active: true
+          }
+        })
+      )
+    );
   }
 
   // ─── Bills order list ────────────────────────────────────────────────────────

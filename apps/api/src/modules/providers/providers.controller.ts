@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
 
 import type { ProviderDomain } from "@fliptrybe/providers";
 import { authenticatedContextFromHeaders, type WorkspaceContextRequest } from "../request-context";
@@ -13,6 +13,24 @@ export class ProvidersController {
   @Get()
   overview() {
     return this.providers.overview();
+  }
+
+  @Get("registry")
+  registry(@Query("domain") domain?: ProviderDomain) {
+    return this.providers.listRegistry(domain);
+  }
+
+  @Patch("registry/:id")
+  updateRegistry(
+    @Param("id") id: string,
+    @Body() body: { priority?: number; status?: "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED" },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.providers.updateRegistryEntry(
+      id,
+      body,
+      authenticatedContextFromHeaders(request.headers)
+    );
   }
 
   @Post(":domain/:name/disable")

@@ -2,7 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger } from "@ne
 
 import { calculateAvailableBalance } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
-import { createMockRmbBuyProvider, createSogoRmbAdapter, type RmbBuyProvider } from "@fliptrybe/providers";
+import { createSogoRmbAdapter, type RmbBuyProvider } from "@fliptrybe/providers";
 import { featureFlags } from "@fliptrybe/feature-flags";
 
 import { PrismaService } from "../prisma.service";
@@ -50,14 +50,16 @@ export class RmbService {
 
   constructor(private readonly prismaService: PrismaService) {
     const apiKey = process.env["SOGO_API_KEY"] ?? process.env["SOGO_SECRET_KEY"];
-    this.provider =
-      featureFlags.rmbBuy && apiKey
-        ? createSogoRmbAdapter({
-            apiKey,
-            sandbox: process.env["SOGO_SANDBOX"] === "true",
-            ...(process.env["SOGO_BASE_URL"] ? { baseUrl: process.env["SOGO_BASE_URL"] } : {})
-          })
-        : createMockRmbBuyProvider();
+    if (!apiKey) {
+      throw new Error(
+        "SOGO_API_KEY is required to initialize the RMB buy provider — no mock fallback in this build"
+      );
+    }
+    this.provider = createSogoRmbAdapter({
+      apiKey,
+      sandbox: process.env["SOGO_SANDBOX"] === "true",
+      ...(process.env["SOGO_BASE_URL"] ? { baseUrl: process.env["SOGO_BASE_URL"] } : {})
+    });
   }
 
   private get db() {

@@ -315,6 +315,128 @@ export async function processCableCatalogSync(job: Job<VtuFulfilmentJob>): Promi
   return `cable_catalog_sync: ${providerName} synced ${offers.length} packages, ${staleIds.length} deactivated`;
 }
 
+// ─── betting_catalog_sync ────────────────────────────────────────────────────────
+// Same pattern as cable_catalog_sync, for VtuBettingCompany.
+
+export async function processBettingCatalogSync(job: Job<VtuFulfilmentJob>): Promise<string> {
+  const providerName = job.data.providerName;
+  if (!providerName) return "betting_catalog_sync skipped: no providerName";
+
+  const db = getDb();
+  const adapter = buildAdapter(providerName);
+  if (!adapter.listBettingCompanies) {
+    return `betting_catalog_sync: ${providerName} does not support betting company discovery`;
+  }
+
+  const offers = await adapter.listBettingCompanies();
+  const seenCodes = new Set<string>();
+
+  for (const offer of offers) {
+    seenCodes.add(offer.productCode);
+
+    await db.vtuBettingCompany.upsert({
+      where: {
+        providerName_productCode: {
+          providerName,
+          productCode: offer.productCode
+        }
+      },
+      create: {
+        providerName,
+        productCode: offer.productCode,
+        displayName: offer.displayName,
+        active: true,
+        lastSyncedAt: new Date()
+      },
+      update: {
+        displayName: offer.displayName,
+        active: true,
+        lastSyncedAt: new Date()
+      }
+    });
+  }
+
+  const existing = await db.vtuBettingCompany.findMany({
+    where: { providerName, active: true },
+    select: { id: true, productCode: true }
+  });
+  const staleIds = existing
+    .filter((c) => !seenCodes.has(c.productCode))
+    .map((c) => c.id);
+
+  if (staleIds.length > 0) {
+    await db.vtuBettingCompany.updateMany({
+      where: { id: { in: staleIds } },
+      data: { active: false }
+    });
+  }
+
+  return `betting_catalog_sync: ${providerName} synced ${offers.length} companies, ${staleIds.length} deactivated`;
+}
+
+// ─── education_catalog_sync ──────────────────────────────────────────────────────
+// Same pattern as cable_catalog_sync, for VtuEducationPlan.
+
+export async function processEducationCatalogSync(job: Job<VtuFulfilmentJob>): Promise<string> {
+  const providerName = job.data.providerName;
+  if (!providerName) return "education_catalog_sync skipped: no providerName";
+
+  const db = getDb();
+  const adapter = buildAdapter(providerName);
+  if (!adapter.listEducationPlans) {
+    return `education_catalog_sync: ${providerName} does not support education plan discovery`;
+  }
+
+  const offers = await adapter.listEducationPlans();
+  const seenCodes = new Set<string>();
+
+  for (const offer of offers) {
+    seenCodes.add(offer.productCode);
+
+    await db.vtuEducationPlan.upsert({
+      where: {
+        providerName_productCode: {
+          providerName,
+          productCode: offer.productCode
+        }
+      },
+      create: {
+        providerName,
+        productCode: offer.productCode,
+        displayName: offer.displayName,
+        costMinor: offer.costMinor,
+        currency: offer.currency,
+        active: true,
+        lastSyncedAt: new Date()
+      },
+      update: {
+        displayName: offer.displayName,
+        costMinor: offer.costMinor,
+        currency: offer.currency,
+        active: true,
+        lastSyncedAt: new Date()
+      }
+    });
+  }
+
+  const existing = await db.vtuEducationPlan.findMany({
+    where: { providerName, active: true },
+    select: { id: true, productCode: true }
+  });
+  const staleIds = existing
+    .filter((p) => !seenCodes.has(p.productCode))
+    .map((p) => p.id);
+
+  if (staleIds.length > 0) {
+    await db.vtuEducationPlan.updateMany({
+      where: { id: { in: staleIds } },
+      data: { active: false }
+    });
+  }
+
+  return `education_catalog_sync: ${providerName} synced ${offers.length} plans, ${staleIds.length} deactivated`;
+}
+
 // ─── provider_health ───────────────────────────────────────────────────────────
 
 export async function processProviderHealth(job: Job<VtuFulfilmentJob>): Promise<string> {
@@ -358,6 +480,10 @@ export async function processVtuFulfilmentJob(job: Job<VtuFulfilmentJob>): Promi
       return processPlanCatalogSync(job);
     case "cable_catalog_sync":
       return processCableCatalogSync(job);
+    case "betting_catalog_sync":
+      return processBettingCatalogSync(job);
+    case "education_catalog_sync":
+      return processEducationCatalogSync(job);
     case "provider_health":
       return processProviderHealth(job);
     case "ops_review":

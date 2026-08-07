@@ -1,18 +1,27 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException
+} from "@nestjs/common";
 
 import { Prisma, type DatabaseClient } from "@fliptrybe/database";
 import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
-  createMockRemittanceProvider,
-  createMockVirtualAccountProvider,
-  createMockVirtualCardProvider,
+  createPayscribeVirtualCardProvider,
+  createSwapprRemittanceProvider,
+  createSwapprVirtualAccountProvider,
+  createYativoRemittanceProvider,
   type RemittanceProvider,
   type VirtualAccountProvider,
   type VirtualCardProvider
 } from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
+import { ProviderRouterService } from "../providers/provider-router.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   CreateVirtualAccountDto,
@@ -58,24 +67,123 @@ function toTypedEntry(e: DbLedgerEntryRow): LedgerEntry {
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
 /**
- * Phase E — accounts, cards, remittance. No real provider is contracted yet
- * (business-side diligence over BridgeCard/SwervPay/Payceler/Nium/Swan/BVNK is the
- * actual blocker, not code — see the convergence plan). Every operation here runs
- * against a mock adapter so the API surface, saga wiring, and schema are exercised
- * now and a real adapter can be dropped in later without touching anything above
- * this layer.
+ * Phase E — accounts, cards, remittance. No real provider is CONTRACTED yet:
+ * there are no live API credentials for Swappr (virtual accounts + remittance),
+ * Payscribe (virtual cards), or Yativo (remittance fallback) in this environment.
+ * Provider selection goes through ProviderRouterService (ProviderConfig-driven,
+ * same domain-agnostic router used by vtu/virtual-numbers/etc) so these verticals
+ * are ready to flip live the moment credentials + verified endpoint shapes exist —
+ * see packages/providers/src/financial-products.ts for the adapter caveats. When
+ * no ProviderConfig row is enabled for a domain, methods that need a provider
+ * throw ServiceUnavailableException rather than silently falling back to a mock.
  */
 @Injectable()
 export class FinancialProductsService {
   private readonly logger = new Logger(FinancialProductsService.name);
-  private readonly accountProvider: VirtualAccountProvider = createMockVirtualAccountProvider();
-  private readonly cardProvider: VirtualCardProvider = createMockVirtualCardProvider();
-  private readonly remittanceProvider: RemittanceProvider = createMockRemittanceProvider();
 
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly providerRouter: ProviderRouterService
+  ) {}
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
+  }
+
+  // ─── Adapter factories ──────────────────────────────────────────────────────
+
+  private buildAccountAdapter(providerName: string): VirtualAccountProvider {
+    switch (providerName) {
+      case "swappr":
+        return createSwapprVirtualAccountProvider({
+          apiKey: process.env["SWAPPR_API_KEY"] ?? "",
+          ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {})
+        });
+      default:
+        throw new ServiceUnavailableException(
+          `No virtual account provider adapter is implemented for "${providerName}".`
+        );
+    }
+  }
+
+  private buildCardAdapter(providerName: string): VirtualCardProvider {
+    switch (providerName) {
+      case "payscribe":
+        return createPayscribeVirtualCardProvider({
+          apiKey: process.env["PAYSCRIBE_API_KEY"] ?? "",
+          ...(process.env["PAYSCRIBE_BASE_URL"] ? { baseUrl: process.env["PAYSCRIBE_BASE_URL"] } : {})
+        });
+      default:
+        throw new ServiceUnavailableException(
+          `No virtual card provider adapter is implemented for "${providerName}".`
+        );
+    }
+  }
+
+  private buildRemittanceAdapter(providerName: string): RemittanceProvider {
+    switch (providerName) {
+      case "swappr":
+        return createSwapprRemittanceProvider({
+          apiKey: process.env["SWAPPR_API_KEY"] ?? "",
+          ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {})
+        });
+      case "yativo":
+        return createYativoRemittanceProvider({
+          apiKey: process.env["YATIVO_API_KEY"] ?? "",
+          ...(process.env["YATIVO_BASE_URL"] ? { baseUrl: process.env["YATIVO_BASE_URL"] } : {})
+        });
+      default:
+        throw new ServiceUnavailableException(
+          `No remittance provider adapter is implemented for "${providerName}".`
+        );
+    }
+  }
+
+  // ─── Provider routing ───────────────────────────────────────────────────────
+
+  private async selectAccountAdapter(orderId: string): Promise<VirtualAccountProvider> {
+    const selection = await this.providerRouter.select(
+      "VIRTUAL_ACCOUNT",
+      { productType: "NGN_ACCOUNT" },
+      "VirtualAccount",
+      orderId
+    );
+    if (!selection) {
+      throw new ServiceUnavailableException(
+        "No virtual account provider is currently configured. Contact support."
+      );
+    }
+    return this.buildAccountAdapter(selection.providerName);
+  }
+
+  private async selectCardAdapter(orderId: string): Promise<VirtualCardProvider> {
+    const selection = await this.providerRouter.select(
+      "VIRTUAL_CARD",
+      { productType: "NGN_CARD" },
+      "VirtualCard",
+      orderId
+    );
+    if (!selection) {
+      throw new ServiceUnavailableException(
+        "No virtual card provider is currently configured. Contact support."
+      );
+    }
+    return this.buildCardAdapter(selection.providerName);
+  }
+
+  private async selectRemittanceAdapter(orderId: string): Promise<RemittanceProvider> {
+    const selection = await this.providerRouter.select(
+      "REMITTANCE",
+      { productType: "BANK_TRANSFER" },
+      "Remittance",
+      orderId
+    );
+    if (!selection) {
+      throw new ServiceUnavailableException(
+        "No remittance provider is currently configured. Contact support."
+      );
+    }
+    return this.buildRemittanceAdapter(selection.providerName);
   }
 
   private async getWallet(workspaceId: string, db: DbClient = this.db) {
@@ -89,8 +197,9 @@ export class FinancialProductsService {
   async createAccount(ctx: AuthenticatedRequestContext, dto: CreateVirtualAccountDto) {
     const currency = dto.currency ?? "NGN";
     const reference = uid("va");
+    const accountProvider = await this.selectAccountAdapter(reference);
 
-    const details = await this.accountProvider.createAccount({
+    const details = await accountProvider.createAccount({
       reference,
       accountName: dto.accountName,
       currency
@@ -100,7 +209,7 @@ export class FinancialProductsService {
       data: {
         workspaceId: ctx.workspaceId,
         userId: ctx.userId,
-        providerName: this.accountProvider.name,
+        providerName: accountProvider.name,
         providerAccountId: details.providerAccountId,
         accountNumber: details.accountNumber,
         bankName: details.bankName,
@@ -124,7 +233,8 @@ export class FinancialProductsService {
     });
     if (!account) throw new NotFoundException("Virtual account not found.");
 
-    const live = await this.accountProvider.getAccount(account.providerAccountId);
+    const accountProvider = this.buildAccountAdapter(account.providerName);
+    const live = await accountProvider.getAccount(account.providerAccountId);
     return { ...account, balanceMinor: live.balanceMinor };
   }
 
@@ -135,7 +245,8 @@ export class FinancialProductsService {
     if (!account) throw new NotFoundException("Virtual account not found.");
     if (account.status === "CLOSED") return account;
 
-    await this.accountProvider.closeAccount(account.providerAccountId);
+    const accountProvider = this.buildAccountAdapter(account.providerName);
+    await accountProvider.closeAccount(account.providerAccountId);
     return this.db.virtualAccount.update({
       where: { id: account.id },
       data: { status: "CLOSED", closedAt: new Date() }
@@ -148,6 +259,7 @@ export class FinancialProductsService {
     const currency = dto.currency ?? "NGN";
     const cardId = uid("vc");
     const idempotencyKey = `virtual_card_${cardId}`;
+    const cardProvider = await this.selectCardAdapter(cardId);
 
     // hold_and_flag (default): a provider failure after we've already debited is
     // ambiguous — the card may have been issued on their side despite a timeout on
@@ -199,7 +311,7 @@ export class FinancialProductsService {
               id: cardId,
               workspaceId: ctx.workspaceId,
               userId: ctx.userId,
-              providerName: this.cardProvider.name,
+              providerName: cardProvider.name,
               providerCardId: "", // filled in by execute() once the provider confirms
               last4: "0000",
               expiryMonth: 1,
@@ -227,7 +339,7 @@ export class FinancialProductsService {
       },
 
       execute: async (card) => {
-        const details = await this.cardProvider.issueCard({
+        const details = await cardProvider.issueCard({
           reference: cardId,
           cardholderName: dto.cardholderName,
           currency,
@@ -309,7 +421,8 @@ export class FinancialProductsService {
         }
       });
 
-      return this.cardProvider.fundCard({
+      const cardProvider = this.buildCardAdapter(card.providerName);
+      return cardProvider.fundCard({
         providerCardId: card.providerCardId,
         amountMinor: dto.amountMinor,
         reference: idempotencyKey
@@ -321,13 +434,15 @@ export class FinancialProductsService {
 
   async freezeCard(ctx: AuthenticatedRequestContext, id: string) {
     const card = await this.getOwnedCard(ctx, id);
-    await this.cardProvider.freezeCard(card.providerCardId);
+    const cardProvider = this.buildCardAdapter(card.providerName);
+    await cardProvider.freezeCard(card.providerCardId);
     return this.db.virtualCard.update({ where: { id: card.id }, data: { status: "FROZEN" } });
   }
 
   async unfreezeCard(ctx: AuthenticatedRequestContext, id: string) {
     const card = await this.getOwnedCard(ctx, id);
-    await this.cardProvider.unfreezeCard(card.providerCardId);
+    const cardProvider = this.buildCardAdapter(card.providerName);
+    await cardProvider.unfreezeCard(card.providerCardId);
     return this.db.virtualCard.update({ where: { id: card.id }, data: { status: "ACTIVE" } });
   }
 
@@ -335,7 +450,8 @@ export class FinancialProductsService {
     const card = await this.getOwnedCard(ctx, id);
     if (card.status === "TERMINATED") return card;
 
-    const result = await this.cardProvider.terminateCard(card.providerCardId);
+    const cardProvider = this.buildCardAdapter(card.providerName);
+    const result = await cardProvider.terminateCard(card.providerCardId);
 
     return this.db.$transaction(async (tx) => {
       if (result.refundableMinor > 0 && card.walletId) {
@@ -372,7 +488,8 @@ export class FinancialProductsService {
   // ─── Remittance ─────────────────────────────────────────────────────────────
 
   async getRemittanceQuote(dto: RemittanceQuoteDto) {
-    return this.remittanceProvider.getQuote({
+    const remittanceProvider = await this.selectRemittanceAdapter(uid("rtq"));
+    return remittanceProvider.getQuote({
       sourceCurrency: dto.sourceCurrency,
       destinationCurrency: dto.destinationCurrency,
       sourceAmountMinor: dto.sourceAmountMinor
@@ -382,6 +499,7 @@ export class FinancialProductsService {
   async sendRemittance(ctx: AuthenticatedRequestContext, dto: SendRemittanceDto) {
     const transferId = uid("rt");
     const idempotencyKey = `remittance_${transferId}`;
+    const remittanceProvider = await this.selectRemittanceAdapter(transferId);
 
     const outcome = await runChargeSaga({
       debit: async () => {
@@ -430,7 +548,7 @@ export class FinancialProductsService {
               id: transferId,
               workspaceId: ctx.workspaceId,
               userId: ctx.userId,
-              providerName: this.remittanceProvider.name,
+              providerName: remittanceProvider.name,
               quoteId: dto.quoteId,
               recipientName: dto.recipientName,
               recipientAccountNumber: dto.recipientAccountNumber,
@@ -463,7 +581,7 @@ export class FinancialProductsService {
       },
 
       execute: async (transfer) => {
-        const result = await this.remittanceProvider.sendTransfer({
+        const result = await remittanceProvider.sendTransfer({
           reference: transferId,
           quoteId: dto.quoteId,
           recipient: {

@@ -14,8 +14,6 @@ import {
   createReloadlyGiftCardAdapter,
   createSogoGiftCardAdapter,
   createAirtimeToCashAdapter,
-  createMockGiftCardSellProvider,
-  createMockGiftCardPurchaseAdapter,
   createMockAirtimeCashoutAdapter,
   type GiftCardSellProvider,
   type GiftCardPurchaseProvider,
@@ -103,38 +101,8 @@ export class DigitalValueService {
   }
 
   private initializeProviders() {
-    const sogoApiKey = process.env['SOGO_API_KEY'] ?? process.env['SOGO_SECRET_KEY'];
-
-    if (featureFlags.giftCardSell || sogoApiKey) {
-      this.giftCardSellProvider = sogoApiKey
-        ? this.buildSogoAdapter()
-        : createMockGiftCardSellProvider('sogo-mock');
-    } else {
-      this.giftCardSellProvider = createMockGiftCardSellProvider();
-    }
-
-    const reloadlyClientId =
-      process.env['RELOADLY_CLIENT_ID'] ?? process.env['RELOADLY_API_CLIENT_ID'];
-    const reloadlyClientSecret =
-      process.env['RELOADLY_CLIENT_SECRET'] ??
-      process.env['RELOADLY_API_CLIENT_KEY'] ??
-      process.env['RELOADLY_API_CLIENT_SECRET'];
-
-    if (featureFlags.giftCardBuy || (reloadlyClientId && reloadlyClientSecret)) {
-      this.giftCardBuyProvider =
-        reloadlyClientId && reloadlyClientSecret
-          ? createReloadlyGiftCardAdapter({
-              clientId: reloadlyClientId,
-              clientSecret: reloadlyClientSecret,
-              sandbox: process.env['RELOADLY_SANDBOX'] === 'true',
-              ...((process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'])
-                ? { baseUrl: process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'] }
-                : {})
-            })
-          : createMockGiftCardPurchaseAdapter('reloadly-mock');
-    } else {
-      this.giftCardBuyProvider = createMockGiftCardPurchaseAdapter();
-    }
+    this.giftCardSellProvider = this.buildSogoAdapter();
+    this.giftCardBuyProvider = this.buildReloadlyAdapter();
 
     if (featureFlags.airtimeCashout) {
       this.airtimeCashoutProvider = process.env['AIRTIMETOCASH_API_KEY']
@@ -146,10 +114,40 @@ export class DigitalValueService {
   }
 
   private buildSogoAdapter(): GiftCardSellProvider {
+    const sogoApiKey = process.env['SOGO_API_KEY'] ?? process.env['SOGO_SECRET_KEY'];
+    if (!sogoApiKey) {
+      throw new Error(
+        'SOGO_API_KEY is required to initialize the gift card sell provider — no mock fallback in this build'
+      );
+    }
     return createSogoGiftCardAdapter({
-      apiKey: process.env['SOGO_API_KEY'] ?? process.env['SOGO_SECRET_KEY'] ?? '',
+      apiKey: sogoApiKey,
       sandbox: process.env['SOGO_SANDBOX'] === 'true',
       ...(process.env['SOGO_BASE_URL'] ? { baseUrl: process.env['SOGO_BASE_URL'] } : {})
+    });
+  }
+
+  private buildReloadlyAdapter(): GiftCardPurchaseProvider {
+    const reloadlyClientId =
+      process.env['RELOADLY_CLIENT_ID'] ?? process.env['RELOADLY_API_CLIENT_ID'];
+    const reloadlyClientSecret =
+      process.env['RELOADLY_CLIENT_SECRET'] ??
+      process.env['RELOADLY_API_CLIENT_KEY'] ??
+      process.env['RELOADLY_API_CLIENT_SECRET'];
+
+    if (!reloadlyClientId || !reloadlyClientSecret) {
+      throw new Error(
+        'RELOADLY_CLIENT_ID and RELOADLY_CLIENT_SECRET are required to initialize the gift card buy provider — no mock fallback in this build'
+      );
+    }
+
+    return createReloadlyGiftCardAdapter({
+      clientId: reloadlyClientId,
+      clientSecret: reloadlyClientSecret,
+      sandbox: process.env['RELOADLY_SANDBOX'] === 'true',
+      ...((process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'])
+        ? { baseUrl: process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'] }
+        : {})
     });
   }
 

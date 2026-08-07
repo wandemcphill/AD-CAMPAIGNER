@@ -2342,6 +2342,32 @@ model VtuCablePackage {
   @@index([cableProvider, active])
 }
 
+model VtuBettingCompany {
+  id           String   @id @default(uuid())
+  providerName String
+  productCode  String
+  displayName  String
+  active       Boolean  @default(true)
+  lastSyncedAt DateTime @default(now())
+
+  @@unique([providerName, productCode])
+  @@index([active])
+}
+
+model VtuEducationPlan {
+  id           String   @id @default(uuid())
+  providerName String
+  productCode  String
+  displayName  String
+  costMinor    Int
+  currency     String   @default("NGN")
+  active       Boolean  @default(true)
+  lastSyncedAt DateTime @default(now())
+
+  @@unique([providerName, productCode])
+  @@index([active])
+}
+
 model VtuOrder {
   id                String            @id @default(uuid())
   workspaceId       String

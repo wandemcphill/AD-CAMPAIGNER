@@ -72,6 +72,8 @@ export type VtuFulfilmentJobName =
   | "reconcile"
   | "plan_catalog_sync"
   | "cable_catalog_sync"
+  | "betting_catalog_sync"
+  | "education_catalog_sync"
   | "provider_health"
   | "ops_review";
 

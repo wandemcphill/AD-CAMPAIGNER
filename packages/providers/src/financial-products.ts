@@ -1,10 +1,15 @@
 // Virtual account, virtual card, and remittance provider adapters.
 //
-// No real provider is contracted yet (see the convergence plan's Phase E note —
-// this is genuinely blocked on business-side diligence over BridgeCard, SwervPay,
-// Payceler, Nium, Swan, BVNK, not on code). These interfaces + mock adapters exist
-// so the API surface, saga wiring, and Prisma models can be built and tested now,
-// with a real adapter dropped in later without touching anything above this layer.
+// No real provider is CONTRACTED yet — there are no live API credentials for
+// Swappr, Payscribe, or Yativo in this environment (see the convergence plan's
+// Phase E note; earlier diligence also covered BridgeCard/SwervPay/Payceler/
+// Nium/Swan/BVNK). Mock adapters below exist so the API surface, saga wiring,
+// and Prisma models can be exercised without any live dependency. Real HTTP
+// adapters for Swappr/Payscribe/Yativo are also implemented further down —
+// they are code-complete and routable via ProviderConfig/ProviderRouterService,
+// but every endpoint path and response shape is a best-effort convention guess,
+// not verified against real provider docs, and must not be enabled in
+// production until real credentials exist and the shapes are confirmed.
 
 import type { ProviderAdapterBase, ProviderCapabilities, ProviderHealthSnapshot } from './contract.js';
 import { CURRENT_INTERFACE_VERSION } from './contract.js';
@@ -228,6 +233,452 @@ export function createMockVirtualCardProvider(name = 'mock-virtual-card'): Virtu
       const card = cards.get(providerCardId);
       if (!card) return Promise.reject(new Error(`Unknown mock card ${providerCardId}`));
       return Promise.resolve(card);
+    }
+  };
+}
+
+// ─── Real HTTP adapters ─────────────────────────────────────────────────────────
+//
+// Swappr (virtual accounts + remittance), Payscribe (virtual cards), and Yativo
+// (remittance fallback) have no live credentials in this environment — none of
+// these three verticals is contracted yet. These adapters are built so the
+// integration is code-complete and can be flipped live the moment real API keys
+// and verified endpoint docs exist; they must not be treated as production-ready
+// until then. Each factory follows this codebase's existing real-adapter
+// convention (see createKorapayPaymentGateway / createVtpassAdapter): config is
+// a plain struct (never reads process.env directly), throws synchronously at
+// construction if the required apiKey is missing, and uses a small
+// call<Provider>Api helper for JSON HTTP with bearer/api-key auth.
+
+export interface SwapprConfig {
+  apiKey: string;
+  baseUrl?: string; // default https://api.swappr.ng
+  fetcher?: typeof fetch;
+}
+
+export interface PayscribeConfig {
+  apiKey: string;
+  baseUrl?: string; // default https://api.payscribe.ng
+  fetcher?: typeof fetch;
+}
+
+export interface YativoConfig {
+  apiKey: string;
+  baseUrl?: string; // default https://api.yativo.com
+  fetcher?: typeof fetch;
+}
+
+class ProviderApiError extends Error {
+  constructor(
+    public readonly providerName: string,
+    public readonly status: number,
+    message: string
+  ) {
+    super(`${providerName} API error (HTTP ${status}): ${message}`);
+    this.name = 'ProviderApiError';
+  }
+}
+
+async function callSwapprApi(
+  config: SwapprConfig,
+  path: string,
+  options: { method?: string; body?: Record<string, unknown> } = {}
+): Promise<unknown> {
+  if (!config.apiKey) throw new Error('Swappr adapter requires config.apiKey.');
+  const f = config.fetcher ?? fetch;
+  const res = await f(`${config.baseUrl ?? 'https://api.swappr.ng'}${path}`, {
+    method: options.method ?? (options.body ? 'POST' : 'GET'),
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'content-type': 'application/json'
+    },
+    ...(options.body ? { body: JSON.stringify(options.body) } : {})
+  });
+  if (!res.ok) {
+    throw new ProviderApiError('swappr', res.status, await res.text().catch(() => res.statusText));
+  }
+  return res.json();
+}
+
+async function callPayscribeApi(
+  config: PayscribeConfig,
+  path: string,
+  options: { method?: string; body?: Record<string, unknown> } = {}
+): Promise<unknown> {
+  if (!config.apiKey) throw new Error('Payscribe adapter requires config.apiKey.');
+  const f = config.fetcher ?? fetch;
+  const res = await f(`${config.baseUrl ?? 'https://api.payscribe.ng'}${path}`, {
+    method: options.method ?? (options.body ? 'POST' : 'GET'),
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'content-type': 'application/json'
+    },
+    ...(options.body ? { body: JSON.stringify(options.body) } : {})
+  });
+  if (!res.ok) {
+    throw new ProviderApiError('payscribe', res.status, await res.text().catch(() => res.statusText));
+  }
+  return res.json();
+}
+
+async function callYativoApi(
+  config: YativoConfig,
+  path: string,
+  options: { method?: string; body?: Record<string, unknown> } = {}
+): Promise<unknown> {
+  if (!config.apiKey) throw new Error('Yativo adapter requires config.apiKey.');
+  const f = config.fetcher ?? fetch;
+  const res = await f(`${config.baseUrl ?? 'https://api.yativo.com'}${path}`, {
+    method: options.method ?? (options.body ? 'POST' : 'GET'),
+    headers: {
+      'x-api-key': config.apiKey,
+      'content-type': 'application/json'
+    },
+    ...(options.body ? { body: JSON.stringify(options.body) } : {})
+  });
+  if (!res.ok) {
+    throw new ProviderApiError('yativo', res.status, await res.text().catch(() => res.statusText));
+  }
+  return res.json();
+}
+
+function liveCapabilities(
+  domain: 'VIRTUAL_ACCOUNT' | 'VIRTUAL_CARD' | 'REMITTANCE',
+  productTypes: string[],
+  countries: string[]
+): ProviderCapabilities {
+  return {
+    domain,
+    countries,
+    productTypes,
+    reliability: { idempotency: 'strong', ordering: 'sequence', webhookSignature: 'hmac_sha256' }
+  };
+}
+
+function liveHealth(providerName: string): Promise<ProviderHealthSnapshot> {
+  // No real health probe wired yet (no credentials to check against) — reports
+  // HEALTHY optimistically so it doesn't block routing before a real check exists.
+  return Promise.resolve({ providerName, status: 'HEALTHY', latencyMs: 0 });
+}
+
+// NOTE: endpoint paths/response shapes are best-effort based on standard fintech
+// infrastructure API conventions (Stripe/Flutterwave-style REST) — MUST be
+// verified against Swappr's real API documentation before enabling in
+// production. No live credentials exist in this environment to test against.
+export function createSwapprVirtualAccountProvider(config: SwapprConfig): VirtualAccountProvider {
+  const name = 'swappr';
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'VIRTUAL_ACCOUNT',
+    getCapabilities: () => liveCapabilities('VIRTUAL_ACCOUNT', ['NGN_ACCOUNT'], ['NG']),
+    checkHealth: () => liveHealth(name),
+
+    async createAccount(input) {
+      const data = (await callSwapprApi(config, '/v1/virtual-accounts', {
+        body: {
+          reference: input.reference,
+          account_name: input.accountName,
+          currency: input.currency,
+          ...(input.customerEmail ? { customer_email: input.customerEmail } : {}),
+          ...(input.customerPhone ? { customer_phone: input.customerPhone } : {})
+        }
+      })) as {
+        data: {
+          id: string;
+          account_number: string;
+          bank_name: string;
+          bank_code: string;
+          account_name: string;
+          currency: string;
+        };
+      };
+      const acct = data.data;
+      return {
+        providerAccountId: acct.id,
+        accountNumber: acct.account_number,
+        bankName: acct.bank_name,
+        bankCode: acct.bank_code,
+        accountName: acct.account_name,
+        currency: acct.currency
+      };
+    },
+
+    async getAccount(providerAccountId) {
+      const data = (await callSwapprApi(config, `/v1/virtual-accounts/${providerAccountId}`)) as {
+        data: {
+          id: string;
+          account_number: string;
+          bank_name: string;
+          bank_code: string;
+          account_name: string;
+          currency: string;
+          balance_minor: number;
+        };
+      };
+      const acct = data.data;
+      return {
+        providerAccountId: acct.id,
+        accountNumber: acct.account_number,
+        bankName: acct.bank_name,
+        bankCode: acct.bank_code,
+        accountName: acct.account_name,
+        currency: acct.currency,
+        balanceMinor: acct.balance_minor
+      };
+    },
+
+    async closeAccount(providerAccountId) {
+      await callSwapprApi(config, `/v1/virtual-accounts/${providerAccountId}`, { method: 'DELETE' });
+      return { closed: true };
+    }
+  };
+}
+
+// NOTE: endpoint paths/response shapes are best-effort based on standard fintech
+// infrastructure API conventions (Stripe/Flutterwave-style REST) — MUST be
+// verified against Swappr's real API documentation before enabling in
+// production. No live credentials exist in this environment to test against.
+export function createSwapprRemittanceProvider(config: SwapprConfig): RemittanceProvider {
+  const name = 'swappr';
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'REMITTANCE',
+    getCapabilities: () => liveCapabilities('REMITTANCE', ['BANK_TRANSFER'], ['NG', 'US', 'GB']),
+    checkHealth: () => liveHealth(name),
+
+    async getQuote(input) {
+      const data = (await callSwapprApi(config, '/v1/remittance/quotes', {
+        body: {
+          source_currency: input.sourceCurrency,
+          destination_currency: input.destinationCurrency,
+          source_amount_minor: input.sourceAmountMinor
+        }
+      })) as {
+        data: {
+          id: string;
+          source_amount_minor: number;
+          source_currency: string;
+          destination_amount_minor: number;
+          destination_currency: string;
+          fee_minor: number;
+          rate: number;
+          expires_at: string;
+        };
+      };
+      const q = data.data;
+      return {
+        quoteId: q.id,
+        sourceAmountMinor: q.source_amount_minor,
+        sourceCurrency: q.source_currency,
+        destinationAmountMinor: q.destination_amount_minor,
+        destinationCurrency: q.destination_currency,
+        feeMinor: q.fee_minor,
+        rate: q.rate,
+        expiresAt: q.expires_at
+      };
+    },
+
+    async sendTransfer(input) {
+      const data = (await callSwapprApi(config, '/v1/remittance/transfers', {
+        body: {
+          reference: input.reference,
+          quote_id: input.quoteId,
+          recipient: {
+            name: input.recipient.name,
+            account_number: input.recipient.accountNumber,
+            bank_code: input.recipient.bankCode,
+            country: input.recipient.country
+          }
+        }
+      })) as { data: { id: string; status: 'PROCESSING' | 'COMPLETED' | 'FAILED' } };
+      return { providerReference: data.data.id, status: data.data.status };
+    },
+
+    async getTransferStatus(providerReference) {
+      const data = (await callSwapprApi(config, `/v1/remittance/transfers/${providerReference}`)) as {
+        data: { status: 'PROCESSING' | 'COMPLETED' | 'FAILED'; failure_reason?: string };
+      };
+      return {
+        status: data.data.status,
+        ...(data.data.failure_reason ? { failureReason: data.data.failure_reason } : {})
+      };
+    }
+  };
+}
+
+// NOTE: endpoint paths/response shapes are best-effort based on standard
+// card-issuing API conventions (create cardholder → issue card → fund/freeze/
+// terminate, Stripe Issuing / Marqeta-style REST) — MUST be verified against
+// Payscribe's real API documentation before enabling in production. No live
+// credentials exist in this environment to test against.
+export function createPayscribeVirtualCardProvider(config: PayscribeConfig): VirtualCardProvider {
+  const name = 'payscribe';
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'VIRTUAL_CARD',
+    getCapabilities: () => liveCapabilities('VIRTUAL_CARD', ['NGN_CARD', 'USD_CARD'], ['NG']),
+    checkHealth: () => liveHealth(name),
+
+    async issueCard(input) {
+      // Two-step issuing convention: create the cardholder, then issue+fund the card.
+      const cardholder = (await callPayscribeApi(config, '/v1/cardholders', {
+        body: { name: input.cardholderName, reference: input.reference }
+      })) as { data: { id: string } };
+
+      const data = (await callPayscribeApi(config, '/v1/cards', {
+        body: {
+          cardholder_id: cardholder.data.id,
+          reference: input.reference,
+          currency: input.currency,
+          funding_amount_minor: input.fundingAmountMinor
+        }
+      })) as {
+        data: {
+          id: string;
+          last4: string;
+          expiry_month: number;
+          expiry_year: number;
+          brand: 'VISA' | 'MASTERCARD';
+          currency: string;
+          status: 'ACTIVE' | 'FROZEN' | 'TERMINATED';
+        };
+      };
+      const card = data.data;
+      return {
+        providerCardId: card.id,
+        last4: card.last4,
+        expiryMonth: card.expiry_month,
+        expiryYear: card.expiry_year,
+        brand: card.brand,
+        currency: card.currency,
+        status: card.status
+      };
+    },
+
+    async fundCard(input) {
+      const data = (await callPayscribeApi(config, `/v1/cards/${input.providerCardId}/fund`, {
+        body: { amount_minor: input.amountMinor, reference: input.reference }
+      })) as { data: { id: string; balance_minor: number } };
+      return { providerReference: data.data.id, balanceMinor: data.data.balance_minor };
+    },
+
+    async freezeCard(providerCardId) {
+      await callPayscribeApi(config, `/v1/cards/${providerCardId}/freeze`, { body: {} });
+      return { status: 'FROZEN' };
+    },
+
+    async unfreezeCard(providerCardId) {
+      await callPayscribeApi(config, `/v1/cards/${providerCardId}/unfreeze`, { body: {} });
+      return { status: 'ACTIVE' };
+    },
+
+    async terminateCard(providerCardId) {
+      const data = (await callPayscribeApi(config, `/v1/cards/${providerCardId}/terminate`, {
+        body: {}
+      })) as { data: { refundable_minor: number } };
+      return { status: 'TERMINATED', refundableMinor: data.data.refundable_minor };
+    },
+
+    async getCard(providerCardId) {
+      const data = (await callPayscribeApi(config, `/v1/cards/${providerCardId}`)) as {
+        data: {
+          id: string;
+          last4: string;
+          expiry_month: number;
+          expiry_year: number;
+          brand: 'VISA' | 'MASTERCARD';
+          currency: string;
+          status: 'ACTIVE' | 'FROZEN' | 'TERMINATED';
+          balance_minor: number;
+        };
+      };
+      const card = data.data;
+      return {
+        providerCardId: card.id,
+        last4: card.last4,
+        expiryMonth: card.expiry_month,
+        expiryYear: card.expiry_year,
+        brand: card.brand,
+        currency: card.currency,
+        status: card.status,
+        balanceMinor: card.balance_minor
+      };
+    }
+  };
+}
+
+// NOTE: endpoint paths/response shapes are best-effort based on standard fintech
+// infrastructure API conventions (Stripe/Flutterwave-style REST) — MUST be
+// verified against Yativo's real API documentation before enabling in
+// production. No live credentials exist in this environment to test against.
+// Yativo is configured as the REMITTANCE fallback (lower priority than Swappr)
+// — see the ProviderConfig seed.
+export function createYativoRemittanceProvider(config: YativoConfig): RemittanceProvider {
+  const name = 'yativo';
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'REMITTANCE',
+    getCapabilities: () => liveCapabilities('REMITTANCE', ['BANK_TRANSFER'], ['NG', 'US']),
+    checkHealth: () => liveHealth(name),
+
+    async getQuote(input) {
+      const data = (await callYativoApi(config, '/v1/quotes', {
+        body: {
+          source_currency: input.sourceCurrency,
+          destination_currency: input.destinationCurrency,
+          source_amount_minor: input.sourceAmountMinor
+        }
+      })) as {
+        id: string;
+        source_amount_minor: number;
+        source_currency: string;
+        destination_amount_minor: number;
+        destination_currency: string;
+        fee_minor: number;
+        rate: number;
+        expires_at: string;
+      };
+      return {
+        quoteId: data.id,
+        sourceAmountMinor: data.source_amount_minor,
+        sourceCurrency: data.source_currency,
+        destinationAmountMinor: data.destination_amount_minor,
+        destinationCurrency: data.destination_currency,
+        feeMinor: data.fee_minor,
+        rate: data.rate,
+        expiresAt: data.expires_at
+      };
+    },
+
+    async sendTransfer(input) {
+      const data = (await callYativoApi(config, '/v1/transfers', {
+        body: {
+          reference: input.reference,
+          quote_id: input.quoteId,
+          recipient: {
+            name: input.recipient.name,
+            account_number: input.recipient.accountNumber,
+            bank_code: input.recipient.bankCode,
+            country: input.recipient.country
+          }
+        }
+      })) as { id: string; status: 'PROCESSING' | 'COMPLETED' | 'FAILED' };
+      return { providerReference: data.id, status: data.status };
+    },
+
+    async getTransferStatus(providerReference) {
+      const data = (await callYativoApi(config, `/v1/transfers/${providerReference}`)) as {
+        status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+        failure_reason?: string;
+      };
+      return {
+        status: data.status,
+        ...(data.failure_reason ? { failureReason: data.failure_reason } : {})
+      };
     }
   };
 }
