@@ -17,7 +17,7 @@ export default function AdminDigitalAccessPricingPage() {
   const { error, loading, refresh, services } = useAdminDigitalAccessData();
 
   return (
-    <AdminDigitalAccessShell active="/digital-access/pricing">
+    <AdminDigitalAccessShell active="/digital-access/pricing/">
       <AdminPageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">

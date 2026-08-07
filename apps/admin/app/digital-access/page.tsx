@@ -19,7 +19,7 @@ export default function AdminDigitalAccessPage() {
     useAdminDigitalAccessData();
 
   return (
-    <AdminDigitalAccessShell active="/digital-access">
+    <AdminDigitalAccessShell active="/digital-access/">
       <AdminPageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">

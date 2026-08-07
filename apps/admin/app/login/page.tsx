@@ -150,7 +150,7 @@ export default function LoginPage() {
               <ShieldCheck className="size-4 text-[var(--ft-accent)]" />
               Workspace session is attached automatically.
             </div>
-            <a className="inline-flex items-center gap-2 font-medium text-[var(--ft-accent)]" href="/register">
+            <a className="inline-flex items-center gap-2 font-medium text-[var(--ft-accent)]" href="/register/">
               Create account
               <ArrowRight className="size-4" />
             </a>

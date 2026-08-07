@@ -17,7 +17,7 @@ export default function AdminDigitalAccessAnalyticsPage() {
   const maxDemand = Math.max(1, ...services.map((service) => service.demand));
 
   return (
-    <AdminDigitalAccessShell active="/digital-access/analytics">
+    <AdminDigitalAccessShell active="/digital-access/analytics/">
       <AdminPageHeader
         action={
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">

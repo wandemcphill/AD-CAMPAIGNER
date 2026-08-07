@@ -18,7 +18,7 @@ export default function AdminGrowthOverviewPage() {
   const { error, loading, metrics, orders, refresh, risks, suppliers } = useAdminGrowthData();
 
   return (
-    <AdminGrowthShell active="/growth-services">
+    <AdminGrowthShell active="/growth-services/">
       <AdminPageHeader
         action={
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">

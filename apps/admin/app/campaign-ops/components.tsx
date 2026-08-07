@@ -181,7 +181,7 @@ export function AdminCampaignOpsShell({
 
   useEffect(() => {
     if (!loading && !session) {
-      window.location.replace("/login");
+      window.location.replace("/login/");
     }
   }, [loading, session]);
 

@@ -53,7 +53,7 @@ export default function AdminGrowthOrdersPage() {
   }
 
   return (
-    <AdminGrowthShell active="/growth-services/orders">
+    <AdminGrowthShell active="/growth-services/orders/">
       <AdminPageHeader
         action={
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">

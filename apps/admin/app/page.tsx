@@ -43,7 +43,7 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!sessionLoading && !session) {
-      window.location.replace("/login");
+      window.location.replace("/login/");
     }
   }, [sessionLoading, session]);
 
@@ -74,15 +74,15 @@ export default function AdminPage() {
           <nav className="mt-6 grid grid-cols-2 gap-1 xl:grid-cols-1">
             {[
               { label: "Overview", href: "/", icon: Radar },
-              { label: "Moderation", href: "/campaign-ops", icon: ShieldCheck },
-              { label: "Payments", href: "/campaign-ops/reports", icon: Banknote },
-              { label: "Growth", href: "/growth-services", icon: Boxes },
-              { label: "Audit", href: "/campaign-ops/activity", icon: FileSearch },
-              { label: "Access", href: "/digital-access", icon: LockKeyhole },
-              { label: "VTU", href: "/vtu", icon: Smartphone },
-              { label: "Digital Products", href: "/digital-products", icon: Globe },
-              { label: "Rewards", href: "/rewards", icon: Gift },
-              { label: "Marketplace", href: "/marketplace/applications", icon: Store }
+              { label: "Moderation", href: "/campaign-ops/", icon: ShieldCheck },
+              { label: "Payments", href: "/campaign-ops/reports/", icon: Banknote },
+              { label: "Growth", href: "/growth-services/", icon: Boxes },
+              { label: "Audit", href: "/campaign-ops/activity/", icon: FileSearch },
+              { label: "Access", href: "/digital-access/", icon: LockKeyhole },
+              { label: "VTU", href: "/vtu/", icon: Smartphone },
+              { label: "Digital Products", href: "/digital-products/", icon: Globe },
+              { label: "Rewards", href: "/rewards/", icon: Gift },
+              { label: "Marketplace", href: "/marketplace/applications/", icon: Store }
             ].map((item) => (
               <a
                 className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"

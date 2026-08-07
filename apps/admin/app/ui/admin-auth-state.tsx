@@ -28,7 +28,7 @@ export function AdminAuthState({
         {!loading ? (
           <a
             className="mt-5 inline-flex h-10 items-center justify-center rounded-md bg-[var(--ft-accent)] px-4 text-sm font-semibold text-[var(--ft-text-inverse)]"
-            href="/login"
+            href="/login/"
           >
             Open sign in
           </a>

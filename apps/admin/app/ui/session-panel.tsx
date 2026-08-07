@@ -62,7 +62,7 @@ export function SessionPanel({ title = "Admin session" }: { title?: string }) {
       <div className="mt-4 flex gap-2">
         <a
           className="inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-accent)] bg-[var(--ft-accent)] px-3 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
-          href="/login"
+          href="/login/"
         >
           <span className="truncate">Sign in</span>
           <ArrowRight className="size-4" />

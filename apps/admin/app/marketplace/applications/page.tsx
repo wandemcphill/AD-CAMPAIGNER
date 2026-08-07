@@ -90,7 +90,7 @@ export default function AdminMarketplaceApplicationsPage() {
 
   useEffect(() => {
     if (!sessionLoading && !session) {
-      window.location.replace("/login");
+      window.location.replace("/login/");
       return;
     }
     if (session) {

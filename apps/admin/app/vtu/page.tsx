@@ -55,7 +55,7 @@ export default function AdminVtuPage() {
 
   useEffect(() => {
     if (!sessionLoading && !session) {
-      window.location.replace("/login");
+      window.location.replace("/login/");
       return;
     }
     if (session) {

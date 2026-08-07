@@ -47,7 +47,7 @@ export default function AdminGrowthServicesPage() {
   }
 
   return (
-    <AdminGrowthShell active="/growth-services/services">
+    <AdminGrowthShell active="/growth-services/services/">
       <AdminPageHeader
         action={
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">

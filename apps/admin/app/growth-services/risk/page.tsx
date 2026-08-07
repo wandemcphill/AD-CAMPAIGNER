@@ -16,7 +16,7 @@ export default function AdminGrowthRiskPage() {
   const { error, loading, refresh, risks } = useAdminGrowthData();
 
   return (
-    <AdminGrowthShell active="/growth-services/risk">
+    <AdminGrowthShell active="/growth-services/risk/">
       <AdminPageHeader
         action={
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">

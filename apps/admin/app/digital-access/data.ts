@@ -46,11 +46,11 @@ export type AdminMetric = {
 export const adminAccessEnabled = process.env.NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS_ADMIN === "true";
 
 export const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
-  { label: "Overview", href: "/digital-access", icon: Sparkles },
-  { label: "Requests", href: "/digital-access/requests", icon: ListChecks },
-  { label: "Services", href: "/digital-access/services", icon: Layers3 },
-  { label: "Pricing", href: "/digital-access/pricing", icon: SlidersHorizontal },
-  { label: "Analytics", href: "/digital-access/analytics", icon: BarChart3 }
+  { label: "Overview", href: "/digital-access/", icon: Sparkles },
+  { label: "Requests", href: "/digital-access/requests/", icon: ListChecks },
+  { label: "Services", href: "/digital-access/services/", icon: Layers3 },
+  { label: "Pricing", href: "/digital-access/pricing/", icon: SlidersHorizontal },
+  { label: "Analytics", href: "/digital-access/analytics/", icon: BarChart3 }
 ];
 
 export const statusTone = {

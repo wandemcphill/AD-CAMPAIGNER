@@ -139,7 +139,7 @@ export default function RegisterPage() {
               <ShieldCheck className="size-4 text-[var(--ft-accent)]" />
               Workspace and membership are automatic.
             </div>
-            <a className="inline-flex items-center gap-2 font-medium text-[var(--ft-accent)]" href="/login">
+            <a className="inline-flex items-center gap-2 font-medium text-[var(--ft-accent)]" href="/login/">
               Sign in
               <ArrowRight className="size-4" />
             </a>

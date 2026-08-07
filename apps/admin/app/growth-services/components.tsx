@@ -20,7 +20,7 @@ export function AdminGrowthShell({ children, active }: { children: ReactNode; ac
 
   useEffect(() => {
     if (!loading && !session) {
-      window.location.replace("/login");
+      window.location.replace("/login/");
     }
   }, [loading, session]);
 
@@ -31,7 +31,7 @@ export function AdminGrowthShell({ children, active }: { children: ReactNode; ac
   return (
     <main className="min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-[220px] border-r border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-4 md:block">
-        <a className="flex h-12 items-center gap-3 px-1" href="/growth-services">
+        <a className="flex h-12 items-center gap-3 px-1" href="/growth-services/">
           <div className="flex size-9 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-accent)] font-mono text-xs font-semibold text-[var(--ft-bg-base)]">
             GS
           </div>

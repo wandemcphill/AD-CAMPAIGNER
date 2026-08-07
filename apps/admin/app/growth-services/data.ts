@@ -77,11 +77,11 @@ export type AdminGrowthMetric = {
 export const adminGrowthEnabled = process.env.NEXT_PUBLIC_ENABLE_GROWTH_SERVICES_ADMIN !== "false";
 
 export const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
-  { label: "Overview", href: "/growth-services", icon: Store },
-  { label: "Orders", href: "/growth-services/orders", icon: ListChecks },
-  { label: "Services", href: "/growth-services/services", icon: SlidersHorizontal },
-  { label: "Suppliers", href: "/growth-services/suppliers", icon: Route },
-  { label: "Risk", href: "/growth-services/risk", icon: FileWarning }
+  { label: "Overview", href: "/growth-services/", icon: Store },
+  { label: "Orders", href: "/growth-services/orders/", icon: ListChecks },
+  { label: "Services", href: "/growth-services/services/", icon: SlidersHorizontal },
+  { label: "Suppliers", href: "/growth-services/suppliers/", icon: Route },
+  { label: "Risk", href: "/growth-services/risk/", icon: FileWarning }
 ];
 
 export const statusTone = {

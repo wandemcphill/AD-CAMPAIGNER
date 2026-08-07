@@ -17,7 +17,7 @@ export default function AdminDigitalAccessServicesPage() {
   const { error, loading, refresh, services } = useAdminDigitalAccessData();
 
   return (
-    <AdminDigitalAccessShell active="/digital-access/services">
+    <AdminDigitalAccessShell active="/digital-access/services/">
       <AdminPageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
