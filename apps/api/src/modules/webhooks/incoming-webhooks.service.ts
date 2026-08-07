@@ -30,4 +30,17 @@ export class IncomingWebhooksService {
 
     return event;
   }
+
+  async listProviderEvents(query: { provider?: string; signatureValid?: string } = {}) {
+    return this.db.providerWebhookEvent.findMany({
+      where: {
+        ...(query.provider ? { provider: query.provider } : {}),
+        ...(query.signatureValid !== undefined
+          ? { signatureValid: query.signatureValid === "true" }
+          : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100
+    });
+  }
 }

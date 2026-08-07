@@ -52,12 +52,16 @@ export class ProviderWebhooksService {
       throw new UnauthorizedException('Missing Sogo webhook timestamp');
     }
 
-    if (!this.verifySogoSignature(rawPayload, timestamp, signature, secret)) {
+    const event = payload as Record<string, unknown>;
+    const eventType = typeof event.type === 'string' ? event.type : 'unknown';
+    const signatureValid = this.verifySogoSignature(rawPayload, timestamp, signature, secret);
+
+    await this.recordWebhookEvent('sogo', eventType, event, signature, signatureValid);
+
+    if (!signatureValid) {
       throw new UnauthorizedException('Invalid Sogo webhook signature');
     }
 
-    const event = payload as Record<string, unknown>;
-    const eventType = typeof event.type === 'string' ? event.type : 'unknown';
     this.logger.debug(`Sogo webhook received: ${eventType}`);
 
     switch (eventType) {
@@ -89,12 +93,16 @@ export class ProviderWebhooksService {
       throw new UnauthorizedException('Missing Reloadly webhook timestamp');
     }
 
-    if (!this.verifyReloadlySignature(rawPayload, timestamp, signature, secret)) {
+    const event = payload as Record<string, unknown>;
+    const eventType = typeof event.type === 'string' ? event.type : 'unknown';
+    const signatureValid = this.verifyReloadlySignature(rawPayload, timestamp, signature, secret);
+
+    await this.recordWebhookEvent('reloadly', eventType, event, signature, signatureValid);
+
+    if (!signatureValid) {
       throw new UnauthorizedException('Invalid Reloadly webhook signature');
     }
 
-    const event = payload as Record<string, unknown>;
-    const eventType = typeof event.type === 'string' ? event.type : 'unknown';
     this.logger.debug(`Reloadly webhook received: ${eventType}`);
 
     switch (eventType) {
@@ -305,6 +313,37 @@ export class ProviderWebhooksService {
 
     // Dispatch downstream processing job
     await this.queueProducer.enqueueDigitalValueProcessing(transactionId, 'GIFT_CARD_BUY');
+  }
+
+  // Audit trail only — never let a logging failure or duplicate-delivery replay
+  // block the actual webhook handling above.
+  private async recordWebhookEvent(
+    provider: string,
+    eventType: string,
+    event: Record<string, unknown>,
+    signature: string | undefined,
+    signatureValid: boolean
+  ): Promise<void> {
+    const providerEventId =
+      (event.id ?? event.eventId ?? event.reference ?? event.transactionId ?? `${Date.now()}`) as
+        | string
+        | number;
+
+    try {
+      await this.prisma.client.providerWebhookEvent.create({
+        data: {
+          provider,
+          domain: eventType,
+          providerEventId: String(providerEventId),
+          eventType,
+          ...(signature ? { signature } : {}),
+          signatureValid,
+          rawPayload: event as never
+        }
+      });
+    } catch (err) {
+      this.logger.warn(`Could not record webhook audit event for ${provider}/${eventType}: ${String(err)}`);
+    }
   }
 
   private secureCompare(expected: string, actual: string | undefined): boolean {

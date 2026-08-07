@@ -50,6 +50,17 @@ export class IncomingWebhooksController {
     return this.incoming.list({ ...(status === undefined ? {} : { status }), ...(name === undefined ? {} : { name }) });
   }
 
+  @Get("provider-events")
+  listProviderEvents(
+    @Query("provider") provider: string | undefined,
+    @Query("signatureValid") signatureValid: string | undefined
+  ) {
+    return this.incoming.listProviderEvents({
+      ...(provider === undefined ? {} : { provider }),
+      ...(signatureValid === undefined ? {} : { signatureValid })
+    });
+  }
+
   @Get(":id")
   detail(@Param("id") id: string) {
     return this.incoming.detail(id);
