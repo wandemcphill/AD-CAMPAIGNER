@@ -15,9 +15,11 @@ import {
   Radar,
   RefreshCcw,
   ShieldCheck,
+  ShoppingCart,
   Smartphone,
   Store,
-  Users
+  Users,
+  Webhook
 } from "lucide-react";
 
 import { Badge, Button, MetricCard, Panel, SummaryStatStrip, ThemeToggle } from "@fliptrybe/ui";
@@ -84,8 +86,10 @@ export default function AdminPage() {
               { label: "Providers", href: "/providers/", icon: Network },
               { label: "Digital Products", href: "/digital-products/", icon: Globe },
               { label: "Digital Value", href: "/digital-value/", icon: CircleDollarSign },
+              { label: "Webhooks", href: "/webhooks/", icon: Webhook },
               { label: "Rewards", href: "/rewards/", icon: Gift },
-              { label: "Marketplace", href: "/marketplace/applications/", icon: Store }
+              { label: "Marketplace", href: "/marketplace/applications/", icon: Store },
+              { label: "Guest Checkout", href: "/guest-checkout/", icon: ShoppingCart }
             ].map((item) => (
               <a
                 className="flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
