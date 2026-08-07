@@ -122,7 +122,8 @@ describe("SMM operations", () => {
       "youtube-views",
       "youtube-subscribers",
       "telegram-members",
-      "website-traffic"
+      "website-traffic",
+      "social-account-instagram"
     ]);
     expect(
       defaultGrowthServicesCatalog.find((service) => service.code === "website-traffic")?.enabled

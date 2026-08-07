@@ -181,15 +181,15 @@ export class ProvidersService {
       return [];
     }
 
-    const names = configs.map((c: any) => c.name);
+    const names = configs.map((c) => c.name);
     const healthRows = await this.db.providerHealth.findMany({
       where: { providerName: { in: names } },
       orderBy: { checkedAt: "desc" },
       distinct: ["providerName"]
     });
 
-    return configs.map((config: any) => {
-      const health = healthRows.find((h: any) => h.providerName === config.name);
+    return configs.map((config) => {
+      const health = healthRows.find((h) => h.providerName === config.name);
       return {
         id: config.id,
         name: config.name,

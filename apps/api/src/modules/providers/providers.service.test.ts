@@ -4,19 +4,19 @@ import { describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../prisma.service";
 import { ProvidersService } from "./providers.service";
 
-function buildPrisma(overrides: Record<string, any> = {}) {
+function buildPrisma(overrides: Record<string, unknown> = {}) {
   return {
     client: {
       providerConfig: {
-        findMany: vi.fn(async () => []),
-        findFirst: vi.fn(async () => null),
+        findMany: vi.fn(() => Promise.resolve([])),
+        findFirst: vi.fn(() => Promise.resolve(null)),
         update: vi.fn()
       },
       providerHealth: {
-        findMany: vi.fn(async () => [])
+        findMany: vi.fn(() => Promise.resolve([]))
       },
       auditLog: {
-        create: vi.fn(async () => ({}))
+        create: vi.fn(() => Promise.resolve({}))
       },
       ...overrides
     }
@@ -56,12 +56,12 @@ describe("ProvidersService registry", () => {
     };
     const prisma = buildPrisma({
       providerConfig: {
-        findMany: vi.fn(async () => [config]),
-        findFirst: vi.fn(async () => config),
-        update: vi.fn(async () => ({ ...config, priority: 20 }))
+        findMany: vi.fn(() => Promise.resolve([config])),
+        findFirst: vi.fn(() => Promise.resolve(config)),
+        update: vi.fn(() => Promise.resolve({ ...config, priority: 20 }))
       },
       providerHealth: {
-        findMany: vi.fn(async () => [health])
+        findMany: vi.fn(() => Promise.resolve([health]))
       }
     });
     const service = new ProvidersService(prisma);
@@ -102,12 +102,12 @@ describe("ProvidersService registry", () => {
       status: "HEALTHY",
       priority: 10
     };
-    const auditLogCreate = vi.fn(async () => ({}));
+    const auditLogCreate = vi.fn(() => Promise.resolve({}));
     const prisma = buildPrisma({
       providerConfig: {
-        findFirst: vi.fn(async () => config),
-        update: vi.fn(async () => ({ ...config, priority: 20 })),
-        findMany: vi.fn(async () => [])
+        findFirst: vi.fn(() => Promise.resolve(config)),
+        update: vi.fn(() => Promise.resolve({ ...config, priority: 20 })),
+        findMany: vi.fn(() => Promise.resolve([]))
       },
       auditLog: { create: auditLogCreate }
     });
@@ -117,6 +117,7 @@ describe("ProvidersService registry", () => {
 
     expect(auditLogCreate).toHaveBeenCalledWith(
       expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- expect.objectContaining is typed `any` by vitest
         data: expect.objectContaining({
           action: "provider.registry_update",
           actorUserId: "user_1"

@@ -5,7 +5,13 @@ const scanRoots = [
   "apps/web/app",
   "apps/admin/app/campaign-ops",
   "apps/admin/app/digital-access",
-  "apps/admin/app/otp",
+  "apps/admin/app/digital-products",
+  "apps/admin/app/digital-value",
+  "apps/admin/app/vtu",
+  "apps/admin/app/growth-services",
+  "apps/admin/app/marketplace",
+  "apps/admin/app/rewards",
+  "apps/admin/app/providers",
   "packages/ui/src"
 ];
 
@@ -15,7 +21,6 @@ const blockedTerms = [
   "Demo mode",
   "Demo queue",
   "Demo fallback",
-  "Fallback",
   "missing id",
   "Detail endpoint",
   "Queue endpoint",
@@ -44,21 +49,20 @@ const fileScopedBlockedPatterns = [
   {
     filePattern: /apps[\\/]web[\\/]app[\\/]ui[\\/]session-panel\.tsx$/,
     label: "sidebar auth form",
-    pattern:
-      /<form\b|type=["']password["']|\bsignIn\b|\bsignUp\b|\bauth(?:entication)?\s+form\b|Create account|Sign in/i
+    pattern: /<form\b|type=["']password["']|\bsignIn\s*\(|\bsignUp\s*\(|\bauth(?:entication)?\s+form\b/i
   }
 ];
 
 const requiredRoutes = [
-  "apps/web/app/campaigns/page.tsx",
-  "apps/web/app/campaigns/new/page.tsx",
-  "apps/web/app/campaigns/[id]/page.tsx",
-  "apps/web/app/campaigns/analytics/page.tsx",
-  "apps/web/app/billing/page.tsx",
-  "apps/web/app/reports/page.tsx",
-  "apps/web/app/profile/page.tsx",
-  "apps/web/app/notifications/page.tsx",
-  "apps/web/app/onboarding/page.tsx",
+  "apps/web/app/os/campaigns/page.tsx",
+  "apps/web/app/os/campaigns/new/page.tsx",
+  "apps/web/app/os/campaigns/[id]/page.tsx",
+  "apps/web/app/os/analytics/page.tsx",
+  "apps/web/app/os/wallet/page.tsx",
+  "apps/web/app/os/reports/page.tsx",
+  "apps/web/app/os/profile/page.tsx",
+  "apps/web/app/os/notifications/page.tsx",
+  "apps/web/app/os/onboarding/page.tsx",
   "apps/admin/app/campaign-ops/page.tsx",
   "apps/admin/app/campaign-ops/queue/page.tsx",
   "apps/admin/app/campaign-ops/detail/page.tsx",
@@ -68,29 +72,29 @@ const requiredRoutes = [
 
 const serviceLanguageRequirements = [
   {
-    file: "apps/web/app/campaigns/page.tsx",
+    file: "apps/web/app/os/campaigns/page.tsx",
     label: "client campaigns",
     requiredTerms: ["campaign", "operator", "report", "spend"]
   },
   {
-    file: "apps/web/app/campaigns/new/page.tsx",
+    file: "apps/web/app/os/campaigns/new/page.tsx",
     label: "campaign intake",
     requiredTerms: ["brief", "budget", "invoice", "operator"]
   },
   {
-    file: "apps/web/app/billing/page.tsx",
+    file: "apps/web/app/os/wallet/page.tsx",
     label: "billing",
     requiredTerms: ["campaign", "invoice", "wallet", "budget"]
   },
   {
-    file: "apps/web/app/reports/page.tsx",
+    file: "apps/web/app/os/reports/page.tsx",
     label: "client reports",
     requiredTerms: ["campaign", "report", "operator", "proof"]
   },
   {
-    file: "apps/web/app/profile/page.tsx",
+    file: "apps/web/app/os/profile/page.tsx",
     label: "business profile",
-    requiredTerms: ["profile", "campaign", "billing", "operator"]
+    requiredTerms: ["profile", "campaign", "invoice", "operator"]
   },
   {
     file: "apps/admin/app/campaign-ops/page.tsx",

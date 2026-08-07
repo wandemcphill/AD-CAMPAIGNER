@@ -1,4 +1,4 @@
-import { createPrismaClient } from "../src/index";
+import { createPrismaClient, type Prisma } from "../src/index";
 
 // Seeds ProviderConfig rows for the financial-products vertical (virtual
 // accounts, virtual cards, remittance). No live credentials exist for any of
@@ -85,7 +85,7 @@ async function main() {
         enabledCountries: seed.enabledCountries,
         enabledNetworks: [],
         enabledProductTypes: [],
-        metadata: seed.metadata
+        metadata: seed.metadata as Prisma.InputJsonValue
       }
     });
     created++;
