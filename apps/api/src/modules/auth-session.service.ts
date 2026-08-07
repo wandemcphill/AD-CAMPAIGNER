@@ -318,7 +318,7 @@ function isUniqueConstraintError(error: unknown) {
 export class AuthSessionService {
   constructor(private readonly prismaService: PrismaService) {}
 
-  async getSession(headers: HeaderBag) {
+  async getSession(headers: HeaderBag): Promise<Record<string, unknown>> {
     const context = optionalAuthenticatedContextFromHeaders(headers);
 
     if (!context?.userId) {
