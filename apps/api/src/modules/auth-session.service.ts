@@ -322,7 +322,7 @@ export class AuthSessionService {
     const context = optionalAuthenticatedContextFromHeaders(headers);
 
     if (!context?.userId) {
-      return null;
+      return {};
     }
 
     const scope = await this.getValidatedScope(headers);
