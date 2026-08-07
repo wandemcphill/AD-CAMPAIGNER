@@ -27,7 +27,8 @@ export const featureFlags = {
   trustEngineAdmin: false,
   virtualAccounts: true,
   virtualCards: true,
-  remittance: true
+  remittance: true,
+  telecomGateway: true
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlags;

@@ -42,6 +42,7 @@ import { PrismaModule } from "./prisma.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 import { VtuModule } from "./vtu/vtu.module";
+import { TelecomGatewayModule } from "./telecom-gateway/telecom-gateway.module";
 import { VirtualNumbersModule } from "./virtual-numbers/virtual-numbers.module";
 import { FxModule } from "./fx/fx.module";
 import { DigitalValueModule } from "./digital-value/digital-value.module";
@@ -78,6 +79,7 @@ import { FinancialProductsModule } from "./financial-products/financial-products
     DigitalAccessModule,
     VouchersModule,
     VtuModule,
+    TelecomGatewayModule,
     VirtualNumbersModule,
     FxModule,
     DigitalValueModule,

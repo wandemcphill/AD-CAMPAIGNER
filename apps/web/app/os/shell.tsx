@@ -10,6 +10,7 @@ import {
   Bitcoin,
   Bot,
   Briefcase,
+  Building2,
   CreditCard,
   FileText,
   Folder,
@@ -100,6 +101,14 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Education", href: "/os/utilities?tab=education", icon: GraduationCap },
       { label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin },
       { label: "Buy RMB", href: "/os/rmb", icon: Banknote },
+    ],
+  },
+  {
+    title: "Financial Products",
+    items: [
+      { label: "Virtual Accounts", href: "/os/financial-products", icon: Building2 },
+      { label: "Virtual Cards", href: "/os/financial-products?tab=cards", icon: CreditCard },
+      { label: "Remittance", href: "/os/financial-products?tab=remittance", icon: Send },
     ],
   },
   {

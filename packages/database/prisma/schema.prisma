@@ -649,6 +649,7 @@ model Workspace {
   growthOrders                   GrowthOrder[]
   vtuOrders                      VtuOrder[]
   vtuWalletCharges               VtuWalletCharge[]
+  telecomOrders                  TelecomOrder[]
   virtualNumbers                 VirtualNumber[]
   virtualNumberOrders            VirtualNumberOrder[]
   virtualNumberWalletCharges     VirtualNumberWalletCharge[]
@@ -2373,6 +2374,41 @@ model VtuOrder {
   @@index([workspaceId, status, createdAt])
   @@index([providerName, providerReference])
   @@index([status, createdAt])
+}
+
+// ─── Telecom Gateway (global airtime/data — country-routed across providers) ──
+// Nigeria routes to ClubKonnect (same wholesale account as VtuOrder); every other
+// supported country routes to Reloadly. Reuses VtuProductType/VtuOrderStatus —
+// airtime/data is the same product shape regardless of provider or country.
+
+model TelecomOrder {
+  id                 String         @id @default(uuid())
+  workspaceId        String
+  productType        VtuProductType
+  countryIso         String
+  operatorId         String
+  operatorName       String?
+  network            String?
+  msisdnMasked       String
+  msisdnEncrypted    String
+  bundleId           String?
+  amountMinor        Int
+  costMinor          Int
+  currency           String
+  providerName       String
+  providerReference  String?
+  status             VtuOrderStatus @default(QUOTED)
+  idempotencyKey     String         @unique
+  failureReason      String?
+  debitLedgerEntryId String?
+  metadata           Json           @default("{}")
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, status, createdAt])
+  @@index([providerName, providerReference])
+  @@index([countryIso, status])
 }
 
 model VtuWalletCharge {

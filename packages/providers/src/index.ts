@@ -2605,6 +2605,7 @@ export interface AirtimePurchaseProvider {
 export * from './contract.js';
 export * from './router.js';
 export * from './vtu.js';
+export * from './telecom.js';
 export * from './virtual-numbers.js';
 export * from './gift-cards.js';
 export * from './airtime-cashout.js';

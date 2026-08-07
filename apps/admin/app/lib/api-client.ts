@@ -296,8 +296,13 @@ export async function logout() {
 }
 
 export async function fetchCurrentSession() {
-  const result = normalizeAuthPayload(await apiRequest<AuthEnvelope>("/auth/session"));
+  const payload = await apiRequest<AuthEnvelope>("/auth/session");
 
+  if (!payload) {
+    return undefined;
+  }
+
+  const result = normalizeAuthPayload(payload);
   return result.session;
 }
 

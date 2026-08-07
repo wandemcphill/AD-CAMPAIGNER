@@ -180,6 +180,9 @@ importers:
       ioredis:
         specifier: ^5.8.2
         version: 5.10.1
+      libphonenumber-js:
+        specifier: ^1.13.2
+        version: 1.13.2
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
