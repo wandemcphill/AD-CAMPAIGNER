@@ -122,6 +122,31 @@ interface PurchaseLimitRow {
   utilizationBps: number;
 }
 
+type SettlementStatus =
+  | "PENDING"
+  | "READY"
+  | "SUBMITTED"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "FAILED"
+  | "CANCELLED"
+  | "REQUIRES_REVIEW";
+
+interface SettlementRow {
+  id: string;
+  partnerId: string;
+  sourceAmountMinor: number;
+  sourceCurrency: string;
+  destinationAmountMinor: number;
+  destinationCurrency: string;
+  status: SettlementStatus;
+  provider: string;
+  providerReference?: string;
+  errorReason?: string;
+  retryCount: number;
+  createdAt: string;
+}
+
 function microsToRate(rateMicros: string) {
   return Number(rateMicros) / 1_000_000;
 }
@@ -143,7 +168,12 @@ const STATUS_TONE: Record<string, "success" | "warning" | "neutral" | "danger"> 
   HEALTHY: "success",
   DEGRADED: "warning",
   DOWN: "danger",
-  DISABLED: "neutral"
+  DISABLED: "neutral",
+  COMPLETED: "success",
+  READY: "neutral",
+  SUBMITTED: "neutral",
+  PROCESSING: "neutral",
+  REQUIRES_REVIEW: "warning"
 };
 
 const TABS = [
@@ -153,7 +183,8 @@ const TABS = [
   { id: "margins", label: "Margins" },
   { id: "reconciliation", label: "Reconciliation" },
   { id: "limits", label: "Purchase Limits" },
-  { id: "fx", label: "FX Rate" }
+  { id: "fx", label: "FX Rate" },
+  { id: "settlements", label: "Settlements" }
 ];
 
 function formatNaira(amountMinor: number) {
@@ -172,6 +203,7 @@ export default function AdminDigitalProductsPage() {
   const [marginStats, setMarginStats] = useState<MarginStats>();
   const [reconciliationData, setReconciliationData] = useState<ReconciliationData>();
   const [purchaseLimits, setPurchaseLimits] = useState<PurchaseLimitRow[]>([]);
+  const [settlements, setSettlements] = useState<SettlementRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [busyId, setBusyId] = useState<string>();
@@ -187,15 +219,17 @@ export default function AdminDigitalProductsPage() {
   const refresh = useCallback(async () => {
     setError(undefined);
     try {
-      const [numbersRes, ordersRes, healthRes, historyRes, marginRes, reconRes, limitsRes] = await Promise.all([
-        apiRequest<{ numbers: AdminVirtualNumber[] }>("/admin/digital-products/numbers"),
-        apiRequest<{ orders: AdminVirtualNumberOrder[] }>("/admin/digital-products/orders"),
-        apiRequest<ProviderHealthRow[]>("/admin/digital-products/providers/health"),
-        apiRequest<FxRateRow[]>("/admin/digital-products/fx/history"),
-        apiRequest<MarginStats>("/admin/digital-products/margin-analytics?days=30"),
-        apiRequest<ReconciliationData>("/admin/digital-products/reconciliation?days=30"),
-        apiRequest<PurchaseLimitRow[]>("/admin/digital-products/purchase-limits")
-      ]);
+      const [numbersRes, ordersRes, healthRes, historyRes, marginRes, reconRes, limitsRes, settlementsRes] =
+        await Promise.all([
+          apiRequest<{ numbers: AdminVirtualNumber[] }>("/admin/digital-products/numbers"),
+          apiRequest<{ orders: AdminVirtualNumberOrder[] }>("/admin/digital-products/orders"),
+          apiRequest<ProviderHealthRow[]>("/admin/digital-products/providers/health"),
+          apiRequest<FxRateRow[]>("/admin/digital-products/fx/history"),
+          apiRequest<MarginStats>("/admin/digital-products/margin-analytics?days=30"),
+          apiRequest<ReconciliationData>("/admin/digital-products/reconciliation?days=30"),
+          apiRequest<PurchaseLimitRow[]>("/admin/digital-products/purchase-limits"),
+          apiRequest<SettlementRow[]>("/admin/settlements?limit=50")
+        ]);
       setNumbers(numbersRes.numbers);
       setOrders(ordersRes.orders);
       setProviders(healthRes);
@@ -204,6 +238,7 @@ export default function AdminDigitalProductsPage() {
       setMarginStats(marginRes);
       setReconciliationData(reconRes);
       setPurchaseLimits(limitsRes);
+      setSettlements(settlementsRes);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load Digital Products data.");
     } finally {
@@ -244,6 +279,19 @@ export default function AdminDigitalProductsPage() {
       await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not retry this order.");
+    } finally {
+      setBusyId(undefined);
+    }
+  }
+
+  async function retrySettlement(id: string) {
+    setBusyId(id);
+    setError(undefined);
+    try {
+      await apiRequest(`/admin/settlements/${encodeURIComponent(id)}/retry`, { method: "POST" });
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not retry this settlement.");
     } finally {
       setBusyId(undefined);
     }
@@ -313,6 +361,9 @@ export default function AdminDigitalProductsPage() {
   }
 
   const failedOrders = orders.filter((o) => o.status === "FAILED");
+  const failedSettlements = settlements.filter(
+    (s) => s.status === "FAILED" || s.status === "REQUIRES_REVIEW"
+  );
 
   return (
     <main className="ft-shell min-h-screen">
@@ -339,9 +390,11 @@ export default function AdminDigitalProductsPage() {
 
         <div className="mt-4">
           <TabBar
-            items={TABS.map((t) =>
-              t.id === "orders" ? { ...t, count: failedOrders.length } : t
-            )}
+            items={TABS.map((t) => {
+              if (t.id === "orders") return { ...t, count: failedOrders.length };
+              if (t.id === "settlements") return { ...t, count: failedSettlements.length };
+              return t;
+            })}
             onChange={setTab}
             value={tab}
           />
@@ -723,6 +776,44 @@ export default function AdminDigitalProductsPage() {
                 </div>
               )}
             </Panel>
+          </div>
+        )}
+
+        {tab === "settlements" && (
+          <div className="mt-4 grid gap-2">
+            {loading ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">Loading settlements...</Panel>
+            ) : settlements.length === 0 ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">No settlements yet.</Panel>
+            ) : (
+              settlements.map((s) => (
+                <Panel className="flex items-center gap-4 p-4" key={s.id}>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold">
+                      {(s.sourceAmountMinor / 100).toLocaleString()} {s.sourceCurrency} → {" "}
+                      {(s.destinationAmountMinor / 100).toLocaleString()} {s.destinationCurrency} · {s.provider}
+                    </div>
+                    <div className="text-xs text-[var(--ft-text-muted)]">
+                      {s.partnerId} · {new Date(s.createdAt).toLocaleString()}
+                      {s.retryCount > 0 && ` · ${s.retryCount} retries`}
+                    </div>
+                    {s.errorReason && (
+                      <div className="text-xs text-[var(--ft-red)]">{s.errorReason}</div>
+                    )}
+                  </div>
+                  <Badge tone={STATUS_TONE[s.status] ?? "neutral"}>{s.status.toLowerCase()}</Badge>
+                  {(s.status === "FAILED" || s.status === "REQUIRES_REVIEW") && (
+                    <Button
+                      disabled={busyId !== undefined}
+                      onClick={() => void retrySettlement(s.id)}
+                    >
+                      <RotateCcw className="size-4" />
+                      Retry
+                    </Button>
+                  )}
+                </Panel>
+              ))
+            )}
           </div>
         )}
       </div>

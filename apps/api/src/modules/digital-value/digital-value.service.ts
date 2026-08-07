@@ -472,6 +472,28 @@ export class DigitalValueService {
     });
   }
 
+  async adminListGiftCardSellTransactions(workspaceId?: string, status?: string) {
+    return this.db.giftCardSellTransaction.findMany({
+      where: {
+        ...(workspaceId ? { workspaceId } : {}),
+        ...(status ? { status: status as any } : {})
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200
+    });
+  }
+
+  async adminListAirtimeCashoutTransactions(workspaceId?: string, status?: string) {
+    return this.db.airtimeCashoutTransaction.findMany({
+      where: {
+        ...(workspaceId ? { workspaceId } : {}),
+        ...(status ? { status: status as any } : {})
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 200
+    });
+  }
+
   private async logValidationAudit(
     ctx: AuthenticatedRequestContext,
     transactionId: string,

@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException, Injectable, Logger } from "@ne
 import { calculateAvailableBalance } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import { createSogoRmbAdapter, type RmbBuyProvider } from "@fliptrybe/providers";
+import type { RmbOrderStatus } from "@fliptrybe/database";
 import { featureFlags } from "@fliptrybe/feature-flags";
 
 import { PrismaService } from "../prisma.service";
@@ -219,6 +220,17 @@ export class RmbService {
       where: { workspaceId: ctx.workspaceId },
       orderBy: { createdAt: "desc" },
       take: 50
+    });
+  }
+
+  async adminListOrders(workspaceId?: string, status?: string) {
+    return this.db.rmbOrder.findMany({
+      where: {
+        ...(workspaceId ? { workspaceId } : {}),
+        ...(status ? { status: status as RmbOrderStatus } : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200
     });
   }
 }

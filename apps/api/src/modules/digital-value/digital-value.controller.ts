@@ -129,6 +129,22 @@ export class AdminDigitalValueController {
     return this.service.listFlaggedGiftCardSells(workspaceId);
   }
 
+  @Get('gift-cards/sell')
+  listGiftCardSellTransactions(
+    @Query('workspaceId') workspaceId?: string,
+    @Query('status') status?: string
+  ) {
+    return this.service.adminListGiftCardSellTransactions(workspaceId, status);
+  }
+
+  @Get('airtime/cashout')
+  listAirtimeCashoutTransactions(
+    @Query('workspaceId') workspaceId?: string,
+    @Query('status') status?: string
+  ) {
+    return this.service.adminListAirtimeCashoutTransactions(workspaceId, status);
+  }
+
   @Post('gift-cards/sell/:approvalId/decide')
   decideFlaggedGiftCardSell(
     @Param('approvalId') approvalId: string,

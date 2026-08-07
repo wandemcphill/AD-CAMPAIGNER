@@ -43,3 +43,14 @@ export class CryptoController {
     return this.crypto.listTransactions(workspaceContextFromRequest(request));
   }
 }
+
+@Controller("admin/crypto")
+@RequirePermissions("admin:access")
+export class AdminCryptoController {
+  constructor(@Inject(CryptoService) private readonly crypto: CryptoService) {}
+
+  @Get("transactions")
+  listTransactions(@Query("workspaceId") workspaceId?: string, @Query("status") status?: string) {
+    return this.crypto.adminListTransactions(workspaceId, status);
+  }
+}

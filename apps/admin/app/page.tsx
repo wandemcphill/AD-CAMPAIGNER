@@ -6,6 +6,7 @@ import {
   Banknote,
   Bell,
   Boxes,
+  CircleDollarSign,
   FileSearch,
   Gift,
   Globe,
@@ -82,6 +83,7 @@ export default function AdminPage() {
               { label: "VTU", href: "/vtu/", icon: Smartphone },
               { label: "Providers", href: "/providers/", icon: Network },
               { label: "Digital Products", href: "/digital-products/", icon: Globe },
+              { label: "Digital Value", href: "/digital-value/", icon: CircleDollarSign },
               { label: "Rewards", href: "/rewards/", icon: Gift },
               { label: "Marketplace", href: "/marketplace/applications/", icon: Store }
             ].map((item) => (

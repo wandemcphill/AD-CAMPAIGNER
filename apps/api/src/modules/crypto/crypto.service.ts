@@ -95,4 +95,15 @@ export class CryptoService {
       take: 50
     });
   }
+
+  async adminListTransactions(workspaceId?: string, status?: string) {
+    return this.db.cryptoSellTransaction.findMany({
+      where: {
+        ...(workspaceId ? { workspaceId } : {}),
+        ...(status ? { status } : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+  }
 }
