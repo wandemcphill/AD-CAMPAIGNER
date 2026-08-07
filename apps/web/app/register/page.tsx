@@ -9,6 +9,7 @@ import { Badge, Button, ThemeToggle } from "@fliptrybe/ui";
 import { Input, Divider } from "@fliptrybe/ui/components";
 
 import { useApiSession } from "../lib/use-session";
+import { migrateGuestPurchases } from "../guest/guest-checkout-api";
 
 const RECOVERY_QUESTIONS = [
   "What was the name of your first pet?",
@@ -43,6 +44,7 @@ function FloatingParticles() {
 export default function RegisterPage() {
   const router = useRouter();
   const { loading: sessionLoading, session, signUp } = useApiSession();
+  const [migrateContact, setMigrateContact] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -60,6 +62,12 @@ export default function RegisterPage() {
       router.replace("/onboarding");
     }
   }, [router, session, sessionLoading]);
+
+  useEffect(() => {
+    // Read once on mount via window.location instead of useSearchParams to avoid the
+    // Suspense-boundary requirement that hook carries in the App Router.
+    setMigrateContact(new URLSearchParams(window.location.search).get("migrateContact"));
+  }, []);
 
   const passwordsMatch = confirmPassword.length === 0 || password === confirmPassword;
   const pinValid = recoveryPin.length === 0 || /^\d{4,6}$/.test(recoveryPin);
@@ -86,6 +94,16 @@ export default function RegisterPage() {
         confirmPassword,
         ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
       });
+
+      if (migrateContact) {
+        // Best-effort — a guest's past purchases are a bonus, not a blocker on signup.
+        try {
+          await migrateGuestPurchases(migrateContact);
+        } catch {
+          // Ignore: the account is created either way; nothing for the user to act on here.
+        }
+      }
+
       router.replace("/onboarding");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Registration failed.");
@@ -154,9 +172,7 @@ export default function RegisterPage() {
             {/* Mobile logo */}
             <div className="mb-8 flex items-center justify-between lg:hidden">
               <div className="flex items-center gap-3">
-                <div className="grid size-9 place-items-center rounded-[var(--radius-sm)] bg-[var(--ft-accent)] font-mono text-xs font-bold text-[var(--ft-text-inverse)]">
-                  FT
-                </div>
+                <img alt="FlipTrybe" className="size-9" src="/brand/icon-mark.svg" />
                 <span className="text-lg font-bold">FlipTrybe</span>
               </div>
               <ThemeToggle />

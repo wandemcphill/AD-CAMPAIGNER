@@ -40,7 +40,8 @@ async function bootstrap() {
   app.setGlobalPrefix("v1", {
     exclude: [
       { path: "", method: RequestMethod.GET },
-      { path: "api/webhooks/korapay", method: RequestMethod.POST }
+      { path: "api/webhooks/korapay", method: RequestMethod.POST },
+      { path: "api/webhooks/korapay-guest", method: RequestMethod.POST }
     ]
   });
   app.useGlobalPipes(

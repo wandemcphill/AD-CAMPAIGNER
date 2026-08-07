@@ -17,6 +17,7 @@ export function createDatabaseHealth(status: DatabaseHealth["status"] = "ok"): D
 export { Prisma, PrismaClient };
 export type DatabaseClient = PrismaClient;
 export * from "../generated/client/enums";
+export type { GuestTransaction } from "../generated/client/client";
 
 export function createPrismaClient(connectionString = process.env.DATABASE_URL): PrismaClient {
   if (!connectionString) {
