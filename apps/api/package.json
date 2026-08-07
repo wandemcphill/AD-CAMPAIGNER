@@ -17,6 +17,7 @@
     "@fliptrybe/config": "workspace:*",
     "@fliptrybe/database": "workspace:*",
     "@fliptrybe/events": "workspace:*",
+    "@fliptrybe/feature-flags": "workspace:*",
     "@fliptrybe/notifications": "workspace:*",
     "@fliptrybe/payments": "workspace:*",
     "@fliptrybe/providers": "workspace:*",
@@ -47,6 +48,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@nestjs/testing": "^11.1.28",
     "@swc-node/register": "^1.10.10",
     "@swc/core": "^1.13.20",
     "@types/node": "^24.10.1",
