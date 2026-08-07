@@ -70,7 +70,8 @@ describe("AuthorizationGuard", () => {
       permissions: [],
       role: "ADMIN",
       userId: "user_123",
-      workspaceId: "workspace_123"
+      workspaceId: "workspace_123",
+      isPlatformAdmin: true
     };
     const { getWorkspaceContext, guard } = createGuard(
       { [authorizationPermissionsKey]: ["admin:access"] },
@@ -92,7 +93,8 @@ describe("AuthorizationGuard", () => {
         permissions: [],
         role: "ADMIN",
         userId: "user_123",
-        workspaceId: "workspace_123"
+        workspaceId: "workspace_123",
+        isPlatformAdmin: true
       }
     };
     const { getWorkspaceContext, guard } = createGuard({

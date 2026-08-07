@@ -17,7 +17,7 @@ export default function LoginPage() {
   const [needsTwoFactor, setNeedsTwoFactor] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
-  const isAdminSession = session?.role === "OWNER" || session?.role === "ADMIN";
+  const isAdminSession = Boolean(session?.isPlatformAdmin);
 
   useEffect(() => {
     if (!sessionLoading && isAdminSession) {
@@ -37,7 +37,7 @@ export default function LoginPage() {
         ...(totpCode.trim() ? { totpCode: totpCode.trim() } : {})
       });
 
-      if (nextSession.role !== "OWNER" && nextSession.role !== "ADMIN") {
+      if (!nextSession.isPlatformAdmin) {
         setError("This account is not allowed to access the admin console.");
         return;
       }

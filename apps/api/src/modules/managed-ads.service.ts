@@ -3194,7 +3194,21 @@ export class ManagedAdsService {
       where: { userId: scope.userId, organizationId: workspace.organizationId, deletedAt: null },
       select: { role: true, permissions: true }
     });
-    const missingPermission = permissions.find((permission) => !membership || !hasPermission(membership, permission));
+
+    // admin:access is resolved fresh from the User table, never from the
+    // TeamMember role/permissions above — see hasPermission in packages/auth.
+    let isPlatformAdmin = Boolean(scope.isPlatformAdmin);
+    if (permissions.includes("admin:access")) {
+      const user = await tx.user.findFirst({
+        where: { id: scope.userId },
+        select: { isPlatformAdmin: true }
+      });
+      isPlatformAdmin = Boolean(user?.isPlatformAdmin);
+    }
+
+    const missingPermission = permissions.find(
+      (permission) => !membership || !hasPermission({ ...membership, isPlatformAdmin }, permission)
+    );
     if (missingPermission) {
       throw new ForbiddenException(`Missing required permission: ${missingPermission}.`);
     }

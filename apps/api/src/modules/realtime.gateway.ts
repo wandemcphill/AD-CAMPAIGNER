@@ -139,7 +139,8 @@ export class RealtimeGateway implements OnGatewayConnection {
     return hasPermission(
       {
         role: workspaceContext.role,
-        permissions: workspaceContext.permissions ?? []
+        permissions: workspaceContext.permissions ?? [],
+        isPlatformAdmin: Boolean(workspaceContext.isPlatformAdmin)
       },
       permission
     );

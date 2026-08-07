@@ -25,6 +25,7 @@ export type ApiSession = {
   };
   role?: string;
   permissions?: string[];
+  isPlatformAdmin?: boolean;
 };
 
 export type AuthCredentials = {
@@ -249,6 +250,9 @@ function normalizeAuthPayload(payload: AuthEnvelope): AuthResult {
   }
   if (source.defaultWorkspaceId) {
     session.defaultWorkspaceId = source.defaultWorkspaceId;
+  }
+  if (source.isPlatformAdmin !== undefined) {
+    session.isPlatformAdmin = source.isPlatformAdmin;
   }
 
   const result: AuthResult = { session };

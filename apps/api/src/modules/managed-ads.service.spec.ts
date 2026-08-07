@@ -600,6 +600,9 @@ function createService(
   );
   const teamMemberFindFirst = vi.fn(() => Promise.resolve(membership));
   const workspaceFindFirst = vi.fn(() => Promise.resolve(workspaceRecord));
+  const userFindFirst = vi.fn(() =>
+    Promise.resolve({ isPlatformAdmin: (membership?.permissions ?? []).includes("admin:access") })
+  );
   const service = new ManagedAdsService({
     client: {
       $transaction: transaction,
@@ -667,6 +670,9 @@ function createService(
       teamMember: {
         findFirst: teamMemberFindFirst
       },
+      user: {
+        findFirst: userFindFirst
+      },
       wallet: {
         findUnique: vi.fn(() => Promise.resolve({ id: "wallet_123", workspaceId: workspace.workspaceId, currency: "NGN" })),
         upsert: walletUpsert
@@ -718,6 +724,7 @@ function createService(
     paymentIntentUpdate,
     service,
     teamMemberFindFirst,
+    userFindFirst,
     transaction,
     walletUpsert,
     workspaceFindFirst

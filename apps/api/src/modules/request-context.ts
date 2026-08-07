@@ -15,6 +15,7 @@ export interface AuthenticatedRequestContext {
   userName?: string;
   role?: Role;
   permissions?: Permission[];
+  isPlatformAdmin?: boolean;
 }
 
 export interface WorkspaceContextEntity {

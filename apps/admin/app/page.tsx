@@ -42,7 +42,7 @@ export default function AdminPage() {
   );
 
   useEffect(() => {
-    if (!sessionLoading && !session) {
+    if (!sessionLoading && !session?.isPlatformAdmin) {
       window.location.replace("/login/");
     }
   }, [sessionLoading, session]);
@@ -51,7 +51,7 @@ export default function AdminPage() {
     return <AdminAuthState loading />;
   }
 
-  if (!session) {
+  if (!session?.isPlatformAdmin) {
     return <AdminAuthState error={sessionError} loading={false} />;
   }
 

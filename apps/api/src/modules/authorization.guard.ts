@@ -50,7 +50,8 @@ export class AuthorizationGuard implements CanActivate {
       request.workspaceContext ?? (await this.authSession.getWorkspaceContext(request.headers));
     const member = {
       role: workspaceContext.role as Role,
-      permissions: workspaceContext.permissions ?? []
+      permissions: workspaceContext.permissions ?? [],
+      isPlatformAdmin: Boolean(workspaceContext.isPlatformAdmin)
     };
 
     const missingPermission = requiredPermissions.find(

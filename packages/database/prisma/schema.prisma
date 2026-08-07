@@ -572,6 +572,7 @@ model User {
   displayName                    String?
   defaultWorkspaceId             String?
   status                         UserStatus                      @default(ACTIVE)
+  isPlatformAdmin                Boolean                         @default(false)
   passwordHash                   String?
   emailVerifiedAt                DateTime?
   totpSecretEncrypted            String?

@@ -180,12 +180,12 @@ export function AdminCampaignOpsShell({
   const activeItem = navItems.find((item) => item.href === active);
 
   useEffect(() => {
-    if (!loading && !session) {
+    if (!loading && !session?.isPlatformAdmin) {
       window.location.replace("/login/");
     }
   }, [loading, session]);
 
-  if (loading || !session) {
+  if (loading || !session?.isPlatformAdmin) {
     return <AdminAuthState error={error} loading={loading} title="Campaign ops auth" />;
   }
 

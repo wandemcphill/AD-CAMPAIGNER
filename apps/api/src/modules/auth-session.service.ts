@@ -54,6 +54,7 @@ interface AuthScope {
     displayName?: string | null;
     email?: string | null;
     defaultWorkspaceId?: string | null;
+    isPlatformAdmin: boolean;
   };
   workspace: {
     id: string;
@@ -98,6 +99,21 @@ function readTtlSeconds() {
   const parsed = Number(process.env.AUTH_SESSION_TTL_SECONDS);
 
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : defaultSessionTtlSeconds;
+}
+
+// Bootstrap mechanism for the platform admin flag: usernames listed here are
+// promoted to isPlatformAdmin on register/login. This is the ONLY way an
+// account gains admin:access — never via role defaults (see hasPermission in
+// packages/auth), so registering a workspace (from either app) never grants
+// admin console access on its own. Set this env var on the API service only;
+// it is never read by, or exposed to, any client.
+function platformAdminUsernames() {
+  return new Set(
+    (process.env.PLATFORM_ADMIN_USERNAMES ?? "")
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean)
+  );
 }
 
 function scryptKey(
@@ -341,7 +357,8 @@ export class AuthSessionService {
       ...(scope.user.email == null ? {} : { userEmail: scope.user.email }),
       userName: scope.user.name,
       role: scope.membership.role as Role,
-      permissions: scope.membership.permissions as Permission[]
+      permissions: scope.membership.permissions as Permission[],
+      isPlatformAdmin: scope.user.isPlatformAdmin
     };
   }
 
@@ -369,9 +386,17 @@ export class AuthSessionService {
             email: null,
             displayName,
             status: "ACTIVE",
-            passwordHash
+            passwordHash,
+            isPlatformAdmin: platformAdminUsernames().has(input.username.toLowerCase())
           },
-          select: { id: true, username: true, name: true, displayName: true, email: true }
+          select: {
+            id: true,
+            username: true,
+            name: true,
+            displayName: true,
+            email: true,
+            isPlatformAdmin: true
+          }
         });
         const organization = await transaction.organization.create({
           data: {
@@ -434,7 +459,8 @@ export class AuthSessionService {
         defaultWorkspaceId: true,
         deletedAt: true,
         totpSecretEncrypted: true,
-        totpEnabledAt: true
+        totpEnabledAt: true,
+        isPlatformAdmin: true
       }
     });
 
@@ -453,6 +479,11 @@ export class AuthSessionService {
 
     if (user.totpEnabledAt && user.totpSecretEncrypted) {
       await this.verifyLoginTwoFactor(user.id, user.totpSecretEncrypted, input.totpCode);
+    }
+
+    if (!user.isPlatformAdmin && platformAdminUsernames().has(user.username.toLowerCase())) {
+      await this.db.user.update({ where: { id: user.id }, data: { isPlatformAdmin: true } });
+      user.isPlatformAdmin = true;
     }
 
     const scope = await this.resolveUserLoginScope(user, input.workspaceId);
@@ -623,7 +654,8 @@ export class AuthSessionService {
         displayName: true,
         email: true,
         defaultWorkspaceId: true,
-        status: true
+        status: true,
+        isPlatformAdmin: true
       }
     });
 
@@ -849,7 +881,8 @@ export class AuthSessionService {
         slug: scope.organization.slug
       },
       role: scope.membership.role,
-      permissions: scope.membership.permissions
+      permissions: scope.membership.permissions,
+      isPlatformAdmin: scope.user.isPlatformAdmin
     };
   }
 

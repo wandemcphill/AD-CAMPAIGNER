@@ -19,7 +19,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string>();
 
   useEffect(() => {
-    if (!sessionLoading && session) {
+    if (!sessionLoading && session?.isPlatformAdmin) {
       router.replace("/campaign-ops");
     }
   }, [router, session, sessionLoading]);
@@ -37,7 +37,15 @@ export default function RegisterPage() {
         ...(displayName.trim() ? { displayName: displayName.trim() } : {})
       };
 
-      await signUp(credentials);
+      const nextSession = await signUp(credentials);
+
+      if (!nextSession.isPlatformAdmin) {
+        setError(
+          "Account created, but it is not authorized for the admin console. Contact a platform admin to request access."
+        );
+        return;
+      }
+
       router.replace("/campaign-ops");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Registration failed.");

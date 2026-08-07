@@ -212,11 +212,11 @@ export default function AdminDigitalProductsPage() {
   }, []);
 
   useEffect(() => {
-    if (!sessionLoading && !session) {
+    if (!sessionLoading && !session?.isPlatformAdmin) {
       window.location.replace("/login/");
       return;
     }
-    if (session) void refresh();
+    if (session?.isPlatformAdmin) void refresh();
   }, [sessionLoading, session, refresh]);
 
   async function forceRelease(id: string) {
@@ -308,7 +308,7 @@ export default function AdminDigitalProductsPage() {
     }
   }
 
-  if (sessionLoading || !session) {
+  if (sessionLoading || !session?.isPlatformAdmin) {
     return <AdminAuthState error={sessionError} loading={sessionLoading} title="Digital products auth" />;
   }
 

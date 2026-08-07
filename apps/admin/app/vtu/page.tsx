@@ -54,11 +54,11 @@ export default function AdminVtuPage() {
   }, []);
 
   useEffect(() => {
-    if (!sessionLoading && !session) {
+    if (!sessionLoading && !session?.isPlatformAdmin) {
       window.location.replace("/login/");
       return;
     }
-    if (session) {
+    if (session?.isPlatformAdmin) {
       void refresh();
     }
   }, [sessionLoading, session, refresh]);
@@ -117,7 +117,7 @@ export default function AdminVtuPage() {
     }
   }
 
-  if (sessionLoading || !session) {
+  if (sessionLoading || !session?.isPlatformAdmin) {
     return <AdminAuthState error={sessionError} loading={sessionLoading} title="VTU auth" />;
   }
 

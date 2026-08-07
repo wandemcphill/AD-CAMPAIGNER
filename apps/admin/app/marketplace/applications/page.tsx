@@ -89,11 +89,11 @@ export default function AdminMarketplaceApplicationsPage() {
   }, []);
 
   useEffect(() => {
-    if (!sessionLoading && !session) {
+    if (!sessionLoading && !session?.isPlatformAdmin) {
       window.location.replace("/login/");
       return;
     }
-    if (session) {
+    if (session?.isPlatformAdmin) {
       setLoading(true);
       void refresh(status);
     }
@@ -117,7 +117,7 @@ export default function AdminMarketplaceApplicationsPage() {
     }
   }
 
-  if (sessionLoading || !session) {
+  if (sessionLoading || !session?.isPlatformAdmin) {
     return <AdminAuthState error={sessionError} loading={sessionLoading} title="Marketplace auth" />;
   }
 

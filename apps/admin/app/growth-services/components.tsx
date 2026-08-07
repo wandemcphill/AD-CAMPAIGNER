@@ -19,12 +19,12 @@ export function AdminGrowthShell({ children, active }: { children: ReactNode; ac
   const { error, loading, session } = useApiSession();
 
   useEffect(() => {
-    if (!loading && !session) {
+    if (!loading && !session?.isPlatformAdmin) {
       window.location.replace("/login/");
     }
   }, [loading, session]);
 
-  if (loading || !session) {
+  if (loading || !session?.isPlatformAdmin) {
     return <AdminAuthState error={error} loading={loading} title="Growth auth" />;
   }
 

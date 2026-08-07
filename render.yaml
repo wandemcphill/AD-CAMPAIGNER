@@ -40,6 +40,8 @@ services:
         generateValue: true
       - key: SESSION_SECRET
         generateValue: true
+      - key: PLATFORM_ADMIN_USERNAMES
+        sync: false
       - key: TOTP_SECRET_ENCRYPTION_KEY
         generateValue: true
       - key: VOUCHER_PIN_SECRET
