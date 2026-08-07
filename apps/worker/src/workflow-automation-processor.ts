@@ -54,12 +54,16 @@ interface AutomationDb {
   };
   campaign: {
     findFirst: (args: { where: unknown; include?: unknown }) => Promise<CampaignWithSpend | null>;
+    update: (args: { where: { id: string }; data: unknown }) => Promise<unknown>;
   };
   wallet: {
     findFirst: (args: { where: unknown }) => Promise<WalletRecord | null>;
   };
   campaignCreative: {
     findFirst: (args: { where: unknown; orderBy?: unknown }) => Promise<CampaignCreativeRecord | null>;
+  };
+  notification: {
+    create: (args: { data: unknown }) => Promise<unknown>;
   };
 }
 
@@ -119,6 +123,47 @@ async function recordRun(db: AutomationDb, workflowId: string): Promise<void> {
   });
 }
 
+async function executeAction(
+  db: AutomationDb,
+  workflow: AutomationWorkflowRecord,
+  config: WorkflowConfig,
+  outcome: string
+): Promise<string> {
+  switch (config.action) {
+    case "pause_campaign": {
+      if (!config.campaignId) return `${outcome}:action_skipped:no_campaign_id`;
+      const campaign = await db.campaign.findFirst({
+        where: { id: config.campaignId, workspaceId: workflow.workspaceId, deletedAt: null }
+      });
+      if (!campaign) return `${outcome}:action_skipped:campaign_not_found`;
+      await db.campaign.update({
+        where: { id: campaign.id },
+        data: { status: "PAUSED" }
+      });
+      return `${outcome}:action_applied:pause_campaign`;
+    }
+
+    case "notify": {
+      await db.notification.create({
+        data: {
+          workspaceId: workflow.workspaceId,
+          channel: "IN_APP",
+          title: `Automation triggered: ${workflow.triggerKind}`,
+          body: `Workflow "${workflow.id}" fired (${outcome}).`
+        }
+      });
+      return `${outcome}:action_applied:notify`;
+    }
+
+    case "log":
+    case undefined:
+      return outcome;
+
+    default:
+      return `${outcome}:action_skipped:unknown_action`;
+  }
+}
+
 async function evaluateWorkflow(
   db: AutomationDb,
   workflow: AutomationWorkflowRecord,
@@ -132,7 +177,7 @@ async function evaluateWorkflow(
       if (!expr) return "skipped:no_cron_expression";
       if (!matchesCron(expr, now)) return "skipped:cron_not_matched";
       await recordRun(db, workflow.id);
-      return "fired:schedule";
+      return executeAction(db, workflow, config, "fired:schedule");
     }
 
     case "BUDGET_THRESHOLD": {
@@ -149,7 +194,7 @@ async function evaluateWorkflow(
       const spendPct = campaign.budgetMinor > 0 ? (totalSpend / campaign.budgetMinor) * 100 : 0;
       if (spendPct < thresholdPct) return `skipped:spend_${Math.round(spendPct)}pct_below_threshold`;
       await recordRun(db, workflow.id);
-      return `fired:budget_threshold_${Math.round(spendPct)}pct`;
+      return executeAction(db, workflow, config, `fired:budget_threshold_${Math.round(spendPct)}pct`);
     }
 
     case "WALLET_BALANCE": {
@@ -161,7 +206,7 @@ async function evaluateWorkflow(
       const balance = Number(wallet.balanceMinor ?? 0);
       if (balance > threshold) return `skipped:balance_${balance}_above_threshold`;
       await recordRun(db, workflow.id);
-      return `fired:wallet_balance_${balance}`;
+      return executeAction(db, workflow, config, `fired:wallet_balance_${balance}`);
     }
 
     case "CREATIVE_AGE": {
@@ -175,13 +220,13 @@ async function evaluateWorkflow(
       const ageDays = (now.getTime() - new Date(oldestCreative.createdAt).getTime()) / 86_400_000;
       if (ageDays < maxDays) return `skipped:creative_age_${Math.round(ageDays)}d_below_threshold`;
       await recordRun(db, workflow.id);
-      return `fired:creative_age_${Math.round(ageDays)}d`;
+      return executeAction(db, workflow, config, `fired:creative_age_${Math.round(ageDays)}d`);
     }
 
     case "PERFORMANCE_THRESHOLD": {
       // ROAS evaluation requires analytics data — record as fired if configured, log otherwise.
       await recordRun(db, workflow.id);
-      return "fired:performance_threshold_check";
+      return executeAction(db, workflow, config, "fired:performance_threshold_check");
     }
 
     default:
