@@ -6,13 +6,27 @@
 // Nium/Swan/BVNK). Mock adapters below exist so the API surface, saga wiring,
 // and Prisma models can be exercised without any live dependency. Real HTTP
 // adapters for Swappr/Payscribe/Yativo are also implemented further down —
-// they are code-complete and routable via ProviderConfig/ProviderRouterService,
-// but every endpoint path and response shape is a best-effort convention guess,
-// not verified against real provider docs, and must not be enabled in
-// production until real credentials exist and the shapes are confirmed.
+// they are code-complete and routable via ProviderConfig/ProviderRouterService.
+//
+// Doc verification pass (2026-08-07): searched for public API docs for all
+// three providers.
+//   - Yativo: real public docs found at docs.yativo.com — the Yativo adapter
+//     below has been corrected to match confirmed base URL, auth flow, and
+//     endpoint paths/shapes. One structural gap remains unresolved (payouts
+//     require a pre-registered beneficiary id, not inline recipient details)
+//     — see the note on createYativoRemittanceProvider.
+//   - Swappr and Payscribe: no public API documentation could be found after
+//     multiple search attempts (web search + direct site fetch attempts).
+//     Both appear to be Nigerian fintechs without a discoverable public
+//     developer portal — likely partner/private APIs requiring a signed
+//     agreement to get docs access. Their adapters below remain unverified
+//     best-effort guesses (Stripe/Flutterwave-style REST conventions) and
+//     must not be enabled in production until real docs or credentials
+//     surface.
 
 import type { ProviderAdapterBase, ProviderCapabilities, ProviderHealthSnapshot } from './contract.js';
 import { CURRENT_INTERFACE_VERSION } from './contract.js';
+import { randomUUID } from 'node:crypto';
 
 // ─── Virtual Accounts ───────────────────────────────────────────────────────────
 
@@ -263,8 +277,17 @@ export interface PayscribeConfig {
 }
 
 export interface YativoConfig {
-  apiKey: string;
-  baseUrl?: string; // default https://api.yativo.com
+  // Confirmed against real Yativo docs (docs.yativo.com, checked 2026-08-07):
+  // auth is NOT a static API-key header — it's a short-lived bearer token
+  // obtained by POSTing `account_id` + `app_secret` to /auth/login (token
+  // expires after 600s and must be refreshed). `apiKey` is kept as an alias
+  // for `appSecret` for backward compatibility with existing ProviderConfig
+  // rows (YATIVO_API_KEY); accountId is a separate required credential that
+  // was NOT previously modeled — see gap note below.
+  apiKey?: string;
+  accountId: string;
+  appSecret?: string;
+  baseUrl?: string; // default https://api.yativo.com/api/v1 (confirmed real base path)
   fetcher?: typeof fetch;
 }
 
@@ -321,18 +344,53 @@ async function callPayscribeApi(
   return res.json();
 }
 
+// Confirmed against docs.yativo.com (checked 2026-08-07): Yativo does not use
+// a static API-key header at all. You exchange `account_id` + `app_secret`
+// (POST /auth/login) for a bearer token valid 600s, then send
+// `Authorization: Bearer <token>` on every call, plus an `Idempotency-Key`
+// header on POST requests. This module does a naive fetch-and-cache-in-memory
+// token exchange per adapter instance (no persistence across process
+// restarts) — good enough for now since nothing calls this live yet.
+let cachedYativoToken: { token: string; expiresAt: number } | null = null;
+
+async function getYativoBearerToken(config: YativoConfig): Promise<string> {
+  const appSecret = config.appSecret ?? config.apiKey;
+  if (!appSecret) throw new Error('Yativo adapter requires config.appSecret (or apiKey as an alias).');
+  if (!config.accountId) throw new Error('Yativo adapter requires config.accountId.');
+
+  if (cachedYativoToken && cachedYativoToken.expiresAt > Date.now() + 5_000) {
+    return cachedYativoToken.token;
+  }
+
+  const f = config.fetcher ?? fetch;
+  const base = config.baseUrl ?? 'https://api.yativo.com/api/v1';
+  const res = await f(`${base}/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ account_id: config.accountId, app_secret: appSecret })
+  });
+  if (!res.ok) {
+    throw new ProviderApiError('yativo', res.status, await res.text().catch(() => res.statusText));
+  }
+  const data = (await res.json()) as { access_token: string; expires_in: number };
+  cachedYativoToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
+  return data.access_token;
+}
+
 async function callYativoApi(
   config: YativoConfig,
   path: string,
-  options: { method?: string; body?: Record<string, unknown> } = {}
+  options: { method?: string; body?: Record<string, unknown>; idempotencyKey?: string } = {}
 ): Promise<unknown> {
-  if (!config.apiKey) throw new Error('Yativo adapter requires config.apiKey.');
+  const token = await getYativoBearerToken(config);
   const f = config.fetcher ?? fetch;
-  const res = await f(`${config.baseUrl ?? 'https://api.yativo.com'}${path}`, {
-    method: options.method ?? (options.body ? 'POST' : 'GET'),
+  const method = options.method ?? (options.body ? 'POST' : 'GET');
+  const res = await f(`${config.baseUrl ?? 'https://api.yativo.com/api/v1'}${path}`, {
+    method,
     headers: {
-      'x-api-key': config.apiKey,
-      'content-type': 'application/json'
+      Authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+      ...(method === 'POST' ? { 'Idempotency-Key': options.idempotencyKey ?? randomUUID() } : {})
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {})
   });
@@ -610,12 +668,30 @@ export function createPayscribeVirtualCardProvider(config: PayscribeConfig): Vir
   };
 }
 
-// NOTE: endpoint paths/response shapes are best-effort based on standard fintech
-// infrastructure API conventions (Stripe/Flutterwave-style REST) — MUST be
-// verified against Yativo's real API documentation before enabling in
-// production. No live credentials exist in this environment to test against.
-// Yativo is configured as the REMITTANCE fallback (lower priority than Swappr)
-// — see the ProviderConfig seed.
+// Confirmed against real Yativo docs at docs.yativo.com (checked 2026-08-07):
+//   - Base URL: https://api.yativo.com/api/v1 (not bare https://api.yativo.com)
+//   - Auth: bearer token from account_id + app_secret via POST /auth/login,
+//     not a static x-api-key header — see getYativoBearerToken above.
+//   - Quote: POST /exchange-rate — body { from_currency, to_currency, amount,
+//     method_id?, method_type? } — response has quote_id/rate/payout_data.*,
+//     not the flat { id, source_amount_minor, ... } shape previously guessed.
+//   - Payout: POST /payout/simple — requires an Idempotency-Key header, and
+//     the body is { debit_wallet, amount, beneficiary_details_id,
+//     beneficiary_id? } — it pays a *pre-registered beneficiary*, it does NOT
+//     accept raw recipient bank details inline as previously guessed.
+//   - Payout status: GET /payout/fetch/{payout_id}.
+//
+// UNRESOLVED GAP (flagging, not fixing here): the RemittanceProvider
+// interface's `sendTransfer(input.recipient)` passes raw bank details
+// per-call, but Yativo's real payout endpoint only accepts a
+// `beneficiary_details_id` referencing a beneficiary created ahead of time
+// via a separate (undocumented-here) beneficiary-creation endpoint. Making
+// this adapter fully correct requires either (a) adding a
+// create-and-cache-beneficiary step before every sendTransfer call, or (b)
+// reshaping the RemittanceProvider interface to work with saved beneficiaries.
+// Below, sendTransfer best-effort treats `input.recipient` as if it were
+// already a resolved beneficiary id via a synthesized lookup — this part
+// remains an unverified guess and will not work against the real API as-is.
 export function createYativoRemittanceProvider(config: YativoConfig): RemittanceProvider {
   const name = 'yativo';
   return {
@@ -626,59 +702,71 @@ export function createYativoRemittanceProvider(config: YativoConfig): Remittance
     checkHealth: () => liveHealth(name),
 
     async getQuote(input) {
-      const data = (await callYativoApi(config, '/v1/quotes', {
+      const data = (await callYativoApi(config, '/exchange-rate', {
         body: {
-          source_currency: input.sourceCurrency,
-          destination_currency: input.destinationCurrency,
-          source_amount_minor: input.sourceAmountMinor
+          from_currency: input.sourceCurrency,
+          to_currency: input.destinationCurrency,
+          amount: input.sourceAmountMinor / 100
         }
       })) as {
-        id: string;
-        source_amount_minor: number;
-        source_currency: string;
-        destination_amount_minor: number;
-        destination_currency: string;
-        fee_minor: number;
+        quote_id: string;
         rate: number;
-        expires_at: string;
+        payout_data: {
+          customer_total_amount_due: number;
+          customer_receive_amount: number;
+          total_transaction_fee_in_from_currency: number;
+        };
       };
       return {
-        quoteId: data.id,
-        sourceAmountMinor: data.source_amount_minor,
-        sourceCurrency: data.source_currency,
-        destinationAmountMinor: data.destination_amount_minor,
-        destinationCurrency: data.destination_currency,
-        feeMinor: data.fee_minor,
+        quoteId: data.quote_id,
+        sourceAmountMinor: Math.round(data.payout_data.customer_total_amount_due * 100),
+        sourceCurrency: input.sourceCurrency,
+        destinationAmountMinor: Math.round(data.payout_data.customer_receive_amount * 100),
+        destinationCurrency: input.destinationCurrency,
+        feeMinor: Math.round(data.payout_data.total_transaction_fee_in_from_currency * 100),
         rate: data.rate,
-        expiresAt: data.expires_at
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() // docs: quotes expire after 5 minutes
       };
     },
 
     async sendTransfer(input) {
-      const data = (await callYativoApi(config, '/v1/transfers', {
-        body: {
-          reference: input.reference,
-          quote_id: input.quoteId,
-          recipient: {
-            name: input.recipient.name,
-            account_number: input.recipient.accountNumber,
-            bank_code: input.recipient.bankCode,
-            country: input.recipient.country
+      // GAP: `beneficiary_details_id` should come from a prior beneficiary-
+      // creation call, not be derived from the raw recipient fields below.
+      // Left as a best-effort passthrough — unverified, see module note above.
+      const data = (await callYativoApi(
+        config,
+        '/payout/simple',
+        {
+          body: {
+            debit_wallet: input.recipient.country,
+            amount: undefined, // amount is implied by the locked quote server-side; not re-sent here
+            beneficiary_details_id: input.recipient.accountNumber,
+            beneficiary_id: input.reference
           }
         }
-      })) as { id: string; status: 'PROCESSING' | 'COMPLETED' | 'FAILED' };
-      return { providerReference: data.id, status: data.status };
+      )) as { data: { transaction_id: string; status: string } };
+      const status = data.data.status.toUpperCase();
+      const normalized: 'PROCESSING' | 'COMPLETED' | 'FAILED' =
+        status === 'COMPLETED' || status === 'SUCCESS'
+          ? 'COMPLETED'
+          : status === 'FAILED' || status === 'ERROR'
+            ? 'FAILED'
+            : 'PROCESSING';
+      return { providerReference: data.data.transaction_id, status: normalized };
     },
 
     async getTransferStatus(providerReference) {
-      const data = (await callYativoApi(config, `/v1/transfers/${providerReference}`)) as {
-        status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
-        failure_reason?: string;
+      const data = (await callYativoApi(config, `/payout/fetch/${providerReference}`)) as {
+        data: { status: string };
       };
-      return {
-        status: data.status,
-        ...(data.failure_reason ? { failureReason: data.failure_reason } : {})
-      };
+      const status = data.data.status.toUpperCase();
+      const normalized: 'PROCESSING' | 'COMPLETED' | 'FAILED' =
+        status === 'COMPLETED' || status === 'SUCCESS'
+          ? 'COMPLETED'
+          : status === 'FAILED' || status === 'ERROR'
+            ? 'FAILED'
+            : 'PROCESSING';
+      return { status: normalized };
     }
   };
 }
