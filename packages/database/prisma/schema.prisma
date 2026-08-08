@@ -414,6 +414,16 @@ enum SettlementReconciliationState {
   MANUAL_REVIEW_REQUIRED
 }
 
+enum SettlementAlertKind {
+  RECONCILIATION_DIVERGED
+  SETTLEMENT_FAILED
+}
+
+enum SettlementAlertSeverity {
+  WARNING
+  CRITICAL
+}
+
 enum VtuProductType {
   AIRTIME
   DATA
@@ -560,6 +570,7 @@ enum RewardFulfillmentStatus {
 model User {
   id                             String                          @id @default(uuid())
   email                          String?                         @unique
+  phone                          String?                         @unique
   username                       String                          @unique
   name                           String
   displayName                    String?
@@ -568,6 +579,7 @@ model User {
   isPlatformAdmin                Boolean                         @default(false)
   passwordHash                   String?
   emailVerifiedAt                DateTime?
+  phoneVerifiedAt                DateTime?
   totpSecretEncrypted            String?
   totpEnabledAt                  DateTime?
   createdAt                      DateTime                        @default(now())
@@ -1746,6 +1758,48 @@ model SettlementWebhookEvent {
   @@index([provider, processed])
 }
 
+model SettlementBeneficiary {
+  id          String @id @default(uuid())
+  workspaceId String
+
+  name       String
+  reference  String // Bank account, Wise email, etc. — matches SettlementInstruction.beneficiaryReference
+  country    String?
+  currency   String?
+
+  kycTier   KycTier   @default(LIGHT)
+  kycStatus KycStatus @default(UNVERIFIED)
+
+  verifiedAt       DateTime?
+  verifiedByUserId String?
+  rejectedReason   String?
+
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workspaceId, kycStatus])
+}
+
+model SettlementAlert {
+  id                      String @id @default(uuid())
+  settlementInstructionId String
+
+  kind     SettlementAlertKind
+  severity SettlementAlertSeverity @default(WARNING)
+  message  String
+  metadata Json                    @default("{}")
+
+  acknowledged       Boolean   @default(false)
+  acknowledgedByUserId String?
+  acknowledgedAt       DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([acknowledged, createdAt])
+  @@index([settlementInstructionId])
+}
+
 enum GiftCardBrand {
   APPLE
   AMAZON
@@ -2846,8 +2900,14 @@ model AnalyticsMetric {
 
 model Notification {
   id                String                        @id @default(uuid())
-  workspaceId       String
+  // Nullable to support guest-checkout notifications, which have no workspace —
+  // guestEmail/guestPhone carry the contact supplied at checkout instead. Every
+  // authenticated (non-guest) notification still requires workspaceId, enforced
+  // in NotificationService rather than at the schema level.
+  workspaceId       String?
   recipientUserId   String?
+  guestEmail        String?
+  guestPhone        String?
   eventId           String?
   channel           String
   category          String                        @default("campaign")
@@ -2868,7 +2928,7 @@ model Notification {
   readAt            DateTime?
   createdAt         DateTime                      @default(now())
   updatedAt         DateTime                      @updatedAt
-  workspace         Workspace                     @relation(fields: [workspaceId], references: [id])
+  workspace         Workspace?                    @relation(fields: [workspaceId], references: [id])
   recipient         User?                         @relation("NotificationRecipient", fields: [recipientUserId], references: [id])
   deliveryAttempts  NotificationDeliveryAttempt[]
 
@@ -2904,6 +2964,7 @@ model NotificationPreference {
   eventName   String
   inApp       Boolean   @default(true)
   email       Boolean   @default(true)
+  sms         Boolean   @default(true)
   whatsapp    Boolean   @default(false)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

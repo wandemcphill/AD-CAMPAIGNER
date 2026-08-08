@@ -47,9 +47,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       {/* Sidebar */}
       <aside className="hidden w-[240px] shrink-0 border-r border-[var(--ft-border)] bg-[var(--ft-bg-raised)] lg:flex lg:flex-col">
         <div className="flex h-14 items-center gap-2 border-b border-[var(--ft-border)] px-5">
-          <div className="grid size-7 place-items-center rounded-[var(--radius-sm)] bg-[var(--ft-accent)] font-mono text-[10px] font-bold text-[var(--ft-text-inverse)]">
-            FT
-          </div>
+          <img alt="FlipTrybe" className="size-7" src="/brand/icon-mark.svg" />
           <span className="text-sm font-bold">Admin</span>
           <span className="ml-auto"><Badge tone="warning">Staff</Badge></span>
         </div>
@@ -93,9 +91,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <div className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-raised)] px-6 py-3 lg:hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="grid size-7 place-items-center rounded-[var(--radius-sm)] bg-[var(--ft-accent)] font-mono text-[10px] font-bold text-[var(--ft-text-inverse)]">
-                FT
-              </div>
+              <img alt="FlipTrybe" className="size-7" src="/brand/icon-mark.svg" />
               <span className="text-sm font-bold">Admin</span>
             </div>
             <ThemeToggle />

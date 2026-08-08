@@ -8,6 +8,7 @@ import { processVirtualNumbersJob } from "./virtual-numbers-processor";
 import { processWorkflowAutomationJob } from "./workflow-automation-processor";
 import { processRewardEngineJob } from "./reward-engine-processor";
 import { processTrustEngineJob } from "./trust-engine-processor";
+import { processNotificationDispatchJob } from "./notifications-processor";
 
 const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
   maxRetriesPerRequest: null
@@ -181,6 +182,15 @@ const workers = enabledQueues.map((queueName) => {
 
   if (queueName === "trust-engine") {
     return new Worker<QueuePayloads["trust-engine"]>(queueName, processTrustEngineJob, {
+      connection,
+      concurrency: Number(
+        process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency
+      )
+    });
+  }
+
+  if (queueName === "notifications") {
+    return new Worker<QueuePayloads["notifications"]>(queueName, processNotificationDispatchJob, {
       connection,
       concurrency: Number(
         process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency

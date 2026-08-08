@@ -39,7 +39,7 @@ export interface SmmFulfillmentJob {
 
 export interface NotificationJob {
   notificationId: string;
-  channel: "EMAIL" | "IN_APP" | "WEBSOCKET" | "WHATSAPP";
+  channel: "EMAIL" | "IN_APP" | "SMS" | "WEBSOCKET" | "WHATSAPP";
 }
 
 export interface AnalyticsIngestionJob {

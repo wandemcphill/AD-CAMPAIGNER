@@ -122,6 +122,19 @@ export class QueueProducerService implements OnModuleDestroy {
     });
   }
 
+  async enqueueNotificationDispatch(
+    notificationId: string,
+    channel: "EMAIL" | "SMS" | "WHATSAPP"
+  ): Promise<QueueProducerResult> {
+    return this.enqueue("notifications", channel, { notificationId, channel }, {
+      jobId: `notify_${notificationId}_${channel}`,
+      attempts: 6,
+      backoff: { type: "exponential", delay: 5_000 },
+      removeOnComplete: { age: 86_400, count: 10_000 },
+      removeOnFail: { age: 604_800, count: 10_000 }
+    });
+  }
+
   async enqueueTrustEngineValidation(submissionId: string): Promise<QueueProducerResult> {
     return this.enqueue("trust-engine", "validate", { submissionId }, {
       jobId: `trust_engine_${submissionId}`,

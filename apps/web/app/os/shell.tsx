@@ -195,7 +195,6 @@ export function OsShell({ children }: { children: ReactNode }) {
       {/* Desktop sidebar */}
       <aside className="hidden w-[240px] shrink-0 flex-col border-r border-[var(--ft-border)] bg-[var(--ft-bg-surface)] lg:flex">
         <div className="flex h-14 items-center gap-3 border-b border-[var(--ft-border)] px-5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img alt="FlipTrybe" className="size-8" src="/brand/icon-mark.svg" />
           <div>
             <div className="text-sm font-bold">FlipTrybe</div>

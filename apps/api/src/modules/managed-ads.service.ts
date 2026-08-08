@@ -43,6 +43,7 @@ import {
 } from "@fliptrybe/types";
 
 import { PrismaService } from "./prisma.service";
+import { NotificationsService } from "./notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
 type DbClient = Record<string, any>;
@@ -758,7 +759,10 @@ export class ManagedAdsService {
   private readonly mockStorageProvider = createMockStorageProvider();
   private readonly aiRecommendationClient = AnthropicRecommendationClient.fromEnv();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService
+  ) {}
 
   private get db(): DbClient {
     return this.prisma.client as unknown as DbClient;
@@ -3064,17 +3068,17 @@ export class ManagedAdsService {
       data: { status: "PUBLISHED", publishedAt: now() },
       include: { screenshots: { include: { mediaAsset: true } } }
     });
-    await this.db.notification.create({
-      data: {
-        workspaceId: scope.workspaceId,
-        channel: "IN_APP",
+    await this.notifications.send({
+      workspaceId: scope.workspaceId,
+      channels: ["IN_APP"],
+      content: {
         title: "Campaign report published",
-        body: "A campaign performance report is ready to view.",
-        entityType: "CampaignReport",
-        entityId: report.id,
-        actionUrl: `/campaigns/${report.campaignId}/reports`,
-        idempotencyKey: `report:${report.id}:published`
-      }
+        body: "A campaign performance report is ready to view."
+      },
+      entityType: "CampaignReport",
+      entityId: report.id,
+      actionUrl: `/campaigns/${report.campaignId}/reports`,
+      idempotencyKey: `report:${report.id}:published`
     });
     return published;
   }

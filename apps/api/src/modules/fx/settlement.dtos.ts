@@ -52,6 +52,30 @@ export interface SettlementListFiltersDto {
   limit?: number;
 }
 
+export interface CreateSettlementBeneficiaryDto {
+  workspaceId: string;
+  name: string;
+  reference: string;
+  country?: string;
+  currency?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VerifyBeneficiaryDto {
+  verifiedByUserId: string;
+  kycTier?: "LIGHT" | "STANDARD" | "ENHANCED";
+}
+
+export interface RejectBeneficiaryDto {
+  rejectedByUserId: string;
+  reason: string;
+}
+
+export interface AlertListFiltersDto {
+  acknowledged?: boolean;
+  limit?: number;
+}
+
 export interface SettlementReconciliationResponseDto {
   id: string;
   settlementInstructionId: string;

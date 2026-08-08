@@ -12,9 +12,7 @@ import {
   createClubKonnectAdapter,
   createKorapayPaymentGateway,
   createMockPaymentGateway,
-  createMockNotificationProvider,
   type PaymentGatewayAdapter,
-  type NotificationProviderAdapter,
   type VtuProviderAdapter,
   type VtuNetwork
 } from "@fliptrybe/providers";
@@ -22,6 +20,7 @@ import {
 import type { CurrencyCode } from "@fliptrybe/types";
 
 import { PrismaService } from "../prisma.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import { VtuService } from "../vtu/vtu.service";
 import type { AdminGuestTransactionQueryDto, GuestCheckoutDto } from "./guest-checkout.dtos";
 
@@ -94,13 +93,6 @@ function verifyGuestKorapaySignature(input: { body: unknown; signature?: string 
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function getGuestNotificationProvider(): NotificationProviderAdapter {
-  // No live transactional-email adapter is wired yet anywhere in the codebase
-  // (NotificationProviderAdapter is mock-only per CLAUDE.md); guest checkout
-  // uses the same mock until one is added, at which point only this factory changes.
-  return createMockNotificationProvider();
-}
-
 interface RequestContext {
   ipAddress?: string | undefined;
   userAgent?: string | undefined;
@@ -122,10 +114,10 @@ function storedMetadata(transaction: Pick<GuestTransaction, "metadata">): Stored
 export class GuestCheckoutService {
   private readonly logger = new Logger(GuestCheckoutService.name);
   private readonly paymentGateway = getGuestPaymentGateway();
-  private readonly notifications = getGuestNotificationProvider();
 
   constructor(
     private readonly prismaService: PrismaService,
+    private readonly notifications: NotificationsService,
     private readonly vtu?: VtuService
   ) {}
 
@@ -607,15 +599,21 @@ export class GuestCheckoutService {
     if (!transaction) return;
     try {
       await this.notifications.send({
-        channel: "EMAIL",
-        to: transaction.email,
-        title: `Your FlipTrybe receipt — ${transaction.reference}`,
-        body:
-          `Purchase successful.\n` +
-          `Reference: ${transaction.reference}\n` +
-          `Amount: ${(transaction.amountMinor / 100).toFixed(2)} ${transaction.currency}\n` +
-          `Status: ${transaction.fulfilmentStatus}\n` +
-          `Provider reference: ${transaction.providerReference ?? "n/a"}`
+        guestEmail: transaction.email,
+        ...(transaction.phone ? { guestPhone: transaction.phone } : {}),
+        channels: transaction.phone ? ["EMAIL", "SMS"] : ["EMAIL"],
+        template: "transaction_receipt",
+        vars: {
+          first_name: "there",
+          amount: (transaction.amountMinor / 100).toFixed(2),
+          currency: transaction.currency,
+          transaction_id: transaction.id,
+          reference: transaction.reference,
+          status: transaction.fulfilmentStatus,
+          service: transaction.productType,
+          date: transaction.createdAt.toISOString()
+        },
+        idempotencyKey: `guest_receipt:${transaction.id}`
       });
       await this.db.guestTransaction.update({ where: { id: transactionId }, data: { receiptEmailedAt: new Date() } });
     } catch (err) {
@@ -628,14 +626,20 @@ export class GuestCheckoutService {
     if (!transaction) return;
     try {
       await this.notifications.send({
-        channel: "EMAIL",
-        to: transaction.email,
-        title: `Your FlipTrybe order needs attention — ${transaction.reference}`,
-        body:
-          `We couldn't complete your purchase.\n` +
-          `Reference: ${transaction.reference}\n` +
-          `Reason: ${transaction.failureReason ?? "Unknown error"}\n` +
-          `If you were charged, this will be refunded — contact support with this reference if you don't hear back shortly.`
+        guestEmail: transaction.email,
+        channels: ["EMAIL"],
+        template: "payment_failed",
+        vars: {
+          first_name: "there",
+          amount: (transaction.amountMinor / 100).toFixed(2),
+          currency: transaction.currency,
+          transaction_id: transaction.id,
+          reference: transaction.reference,
+          status: transaction.failureReason ?? "Unknown error",
+          service: transaction.productType,
+          date: transaction.createdAt.toISOString()
+        },
+        idempotencyKey: `guest_failure:${transaction.id}`
       });
     } catch (err) {
       this.logger.warn(`Failed to email failure notice for ${transaction.reference}: ${(err as Error).message}`);

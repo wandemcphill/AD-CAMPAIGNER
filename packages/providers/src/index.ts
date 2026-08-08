@@ -130,12 +130,17 @@ export interface AiGenerationAdapter {
 
 export interface NotificationProviderAdapter {
   readonly name: string;
+  // True only when this adapter has the live configuration it needs (e.g. a
+  // channel-specific Termii configuration ID). NotificationService checks this
+  // before dispatch so a channel with no configured credentials is marked
+  // PENDING rather than silently "succeeding" against nothing.
+  isConfigured(): boolean;
   send(input: {
-    channel: "EMAIL" | "IN_APP" | "WEBSOCKET" | "WHATSAPP";
+    channel: "EMAIL" | "IN_APP" | "SMS" | "WEBSOCKET" | "WHATSAPP";
     to: string;
     title: string;
     body: string;
-  }): Promise<{ id: string; accepted: boolean }>;
+  }): Promise<{ id: string; accepted: boolean; providerStatus?: string; raw?: unknown }>;
 }
 
 export interface StorageProviderAdapter {
@@ -1929,8 +1934,11 @@ export function createMockAiProvider(): AiGenerationAdapter {
 export function createMockNotificationProvider(): NotificationProviderAdapter {
   return {
     name: "mock-notifications",
+    isConfigured() {
+      return true;
+    },
     send() {
-      return Promise.resolve({ id: makeId("ntf"), accepted: true });
+      return Promise.resolve({ id: makeId("ntf"), accepted: true, providerStatus: "mock-accepted" });
     }
   };
 }
@@ -2651,3 +2659,4 @@ export * from './airtime-cashout.js';
 export * from './crypto.js';
 export * from './rmb.js';
 export * from './financial-products.js';
+export * from './notifications.js';

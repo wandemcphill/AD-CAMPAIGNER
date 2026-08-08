@@ -228,6 +228,20 @@ services:
         sync: false
       - key: TIKTOK_WEBHOOK_SECRET
         sync: false
+      - key: FINCRA_API_KEY
+        sync: false
+      - key: FINCRA_BUSINESS_ID
+        sync: false
+      - key: FINCRA_WEBHOOK_KEY
+        sync: false
+      - key: FINCRA_ENV
+        value: production
+      - key: SETTLEMENT_ALERTS_WEBHOOK_URL
+        sync: false
+      - key: SETTLEMENT_KYC_THRESHOLD_MINOR
+        value: "100000"
+      - key: ENABLE_SETTLEMENT_RECONCILIATION_SCHEDULER
+        value: "true"
 
   - type: web
     runtime: node

@@ -64,7 +64,6 @@ export default function AdminPage() {
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[260px_1fr]">
         <aside className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-4 xl:border-r xl:border-b-0">
           <div className="flex items-center gap-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img alt="FlipTrybe" className="size-10" src="/brand/icon-mark.svg" />
             <div>
               <div className="text-sm font-semibold text-[var(--ft-text-primary)]">

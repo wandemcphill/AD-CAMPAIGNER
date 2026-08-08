@@ -60,6 +60,7 @@ import { RmbModule } from "./rmb/rmb.module";
 import { FinancialProductsModule } from "./financial-products/financial-products.module";
 import { GuestCheckoutModule } from "./guest-checkout/guest-checkout.module";
 import { SupportModule } from "./support/support.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -98,7 +99,8 @@ import { SupportModule } from "./support/support.module";
     RmbModule,
     FinancialProductsModule,
     GuestCheckoutModule,
-    SupportModule
+    SupportModule,
+    NotificationsModule
   ],
   controllers: [
     RootController,

@@ -3,6 +3,7 @@ import { createHash, createHmac } from "node:crypto";
 
 import { ManagedAdsService } from "./managed-ads.service";
 import type { PrismaService } from "./prisma.service";
+import type { NotificationsService } from "./notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
 const workspace: AuthenticatedRequestContext = {
@@ -681,7 +682,7 @@ function createService(
         findFirst: workspaceFindFirst
       }
     }
-  } as unknown as PrismaService);
+  } as unknown as PrismaService, { send: vi.fn(() => Promise.resolve([])) } as unknown as NotificationsService);
 
   return {
     analyticsMetricCreate,

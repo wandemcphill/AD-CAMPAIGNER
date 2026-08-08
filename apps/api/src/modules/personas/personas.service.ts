@@ -78,10 +78,33 @@ export class PersonasService {
     const scope = requireScope(context);
     const persona = await this.findOwned(id, scope.workspaceId);
 
-    return this.db.persona.update({
-      where: { id: persona.id },
-      data: { consentedAt: new Date() }
-    });
+    if (persona.consentedAt) {
+      return persona;
+    }
+
+    const [updated] = await this.db.$transaction([
+      this.db.persona.update({
+        where: { id: persona.id },
+        data: { consentedAt: new Date() }
+      }),
+      this.db.auditLog.create({
+        data: {
+          workspaceId: scope.workspaceId,
+          actorUserId: scope.userId,
+          action: "persona.consent_granted",
+          entityType: "Persona",
+          entityId: persona.id,
+          metadata: {
+            personaName: persona.name,
+            personaType: persona.type,
+            hasVoice: persona.hasVoice,
+            hasMotion: persona.hasMotion
+          }
+        }
+      })
+    ]);
+
+    return updated;
   }
 
   async remove(id: string, context?: AuthenticatedRequestContext) {

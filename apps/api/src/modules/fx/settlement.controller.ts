@@ -3,10 +3,14 @@ import { Body, Controller, Get, Headers, Inject, Param, Post, Query, Req, Unauth
 import { verifyFincraWebhook } from "@fliptrybe/providers";
 
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
-import { RequirePermissions } from "../authorization.decorators";
+import { Public, RequirePermissions } from "../authorization.decorators";
 import type {
+  AlertListFiltersDto,
+  CreateSettlementBeneficiaryDto,
   CreateSettlementInstructionDto,
-  SettlementListFiltersDto
+  RejectBeneficiaryDto,
+  SettlementListFiltersDto,
+  VerifyBeneficiaryDto
 } from "./settlement.dtos";
 import { SettlementService } from "./settlement.service";
 
@@ -74,6 +78,7 @@ export class AdminSettlementController {
   }
 
   @Post("webhook/:provider")
+  @Public()
   async handleWebhook(
     @Param("provider") provider: string,
     @Headers("signature") signature: string | undefined,
@@ -81,10 +86,11 @@ export class AdminSettlementController {
   ) {
     if (provider === "fincra") {
       const webhookKey = process.env["FINCRA_WEBHOOK_KEY"];
-      if (webhookKey && signature) {
-        if (!verifyFincraWebhook(JSON.stringify(body), signature, webhookKey)) {
-          throw new UnauthorizedException("Invalid webhook signature");
-        }
+      if (!webhookKey) {
+        throw new UnauthorizedException("Fincra webhook receiver is not configured (FINCRA_WEBHOOK_KEY missing).");
+      }
+      if (!signature || !verifyFincraWebhook(JSON.stringify(body), signature, webhookKey)) {
+        throw new UnauthorizedException("Invalid webhook signature");
       }
 
       await this.settlement.handleSettlementWebhook(
@@ -103,5 +109,48 @@ export class AdminSettlementController {
     }
 
     return { received: true };
+  }
+
+  // ─── Beneficiary KYC/KYB ─────────────────────────────────────────────────
+
+  @Post("beneficiaries")
+  async createBeneficiary(@Body() body: CreateSettlementBeneficiaryDto) {
+    return this.settlement.createBeneficiary(body);
+  }
+
+  @Get("beneficiaries")
+  async listBeneficiaries(@Query("workspaceId") workspaceId: string) {
+    return this.settlement.listBeneficiaries(workspaceId);
+  }
+
+  @Get("beneficiaries/:id")
+  async getBeneficiary(@Param("id") id: string) {
+    return this.settlement.getBeneficiary(id);
+  }
+
+  @Post("beneficiaries/:id/verify")
+  async verifyBeneficiary(@Param("id") id: string, @Body() body: VerifyBeneficiaryDto) {
+    return this.settlement.verifyBeneficiary(id, body);
+  }
+
+  @Post("beneficiaries/:id/reject")
+  async rejectBeneficiary(@Param("id") id: string, @Body() body: RejectBeneficiaryDto) {
+    return this.settlement.rejectBeneficiary(id, body);
+  }
+
+  // ─── Alerts ──────────────────────────────────────────────────────────────
+
+  @Get("alerts")
+  async listAlerts(@Query() filters: AlertListFiltersDto) {
+    return this.settlement.listAlerts({
+      ...filters,
+      ...(typeof filters.acknowledged === "string" ? { acknowledged: filters.acknowledged === "true" } : {})
+    });
+  }
+
+  @Post("alerts/:id/acknowledge")
+  async acknowledgeAlert(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    const ctx = workspaceContextFromRequest(request);
+    return this.settlement.acknowledgeAlert(id, ctx.userId);
   }
 }

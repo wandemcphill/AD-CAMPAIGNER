@@ -166,9 +166,7 @@ export default function LoginPage() {
             {/* Mobile logo */}
             <div className="mb-8 flex items-center justify-between lg:hidden">
               <div className="flex items-center gap-3">
-                <div className="grid size-9 place-items-center rounded-[var(--radius-sm)] bg-[var(--ft-accent)] font-mono text-xs font-bold text-[var(--ft-text-inverse)]">
-                  FT
-                </div>
+                <img alt="FlipTrybe" className="size-9" src="/brand/icon-mark.svg" />
                 <span className="text-lg font-bold text-[var(--ft-text-primary)]">FlipTrybe</span>
               </div>
               <ThemeToggle />

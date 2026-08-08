@@ -2,6 +2,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 
 import { PrismaService } from "../prisma.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 
 function requireScope(context?: AuthenticatedRequestContext) {
@@ -32,7 +33,10 @@ async function requireAdmin(db: any, scope: AuthenticatedRequestContext) {
 
 @Injectable()
 export class MarketplaceService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService
+  ) {}
 
   private get db() {
     return this.prisma.client;
@@ -209,19 +213,20 @@ export class MarketplaceService {
       }
     });
 
-    await this.db.notification.create({
-      data: {
-        workspaceId: application.workspaceId,
-        recipientUserId: application.applicantUserId,
-        channel: "IN_APP",
+    await this.notifications.send({
+      workspaceId: application.workspaceId,
+      userId: application.applicantUserId,
+      channels: ["IN_APP"],
+      content: {
         title: decision === "APPROVED" ? "Agency application approved" : "Agency application declined",
         body:
           decision === "APPROVED"
             ? `${application.name} is now listed in the Agency Marketplace.`
-            : rejectionReason ?? "Your agency application was not approved this time.",
-        entityType: "MarketplaceAgencyApplication",
-        entityId: application.id
-      }
+            : rejectionReason ?? "Your agency application was not approved this time."
+      },
+      entityType: "MarketplaceAgencyApplication",
+      entityId: application.id,
+      idempotencyKey: `marketplace_agency_decision:${application.id}`
     });
 
     return { ok: true, resultingListingId };
@@ -274,19 +279,20 @@ export class MarketplaceService {
       }
     });
 
-    await this.db.notification.create({
-      data: {
-        workspaceId: application.workspaceId,
-        recipientUserId: application.applicantUserId,
-        channel: "IN_APP",
+    await this.notifications.send({
+      workspaceId: application.workspaceId,
+      userId: application.applicantUserId,
+      channels: ["IN_APP"],
+      content: {
         title: decision === "APPROVED" ? "Creator application approved" : "Creator application declined",
         body:
           decision === "APPROVED"
             ? `${application.name} is now listed in the Creator Marketplace.`
-            : rejectionReason ?? "Your creator application was not approved this time.",
-        entityType: "MarketplaceCreatorApplication",
-        entityId: application.id
-      }
+            : rejectionReason ?? "Your creator application was not approved this time."
+      },
+      entityType: "MarketplaceCreatorApplication",
+      entityId: application.id,
+      idempotencyKey: `marketplace_creator_decision:${application.id}`
     });
 
     return { ok: true, resultingListingId };

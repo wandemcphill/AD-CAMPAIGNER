@@ -1,16 +1,19 @@
 /* Fliptrybe theme contract.
    Components consume --ft-* tokens so Studio and Clay can swap without per-component branches. */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root,
 [data-theme="studio"] {
   color-scheme: light;
   --font-display:
-    "Noto Sans", "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Sora", "Noto Sans", "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   --font-mono:
-    "Geist Mono", "Noto Sans", "JetBrains Mono", "Cascadia Code", ui-monospace, SFMono-Regular,
-    Menlo, monospace;
+    "IBM Plex Mono", "Geist Mono", "Noto Sans", "JetBrains Mono", "Cascadia Code", ui-monospace,
+    SFMono-Regular, Menlo, monospace;
+  --ft-accent-2: #8b5cf6;
+  --ft-accent-2-subtle: #ede9fe;
+  --ft-accent-2-glow: rgba(139, 92, 246, 0.16);
   --ft-bg-base: #f5f2ee;
   --ft-bg-surface: #fdfbf8;
   --ft-bg-raised: #ffffff;
@@ -73,24 +76,27 @@
 
 [data-theme="clay"] {
   color-scheme: dark;
-  --ft-bg-base: #0d0b09;
-  --ft-bg-surface: #141210;
-  --ft-bg-raised: #1a1714;
-  --ft-bg-muted: #221e1a;
-  --ft-bg-sunken: #17130f;
-  --ft-bg-page-gradient: linear-gradient(180deg, #0d0b09 0%, #100e0c 52%, #0d0b09 100%);
-  --ft-border: #2e2924;
-  --ft-border-strong: #3d3730;
-  --ft-border-emphasis: #6f6254;
-  --ft-text-primary: #e8ddd4;
-  --ft-text-secondary: #a89b8e;
-  --ft-text-muted: #7a6e64;
-  --ft-text-inverse: #0d0b09;
-  --ft-accent: #f59e0b;
-  --ft-accent-dim: #fbbf24;
-  --ft-accent-strong: #d97706;
-  --ft-accent-subtle: #1c1400;
-  --ft-accent-glow: rgba(245, 158, 11, 0.28);
+  --ft-bg-base: #0a0a0b;
+  --ft-bg-surface: #151517;
+  --ft-bg-raised: #1c1c1f;
+  --ft-bg-muted: #242427;
+  --ft-bg-sunken: #08080a;
+  --ft-bg-page-gradient: linear-gradient(180deg, #0a0a0b 0%, #0e0e10 52%, #0a0a0b 100%);
+  --ft-border: rgba(255, 255, 255, 0.08);
+  --ft-border-strong: rgba(255, 255, 255, 0.16);
+  --ft-border-emphasis: rgba(255, 255, 255, 0.28);
+  --ft-text-primary: #f5f5f7;
+  --ft-text-secondary: #9c9ca3;
+  --ft-text-muted: #5c5c63;
+  --ft-text-inverse: #0a0a0b;
+  --ft-accent: #ef9d3c;
+  --ft-accent-dim: #ffb65c;
+  --ft-accent-strong: #e8752a;
+  --ft-accent-subtle: #241505;
+  --ft-accent-glow: rgba(239, 157, 60, 0.28);
+  --ft-accent-2: #8b5cf6;
+  --ft-accent-2-subtle: #18102a;
+  --ft-accent-2-glow: rgba(139, 92, 246, 0.28);
   --ft-green: #16a34a;
   --ft-green-subtle: #102416;
   --ft-green-glow: rgba(22, 163, 74, 0.32);

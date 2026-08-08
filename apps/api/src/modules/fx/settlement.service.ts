@@ -1,12 +1,19 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access */
 import { Injectable, Logger, BadRequestException, NotFoundException } from "@nestjs/common";
+import { Cron, CronExpression } from "@nestjs/schedule";
 
 import type { DatabaseClient, Prisma } from "@fliptrybe/database";
 import type { SettlementProvider, SettlementTransferRequest } from "@fliptrybe/providers";
 import { createMockSettlementProvider, createFincraSettlementProvider } from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
-import type { CreateSettlementInstructionDto } from "./settlement.dtos";
+import type {
+  AlertListFiltersDto,
+  CreateSettlementBeneficiaryDto,
+  CreateSettlementInstructionDto,
+  RejectBeneficiaryDto,
+  VerifyBeneficiaryDto
+} from "./settlement.dtos";
 
 // Derive a stable ledger idempotency key from the settlement instruction id
 function ledgerKey(instructionId: string, kind: "hold" | "debit" | "reversal"): string {
@@ -14,6 +21,36 @@ function ledgerKey(instructionId: string, kind: "hold" | "debit" | "reversal"): 
 }
 
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+
+// Settlements at or above this amount require a KYC-verified beneficiary on file.
+// Below it, an unverified/first-time beneficiary is allowed through (small-value
+// trust-tiered limit, matching the pattern used elsewhere for new/unverified actors).
+const KYC_REQUIRED_THRESHOLD_MINOR = BigInt(
+  process.env["SETTLEMENT_KYC_THRESHOLD_MINOR"] ?? 100_000 // ₦1,000 / $1,000 equivalent by default
+);
+
+// Best-effort delivery of CRITICAL alerts to an ops Slack channel (or any
+// Slack-compatible incoming webhook). Never throws — a failed page must not
+// break the settlement flow; the alert is already durably stored either way.
+async function notifyOpsChannel(logger: Logger, text: string) {
+  const webhookUrl = process.env["SETTLEMENT_ALERTS_WEBHOOK_URL"];
+  if (!webhookUrl) {
+    return;
+  }
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (!res.ok) {
+      logger.warn(`Ops alert webhook returned ${res.status}`);
+    }
+  } catch (err) {
+    logger.warn(`Ops alert webhook delivery failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
 
 @Injectable()
 export class SettlementService {
@@ -124,6 +161,37 @@ export class SettlementService {
     });
   }
 
+  // ─── Alerting ──────────────────────────────────────────────────────────
+
+  private async writeAlert(input: {
+    settlementInstructionId: string;
+    kind: "RECONCILIATION_DIVERGED" | "SETTLEMENT_FAILED";
+    severity?: "WARNING" | "CRITICAL";
+    message: string;
+    metadata?: Record<string, unknown>;
+  }) {
+    const severity = input.severity ?? "WARNING";
+
+    await this.db.settlementAlert.create({
+      data: {
+        id: uid("alrt"),
+        settlementInstructionId: input.settlementInstructionId,
+        kind: input.kind,
+        severity,
+        message: input.message,
+        metadata: (input.metadata ?? {}) as Prisma.InputJsonObject
+      }
+    });
+    this.logger.warn(`Settlement alert [${input.kind}] ${input.settlementInstructionId}: ${input.message}`);
+
+    if (severity === "CRITICAL") {
+      await notifyOpsChannel(
+        this.logger,
+        `🚨 Settlement alert [${input.kind}] on ${input.settlementInstructionId}: ${input.message}`
+      );
+    }
+  }
+
   // ─── Settlement Instruction Management ───────────────────────────────────
 
   async createSettlementInstruction(
@@ -148,6 +216,24 @@ export class SettlementService {
 
     if (netAmountMinor <= 0) {
       throw new BadRequestException("Net amount (destination - fees) must be positive");
+    }
+
+    if (BigInt(dto.destinationAmountMinor) >= KYC_REQUIRED_THRESHOLD_MINOR) {
+      if (!dto.beneficiaryId) {
+        throw new BadRequestException(
+          `Settlements of ${dto.destinationAmountMinor} ${quote.quoteCurrency} or more require a KYC-verified beneficiary. Create one via POST /admin/settlements/beneficiaries and pass beneficiaryId.`
+        );
+      }
+
+      const beneficiary = await this.db.settlementBeneficiary.findUnique({ where: { id: dto.beneficiaryId } });
+      if (!beneficiary || beneficiary.workspaceId !== dto.workspaceId) {
+        throw new NotFoundException(`Beneficiary not found: ${dto.beneficiaryId}`);
+      }
+      if (beneficiary.kycStatus !== "VERIFIED") {
+        throw new BadRequestException(
+          `Beneficiary ${beneficiary.id} is not KYC-verified (status: ${beneficiary.kycStatus}). Settlements of ${dto.destinationAmountMinor} ${quote.quoteCurrency} or more require verification.`
+        );
+      }
     }
 
     const idempotencyKey = `settlement_${quoteId}_${dto.transactionId}`;
@@ -263,6 +349,16 @@ export class SettlementService {
 
       this.logger.log(`Settlement submitted: ${instructionId} → provider ref: ${transfer.providerReference}${failed ? " (FAILED)" : ""}`);
 
+      if (failed) {
+        await this.writeAlert({
+          settlementInstructionId: instructionId,
+          kind: "SETTLEMENT_FAILED",
+          severity: "CRITICAL",
+          message: transfer.errorReason ?? "Provider rejected transfer",
+          metadata: { stage: "submit", providerReference: transfer.providerReference }
+        });
+      }
+
       return this.db.settlementInstruction.findUnique({ where: { id: instructionId } });
     } catch (err) {
       const errorReason = err instanceof Error ? err.message : String(err);
@@ -291,6 +387,14 @@ export class SettlementService {
           failedAt: new Date(),
           retryCount: instruction.retryCount + 1
         }
+      });
+
+      await this.writeAlert({
+        settlementInstructionId: instructionId,
+        kind: "SETTLEMENT_FAILED",
+        severity: "CRITICAL",
+        message: errorReason,
+        metadata: { stage: "submit_exception", retryCount: instruction.retryCount + 1 }
       });
 
       throw err;
@@ -335,6 +439,14 @@ export class SettlementService {
               ...(transfer.errorReason ? { errorReason: transfer.errorReason } : {})
             }
           });
+        });
+
+        await this.writeAlert({
+          settlementInstructionId: instructionId,
+          kind: "SETTLEMENT_FAILED",
+          severity: "CRITICAL",
+          message: transfer.errorReason ?? "Provider reported failure",
+          metadata: { stage: "poll" }
         });
       } else {
         await this.db.settlementInstruction.update({
@@ -419,6 +531,16 @@ export class SettlementService {
             });
 
             this.logger.log(`Settlement ${instruction.id} updated via webhook → ${mapped}${nowFailed ? " (REVERSAL written)" : ""}`);
+
+            if (nowFailed) {
+              await this.writeAlert({
+                settlementInstructionId: instruction.id,
+                kind: "SETTLEMENT_FAILED",
+                severity: "CRITICAL",
+                message: (d.failureReason as string | undefined) ?? "Payout failed (webhook)",
+                metadata: { stage: "webhook", eventId }
+              });
+            }
           }
 
           await this.db.settlementWebhookEvent.update({
@@ -495,6 +617,19 @@ export class SettlementService {
       });
 
       this.logger.warn(`Reconciliation divergence detected for ${instructionId}: status=${statusMatch}, amount=${amountMatch}`);
+
+      await this.writeAlert({
+        settlementInstructionId: instructionId,
+        kind: "RECONCILIATION_DIVERGED",
+        severity: "WARNING",
+        message: `Status match: ${statusMatch}, amount match: ${amountMatch}`,
+        metadata: {
+          ftStatus: instruction.status,
+          providerStatus: transfer.status,
+          ftAmountMinor: instruction.destinationAmountMinor.toString(),
+          providerAmountMinor: transfer.destination.amount.toString()
+        }
+      });
     } else {
       // Mark as synced
       await this.db.settlementInstruction.update({
@@ -527,5 +662,172 @@ export class SettlementService {
       orderBy: { createdAt: "desc" },
       take: filters.limit ?? 50
     });
+  }
+
+  // ─── Beneficiary KYC/KYB ─────────────────────────────────────────────────
+
+  async createBeneficiary(dto: CreateSettlementBeneficiaryDto) {
+    if (!dto.name?.trim()) {
+      throw new BadRequestException("Beneficiary name is required.");
+    }
+    if (!dto.reference?.trim()) {
+      throw new BadRequestException("Beneficiary reference (bank account, payout email, etc.) is required.");
+    }
+
+    return this.db.settlementBeneficiary.create({
+      data: {
+        id: uid("bene"),
+        workspaceId: dto.workspaceId,
+        name: dto.name.trim(),
+        reference: dto.reference.trim(),
+        ...(dto.country ? { country: dto.country } : {}),
+        ...(dto.currency ? { currency: dto.currency } : {}),
+        metadata: (dto.metadata ?? {}) as Prisma.InputJsonObject
+      }
+    });
+  }
+
+  async getBeneficiary(id: string) {
+    const beneficiary = await this.db.settlementBeneficiary.findUnique({ where: { id } });
+    if (!beneficiary) {
+      throw new NotFoundException(`Beneficiary not found: ${id}`);
+    }
+    return beneficiary;
+  }
+
+  async listBeneficiaries(workspaceId: string) {
+    return this.db.settlementBeneficiary.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  async verifyBeneficiary(id: string, dto: VerifyBeneficiaryDto) {
+    const beneficiary = await this.getBeneficiary(id);
+
+    const updated = await this.db.settlementBeneficiary.update({
+      where: { id: beneficiary.id },
+      data: {
+        kycStatus: "VERIFIED",
+        kycTier: dto.kycTier ?? beneficiary.kycTier,
+        verifiedAt: new Date(),
+        verifiedByUserId: dto.verifiedByUserId,
+        rejectedReason: null
+      }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        workspaceId: beneficiary.workspaceId,
+        actorUserId: dto.verifiedByUserId,
+        action: "settlement_beneficiary.verified",
+        entityType: "SettlementBeneficiary",
+        entityId: beneficiary.id,
+        metadata: { kycTier: updated.kycTier }
+      }
+    });
+
+    return updated;
+  }
+
+  async rejectBeneficiary(id: string, dto: RejectBeneficiaryDto) {
+    const beneficiary = await this.getBeneficiary(id);
+
+    const updated = await this.db.settlementBeneficiary.update({
+      where: { id: beneficiary.id },
+      data: {
+        kycStatus: "REJECTED",
+        rejectedReason: dto.reason,
+        verifiedAt: null,
+        verifiedByUserId: null
+      }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        workspaceId: beneficiary.workspaceId,
+        actorUserId: dto.rejectedByUserId,
+        action: "settlement_beneficiary.rejected",
+        entityType: "SettlementBeneficiary",
+        entityId: beneficiary.id,
+        metadata: { reason: dto.reason }
+      }
+    });
+
+    return updated;
+  }
+
+  // ─── Alert Query ──────────────────────────────────────────────────────
+
+  async listAlerts(filters: AlertListFiltersDto) {
+    return this.db.settlementAlert.findMany({
+      where: {
+        ...(filters.acknowledged === undefined ? {} : { acknowledged: filters.acknowledged })
+      },
+      orderBy: { createdAt: "desc" },
+      take: filters.limit ?? 50
+    });
+  }
+
+  async acknowledgeAlert(id: string, acknowledgedByUserId: string) {
+    const alert = await this.db.settlementAlert.findUnique({ where: { id } });
+    if (!alert) {
+      throw new NotFoundException(`Alert not found: ${id}`);
+    }
+
+    return this.db.settlementAlert.update({
+      where: { id },
+      data: { acknowledged: true, acknowledgedByUserId, acknowledgedAt: new Date() }
+    });
+  }
+
+  // ─── Automated Reconciliation (scheduled) ────────────────────────────────
+
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async reconcileInFlightSettlements(): Promise<void> {
+    if (!process.env["ENABLE_SETTLEMENT_RECONCILIATION_SCHEDULER"]) {
+      return;
+    }
+
+    try {
+      const inFlight = await this.db.settlementInstruction.findMany({
+        where: {
+          status: { in: ["SUBMITTED", "PROCESSING"] },
+          reconciliationState: { notIn: ["SYNCED"] }
+        },
+        take: 100, // Batch limit to avoid overwhelming the provider
+        orderBy: { submittedAt: "asc" }
+      });
+
+      let reconciled = 0;
+      let diverged = 0;
+
+      for (const instruction of inFlight) {
+        try {
+          const result = await this.reconcileSettlement(instruction.id);
+          if (result.resolved) {
+            reconciled++;
+          } else {
+            diverged++;
+          }
+        } catch (err) {
+          this.logger.warn(
+            `Scheduled reconciliation failed for ${instruction.id}: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+
+      if (inFlight.length > 0) {
+        this.logger.log(
+          `Scheduled settlement reconciliation: ${inFlight.length} in-flight, ${reconciled} reconciled, ${diverged} diverged`
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Scheduled reconciliation job failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
   }
 }

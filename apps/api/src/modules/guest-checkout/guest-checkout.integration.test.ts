@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GuestTransaction } from "@fliptrybe/database";
 import type { PrismaService } from "../prisma.service";
+import type { NotificationsService } from "../notifications/notifications.service";
 import { GuestCheckoutService } from "./guest-checkout.service";
+
+const mockNotifications = { send: vi.fn(() => Promise.resolve([])) } as unknown as NotificationsService;
 
 /**
  * End-to-end (no real DB / no real network) coverage of the full guest flow:
@@ -151,7 +154,7 @@ describe("GuestCheckoutService integration: checkout -> payment -> webhook -> fu
   it("takes a guest airtime purchase from checkout through to a delivered, receipted transaction", async () => {
     stubClubKonnectFetch("success");
     const { prisma } = makeInMemoryPrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     const created = await service.checkout(
       { productType: "AIRTIME", email: "guest@example.com", network: "MTN", msisdn: "08011112222", amountMinor: 50000 },
@@ -182,10 +185,35 @@ describe("GuestCheckoutService integration: checkout -> payment -> webhook -> fu
     expect(status.fulfilmentStatus).toBe("DELIVERED");
   });
 
+  it("keeps the transaction DELIVERED even when the notification/receipt dispatch fails", async () => {
+    stubClubKonnectFetch("success");
+    const { prisma } = makeInMemoryPrisma();
+    const failingNotifications = {
+      send: vi.fn(() => Promise.reject(new Error("Termii SMS send failed: 500")))
+    } as unknown as NotificationsService;
+    const service = new GuestCheckoutService(prisma, failingNotifications);
+
+    const created = await service.checkout(
+      { productType: "AIRTIME", email: "guest5@example.com", network: "MTN", msisdn: "08011112222", amountMinor: 50000 },
+      {}
+    );
+    const payment = await service.initiatePayment(created.reference, undefined, {});
+
+    const webhookResult = await service.handleKorapayWebhook(
+      { event: "charge.success", data: { reference: paymentReferenceOf(payment), status: "success" } },
+      undefined
+    );
+
+    expect(webhookResult).toMatchObject({ accepted: true });
+    const receipt = await service.getReceipt(created.reference);
+    expect(receipt.fulfilmentStatus).toBe("DELIVERED");
+    expect(failingNotifications.send).toHaveBeenCalled();
+  });
+
   it("marks fulfilment FAILED when the provider declines, and recovers it via admin retry", async () => {
     stubClubKonnectFetch("failure");
     const { prisma } = makeInMemoryPrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     const created = await service.checkout(
       { productType: "AIRTIME", email: "guest2@example.com", network: "MTN", msisdn: "08011112222", amountMinor: 50000 },
@@ -211,7 +239,7 @@ describe("GuestCheckoutService integration: checkout -> payment -> webhook -> fu
   it("does not double-fulfil when the same webhook event is replayed", async () => {
     stubClubKonnectFetch("success");
     const { prisma } = makeInMemoryPrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     const created = await service.checkout(
       { productType: "AIRTIME", email: "guest3@example.com", network: "MTN", msisdn: "08011112222", amountMinor: 50000 },
@@ -234,7 +262,7 @@ describe("GuestCheckoutService integration: checkout -> payment -> webhook -> fu
   it("surfaces a paid-but-unfulfilled transaction to the admin retry queue and clears it on success", async () => {
     stubClubKonnectFetch("failure");
     const { prisma } = makeInMemoryPrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     const created = await service.checkout(
       { productType: "AIRTIME", email: "guest4@example.com", network: "MTN", msisdn: "08011112222", amountMinor: 50000 },

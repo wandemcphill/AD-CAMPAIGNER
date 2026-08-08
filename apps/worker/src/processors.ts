@@ -198,11 +198,11 @@ export function processQueueJob(
       };
     }
     case "notifications": {
-      const data = job.data as QueuePayloads["notifications"];
+      // Handled by processNotificationDispatchJob in main.ts — this stub satisfies the type-switch.
       return {
         queue,
-        status: "processed",
-        detail: `Notification ${data.notificationId} queued for ${data.channel}`,
+        status: "skipped",
+        detail: "notifications is handled by its dedicated processor",
         processedAt
       };
     }

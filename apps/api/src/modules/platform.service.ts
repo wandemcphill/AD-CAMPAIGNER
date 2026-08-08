@@ -73,6 +73,7 @@ import type {
 } from "./platform.dtos";
 import { AiBrainClient } from "./ai-brain.client";
 import { PrismaService } from "./prisma.service";
+import { NotificationsService } from "./notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
 type DbClient = Record<string, any>;
@@ -403,7 +404,10 @@ export class PlatformService {
   private readonly supportTickets: SupportTicket[] = [];
   private readonly notifications: NotificationMessage[] = [];
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notificationsService: NotificationsService
+  ) {}
 
   private get db(): DbClient {
     return this.prisma.client as unknown as DbClient;
@@ -528,16 +532,17 @@ export class PlatformService {
       include: { user: true }
     });
 
-    await this.db.notification.create({
-      data: {
-        workspaceId: scope.workspaceId,
-        recipientUserId: invitee.id,
-        channel: "IN_APP",
+    await this.notificationsService.send({
+      workspaceId: scope.workspaceId,
+      userId: invitee.id,
+      channels: ["IN_APP"],
+      content: {
         title: "You were added to a workspace",
-        body: `You've been added to ${workspace.name} as ${input.role.toLowerCase()}.`,
-        entityType: "TeamMember",
-        entityId: member.id
-      }
+        body: `You've been added to ${workspace.name} as ${input.role.toLowerCase()}.`
+      },
+      entityType: "TeamMember",
+      entityId: member.id,
+      idempotencyKey: `team_invite:${member.id}`
     });
 
     return {

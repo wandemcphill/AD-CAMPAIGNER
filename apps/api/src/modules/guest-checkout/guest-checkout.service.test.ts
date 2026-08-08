@@ -3,8 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GuestTransaction } from "@fliptrybe/database";
 import type { PrismaService } from "../prisma.service";
+import type { NotificationsService } from "../notifications/notifications.service";
 import type { VtuService } from "../vtu/vtu.service";
 import { GuestCheckoutService } from "./guest-checkout.service";
+
+const mockNotifications = { send: vi.fn(() => Promise.resolve([])) } as unknown as NotificationsService;
 
 function makeFakeVtu(overrides: Partial<VtuService> = {}) {
   return {
@@ -103,7 +106,7 @@ describe("GuestCheckoutService", () => {
 
   it("rejects checkout without a valid email", async () => {
     const { prisma } = makeFakePrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     await expect(
       service.checkout(
@@ -115,7 +118,7 @@ describe("GuestCheckoutService", () => {
 
   it("rejects an unsupported network", async () => {
     const { prisma } = makeFakePrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     await expect(
       service.checkout(
@@ -133,7 +136,7 @@ describe("GuestCheckoutService", () => {
 
   it("creates a pending guest transaction with masked beneficiary and marked-up amount", async () => {
     const { prisma } = makeFakePrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     const result = await service.checkout(
       {
@@ -154,7 +157,7 @@ describe("GuestCheckoutService", () => {
 
   it("replays an identical rapid duplicate request as idempotent instead of double-creating", async () => {
     const { prisma } = makeFakePrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
     const input = {
       productType: "AIRTIME" as const,
       email: "guest@example.com",
@@ -203,7 +206,7 @@ describe("GuestCheckoutService", () => {
       updatedAt: new Date()
     }));
     const { prisma } = makeFakePrisma(seed);
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     await expect(
       service.checkout(
@@ -221,7 +224,7 @@ describe("GuestCheckoutService", () => {
 
   it("throws NotFoundException for an unknown reference on status lookup", async () => {
     const { prisma } = makeFakePrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     await expect(service.getStatus("does-not-exist")).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -230,7 +233,7 @@ describe("GuestCheckoutService", () => {
     process.env.NODE_ENV = "production";
     process.env.KORAPAY_WEBHOOK_SECRET = "test-secret";
     const { prisma } = makeFakePrisma();
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     await expect(
       service.handleKorapayWebhook({ data: { reference: "ref_1", status: "success" } }, "bad-signature")
@@ -273,7 +276,7 @@ describe("GuestCheckoutService", () => {
       }
     ];
     const { prisma } = makeFakePrisma(seed);
-    const service = new GuestCheckoutService(prisma);
+    const service = new GuestCheckoutService(prisma, mockNotifications);
 
     await expect(service.retryFulfilment("guest_1")).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -281,7 +284,7 @@ describe("GuestCheckoutService", () => {
   it("prices a DATA purchase from the VTU catalog instead of trusting the client amount", async () => {
     const { prisma } = makeFakePrisma();
     const vtu = makeFakeVtu();
-    const service = new GuestCheckoutService(prisma, vtu);
+    const service = new GuestCheckoutService(prisma, mockNotifications, vtu);
 
     const result = await service.checkout(
       {
@@ -301,7 +304,7 @@ describe("GuestCheckoutService", () => {
   it("rejects a DATA purchase for a bundle that is not in the catalog", async () => {
     const { prisma } = makeFakePrisma();
     const vtu = makeFakeVtu();
-    const service = new GuestCheckoutService(prisma, vtu);
+    const service = new GuestCheckoutService(prisma, mockNotifications, vtu);
 
     await expect(
       service.checkout(
@@ -320,7 +323,7 @@ describe("GuestCheckoutService", () => {
   it("prices a CABLE purchase from the VTU catalog", async () => {
     const { prisma } = makeFakePrisma();
     const vtu = makeFakeVtu();
-    const service = new GuestCheckoutService(prisma, vtu);
+    const service = new GuestCheckoutService(prisma, mockNotifications, vtu);
 
     const result = await service.checkout(
       {
@@ -339,7 +342,7 @@ describe("GuestCheckoutService", () => {
   it("prices an EDUCATION purchase from the VTU catalog without double-applying markup", async () => {
     const { prisma } = makeFakePrisma();
     const vtu = makeFakeVtu();
-    const service = new GuestCheckoutService(prisma, vtu);
+    const service = new GuestCheckoutService(prisma, mockNotifications, vtu);
 
     const result = await service.checkout(
       {

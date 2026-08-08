@@ -1,5 +1,7 @@
 import type { CurrencyCode, NotificationMessage } from "@fliptrybe/types";
 
+export * from "./templates.js";
+
 export function createNotification(
   input: Omit<NotificationMessage, "id" | "createdAt" | "updatedAt">
 ): NotificationMessage {

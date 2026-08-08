@@ -5,6 +5,7 @@ import type { SmmSupplierAdapter } from "@fliptrybe/providers";
 import { toCanonicalEvent } from "./ai-brain.client";
 import { PlatformService } from "./platform.service";
 import { PrismaService } from "./prisma.service";
+import type { NotificationsService } from "./notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
 const workspaceA: AuthenticatedRequestContext = {
@@ -204,7 +205,8 @@ async function fundWallet(
 
 function createTestService(db: Record<string, any> = createFakeDb()) {
   const prisma = new PrismaService(db as any);
-  return { service: new PlatformService(prisma), db };
+  const notifications = { send: vi.fn(() => Promise.resolve([])) } as unknown as NotificationsService;
+  return { service: new PlatformService(prisma, notifications), db };
 }
 
 describe("PlatformService", () => {
