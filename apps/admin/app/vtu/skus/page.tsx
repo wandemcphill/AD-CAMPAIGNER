@@ -51,7 +51,7 @@ function MappingRow({
   saving
 }: {
   mapping: SkuMapping;
-  onToggleApproval: (id: string, approved: boolean) => void;
+  onToggleApproval: (id: string, approved: boolean) => void | Promise<void>;
   saving: boolean;
 }) {
   return (
@@ -86,7 +86,7 @@ function MappingRow({
         )}
         <Button
           disabled={saving}
-          onClick={() => onToggleApproval(mapping.id, !mapping.adminApproved)}
+          onClick={() => { void onToggleApproval(mapping.id, !mapping.adminApproved); }}
           variant={mapping.adminApproved ? "secondary" : "primary"}
         >
           {mapping.adminApproved ? "Revoke" : "Approve"}
@@ -102,7 +102,7 @@ function SkuCard({
   saving
 }: {
   sku: CanonicalSku;
-  onToggleApproval: (mappingId: string, approved: boolean) => void;
+  onToggleApproval: (mappingId: string, approved: boolean) => void | Promise<void>;
   saving: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);

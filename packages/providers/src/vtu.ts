@@ -2295,7 +2295,7 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
       return (res.data ?? []).map((p) => ({
         providerPlanId: String(p.id ?? ""),
         network: (p.network?.toUpperCase() ?? "MTN") as VtuNetwork,
-        planType: "SME" as VtuPlanType,
+        planType: "SME",
         displayName: `${p.network} ${p.size} ${p.validity}`,
         sizeMb: 0,
         validityDays: 30,
@@ -2435,9 +2435,9 @@ export function createEBillsFullAdapter(config: EBillsFullConfig): VtuProviderAd
       return Promise.resolve(50);
     },
 
-    async listDataPlans(_network) {
+    listDataPlans(_network) {
       // PLACEHOLDER — eBills data plan endpoint unverified.
-      return [];
+      return Promise.resolve([]);
     },
 
     async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
@@ -2673,8 +2673,8 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
           const dayMatch = (p.validity ?? "").match(/(\d+)/);
           return {
             providerPlanId: p.serviceID ?? p.plan ?? "",
-            network: (network ?? "MTN") as VtuNetwork,
-            planType: "SME" as VtuPlanType,
+            network: network ?? "MTN",
+            planType: "SME",
             displayName: `${network} ${p.size} ${p.validity}`,
             sizeMb: gbMatch
               ? Math.round(parseFloat(gbMatch[1]!) * 1024)
@@ -2945,7 +2945,7 @@ export function createISquareDataAdapter(config: ISquareDataConfig): VtuProvider
         return (res.plans ?? []).map((p) => ({
           providerPlanId: String(p.id ?? ""),
           network: (p.network?.toUpperCase() ?? "MTN") as VtuNetwork,
-          planType: "SME" as VtuPlanType,
+          planType: "SME",
           displayName: p.name ?? `${p.network} ${p.size_mb}MB`,
           sizeMb: p.size_mb ?? 0,
           validityDays: p.validity_days ?? 30,
@@ -3174,10 +3174,10 @@ export function createInlomaxAdapter(config: InlomaxConfig): VtuProviderAdapter 
     },
 
     // POST /api/payelectric — params: serviceID (DISCO code), meterNum, meterType (1=prepaid,2=postpaid), amount, request-id
-    async validateMeter(input): Promise<VtuMeterValidation> {
+    validateMeter(_input): Promise<VtuMeterValidation> {
       // Inlomax does not document a separate meter validation endpoint; validation is implicit
       // in the electricity payment call. Skip to avoid charging on a preflight.
-      return { valid: true };
+      return Promise.resolve({ valid: true });
     },
 
     async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
@@ -3202,8 +3202,8 @@ export function createInlomaxAdapter(config: InlomaxConfig): VtuProviderAdapter 
     },
 
     // POST /api/subcable — params: serviceID, iucNum, request-id
-    async verifyCableCustomer(input): Promise<VtuMeterValidation> {
-      return { valid: true }; // Inlomax docs don't list a cable verify endpoint
+    verifyCableCustomer(_input): Promise<VtuMeterValidation> {
+      return Promise.resolve({ valid: true }); // Inlomax docs don't list a cable verify endpoint
     },
 
     async purchaseCable(input): Promise<VtuSubmitResult> {
@@ -3354,8 +3354,8 @@ export function createVTUGateAdapter(config: VTUGateConfig): VtuProviderAdapter 
           const dayMatch = (p.validity ?? "").match(/(\d+)/);
           return {
             providerPlanId: String(p.plan_id ?? ""),
-            network: (network ?? "MTN") as VtuNetwork,
-            planType: "SME" as VtuPlanType,
+            network: network ?? "MTN",
+            planType: "SME",
             displayName: p.plan_name ?? `${network} ${p.size}`,
             sizeMb: gbMatch
               ? Math.round(parseFloat(gbMatch[1]!) * 1024)

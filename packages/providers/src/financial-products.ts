@@ -72,8 +72,22 @@ export interface VirtualAccountDetails {
   currency: string;
 }
 
+// Declares what an account provider can actually do — the FINTECH.txt/Swappr-audit
+// finding that "merchant funding VA" and "customer VIBAN" are structurally
+// different capabilities (one admin-provisioned, one API-creatable + KYC-gated)
+// must be representable per-adapter rather than assumed universal.
+export interface VirtualAccountCapabilities {
+  /** True only if the provider exposes a real merchant-level create/close API
+   *  (as opposed to admin/support provisioning the account out-of-band). */
+  supportsMerchantAccountCreation: boolean;
+  /** True if the provider can create a per-customer virtual account/VIBAN via
+   *  API. Typically gated on the customer reaching a KYC-verified state. */
+  supportsCustomerVirtualAccounts: boolean;
+}
+
 export interface VirtualAccountProvider extends ProviderAdapterBase {
   readonly domain: 'VIRTUAL_ACCOUNT';
+  readonly virtualAccountCapabilities: VirtualAccountCapabilities;
 
   createAccount(input: {
     reference: string;
@@ -140,6 +154,41 @@ export interface VirtualCardProvider extends ProviderAdapterBase {
 }
 
 // ─── Remittance ─────────────────────────────────────────────────────────────────
+//
+// Providers differ fundamentally in what pricing guarantee they can offer:
+//   - Yativo: a real server-side quote object with a quoteId, locked for its TTL.
+//   - Swappr: only an indicative rate (GET /v1/rates, 60s cache) — no lock, no
+//     quoteId, and the payout endpoint itself has no quote reference at all.
+// The contract below does not force Swappr to pretend it has a lock. Instead:
+//   - RemittanceQuote.isLocked tells callers (UI/business logic) whether the
+//     quoted rate/amount is guaranteed or merely indicative.
+//   - RemittanceCapabilities.supportsLockedQuotes is the static per-provider
+//     declaration backing that distinction.
+//   - sendTransfer() carries the amount explicitly (amountMinor + currencies)
+//     as a provider-neutral, first-class field — it is a fundamental property
+//     of the instruction, not something recoverable from an opaque quoteId.
+//     quoteId is OPTIONAL and only meaningful when the provider supports locked
+//     quotes; providers without one (Swappr) never receive it.
+//   - The response can carry executedRate/executedDestinationAmountMinor when
+//     the provider's execution-time pricing is knowable and may differ from
+//     what was quoted. Callers must NOT silently substitute an executed amount
+//     for the amount the user approved — reconcile per the product's existing
+//     confirmation rules instead of auto-adjusting.
+
+export interface RemittanceCapabilities {
+  /** Provider can return a non-binding indicative rate ahead of send. */
+  supportsIndicativeRates: boolean;
+  /** Provider can return a rate/amount that is contractually honoured if the
+   *  transfer executes before the quote's expiresAt. */
+  supportsLockedQuotes: boolean;
+  /** Provider supports a distinct wallet-to-wallet FX conversion primitive
+   *  (separate from a cross-currency payout). */
+  supportsConversions: boolean;
+  /** Provider can actually execute payouts (as opposed to quote-only). */
+  supportsPayouts: boolean;
+  /** Provider has a saved-beneficiary API this adapter has implemented. */
+  supportsBeneficiaries: boolean;
+}
 
 export interface RemittanceQuote {
   quoteId: string;
@@ -150,10 +199,14 @@ export interface RemittanceQuote {
   feeMinor: number;
   rate: number;
   expiresAt: string;
+  /** false = INDICATIVE ONLY, not guaranteed. Callers must label it as such
+   *  to the customer and must not treat expiresAt as a lock guarantee. */
+  isLocked: boolean;
 }
 
 export interface RemittanceProvider extends ProviderAdapterBase {
   readonly domain: 'REMITTANCE';
+  readonly remittanceCapabilities: RemittanceCapabilities;
 
   getQuote(input: {
     sourceCurrency: string;
@@ -163,14 +216,34 @@ export interface RemittanceProvider extends ProviderAdapterBase {
 
   sendTransfer(input: {
     reference: string;
-    quoteId: string;
+    // Every money-moving call must carry an explicit idempotency key so a
+    // network timeout / worker retry / process restart cannot double-send.
+    idempotencyKey: string;
+    // The amount actually being transferred, as a first-class field — never
+    // recovered implicitly from a quoteId. Integer minor units (kobo/cents/
+    // pence) — never a floating-point major-unit amount.
+    amountMinor: number;
+    sourceCurrency: string;
+    destinationCurrency: string;
+    // Only meaningful (and only ever populated by callers) when
+    // remittanceCapabilities.supportsLockedQuotes is true for this provider.
+    quoteId?: string;
     recipient: {
       name: string;
       accountNumber: string;
       bankCode: string;
       country: string;
     };
-  }): Promise<{ providerReference: string; status: 'PROCESSING' | 'COMPLETED' | 'FAILED' }>;
+    metadata?: Record<string, unknown>;
+  }): Promise<{
+    providerReference: string;
+    status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+    // Execution-time pricing, when the provider's response actually exposes
+    // it. Absent (not zero, not guessed) when the provider doesn't return it.
+    executedRate?: number;
+    executedDestinationAmountMinor?: number;
+    executedFeeMinor?: number;
+  }>;
 
   getTransferStatus(
     providerReference: string
@@ -282,6 +355,10 @@ export function createMockVirtualAccountProvider(name = 'mock-virtual-account'):
     name,
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: 'VIRTUAL_ACCOUNT',
+    virtualAccountCapabilities: {
+      supportsMerchantAccountCreation: true,
+      supportsCustomerVirtualAccounts: true
+    },
     getCapabilities: () => mockCapabilities('VIRTUAL_ACCOUNT', ['NGN_ACCOUNT']),
     checkHealth: () => mockHealth(name),
 
@@ -394,7 +471,10 @@ export interface SwapprConfig {
   // environment is selected by the key prefix, not the URL — sandbox and
   // production share one host.
   apiKey: string;
-  // Documented base URL (both environments): https://api.swappr.me/api/v1
+  // Base host+prefix (both environments): https://api.swappr.me/api — every
+  // endpoint path in this adapter already carries its own /v1/... segment
+  // (confirmed live: GET https://api.swappr.me/api/v1/wallets → 200 during
+  // the sandbox audit), so this must NOT itself end in /v1 or paths double up.
   baseUrl?: string;
   // Per-endpoint signing secret from the Swappr dashboard, used to verify
   // inbound webhook signatures.
@@ -441,9 +521,19 @@ class ProviderApiError extends Error {
   }
 }
 
+// Safely converts an unknown API response field to string, returning fallback for non-string values.
+const toStr = (v: unknown, fallback = ''): string =>
+  typeof v === 'string' ? v : typeof v === 'number' ? String(v) : fallback;
+
 // Documented Swappr HTTP client.
-//   - Base URL (both environments): https://api.swappr.me/api/v1 — the key
-//     prefix (sk_test_/sk_live_) selects environment, not the URL.
+//   - Base host+prefix (both environments): https://api.swappr.me/api — the
+//     key prefix (sk_test_/sk_live_) selects environment, not the URL. Every
+//     documented endpoint path already includes its own /v1/... segment
+//     (e.g. "/v1/wallets"), confirmed live: GET
+//     https://api.swappr.me/api/v1/wallets returned 200 with real sandbox
+//     credentials during the provider audit (2026-08-08). An earlier version
+//     of this file defaulted baseUrl to ".../api/v1" AND used paths starting
+//     with "/v1/...", which silently doubled to ".../api/v1/v1/..." — fixed.
 //   - Auth: Authorization: Bearer <sk_...>.
 //   - Every key requires at least one allow-listed IP; unlisted IPs get
 //     403 ip_not_allowed.
@@ -457,7 +547,7 @@ async function callSwapprApi(
 ): Promise<Record<string, unknown>> {
   if (!config.apiKey) throw new Error('Swappr adapter requires config.apiKey.');
   const f = config.fetcher ?? fetch;
-  const base = config.baseUrl ?? 'https://api.swappr.me/api/v1';
+  const base = config.baseUrl ?? 'https://api.swappr.me/api';
   const method = options.method ?? (options.body ? 'POST' : 'GET');
   const res = await f(`${base}${path}`, {
     method,
@@ -545,7 +635,7 @@ async function callPayscribeApi(
   if (json['status'] === false) {
     const msg =
       (typeof json['description'] === 'string' && json['description']) ||
-      (typeof json['message'] === 'string' && (json['message'] as string)) ||
+      (typeof json['message'] === 'string' && json['message']) ||
       'Payscribe returned status:false';
     throw new ProviderApiError('payscribe', res.status, String(msg));
   }
@@ -577,14 +667,14 @@ function parsePayscribeExpiry(expiry: unknown): { month: number; year: number } 
 }
 
 function mapPayscribeCardStatus(s: unknown): 'ACTIVE' | 'FROZEN' | 'TERMINATED' {
-  const v = String(s ?? '').toLowerCase();
+  const v = (typeof s === 'string' ? s : '').toLowerCase();
   if (v === 'frozen' || v === 'suspended') return 'FROZEN';
   if (v === 'terminated' || v === 'closed' || v === 'expired') return 'TERMINATED';
   return 'ACTIVE';
 }
 
 function normalizeCardBrand(b: unknown): 'VISA' | 'MASTERCARD' {
-  return String(b ?? 'VISA').toUpperCase() === 'MASTERCARD' ? 'MASTERCARD' : 'VISA';
+  return (typeof b === 'string' ? b : 'VISA').toUpperCase() === 'MASTERCARD' ? 'MASTERCARD' : 'VISA';
 }
 
 // Confirmed against docs.yativo.com (checked 2026-08-07): Yativo does not use
@@ -663,7 +753,7 @@ function liveHealth(providerName: string): Promise<ProviderHealthSnapshot> {
 }
 
 function mapSwapprPayoutStatus(raw: unknown): 'PROCESSING' | 'COMPLETED' | 'FAILED' {
-  const v = String(raw ?? '').toLowerCase();
+  const v = (typeof raw === 'string' ? raw : '').toLowerCase();
   if (v === 'paid') return 'COMPLETED';
   if (v === 'failed' || v === 'cancelled') return 'FAILED';
   // draft | queued | processing all map to PROCESSING — the caller polls.
@@ -671,31 +761,61 @@ function mapSwapprPayoutStatus(raw: unknown): 'PROCESSING' | 'COMPLETED' | 'FAIL
 }
 
 // Swappr virtual-account adapter — mapped against the OFFICIAL Swappr API
-// documentation (docs.swappr.me, 2026-08-08). See docs/providers/swappr.md.
+// documentation (docs.swappr.me), audited 2026-08-08. See docs/providers/swappr.md
+// for the full capability matrix.
 //
-// STRUCTURAL FINDING: Swappr virtual accounts are documented as
-// "Read-only on the public API — provisioning new merchant-level VAs is
-// admin-only." There is NO POST (create) or DELETE (close) endpoint for
-// merchants — Technest support provisions accounts out-of-band. Per the
-// "return UNSUPPORTED, not a fake implementation" principle, createAccount
-// and closeAccount throw explicitly rather than guessing a nonexistent
-// endpoint. Only getAccount (GET /v1/virtual_accounts/{id}, real and
-// documented) is implemented.
+// STRUCTURAL FINDING (merchant-level NGN VAs only): the *merchant* funding
+// virtual account — the one behind FlipTrybe's own NGN wallet — is
+// admin/Technest-provisioned; there is no merchant-facing create/close
+// endpoint (confirmed live: our sandbox wallet already has one, provisioned
+// out-of-band). createAccount()/closeAccount() below therefore throw
+// UNSUPPORTED for that case rather than guessing a nonexistent endpoint.
+//
+// CORRECTION vs an earlier pass of this comment: Swappr also offers
+// CUSTOMER-SPECIFIC international VIBANs (GBP/USD/EUR) via a real, documented
+// create endpoint — POST /v1/customers/{id}/virtual_accounts — gated on the
+// customer reaching `verified` KYC status. That is a genuinely different
+// capability from the merchant VA above, and this interface (VirtualAccountProvider)
+// has no way to distinguish "admin-provisioned merchant account" from
+// "API-creatable customer account" — both currently route through the same
+// createAccount() method. Implementing the customer-VIBAN path requires the
+// individual-customer-onboarding + KYC flow (not yet built) and probably a
+// capability-aware interface change (see docs/providers/swappr.md §4-5). Left
+// unimplemented here rather than guessed.
 export function createSwapprVirtualAccountProvider(config: SwapprConfig): VirtualAccountProvider {
   const name = 'swappr';
   return {
     name,
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: 'VIRTUAL_ACCOUNT',
+    virtualAccountCapabilities: {
+      // Confirmed live (sandbox GET /v1/wallets): merchant NGN VAs are
+      // admin/Technest-provisioned, not creatable via this API.
+      supportsMerchantAccountCreation: false,
+      // Documented (POST /v1/customers/{id}/virtual_accounts), gated on
+      // customer KYC verified. Declared true because the capability genuinely
+      // exists — createAccount() below still throws because the customer
+      // onboarding/KYC flow this depends on is not yet implemented. Track
+      // actual FlipTrybe activation as AVAILABLE_AFTER_COMPLIANCE, not assumed
+      // enabled — see docs/providers/swappr.md.
+      supportsCustomerVirtualAccounts: true
+    },
     getCapabilities: () => liveCapabilities('VIRTUAL_ACCOUNT', ['NGN_ACCOUNT'], ['NG']),
     checkHealth: () => liveHealth(name),
 
     createAccount() {
+      // This interface has no way to request the customer-VIBAN flow
+      // separately from the merchant-VA flow — see the function-level note
+      // above. Until that's resolved, createAccount() always refuses rather
+      // than silently doing the wrong one.
       return Promise.reject(
         new Error(
-          'UNSUPPORTED: Swappr virtual accounts are admin-provisioned only — there is no ' +
-            'merchant-facing create endpoint. Contact Technest/Swappr support to provision an ' +
-            'account, then register its id via ProviderMapping. See docs/providers/swappr.md.'
+          'UNSUPPORTED via this method: merchant-level Swappr virtual accounts are ' +
+            'admin-provisioned only (no merchant-facing create endpoint — contact Technest/Swappr ' +
+            'support and register the account via ProviderMapping). Customer-specific ' +
+            'international VIBANs ARE creatable (POST /v1/customers/{id}/virtual_accounts) but ' +
+            'require KYC-verified customer onboarding, which is not yet built. ' +
+            'See docs/providers/swappr.md.'
         )
       );
     },
@@ -737,23 +857,26 @@ export function createSwapprVirtualAccountProvider(config: SwapprConfig): Virtua
 }
 
 // Swappr payout (remittance) adapter — mapped against the OFFICIAL Swappr API
-// documentation (docs.swappr.me, 2026-08-08). See docs/providers/swappr.md.
+// documentation (docs.swappr.me), audited 2026-08-08. See docs/providers/swappr.md.
 //
-// STRUCTURAL FINDING: Swappr has no quote-lock concept. GET /v1/rates returns
-// an INDICATIVE rate with a 60-second cache TTL — "the rate applied to a
-// payout is the one active at the time it processes," not the one you fetched.
-// There is no quoteId and POST /v1/payouts takes no quote reference. This does
-// not fit RemittanceProvider's getQuote()->quoteId->sendTransfer(quoteId)
-// contract, which assumes a provider-locked quote (see e.g. Yativo). Handling
-// here: getQuote() computes a client-side projection from the indicative rate
-// and returns a synthetic quoteId (not recognised by Swappr); sendTransfer()
-// does NOT forward that quoteId to Swappr — it re-fetches nothing and simply
-// creates the payout, since Swappr itself has no way to honour a locked rate.
-// Practically this means the amount actually delivered can differ from the
-// quoted amount if the rate moves between quote and send — this MUST be
-// disclosed to the customer or the corridor should not be routed through
-// Swappr for FX payouts. NGN-only (no FX) payouts are unaffected since no
-// rate is involved.
+// HONEST CAPABILITY DECLARATION (per the architectural rule): Swappr does not
+// support locked quotes. GET /v1/rates returns an INDICATIVE rate with a
+// 60-second cache TTL — "the rate applied to a payout is the one active at
+// the time it processes," not the one you fetched. There is no quoteId and
+// POST /v1/payouts takes no quote reference at all. remittanceCapabilities
+// below declares supportsLockedQuotes: false and every RemittanceQuote this
+// adapter returns carries isLocked: false — callers (UI/business logic) MUST
+// surface that honestly rather than implying a guarantee Swappr never made.
+//
+// sendTransfer() now receives amountMinor/sourceCurrency/destinationCurrency
+// as explicit, first-class fields (per the extended RemittanceProvider
+// contract) — it no longer needs to guess or refuse. It does NOT forward a
+// quoteId to Swappr (there is nothing there to receive one). The response's
+// executedRate/executedDestinationAmountMinor are left undefined: Swappr's
+// payout response object (per the NGN docs) does not echo an FX rate — only
+// amount_minor/fee_minor/currency, which are single-currency (no FX) for the
+// only recipient shape this adapter maps (NGN). If/when GBP/USD/EUR/CAD
+// recipients are added, re-check whether those payout responses expose a rate.
 export function createSwapprRemittanceProvider(config: SwapprConfig): RemittanceProvider {
   const name = 'swappr';
 
@@ -761,12 +884,21 @@ export function createSwapprRemittanceProvider(config: SwapprConfig): Remittance
     name,
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: 'REMITTANCE',
+    remittanceCapabilities: {
+      supportsIndicativeRates: true,
+      supportsLockedQuotes: false,
+      supportsConversions: true, // POST /v1/conversions exists (wallet-to-wallet) — not wired into this adapter (payouts only)
+      supportsPayouts: true,
+      supportsBeneficiaries: true // documented (POST/GET/PATCH/DELETE /v1/beneficiaries) — not yet implemented in this file
+    },
     getCapabilities: () => liveCapabilities('REMITTANCE', ['BANK_TRANSFER'], ['NG', 'GB', 'US', 'EU', 'CA']),
     checkHealth: () => liveHealth(name),
 
     async getQuote(input) {
       if (input.sourceCurrency === input.destinationCurrency) {
-        // Same-currency payout — no FX involved, no rate to fetch.
+        // Same-currency payout — no FX involved, no rate to fetch. Still
+        // isLocked:false for consistency — Swappr never guarantees anything
+        // about this adapter's quotes, even trivial same-currency ones.
         return {
           quoteId: `swappr_same_ccy_${randomUUID()}`,
           sourceAmountMinor: input.sourceAmountMinor,
@@ -775,7 +907,8 @@ export function createSwapprRemittanceProvider(config: SwapprConfig): Remittance
           destinationCurrency: input.destinationCurrency,
           feeMinor: 0, // documented per-currency fee schedule not captured here — see docs/providers/swappr.md
           rate: 1,
-          expiresAt: new Date(Date.now() + 60_000).toISOString()
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          isLocked: false
         };
       }
       const json = await callSwapprApi(
@@ -797,7 +930,8 @@ export function createSwapprRemittanceProvider(config: SwapprConfig): Remittance
       const rate = Number(row.rate);
       const destinationAmountMinor = Math.round(input.sourceAmountMinor * rate);
       return {
-        // Synthetic — Swappr has no lockable quoteId. See function-level note.
+        // Synthetic — Swappr has no lockable quoteId. Purely a client-side
+        // handle for UI/logging; never sent to Swappr in sendTransfer().
         quoteId: `swappr_indicative_${randomUUID()}`,
         sourceAmountMinor: input.sourceAmountMinor,
         sourceCurrency: input.sourceCurrency,
@@ -807,30 +941,53 @@ export function createSwapprRemittanceProvider(config: SwapprConfig): Remittance
         rate,
         // Swappr's own cache TTL for the rate — the projection above is only
         // valid for this long before it should be considered stale.
-        expiresAt: new Date(Date.now() + 60_000).toISOString()
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        isLocked: false
       };
     },
 
-    async sendTransfer(_input) {
-      // FURTHER INTERFACE GAP: Swappr's POST /v1/payouts REQUIRES amount_minor
-      // in the body, but RemittanceProvider.sendTransfer(input) only receives
-      // {reference, quoteId, recipient} — no amount. Since Swappr's quoteId is
-      // synthetic (see getQuote note above) and not itself resolvable server-side,
-      // there is no way for this adapter to recover the amount from quoteId
-      // alone without an out-of-process quote cache. Rather than guess an
-      // amount, this method throws until the RemittanceProvider interface is
-      // extended to carry the amount (or a quote-cache is added at the service
-      // layer) — see docs/providers/swappr.md "Interface gap" section.
-      // Recipient shape is also currency-specific; only NGN {account_number,
-      // bank_code} is captured in docs/providers/swappr.md today — GBP/USD/
-      // EUR/CAD each have distinct shapes (sort_code, routing_number, iban,
-      // etc.) not yet mapped here either.
-      throw new Error(
-        'UNSUPPORTED: createSwapprRemittanceProvider.sendTransfer cannot execute — ' +
-          'Swappr requires amount_minor at payout time but RemittanceProvider.sendTransfer() ' +
-          'does not carry an amount. Extend the interface or add a service-level quote cache ' +
-          'keyed by quoteId before wiring this live. See docs/providers/swappr.md.'
-      );
+    async sendTransfer(input) {
+      if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) {
+        throw new Error('sendTransfer requires a positive integer amountMinor');
+      }
+      if (!input.idempotencyKey) {
+        throw new Error('sendTransfer requires an idempotencyKey — Swappr rejects payouts without one');
+      }
+      // Currency-specific recipient mapping: only the NGN {account_number,
+      // bank_code} shape is implemented. GBP/USD/EUR/CAD each have distinct
+      // documented shapes (sort_code; routing_number+account_type+method;
+      // iban+bic_code; Interac email/name OR institution_number+transit_number)
+      // not yet mapped — see docs/providers/swappr.md. Refuse rather than guess.
+      if (input.destinationCurrency !== 'NGN' || input.recipient.country !== 'NG') {
+        throw new Error(
+          `UNSUPPORTED: this adapter only maps the NGN payout recipient shape today. ` +
+            `destinationCurrency="${input.destinationCurrency}" country="${input.recipient.country}" ` +
+            `requires GBP/USD/EUR/CAD recipient mapping not yet implemented — see docs/providers/swappr.md.`
+        );
+      }
+
+      const json = await callSwapprApi(config, '/v1/payouts', {
+        method: 'POST',
+        idempotencyKey: input.idempotencyKey,
+        body: {
+          amount_minor: String(input.amountMinor),
+          currency: 'NGN',
+          recipient: {
+            account_number: input.recipient.accountNumber,
+            bank_code: input.recipient.bankCode
+          },
+          merchant_reference: input.reference
+        }
+      });
+      const status = mapSwapprPayoutStatus(json['status']);
+      const feeMinorRaw = json['fee_minor'];
+      return {
+        providerReference: toStr(json['reference']) || toStr(json['id']),
+        status,
+        // NGN-only payout response carries no FX rate (single currency) — only
+        // the fee is echoed back, when present.
+        ...(feeMinorRaw !== undefined ? { executedFeeMinor: Number(feeMinorRaw) } : {})
+      };
     },
 
     async getTransferStatus(providerReference) {
@@ -921,12 +1078,12 @@ export function createPayscribeVirtualCardProvider(config: PayscribeConfig): Vir
     const exp = parsePayscribeExpiry(d['expiry']);
     const balanceUsd = Number(d['balance']);
     return {
-      providerCardId: String(d['id'] ?? providerCardId),
-      last4: String(d['last_four'] ?? ''),
+      providerCardId: toStr(d['id']) || providerCardId,
+      last4: toStr(d['last_four']),
       expiryMonth: exp.month,
       expiryYear: exp.year,
       brand: normalizeCardBrand(d['brand']),
-      currency: String(d['currency'] ?? 'USD'),
+      currency: toStr(d['currency'], 'USD'),
       status: mapPayscribeCardStatus(d['status']),
       balanceMinor: Number.isFinite(balanceUsd) ? Math.round(balanceUsd * 100) : 0
     };
@@ -961,18 +1118,18 @@ export function createPayscribeVirtualCardProvider(config: PayscribeConfig): Vir
       const details = payscribeDetails(json);
       // Create response nests the card under details.card (falls back to details).
       const card = ((details['card'] as Record<string, unknown>) ?? details) ?? {};
-      const providerCardId = String(card['id'] ?? '');
+      const providerCardId = toStr(card['id']);
       if (!providerCardId) {
         throw new ProviderApiError('payscribe', 200, 'Card create response missing card id');
       }
       const exp = parsePayscribeExpiry(card['expiry']);
       return {
         providerCardId,
-        last4: String(card['last_four'] ?? ''),
+        last4: toStr(card['last_four']),
         expiryMonth: exp.month,
         expiryYear: exp.year,
-        brand: normalizeCardBrand(card['brand'] ?? input.brand),
-        currency: String(card['currency'] ?? 'USD'),
+        brand: normalizeCardBrand(typeof card['brand'] === 'string' ? card['brand'] : input.brand),
+        currency: toStr(card['currency'], 'USD'),
         status: mapPayscribeCardStatus(card['status'])
       };
     },
@@ -985,7 +1142,7 @@ export function createPayscribeVirtualCardProvider(config: PayscribeConfig): Vir
       const d = payscribeDetails(json);
       const card = (d['card'] as Record<string, unknown>) ?? {};
       const balanceUsd = Number(card['balance'] ?? d['current_balance'] ?? d['balance']);
-      const providerReference = String(d['trans_id'] ?? card['id'] ?? input.reference);
+      const providerReference = toStr(d['trans_id']) || toStr(card['id']) || input.reference;
       return {
         providerReference,
         balanceMinor: Number.isFinite(balanceUsd) ? Math.round(balanceUsd * 100) : 0
@@ -1057,11 +1214,11 @@ export function createPayscribeVirtualAccountProvider(config: PayscribeConfig): 
       ? (details['account'] as Record<string, unknown>[])[0]
       : ((details['account'] as Record<string, unknown>) ?? details)) ?? {};
     return {
-      providerAccountId: String(acct['id'] ?? acct['account_number'] ?? ''),
-      accountNumber: String(acct['account_number'] ?? ''),
-      bankName: String(acct['bank_name'] ?? ''),
-      bankCode: String(acct['bank_code'] ?? ''),
-      accountName: String(acct['account_name'] ?? ''),
+      providerAccountId: toStr(acct['id']) || toStr(acct['account_number']),
+      accountNumber: toStr(acct['account_number']),
+      bankName: toStr(acct['bank_name']),
+      bankCode: toStr(acct['bank_code']),
+      accountName: toStr(acct['account_name']),
       currency: 'NGN'
     };
   }
@@ -1070,6 +1227,12 @@ export function createPayscribeVirtualAccountProvider(config: PayscribeConfig): 
     name,
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: 'VIRTUAL_ACCOUNT',
+    virtualAccountCapabilities: {
+      // Payscribe VAs are always created against a customer_id — there is no
+      // separate "merchant treasury VA" creation call documented.
+      supportsMerchantAccountCreation: false,
+      supportsCustomerVirtualAccounts: true
+    },
     getCapabilities: () => liveCapabilities('VIRTUAL_ACCOUNT', ['NGN_ACCOUNT'], ['NG']),
     checkHealth: () => liveHealth(name),
 
@@ -1209,6 +1372,15 @@ export function createYativoRemittanceProvider(config: YativoConfig): Remittance
     name,
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: 'REMITTANCE',
+    // Yativo genuinely has a server-side locked quote (POST /exchange-rate,
+    // TTL ~5min) — unlike Swappr, supportsLockedQuotes is honestly true here.
+    remittanceCapabilities: {
+      supportsIndicativeRates: true,
+      supportsLockedQuotes: true,
+      supportsConversions: false,
+      supportsPayouts: true,
+      supportsBeneficiaries: false // documented as required but not implemented here — see GAP note
+    },
     getCapabilities: () => liveCapabilities('REMITTANCE', ['BANK_TRANSFER'], ['NG', 'US']),
     checkHealth: () => liveHealth(name),
 
@@ -1236,21 +1408,36 @@ export function createYativoRemittanceProvider(config: YativoConfig): Remittance
         destinationCurrency: input.destinationCurrency,
         feeMinor: Math.round(data.payout_data.total_transaction_fee_in_from_currency * 100),
         rate: data.rate,
-        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString() // docs: quotes expire after 5 minutes
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(), // docs: quotes expire after 5 minutes
+        isLocked: true
       };
     },
 
     async sendTransfer(input) {
+      if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) {
+        throw new Error('sendTransfer requires a positive integer amountMinor');
+      }
+      if (!input.quoteId) {
+        throw new Error(
+          'Yativo requires a locked quoteId from getQuote() before sendTransfer — none was provided.'
+        );
+      }
       // GAP: `beneficiary_details_id` should come from a prior beneficiary-
       // creation call, not be derived from the raw recipient fields below.
       // Left as a best-effort passthrough — unverified, see module note above.
+      // Documented body is exactly { debit_wallet, amount, beneficiary_details_id,
+      // beneficiary_id? } — no quote_id field is documented on this endpoint,
+      // so none is sent; the locking is presumably enforced server-side by
+      // Yativo matching this amount against the still-valid quote it issued.
+      // `amount` uses the same major-unit convention as /exchange-rate.
       const data = (await callYativoApi(
         config,
         '/payout/simple',
         {
+          idempotencyKey: input.idempotencyKey,
           body: {
             debit_wallet: input.recipient.country,
-            amount: undefined, // amount is implied by the locked quote server-side; not re-sent here
+            amount: input.amountMinor / 100,
             beneficiary_details_id: input.recipient.accountNumber,
             beneficiary_id: input.reference
           }
@@ -1285,11 +1472,22 @@ export function createYativoRemittanceProvider(config: YativoConfig): Remittance
 export function createMockRemittanceProvider(name = 'mock-remittance'): RemittanceProvider {
   const quotes = new Map<string, RemittanceQuote>();
   const transfers = new Map<string, 'PROCESSING' | 'COMPLETED' | 'FAILED'>();
+  const idempotencyResults = new Map<
+    string,
+    { providerReference: string; status: 'PROCESSING' | 'COMPLETED' | 'FAILED' }
+  >();
 
   return {
     name,
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: 'REMITTANCE',
+    remittanceCapabilities: {
+      supportsIndicativeRates: true,
+      supportsLockedQuotes: true,
+      supportsConversions: true,
+      supportsPayouts: true,
+      supportsBeneficiaries: true
+    },
     getCapabilities: () => mockCapabilities('REMITTANCE', ['BANK_TRANSFER']),
     checkHealth: () => mockHealth(name),
 
@@ -1304,19 +1502,44 @@ export function createMockRemittanceProvider(name = 'mock-remittance'): Remittan
         destinationCurrency: input.destinationCurrency,
         feeMinor,
         rate,
-        expiresAt: new Date(Date.now() + 60_000).toISOString()
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        isLocked: true
       };
       quotes.set(quote.quoteId, quote);
       return Promise.resolve(quote);
     },
 
     sendTransfer(input) {
-      if (!quotes.has(input.quoteId)) {
-        return Promise.reject(new Error(`Unknown or expired quote ${input.quoteId}`));
+      // Idempotency: same key replays the cached outcome rather than creating
+      // a second transfer — mirrors documented real-provider behavior.
+      const cached = idempotencyResults.get(input.idempotencyKey);
+      if (cached) return Promise.resolve(cached);
+
+      if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) {
+        return Promise.reject(new Error('sendTransfer requires a positive integer amountMinor'));
+      }
+      if (input.quoteId) {
+        const quote = quotes.get(input.quoteId);
+        if (!quote) {
+          return Promise.reject(new Error(`Unknown or expired quote ${input.quoteId}`));
+        }
+        if (
+          quote.sourceCurrency !== input.sourceCurrency ||
+          quote.destinationCurrency !== input.destinationCurrency
+        ) {
+          return Promise.reject(
+            new Error(
+              `Currency mismatch: quote was ${quote.sourceCurrency}->${quote.destinationCurrency}, ` +
+                `sendTransfer requested ${input.sourceCurrency}->${input.destinationCurrency}`
+            )
+          );
+        }
       }
       const providerReference = `${name}_transfer_${input.reference}`;
       transfers.set(providerReference, 'PROCESSING');
-      return Promise.resolve({ providerReference, status: 'PROCESSING' });
+      const result = { providerReference, status: 'PROCESSING' as const };
+      idempotencyResults.set(input.idempotencyKey, result);
+      return Promise.resolve(result);
     },
 
     getTransferStatus(providerReference) {
