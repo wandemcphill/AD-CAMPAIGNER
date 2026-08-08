@@ -14,6 +14,9 @@ import { Injectable, Logger } from "@nestjs/common";
 
 import { PrismaService } from "../prisma.service";
 
+const toStr = (v: unknown, fallback = ''): string =>
+  typeof v === 'string' ? v : fallback;
+
 interface InboundWebhookContext {
   providerWebhookEventId: string;
   provider: string;
@@ -75,26 +78,23 @@ export class FinancialProductsWebhookService {
     // payload must be confirmed in sandbox (via /collections/virtual-accounts/
     // simulate-transfer) — the field lookups below are best-effort until then.
     const txn = (payload["transaction"] as Record<string, unknown> | undefined) ?? {};
-    const providerAccountId = String(
-      payload["accountId"] ??
-        payload["account_id"] ??
-        payload["account_number"] ??
-        txn["account_number"] ??
-        ""
-    );
-    const providerEventId = String(
-      payload["eventId"] ??
-        payload["event_id"] ??
-        payload["trans_id"] ??
-        txn["session_id"] ??
-        webhookEventId
-    );
+    const providerAccountId =
+      toStr(payload["accountId"]) ||
+      toStr(payload["account_id"]) ||
+      toStr(payload["account_number"]) ||
+      toStr(txn["account_number"]);
+    const providerEventId =
+      toStr(payload["eventId"]) ||
+      toStr(payload["event_id"]) ||
+      toStr(payload["trans_id"]) ||
+      toStr(txn["session_id"]) ||
+      webhookEventId;
     // UNIT WARNING: Payscribe reports `amount` in MAJOR units (naira), whereas
     // this ledger uses minor units (kobo). A provider-specific normalization step
     // is required before this path goes live — do NOT assume `amount` is already
     // minor. Prefer an explicit `amountMinor` when the provider supplies one.
     const amountMinor = Number(payload["amountMinor"] ?? payload["amount"] ?? 0);
-    const currency = String(payload["currency"] ?? "NGN");
+    const currency = toStr(payload["currency"], "NGN");
 
     if (!providerAccountId || amountMinor <= 0) {
       this.logger.warn(`Skipping VA credit webhook — missing accountId or non-positive amount`);
@@ -132,11 +132,11 @@ export class FinancialProductsWebhookService {
             virtualAccountId: virtualAccount.id,
             workspaceId: virtualAccount.workspaceId,
             providerEventId,
-            providerReference: String(payload["reference"] ?? ""),
+            providerReference: toStr(payload["reference"]),
             amountMinor,
             currency,
-            senderName: payload["senderName"] ? String(payload["senderName"]) : null,
-            senderAccount: payload["senderAccount"] ? String(payload["senderAccount"]) : null,
+            senderName: toStr(payload["senderName"]) || null,
+            senderAccount: toStr(payload["senderAccount"]) || null,
             status: "NO_WALLET"
           }
         });
@@ -165,11 +165,11 @@ export class FinancialProductsWebhookService {
           virtualAccountId: virtualAccount.id,
           workspaceId: virtualAccount.workspaceId,
           providerEventId,
-          providerReference: String(payload["reference"] ?? ""),
+          providerReference: toStr(payload["reference"]),
           amountMinor,
           currency,
-          senderName: payload["senderName"] ? String(payload["senderName"]) : null,
-          senderAccount: payload["senderAccount"] ? String(payload["senderAccount"]) : null,
+          senderName: toStr(payload["senderName"]) || null,
+          senderAccount: toStr(payload["senderAccount"]) || null,
           creditLedgerEntryId: ledgerEntry.id,
           status: "CREDITED"
         }
@@ -190,7 +190,7 @@ export class FinancialProductsWebhookService {
     payload: Record<string, unknown>,
     _webhookEventId: string
   ): Promise<void> {
-    const reference = String(payload["reference"] ?? payload["transferId"] ?? "");
+    const reference = toStr(payload["reference"]) || toStr(payload["transferId"]);
     if (!reference) {
       this.logger.warn("Remittance webhook: no reference in payload");
       return;
@@ -205,7 +205,7 @@ export class FinancialProductsWebhookService {
       return;
     }
 
-    const rawStatus = String(payload["status"] ?? "").toUpperCase();
+    const rawStatus = toStr(payload["status"]).toUpperCase();
     const nextStatus = this.mapRemittanceStatus(rawStatus);
 
     if (!nextStatus) {
@@ -214,7 +214,7 @@ export class FinancialProductsWebhookService {
     }
 
     // State-machine guard: only apply valid forward transitions
-    if (!this.isValidRemittanceTransition(transfer.status as string, nextStatus)) {
+    if (!this.isValidRemittanceTransition(transfer.status, nextStatus)) {
       this.logger.warn(`Remittance webhook: ignoring ${transfer.status}→${nextStatus} transition for ${transfer.id}`);
       return;
     }
@@ -222,7 +222,7 @@ export class FinancialProductsWebhookService {
     await this.prisma.client.remittanceTransfer.update({
       where: { id: transfer.id },
       data: {
-        status: nextStatus as "QUOTED" | "CHARGED" | "PROCESSING" | "COMPLETED" | "FAILED" | "DISPUTED",
+        status: nextStatus,
         ...(nextStatus === "COMPLETED" ? { completedAt: new Date() } : {})
       }
     });
@@ -268,7 +268,7 @@ export class FinancialProductsWebhookService {
     payload: Record<string, unknown>,
     _webhookEventId: string
   ): Promise<void> {
-    const providerCardId = String(payload["cardId"] ?? payload["card_id"] ?? "");
+    const providerCardId = toStr(payload["cardId"]) || toStr(payload["card_id"]);
     if (!providerCardId) {
       this.logger.warn("Card webhook: no cardId in payload");
       return;
@@ -283,7 +283,7 @@ export class FinancialProductsWebhookService {
       return;
     }
 
-    const rawStatus = String(payload["status"] ?? "").toUpperCase();
+    const rawStatus = toStr(payload["status"]).toUpperCase();
     const nextStatus = this.mapCardStatus(rawStatus);
 
     if (!nextStatus) {
@@ -295,7 +295,7 @@ export class FinancialProductsWebhookService {
 
     await this.prisma.client.virtualCard.update({
       where: { id: card.id },
-      data: { status: nextStatus as "ACTIVE" | "FROZEN" | "TERMINATED" }
+      data: { status: nextStatus }
     });
 
     this.logger.log(`Card ${card.id} status: ${card.status} → ${nextStatus}`);

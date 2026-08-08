@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, Min } from "class-validator";
+import { IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
 
 // ─── Virtual Accounts ───────────────────────────────────────────────────────────
 
@@ -83,4 +83,12 @@ export class SendRemittanceDto {
   @IsInt()
   @Min(0)
   feeMinor!: number;
+
+  // Client echoes back the rate it was quoted (RemittanceQuote.rate) so it can
+  // be persisted as quotedRate — the ground truth for whether that rate held
+  // is the provider's remittanceCapabilities.supportsLockedQuotes, not this
+  // value, but we still record what the customer actually saw.
+  @IsOptional()
+  @IsNumber()
+  rate?: number;
 }

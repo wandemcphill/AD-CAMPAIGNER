@@ -2095,6 +2095,139 @@ enum RemittanceTransferStatus {
   COMPLETED
   FAILED
   DISPUTED
+  // A provider call timed out / errored ambiguously. This is NOT "FAILED":
+  // the provider may or may not have executed the payout. Never auto-retry
+  // and never fall back to another provider from this state — reconcile
+  // against the provider first. See FinancialReconciliationException.
+  UNKNOWN
+  // Reconciliation has been opened for this transfer and an operator (or the
+  // reconciliation job) must resolve it before any further money movement.
+  RECONCILIATION_REQUIRED
+}
+
+// Generic financial reconciliation exception. Modelled on the existing
+// SettlementReconciliation (which is settlement-instruction specific) but
+// keyed loosely so any financial resource — remittance transfer, virtual
+// account credit, card funding — can open one.
+//
+// Rule: never silently mutate a historical transaction. A divergence between
+// FlipTrybe's ledger and the provider's record opens a row here instead.
+enum FinancialReconciliationKind {
+  MISSING_AT_PROVIDER
+  MISSING_INTERNALLY
+  AMOUNT_MISMATCH
+  CURRENCY_MISMATCH
+  STATUS_MISMATCH
+  FEE_MISMATCH
+  DUPLICATE_AT_PROVIDER
+  AMBIGUOUS_PROVIDER_RESULT
+  UNKNOWN
+}
+
+enum FinancialReconciliationStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  WONT_FIX
+}
+
+model FinancialReconciliationException {
+  id          String @id @default(uuid())
+  workspaceId String?
+
+  // Loose resource pointer so this table serves every financial domain.
+  resourceType String // "RemittanceTransfer" | "VirtualAccountCredit" | "VirtualCard" | ...
+  resourceId   String
+  domain       ProviderDomain
+  providerName String
+
+  kind   FinancialReconciliationKind
+  status FinancialReconciliationStatus @default(OPEN)
+
+  // What FlipTrybe believes vs what the provider reported. Nullable because a
+  // MISSING_* exception has only one side.
+  internalStatus      String?
+  providerStatus      String?
+  internalAmountMinor Int?
+  providerAmountMinor Int?
+  internalCurrency    String?
+  providerCurrency    String?
+  internalFeeMinor    Int?
+  providerFeeMinor    Int?
+
+  providerReference String?
+  idempotencyKey    String?
+  detail            String?
+  metadata          Json    @default("{}")
+
+  resolvedByUserId String?
+  resolutionNote   String?
+  resolvedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One open exception per (resource, kind) — re-running the reconciler
+  // updates the existing row rather than piling up duplicates.
+  @@unique([resourceType, resourceId, kind])
+  @@index([status, createdAt])
+  @@index([providerName, status])
+  @@index([workspaceId, status])
+}
+
+// Per-provider, per-capability registry with explicit compliance gating.
+// A provider may NOT move production money merely because credentials exist —
+// productionApproved/complianceApproved/kybApproved must all be true.
+enum FinancialCapability {
+  NGN_VIRTUAL_ACCOUNT
+  USD_VIRTUAL_ACCOUNT
+  GBP_VIRTUAL_ACCOUNT
+  EUR_VIRTUAL_ACCOUNT
+  CAD_VIRTUAL_ACCOUNT
+  NGN_COLLECTION
+  INTERNATIONAL_COLLECTION
+  NGN_PAYOUT
+  INTERNATIONAL_PAYOUT
+  FX_CONVERSION
+  REMITTANCE
+  VIRTUAL_CARD
+  PHYSICAL_CARD
+  ACCOUNT_VERIFICATION
+  BENEFICIARY_MANAGEMENT
+  WEBHOOKS
+  IDEMPOTENCY
+}
+
+model ProviderCapabilityGrant {
+  id           String              @id @default(uuid())
+  providerName String
+  capability   FinancialCapability
+  domain       ProviderDomain
+
+  // Discovery/verification ladder. Each must be earned, never defaulted true.
+  documented       Boolean @default(false) // official API docs confirm it
+  implemented      Boolean @default(false) // adapter code exists for it
+  sandboxVerified  Boolean @default(false) // a real sandbox call succeeded
+  kybApproved      Boolean @default(false)
+  complianceApproved Boolean @default(false)
+  productionApproved Boolean @default(false)
+
+  // Routing controls.
+  enabled  Boolean @default(false)
+  priority Int     @default(100)
+
+  // Corridor/currency scoping. Empty array = no restriction.
+  currencies String[] @default([])
+  countries  String[] @default([])
+
+  notes     String?
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerName, capability])
+  @@index([capability, enabled, priority])
+  @@index([domain, enabled])
 }
 
 model RemittanceTransfer {
@@ -2113,6 +2246,18 @@ model RemittanceTransfer {
   destinationAmountMinor Int
   destinationCurrency    String
   feeMinor               Int
+  // The rate shown to the customer at quote time, and whether the provider
+  // actually guaranteed it. isLockedQuote is derived from the provider
+  // adapter's remittanceCapabilities.supportsLockedQuotes at send time — do
+  // not infer a guarantee the provider never made (see Swappr: always false).
+  quotedRate             Float?
+  isLockedQuote          Boolean                   @default(false)
+  // Execution-time pricing, populated only when the provider's response
+  // actually exposes it. Never backfilled with the quoted values — an absent
+  // executedRate means "provider didn't tell us", not "same as quoted".
+  executedRate                   Float?
+  executedDestinationAmountMinor Int?
+  executedFeeMinor               Int?
   status                 RemittanceTransferStatus @default(QUOTED)
   idempotencyKey         String                    @unique
   walletId               String?

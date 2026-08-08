@@ -129,10 +129,10 @@ export class KycService {
     await this.prisma.client.kycVerification.update({
       where: { id: record.id },
       data: {
-        status: nextStatus as "PENDING" | "VERIFIED" | "FAILED" | "REQUIRES_ACTION" | "NOT_STARTED" | "EXPIRED",
+        status: nextStatus,
         failureReason: result.failureReason ?? null,
         completedAt: isDone ? new Date() : null,
-        ...(result.metadata ? { metadata: result.metadata as object } : {})
+        ...(result.metadata ? { metadata: result.metadata } : {})
       }
     });
 
@@ -157,8 +157,8 @@ export class KycService {
     });
 
     return records.map((r) => ({
-      level: r.level as string,
-      status: r.status as string,
+      level: r.level,
+      status: r.status,
       ...(r.submittedAt ? { submittedAt: r.submittedAt.toISOString() } : {}),
       ...(r.completedAt ? { completedAt: r.completedAt.toISOString() } : {})
     }));
@@ -172,6 +172,6 @@ export class KycService {
       where: { userId, status: "VERIFIED" }
     });
 
-    return records.some((r) => levelOrder[r.level as KycLevel] >= minOrder);
+    return records.some((r) => levelOrder[r.level] >= minOrder);
   }
 }

@@ -168,6 +168,64 @@ const RETRYABLE_CODES: ReadonlySet<AdapterErrorCode> = new Set<AdapterErrorCode>
   "rate_limited"
 ]);
 
+// ─── Fallback safety ──────────────────────────────────────────────────────────
+
+/**
+ * How safe it is to re-run an operation — on the SAME provider or a DIFFERENT
+ * one — after a failure. This is the enforcement point for the financial
+ * safety rule: a timeout on a money-moving call is NOT a failure, it is an
+ * unknown, and re-sending it through a fallback provider can double-pay a
+ * real customer.
+ *
+ * - SAFE_TO_RETRY: the operation provably did not move money (read-only, or
+ *   the provider rejected it before acceptance). Retry and fallback are both
+ *   fine.
+ * - PROVIDER_TRANSACTION_MAY_EXIST: the provider may have accepted and
+ *   executed the instruction. Do NOT retry, do NOT fall back. Open a
+ *   reconciliation exception and resolve against the provider first.
+ */
+export type FallbackSafety = "SAFE_TO_RETRY" | "PROVIDER_TRANSACTION_MAY_EXIST";
+
+/**
+ * Classifies an operation + failure into a fallback-safety verdict.
+ *
+ * `mutatesMoney` must be true for anything that can create/settle a payment,
+ * payout, card funding, or conversion. Read-only operations (quotes, status
+ * lookups, name enquiry, list calls) are always safe.
+ *
+ * The conservative default is deliberate: anything ambiguous on a
+ * money-moving call is treated as "may exist".
+ */
+export function classifyFallbackSafety(input: {
+  mutatesMoney: boolean;
+  /** HTTP status, when the provider actually responded. */
+  httpStatus?: number;
+  /** True when the failure was a timeout / socket error / no response at all. */
+  noResponse?: boolean;
+  /** Set when the provider explicitly and definitively rejected the request
+   *  BEFORE accepting it (e.g. validation error, insufficient funds). */
+  providerRejectedBeforeAcceptance?: boolean;
+}): FallbackSafety {
+  if (!input.mutatesMoney) return "SAFE_TO_RETRY";
+
+  // No response at all — the request may well have been processed.
+  if (input.noResponse) return "PROVIDER_TRANSACTION_MAY_EXIST";
+
+  if (input.providerRejectedBeforeAcceptance) return "SAFE_TO_RETRY";
+
+  const status = input.httpStatus;
+  if (status === undefined) return "PROVIDER_TRANSACTION_MAY_EXIST";
+
+  // 4xx (except 408 timeout / 429 rate-limit) means the provider refused the
+  // request outright — nothing was created.
+  if (status >= 400 && status < 500 && status !== 408 && status !== 429) {
+    return "SAFE_TO_RETRY";
+  }
+
+  // 5xx, 408, 429 — the provider may have partially processed it.
+  return "PROVIDER_TRANSACTION_MAY_EXIST";
+}
+
 export function isRetryableCode(code: AdapterErrorCode): boolean {
   return RETRYABLE_CODES.has(code);
 }

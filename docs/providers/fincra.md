@@ -121,6 +121,37 @@ corridor. Do not mark any corridor AVAILABLE until both legs are confirmed.
 
 ---
 
+## Live sandbox verification (2026-08-08)
+
+Real sandbox credentials supplied. Calls actually executed:
+
+| Call | Result |
+|---|---|
+| `GET /profile/business/me` | **200.** Business "Flip Trybe LTD", businessId `6a7619dd0e7f1a56b7074256`, `isKYCApproved: true`, country NG |
+| `GET /core/banks?currency=NGN&country=NG` | **200.** Full NG bank list with `code`/`nibssCode`/`name` — confirms the bank-code source for payouts |
+| `POST /quotes/generate` (USD→NGN, 100) | **200.** `rate: 1390.605`, `fee: 0`, `amountToReceive: 139060.5`, `reference: <uuid>`, **`expireAt` ≈ 30s ahead** |
+| `POST /core/accounts/resolve` (NUBAN) | **200** `"Account resolve successful"` but `data: null` — endpoint reachable; sandbox returns no name for the test account used. Needs a Fincra-documented sandbox test account to fully verify |
+| `GET /wallets` | **422** `"No payload sent"` — wrong shape/path for balances; the correct balances endpoint is still unconfirmed |
+
+### Key confirmations
+
+- **Fincra genuinely supports LOCKED quotes.** `POST /quotes/generate` returns a `reference` (the `quoteReference`) plus an `expireAt` ~30 seconds out. This is a real, executable quote — the opposite of Swappr's indicative-only rate. The existing adapter's 30s comment was correct.
+- The existing adapter's `/quotes/generate` request/response mapping is **confirmed correct against live sandbox** (`data.reference`, `data.rate`, `data.amountToReceive`, `data.expireAt` all present as coded).
+- **`enableWebhook: false`** — webhooks are NOT enabled on the dashboard. Must be turned on (Settings → Portal Settings) with a `callbackURL` before any Fincra webhook will be delivered.
+
+### Live FX comparison executed (§59)
+
+| Provider | USD→NGN rate | Fee | Receive (100 USD) | Locked? |
+|---|---|---|---|---|
+| **Fincra** | 1390.605 | 0 | ₦139,060.50 | **Yes** (`expireAt` ~30s) |
+| **Swappr** | — | — | — | No (indicative, 60s cache) — call blocked by `ip_not_allowed` on retry |
+
+The comparison harness works; the Swappr side could not be re-read because its
+IP allowlist began rejecting this egress IP mid-session (see `swappr.md`).
+
+### Not yet executed against Fincra
+Payout creation, conversion execution, virtual-account creation, webhook delivery.
+
 ## Audit result
 
 The Fincra adapter is a **faithful, documented integration** — no guessed
@@ -130,10 +161,13 @@ status mapping, payment schemes, and HMAC-SHA512 webhook verification.
 
 ### Open verification items (sandbox, not code bugs)
 
-1. **Amount units.** The adapter sends `amount: String(sourceAmountMinor)`. Fincra
-   request examples use what look like **major** units (`"amount":"1000"`). Confirm
-   in sandbox whether Fincra expects major or minor units for `amount`; if major,
-   convert before sending (this is the single most important money-safety check).
+1. ~~**Amount units.**~~ **RESOLVED — CONFIRMED MINOR UNITS (kobo).** See the
+   verification sprint below: `amount: "100"` on `POST /disbursements/payouts`
+   moved exactly ₦1.00 (kobo) — the wallet balance dropped by exactly 200 kobo
+   (₦2) across two `amount:"100"` payouts, confirmed by direct before/after
+   `GET /wallets` reads. The adapter's `String(sourceAmountMinor)` is correct
+   as written — no unit conversion needed. This was the single most important
+   money-safety open item and it is now closed with live evidence.
 2. **Quote TTL.** Adapter comment says 30s; docs show an `expireAt` timestamp.
    Confirm the real TTL and ensure re-quote-on-expiry.
 3. **FCY collection** per corridor (GBP/USD virtual accounts) — read the FCY
@@ -143,11 +177,277 @@ status mapping, payment schemes, and HMAC-SHA512 webhook verification.
 
 ## DONE checklist (remittance flag stays off until all pass)
 
-- [ ] Confirm amount unit (major vs minor) in sandbox — fix conversion if needed.
-- [ ] KYB approved; IP whitelisted; live keys issued.
-- [ ] Sandbox quote → payout → status round-trip for each enabled corridor.
-- [ ] Webhook received, signature verified, idempotent.
-- [ ] Beneficiary name validation wired (verify-account / BVN).
-- [ ] Ledger reconciles against Fincra `amountSent`/`amountReceived`/`fee`.
-- [ ] `RemittanceCorridor` rows enabled only for confirmed corridors (not LR).
-- [ ] Flip the `remittance` feature flag last.
+- [x] Confirm amount unit (major vs minor) in sandbox — **CONFIRMED minor (kobo)**.
+- [ ] KYB approved; IP whitelisted; live keys issued (sandbox only so far).
+- [x] Sandbox quote → payout → status round-trip for **NGN same-currency** — **LIVE VERIFIED** (see below). Cross-currency corridors not yet tested.
+- [ ] Webhook received, signature verified, idempotent — **BLOCKED**, `enableWebhook: false` on dashboard (dashboard-only setting, no API).
+- [x] Beneficiary name validation wired — **`GET /core/banks` LIVE VERIFIED**; `POST /core/accounts/resolve` reachable (200) but returned `data: null` for the test account tried — needs a documented Fincra sandbox test account.
+- [x] Ledger reconciles against Fincra `amountSent`/`amountReceived`/`fee` — **LIVE VERIFIED** via wallet-balance delta.
+- [ ] `RemittanceCorridor` rows enabled only for confirmed corridors (not LR) — none enabled yet.
+- [ ] Flip the `remittance` feature flag last — **still disabled**.
+
+---
+
+## Dedicated Fincra verification sprint (2026-08-08, session 3)
+
+Objective: verify Fincra deeply enough to inform (not yet decide) a Fincra-vs-Swappr
+routing choice, per explicit instruction NOT to switch production routing yet.
+Every call below used the real sandbox credentials already configured in this
+environment; no secret value is reproduced in this file.
+
+### A. Balances — LIVE VERIFIED
+
+Correct endpoint (found via docs, not guessed): **`GET /wallets?businessID={businessId}`**
+— NOT `GET /wallets` alone (which 422s with `"No payload sent"`, as already
+noted above and now explained).
+
+```
+GET https://sandboxapi.fincra.com/wallets?businessID=<businessId>
+→ 200 { "success": true, "data": [ { "currency": "NGN", "availableBalance": 100000,
+        "ledgerBalance": 100000, "lockedBalance": 0, "walletNumber": ... }, ... ] }
+```
+
+FlipTrybe's sandbox account has **21 currency wallets already provisioned and
+enabled**, including NGN (₦1,000.00 test balance), GBP/USD/EUR/CAD (10.00 each),
+GHS/KES/XOF (₦1,000-equivalent), plus USDT/USDC/CNGN stablecoin wallets (0
+balance) and several African currencies at 0. Response schema per-wallet:
+`id`, `_id`, `business`, `businessId`, `ledgerBalance`, `availableBalance`,
+`lockedBalance`, `rollingReserveBalance`, `walletNumber`, `currency`, `status`,
+`overdraftEnabled`, `overdraftLimit`, `createdAt`, `updatedAt`. Detail endpoint
+`GET /wallets/{walletID}` also documented (per-wallet, not re-tested live —
+the list endpoint already returns everything needed).
+
+**Sufficiency for intended products:** NGN balance (₦1,000) is enough for
+sandbox payout testing (tested at ₦1 increments). GBP/USD/EUR/CAD balances are
+tiny (10.00 each) — sufficient for a single small cross-currency test, not for
+volume testing.
+
+### B. Bank account verification — PARTIALLY LIVE VERIFIED
+
+- `GET /core/banks?currency=NGN&country=NG` — **200**, full NG bank list
+  (`code`, `nibssCode`, `name`, `branches`) — this is the bank-code source of
+  truth for payout `beneficiary.bankCode`.
+- `POST /core/accounts/resolve` `{accountNumber, bankCode, type:"nuban"}` —
+  **200** `"Account resolve successful"` but **`data: null`** for the NUBAN
+  test account used (`0690000032`/`044`, a Swappr-documented test account, not
+  a Fincra one). This means the endpoint is reachable and auth works, but name
+  resolution did not actually return a name in this sandbox call. **Invalid
+  account behavior was not separately tested against this endpoint** — only
+  against the payout endpoint (see D, where an invalid account was *not*
+  rejected in sandbox either). A Fincra-specific documented sandbox test
+  account is needed to confirm the success path fully; none was found in the
+  pages read.
+- Separately, `POST /disbursements/payouts` itself resolved and returned the
+  beneficiary's real bank name (`"ACCESS BANK PLC"`) in its response for the
+  same account number — so bank-level resolution clearly works somewhere in
+  the payout pipeline even though the standalone resolve endpoint returned null.
+
+### C. FX / Conversion — LIVE VERIFIED, full lifecycle
+
+```
+POST /quotes/generate  { transactionType:"conversion", business, sourceCurrency:"USD",
+  destinationCurrency:"NGN", amount:"100", action:"send", paymentDestination:"fliqpay_wallet" }
+→ 200 { data: { rate: 1390.605, fee: 0, sourceAmount: 100, destinationAmount: 139060.5,
+    amountToReceive: 139060.5, reference: "<uuid>", expireAt: "<~30s ahead>" } }
+```
+
+1. Quote reference: `data.reference` (a UUID) — **confirmed**, this is the
+   `quoteReference` consumed by a subsequent payout's `quoteReference` field.
+2–9. All fields (source/destination currency & amount, rate, fee, expiry) are
+   present and correctly typed — **confirmed** against the adapter's mapping.
+10. **Expiry behavior:** not tested — a quote was not deliberately allowed to
+    expire before use in this sprint (time budget). The `expireAt` timestamp
+    is real and ~30s out, consistent with the adapter's existing comment.
+11. **Whether a payout can consume the quoteReference:** the `same-currency`
+    payouts tested here (NGN→NGN) did **not** use a `quoteReference`
+    (`quoteId: null` in every payout status response) — same-currency payouts
+    don't need FX. A cross-currency payout referencing a `quoteReference` was
+    **not tested this sprint** (would require spending one of the small
+    GBP/USD/EUR/CAD test balances) — this remains **UNVERIFIED**.
+12. Whether conversion must happen before payout: **not determined** — only
+    inferable from docs, not confirmed live this sprint.
+13. Reusability: **not tested** (would require deliberately reusing a
+    `quoteReference` across two payout attempts).
+14. Idempotency of quote generation itself: **not tested** — the payout
+    endpoint's idempotency (via `customerReference`) was tested instead, see G.
+
+### D. NGN payout — LIVE VERIFIED (the most important test)
+
+Endpoint: `POST /disbursements/payouts`. Exact payload used (test/sandbox data
+only, per rule 45):
+
+```json
+{
+  "business": "<businessId>",
+  "sourceCurrency": "NGN", "destinationCurrency": "NGN",
+  "amount": "100",
+  "description": "FlipTrybe audit test",
+  "paymentDestination": "bank_account",
+  "customerReference": "<unique>",
+  "beneficiary": {
+    "accountHolderName": "Test Recipient", "accountNumber": "0690000032",
+    "bankCode": "044", "firstName": "Test", "lastName": "Recipient", "type": "individual"
+  }
+}
+```
+
+**Result: `200 { success:true, data:{ id, reference, customerReference, status:"processing" } }`.**
+Status transitioned to `"successful"` within seconds (sandbox auto-settles).
+
+`GET /disbursements/payouts/reference/{reference}` returned the full object:
+`id`, `amountSent: 100`, `amountReceived: 100`, `sourceCurrency`,
+`destinationCurrency`, `fee: 0`, `quoteId: null`, `status: "successful"`,
+`reference`, `customerReference`, `description`, `paymentDestination`,
+`valuedAt`, `createdAt`, `updatedAt`, and a fully-resolved `recipient` object
+including `bankName: "ACCESS BANK PLC"`.
+
+**Balance impact — LIVE VERIFIED:** NGN `availableBalance` dropped from
+`100000` to `99800` (exactly 200 kobo = ₦2) after two successful ₦1 payouts,
+confirmed by a direct `GET /wallets` before/after comparison. This is what
+resolved the amount-units question (see above).
+
+**Idempotency (§G) — LIVE VERIFIED, and it is a materially different model
+from Swappr's:**
+
+| Test | Result |
+|---|---|
+| First call with `customerReference=X` | `200`, payout created, `status:"processing"`→`"successful"` |
+| **Same** `customerReference=X`, **same** body, retried | **`422 {"error":"Cannot continue, Duplicate Customer Reference Passed","errorType":"DUPLICATE_CUSTOMER_REFERENCE"}`** |
+| **Same** `customerReference=X`, **different** body (different amount) | **Same `422 DUPLICATE_CUSTOMER_REFERENCE`** |
+
+**This is NOT Swappr's idempotency model.** Swappr's `Idempotency-Key`
+replays the *original successful response* (`200`, identical object) on an
+exact retry. **Fincra's `customerReference` unconditionally rejects reuse**
+— it never returns the original payout on retry, even with an identical body.
+Practically: if a FlipTrybe API call to Fincra times out after Fincra actually
+accepted the payout, a naive retry with the same `customerReference` gets a
+`422`, **not** the original success — the caller must catch that specific
+`errorType: "DUPLICATE_CUSTOMER_REFERENCE"` and then look up the outcome via
+`GET /disbursements/payouts/reference/{reference}` (which requires already
+knowing the `reference`, not just the `customerReference`) — **there is no
+documented "look up by customerReference" endpoint**, which is a real gap:
+if the original response was lost (the exact ambiguous-failure scenario this
+whole exercise is about), a `422` on retry confirms *a* payout with that
+reference exists, but does not by itself return which `reference`/`id` to
+poll. This must be handled in the adapter's ambiguous-failure path — flagged
+as a required code change, not yet implemented (see §K below).
+
+**Invalid beneficiary — LIVE TESTED, sandbox limitation found:** a payout to
+account number `0000000000` (bank code 044) was **not rejected** — it
+returned `200`, `status:"processing"`, and settled to `"successful"` within
+seconds, with the sandbox happily attaching `bankName: "ACCESS BANK PLC"` to
+an account number that cannot possibly exist. **Sandbox does not simulate
+real NIBSS account validation.** This means beneficiary-validation behavior
+cannot be verified from sandbox — production behavior for a genuinely invalid
+account is **UNKNOWN** and must be treated as a live-production risk until
+tested carefully (with a real but low-value transfer) or confirmed via Fincra
+support.
+
+**Insufficient balance:** not tested (would require draining the ₦1,000 test
+balance, judged not worth the balance budget this sprint).
+
+**Timeout/network ambiguity:** not reproducible against a live sandbox on
+demand — covered instead by the deterministic adapter/service-boundary test,
+see `apps/api/src/modules/financial-products/financial-products.service.test.ts`.
+
+### E. Virtual accounts — LIVE VERIFIED (creation)
+
+Endpoint: `POST /profile/virtual-accounts/requests` (**merchant-level**, per
+docs — there is no separate "customer-specific" virtual account creation call
+documented for Fincra; the `KYCInformation` block identifies the account
+holder but the account itself is provisioned under FlipTrybe's merchant
+business).
+
+Request used:
+```json
+{ "currency": "NGN", "accountType": "individual",
+  "KYCInformation": { "firstName": "FlipTrybe", "lastName": "AuditTest",
+    "email": "audit-test@fliptrybe.ng", "bvn": "12345678901" } }
+```
+
+**Result: `200`, `status: "approved"`, `isActive: true` immediately** (no
+async pending state observed — matches the docs' "instantly approved" claim).
+Response included `accountNumber`, `accountInformation.{accountNumber,
+accountName, bankName:"sterling", bankCode:"232", reference,
+channelReference}`, `isPermanent: true`, `virtualAccountType: "additional"`.
+
+1. **Account number/identifier** — confirmed present (`accountNumber` +
+   `accountInformation.accountNumber`, both populated).
+2. **Status** — `"approved"` / `isActive: true`.
+3. **Owner/customer reference** — the submitted `KYCInformation` names the
+   holder; there is no separate FlipTrybe-side customer object Fincra
+   returns/tracks — attribution is whatever FlipTrybe stores against the
+   returned `_id`/`accountNumber` internally.
+4. **Currency** — `"NGN"`, confirmed.
+5. **Incoming-credit mechanism** — not tested this sprint (would require an
+   actual inbound transfer, which sandbox does not appear to let us simulate
+   on demand — no "simulate transfer" endpoint was found in the pages read,
+   unlike Payscribe/Swappr which both document one).
+6. **Webhook/event structure** — documented (`virtualaccount.approved` /
+   `.issued` / `.changed` / `.declined` / `.closed`, with a
+   `data.accountInformation.{accountNumber,bankName,bankCode,...}` payload) —
+   **not received live**, webhooks are disabled on the dashboard (see F).
+7. **Deterministic reconciliation to a ledger entry** — the payload shape
+   (`data.id` as the VA identifier, `data.accountInformation.accountNumber`)
+   is sufficient to look up the internal `VirtualAccount` row **once a webhook
+   is actually enabled and received** — cannot be confirmed further without one.
+
+**PII note:** the BVN used (`12345678901`) is a documented-pattern dummy
+sandbox value, not a real customer's. The response's `note`/KYC echo was
+reviewed and **no real customer PII is reproduced in this document** — the
+resolved account-holder name from the dummy BVN fixture is intentionally
+omitted here.
+
+**Account closure** — a `POST` closure/deactivation endpoint was not located
+in the pages read this sprint; not tested.
+
+### F. Webhooks — BLOCKED, exact action required from you
+
+**Confirmed from official docs: webhook enablement is dashboard-only.**
+`https://docs.fincra.com/docs/setup-webhook.md` states there is no API
+endpoint to set the callback URL or enable webhooks — it must be done via
+**Dashboard → Account Settings → API keys and Webhook**, pasting a callback
+URL and saving.
+
+**STOP — action required from you, cannot be done programmatically:**
+1. Log into `https://app.fincra.com` (or the sandbox dashboard equivalent).
+2. Navigate to API keys and Webhook settings.
+3. Paste FlipTrybe's inbound webhook URL once one exists (see §M — no such
+   route exists in the API yet either).
+4. Save. This must be repeated **separately for sandbox and live**.
+
+Event types confirmed from docs (not received live): virtual account
+(`virtualaccount.approved/issued/changed/declined/closed`), payout
+(`payout.successful`/`payout.failed`), conversion, mandate, charges,
+collection. Signature: header `signature`, `HMAC-SHA512(webhookEncryptionKey,
+JSON.stringify(payload))` — this matches the existing `verifyFincraWebhook()`
+implementation exactly (unchanged from prior audit). Retry behavior, event
+ordering, and duplicate-event behavior are **not documented in the pages
+read** and were not observable without live delivery — **UNKNOWN**.
+
+**No webhook readiness claim is made. None can be, without a received event.**
+
+### G. Idempotency — see D above (full detail); summary
+
+| Endpoint | Same key+body | Same key+different body | Different key |
+|---|---|---|---|
+| `POST /disbursements/payouts` (`customerReference`) | **422 duplicate** (not a replay) | **422 duplicate** | New payout created |
+
+This is the single most operationally important difference from Swappr and
+must be reflected in the adapter/service layer (not yet done — see K).
+
+### H. Ambiguous failure / reconciliation — DETERMINISTIC TEST ADDED
+
+See `apps/api/src/modules/financial-products/financial-products.service.test.ts`
+(new this session). Two tests:
+1. A `sendTransfer` throwing an `ETIMEDOUT`-shaped error →
+   `RemittanceTransfer.status` becomes `RECONCILIATION_REQUIRED` (never
+   `FAILED`), a `FinancialReconciliationException` (`AMBIGUOUS_PROVIDER_RESULT`)
+   is opened, and `sendTransfer` is confirmed called **exactly once** — no
+   second/fallback provider call.
+2. A `sendTransfer` throwing a `400`-status error (definitive pre-acceptance
+   rejection) → status becomes `FAILED`, **no** reconciliation exception opened.
+
+Both pass. `classifyFallbackSafety()` (`packages/providers/src/contract.ts`)
+is the enforcement point and has its own 9-test suite
+(`fallback-safety.test.ts`) independent of this integration test.

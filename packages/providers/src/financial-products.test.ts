@@ -1,9 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { createHmac } from 'node:crypto';
+
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   createMockRemittanceProvider,
   createMockVirtualAccountProvider,
-  createMockVirtualCardProvider
+  createMockVirtualCardProvider,
+  createPayscribeVirtualAccountProvider,
+  createSwapprRemittanceProvider,
+  createSwapprVirtualAccountProvider,
+  createYativoRemittanceProvider,
+  verifySwapprWebhook
 } from './financial-products.js';
 
 describe('createMockVirtualAccountProvider', () => {
@@ -23,6 +30,14 @@ describe('createMockVirtualAccountProvider', () => {
   it('rejects fetching an unknown account', async () => {
     const provider = createMockVirtualAccountProvider();
     await expect(provider.getAccount('nope')).rejects.toThrow();
+  });
+
+  it('declares full merchant + customer VA capability (dev/test only)', () => {
+    const provider = createMockVirtualAccountProvider();
+    expect(provider.virtualAccountCapabilities).toEqual({
+      supportsMerchantAccountCreation: true,
+      supportsCustomerVirtualAccounts: true
+    });
   });
 });
 
@@ -66,17 +81,39 @@ describe('createMockVirtualCardProvider', () => {
 });
 
 describe('createMockRemittanceProvider', () => {
-  it('quotes and sends a transfer', async () => {
+  it('declares full remittance capability (dev/test only) and a locked quote', async () => {
+    const provider = createMockRemittanceProvider();
+    expect(provider.remittanceCapabilities).toEqual({
+      supportsIndicativeRates: true,
+      supportsLockedQuotes: true,
+      supportsConversions: true,
+      supportsPayouts: true,
+      supportsBeneficiaries: true
+    });
+
+    const quote = await provider.getQuote({
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'USD',
+      sourceAmountMinor: 100_000
+    });
+    expect(quote.isLocked).toBe(true);
+    expect(quote.feeMinor).toBeGreaterThan(0);
+  });
+
+  it('quotes and sends a transfer with an explicit amount', async () => {
     const provider = createMockRemittanceProvider();
     const quote = await provider.getQuote({
       sourceCurrency: 'NGN',
       destinationCurrency: 'USD',
       sourceAmountMinor: 100_000
     });
-    expect(quote.feeMinor).toBeGreaterThan(0);
 
     const transfer = await provider.sendTransfer({
       reference: 'tx1',
+      idempotencyKey: 'idem-tx1',
+      amountMinor: 100_000,
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'USD',
       quoteId: quote.quoteId,
       recipient: {
         name: 'John Smith',
@@ -96,9 +133,336 @@ describe('createMockRemittanceProvider', () => {
     await expect(
       provider.sendTransfer({
         reference: 'tx2',
+        idempotencyKey: 'idem-tx2',
+        amountMinor: 5_000,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'USD',
         quoteId: 'nonexistent',
         recipient: { name: 'X', accountNumber: '0', bankCode: '0', country: 'US' }
       })
     ).rejects.toThrow();
+  });
+
+  it('rejects a missing/zero amount', async () => {
+    const provider = createMockRemittanceProvider();
+    await expect(
+      provider.sendTransfer({
+        reference: 'tx3',
+        idempotencyKey: 'idem-tx3',
+        amountMinor: 0,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'NGN',
+        recipient: { name: 'X', accountNumber: '0', bankCode: '0', country: 'NG' }
+      })
+    ).rejects.toThrow(/positive integer amountMinor/);
+  });
+
+  it('rejects a non-integer/negative amount', async () => {
+    const provider = createMockRemittanceProvider();
+    await expect(
+      provider.sendTransfer({
+        reference: 'tx4',
+        idempotencyKey: 'idem-tx4',
+        amountMinor: -50,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'NGN',
+        recipient: { name: 'X', accountNumber: '0', bankCode: '0', country: 'NG' }
+      })
+    ).rejects.toThrow(/positive integer amountMinor/);
+  });
+
+  it('rejects a currency mismatch against the quote', async () => {
+    const provider = createMockRemittanceProvider();
+    const quote = await provider.getQuote({
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'USD',
+      sourceAmountMinor: 10_000
+    });
+    await expect(
+      provider.sendTransfer({
+        reference: 'tx5',
+        idempotencyKey: 'idem-tx5',
+        amountMinor: 10_000,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'GBP', // mismatched vs the NGN->USD quote
+        quoteId: quote.quoteId,
+        recipient: { name: 'X', accountNumber: '0', bankCode: '0', country: 'GB' }
+      })
+    ).rejects.toThrow(/Currency mismatch/);
+  });
+
+  it('replays the cached result for a duplicate idempotency key (no double-send)', async () => {
+    const provider = createMockRemittanceProvider();
+    const quote = await provider.getQuote({
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'NGN',
+      sourceAmountMinor: 10_000
+    });
+    const input = {
+      reference: 'tx6',
+      idempotencyKey: 'idem-tx6-shared',
+      amountMinor: 10_000,
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'NGN',
+      quoteId: quote.quoteId,
+      recipient: { name: 'X', accountNumber: '0', bankCode: '0', country: 'NG' }
+    };
+    const first = await provider.sendTransfer(input);
+    const second = await provider.sendTransfer(input);
+    expect(second).toEqual(first);
+  });
+});
+
+describe('Swappr virtual account adapter — capability + admin-provisioned guard', () => {
+  it('declares merchant VA as NOT creatable, customer VIBAN as creatable', () => {
+    const provider = createSwapprVirtualAccountProvider({ apiKey: 'sk_test_x' });
+    expect(provider.virtualAccountCapabilities).toEqual({
+      supportsMerchantAccountCreation: false,
+      supportsCustomerVirtualAccounts: true
+    });
+  });
+
+  it('refuses createAccount() rather than guessing a nonexistent endpoint', async () => {
+    const provider = createSwapprVirtualAccountProvider({ apiKey: 'sk_test_x' });
+    await expect(
+      provider.createAccount({ reference: 'r1', accountName: 'X', currency: 'NGN' })
+    ).rejects.toThrow(/admin-provisioned|UNSUPPORTED/i);
+  });
+
+  it('refuses closeAccount() rather than guessing a nonexistent endpoint', async () => {
+    const provider = createSwapprVirtualAccountProvider({ apiKey: 'sk_test_x' });
+    await expect(provider.closeAccount('acct_1')).rejects.toThrow(/admin-provisioned|UNSUPPORTED/i);
+  });
+
+  it('maps a real GET /v1/virtual_accounts/{id} response', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 'ckva_1',
+          currency: 'NGN',
+          status: 'active',
+          account_number: '2359114409',
+          account_name: 'SWAPPR DEMO / FLIP TRYBE LTD',
+          bank_name: 'Swappr Demo Bank',
+          bank_code: '999'
+        }),
+        { status: 200 }
+      )
+    );
+    const provider = createSwapprVirtualAccountProvider({ apiKey: 'sk_test_x', fetcher });
+    const acct = await provider.getAccount('ckva_1');
+    expect(acct.accountNumber).toBe('2359114409');
+    expect(acct.bankName).toBe('Swappr Demo Bank');
+    expect(acct.balanceMinor).toBe(0); // VA object carries no balance field per docs
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://api.swappr.me/api/v1/virtual_accounts/ckva_1',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer sk_test_x' }) })
+    );
+  });
+});
+
+describe('Swappr remittance adapter — mapped against official docs, no HTTP', () => {
+  it('declares NO locked quotes (honest capability, per architectural rule)', () => {
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x' });
+    expect(provider.remittanceCapabilities.supportsLockedQuotes).toBe(false);
+    expect(provider.remittanceCapabilities.supportsIndicativeRates).toBe(true);
+  });
+
+  it('returns an explicitly non-locked quote for a same-currency payout', async () => {
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x' });
+    const quote = await provider.getQuote({
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'NGN',
+      sourceAmountMinor: 50_000
+    });
+    expect(quote.isLocked).toBe(false);
+    expect(quote.destinationAmountMinor).toBe(50_000);
+  });
+
+  it('fetches an indicative rate and marks it unlocked', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ object: 'list', data: [{ from_currency: 'NGN', to_currency: 'USD', rate: '0.00067' }] }),
+        { status: 200 }
+      )
+    );
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x', fetcher });
+    const quote = await provider.getQuote({
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'USD',
+      sourceAmountMinor: 1_000_000
+    });
+    expect(quote.isLocked).toBe(false);
+    expect(quote.rate).toBeCloseTo(0.00067);
+    expect(quote.destinationAmountMinor).toBe(Math.round(1_000_000 * 0.00067));
+  });
+
+  it('rejects sendTransfer with a missing/zero amount', async () => {
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x' });
+    await expect(
+      provider.sendTransfer({
+        reference: 'r1',
+        idempotencyKey: 'idem1',
+        amountMinor: 0,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'NGN',
+        recipient: { name: 'X', accountNumber: '0690000032', bankCode: '044', country: 'NG' }
+      })
+    ).rejects.toThrow(/positive integer amountMinor/);
+  });
+
+  it('rejects sendTransfer without an idempotencyKey', async () => {
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x' });
+    await expect(
+      provider.sendTransfer({
+        reference: 'r1',
+        idempotencyKey: '',
+        amountMinor: 5_000,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'NGN',
+        recipient: { name: 'X', accountNumber: '0690000032', bankCode: '044', country: 'NG' }
+      })
+    ).rejects.toThrow(/idempotencyKey/);
+  });
+
+  it('rejects a non-NGN corridor as UNSUPPORTED (recipient mapping not built)', async () => {
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x' });
+    await expect(
+      provider.sendTransfer({
+        reference: 'r1',
+        idempotencyKey: 'idem1',
+        amountMinor: 5_000,
+        sourceCurrency: 'GBP',
+        destinationCurrency: 'GBP',
+        recipient: { name: 'X', accountNumber: '12345678', bankCode: '200000', country: 'GB' }
+      })
+    ).rejects.toThrow(/UNSUPPORTED/);
+  });
+
+  it('sends a documented NGN payout request and maps a successful response', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          object: 'payout',
+          id: 'ck123',
+          reference: 'po_abc123',
+          status: 'paid',
+          currency: 'NGN',
+          amount_minor: '500000',
+          fee_minor: 75,
+          recipient_name: 'ADAEZE BLESSING NWAFOR'
+        }),
+        { status: 201 }
+      )
+    );
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x', fetcher });
+    const result = await provider.sendTransfer({
+      reference: 'flp_ref_1',
+      idempotencyKey: 'idem-abc',
+      amountMinor: 500_000,
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'NGN',
+      recipient: { name: 'Adaeze Nwafor', accountNumber: '0690000032', bankCode: '044', country: 'NG' }
+    });
+
+    expect(result.providerReference).toBe('po_abc123');
+    expect(result.status).toBe('COMPLETED'); // 'paid' maps to COMPLETED
+    expect(result.executedFeeMinor).toBe(75);
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(init.headers).toMatchObject({ 'Idempotency-Key': 'idem-abc' });
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({
+      amount_minor: '500000',
+      currency: 'NGN',
+      recipient: { account_number: '0690000032', bank_code: '044' }
+    });
+  });
+
+  it('maps draft/queued/processing statuses to PROCESSING, failed/cancelled to FAILED', async () => {
+    for (const [raw, expected] of [
+      ['draft', 'PROCESSING'],
+      ['queued', 'PROCESSING'],
+      ['processing', 'PROCESSING'],
+      ['paid', 'COMPLETED'],
+      ['failed', 'FAILED'],
+      ['cancelled', 'FAILED']
+    ] as const) {
+      const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: raw }), { status: 200 }));
+      const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x', fetcher });
+      const status = await provider.getTransferStatus('po_x');
+      expect(status.status).toBe(expected);
+    }
+  });
+
+  it('throws a ProviderApiError on a 5xx response', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('server error', { status: 502 }));
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x', fetcher });
+    await expect(provider.getTransferStatus('po_x')).rejects.toThrow(/HTTP 502/);
+  });
+
+  it('throws on a 403 ip_not_allowed response', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ message: 'ip_not_allowed' }), { status: 403 }));
+    const provider = createSwapprRemittanceProvider({ apiKey: 'sk_test_x', fetcher });
+    await expect(provider.getTransferStatus('po_x')).rejects.toThrow(/ip_not_allowed/);
+  });
+});
+
+describe('verifySwapprWebhook', () => {
+  const secret = 'whsec_test_abc';
+
+  function sign(t: number, rawBody: string): string {
+    const sig = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+    return `t=${t},v1=${sig}`;
+  }
+
+  it('accepts a validly signed, fresh webhook', () => {
+    const rawBody = JSON.stringify({ event: 'payout_paid', id: 'po_1' });
+    const t = Math.floor(Date.now() / 1000);
+    const header = sign(t, rawBody);
+    expect(verifySwapprWebhook({ rawBody, signatureHeader: header, secret })).toBe(true);
+  });
+
+  it('rejects a tampered body', () => {
+    const rawBody = JSON.stringify({ event: 'payout_paid', id: 'po_1' });
+    const t = Math.floor(Date.now() / 1000);
+    const header = sign(t, rawBody);
+    expect(
+      verifySwapprWebhook({ rawBody: rawBody + 'tampered', signatureHeader: header, secret })
+    ).toBe(false);
+  });
+
+  it('rejects a stale (replayed) timestamp', () => {
+    const rawBody = JSON.stringify({ event: 'payout_paid', id: 'po_1' });
+    const t = Math.floor(Date.now() / 1000) - 600; // 10 minutes old
+    const header = sign(t, rawBody);
+    expect(verifySwapprWebhook({ rawBody, signatureHeader: header, secret })).toBe(false);
+  });
+
+  it('rejects a malformed signature header', () => {
+    expect(
+      verifySwapprWebhook({ rawBody: '{}', signatureHeader: 'not-a-valid-header', secret })
+    ).toBe(false);
+  });
+});
+
+describe('Yativo remittance adapter — capability declaration', () => {
+  it('declares genuine locked quotes (unlike Swappr)', () => {
+    const provider = createYativoRemittanceProvider({ accountId: 'acc_1', appSecret: 'secret_1' });
+    expect(provider.remittanceCapabilities.supportsLockedQuotes).toBe(true);
+  });
+});
+
+describe('Payscribe virtual account adapter — capability declaration', () => {
+  it('declares customer-scoped VA creation, no separate merchant VA', () => {
+    const provider = createPayscribeVirtualAccountProvider({ apiKey: 'ps_sk_test_x' });
+    expect(provider.virtualAccountCapabilities).toEqual({
+      supportsMerchantAccountCreation: false,
+      supportsCustomerVirtualAccounts: true
+    });
   });
 });

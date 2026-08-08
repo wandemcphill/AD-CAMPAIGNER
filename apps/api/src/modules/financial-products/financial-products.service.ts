@@ -11,6 +11,7 @@ import { Prisma, type DatabaseClient } from "@fliptrybe/database";
 import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
+  classifyFallbackSafety,
   createPayscribeVirtualAccountProvider,
   createPayscribeVirtualCardProvider,
   createSwapprRemittanceProvider,
@@ -23,6 +24,7 @@ import {
 
 import { PrismaService } from "../prisma.service";
 import { ProviderRouterService } from "../providers/provider-router.service";
+import { FinancialReconciliationService } from "./financial-reconciliation.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   CreateVirtualAccountDto,
@@ -84,7 +86,8 @@ export class FinancialProductsService {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly providerRouter: ProviderRouterService
+    private readonly providerRouter: ProviderRouterService,
+    private readonly reconciliation: FinancialReconciliationService
   ) {}
 
   private get db(): DatabaseClient {
@@ -139,7 +142,10 @@ export class FinancialProductsService {
       case "swappr":
         return createSwapprRemittanceProvider({
           apiKey: process.env["SWAPPR_API_KEY"] ?? "",
-          ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {})
+          ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {}),
+          ...(process.env["SWAPPR_WEBHOOK_SECRET"]
+            ? { webhookSecret: process.env["SWAPPR_WEBHOOK_SECRET"] }
+            : {})
         });
       case "yativo":
         return createYativoRemittanceProvider({
@@ -186,6 +192,16 @@ export class FinancialProductsService {
     return this.buildCardAdapter(selection.providerName);
   }
 
+  // FALLBACK SAFETY INVARIANT: a provider is selected exactly once per
+  // transferId, before the saga runs. If the provider call in `execute()`
+  // times out or errors, runChargeSaga's default failure policy is
+  // "hold_and_flag" — it does NOT re-select a different provider and retry
+  // the send. That would risk a duplicate payout when the first provider's
+  // state is merely unknown (PROCESSING/timeout) rather than confirmed
+  // failed. A provider is only ever swapped for a NEW transferId (a fresh
+  // customer action), never mid-flight for an existing one. Ambiguous
+  // provider states surface as "needs ops review" (see sendRemittance below)
+  // for manual reconciliation, not automatic retry-elsewhere.
   private async selectRemittanceAdapter(orderId: string): Promise<RemittanceProvider> {
     const selection = await this.providerRouter.select(
       "REMITTANCE",
@@ -574,6 +590,11 @@ export class FinancialProductsService {
               destinationAmountMinor: dto.destinationAmountMinor,
               destinationCurrency: dto.destinationCurrency,
               feeMinor: dto.feeMinor,
+              quotedRate: dto.rate ?? null,
+              // Whether this quote was actually locked is a property of the
+              // PROVIDER, not of what the customer was shown — never assume a
+              // lock a provider (e.g. Swappr) never made.
+              isLockedQuote: remittanceProvider.remittanceCapabilities.supportsLockedQuotes,
               status: "CHARGED",
               idempotencyKey,
               walletId: wallet.id,
@@ -598,7 +619,18 @@ export class FinancialProductsService {
       execute: async (transfer) => {
         const result = await remittanceProvider.sendTransfer({
           reference: transferId,
-          quoteId: dto.quoteId,
+          // Reuse the same idempotencyKey the debit step already committed —
+          // a saga retry of execute() must not be able to create a second
+          // provider-side payout for the same logical FlipTrybe transaction.
+          idempotencyKey,
+          amountMinor: dto.sourceAmountMinor,
+          sourceCurrency: dto.sourceCurrency,
+          destinationCurrency: dto.destinationCurrency,
+          // Only forward quoteId to providers that can actually honour one —
+          // Swappr has no server-side quote object to receive it.
+          ...(remittanceProvider.remittanceCapabilities.supportsLockedQuotes
+            ? { quoteId: dto.quoteId }
+            : {}),
           recipient: {
             name: dto.recipientName,
             accountNumber: dto.recipientAccountNumber,
@@ -611,7 +643,14 @@ export class FinancialProductsService {
           where: { id: transfer.id },
           data: {
             providerReference: result.providerReference,
-            status: result.status
+            status: result.status,
+            ...(result.executedRate !== undefined ? { executedRate: result.executedRate } : {}),
+            ...(result.executedDestinationAmountMinor !== undefined
+              ? { executedDestinationAmountMinor: result.executedDestinationAmountMinor }
+              : {}),
+            ...(result.executedFeeMinor !== undefined
+              ? { executedFeeMinor: result.executedFeeMinor }
+              : {})
           }
         });
       },
@@ -620,9 +659,68 @@ export class FinancialProductsService {
     });
 
     if (outcome.status !== "completed") {
-      this.logger.error(`Remittance ${transferId} needs ops review: ${String(outcome.error)}`);
+      // FINANCIAL SAFETY (governance §15/§16): the provider call failed, but a
+      // failure here does NOT mean the payout did not happen. A timeout, a 5xx,
+      // or a dropped connection all leave the provider's state UNKNOWN. We must
+      // NOT mark this FAILED, must NOT auto-retry, and must NOT re-route it to
+      // a fallback provider — any of those can double-pay a real customer.
+      //
+      // Classify how the call failed, then move the transfer into an explicit
+      // ambiguous state and open a reconciliation exception.
+      const err = outcome.error;
+      const httpStatus =
+        err instanceof Error && "status" in err && typeof (err as { status?: unknown }).status === "number"
+          ? ((err as { status: number }).status)
+          : undefined;
+      const noResponse =
+        err instanceof Error &&
+        /timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|network/i.test(err.message);
+
+      const safety = classifyFallbackSafety({
+        mutatesMoney: true,
+        ...(httpStatus !== undefined ? { httpStatus } : {}),
+        ...(noResponse ? { noResponse: true } : {})
+      });
+
+      const nextStatus =
+        safety === "SAFE_TO_RETRY"
+          ? // The provider definitively rejected this before accepting it, so
+            // no provider-side payout exists. FAILED is genuinely accurate.
+            ("FAILED" as const)
+          : ("RECONCILIATION_REQUIRED" as const);
+
+      await this.db.remittanceTransfer.update({
+        where: { id: transferId },
+        data: { status: nextStatus }
+      });
+
+      if (safety === "PROVIDER_TRANSACTION_MAY_EXIST") {
+        await this.reconciliation.openException({
+          workspaceId: ctx.workspaceId,
+          resourceType: "RemittanceTransfer",
+          resourceId: transferId,
+          domain: "REMITTANCE",
+          providerName: remittanceProvider.name,
+          kind: "AMBIGUOUS_PROVIDER_RESULT",
+          internalStatus: nextStatus,
+          internalAmountMinor: dto.sourceAmountMinor,
+          internalCurrency: dto.sourceCurrency,
+          idempotencyKey,
+          detail:
+            `Provider call did not return a confirmed result. The payout MAY have been ` +
+            `executed. Do not retry or re-route until reconciled against ` +
+            `${remittanceProvider.name}. Underlying error: ${String(outcome.error)}`
+        });
+      }
+
+      this.logger.error(
+        `Remittance ${transferId} ended ${nextStatus} (fallbackSafety=${safety}): ${String(outcome.error)}`
+      );
+
       throw new BadRequestException(
-        "Transfer was charged but could not be confirmed with the provider. This has been flagged for review."
+        safety === "SAFE_TO_RETRY"
+          ? "Transfer could not be submitted to the provider and was not sent."
+          : "Transfer was charged but could not be confirmed with the provider. It is under review — please do not retry."
       );
     }
 
