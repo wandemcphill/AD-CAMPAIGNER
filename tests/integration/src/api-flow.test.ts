@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { PlatformService } from "../../../apps/api/src/modules/platform.service";
 import { PrismaService } from "../../../apps/api/src/modules/prisma.service";
+import { NotificationsService } from "../../../apps/api/src/modules/notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "../../../apps/api/src/modules/request-context";
 
 const workspace: AuthenticatedRequestContext = {
@@ -12,7 +13,8 @@ const workspace: AuthenticatedRequestContext = {
 describe("core API service flow", () => {
   it("runs campaign, SMM, analytics, and support foundations", async () => {
     const prisma = new PrismaService();
-    const service = new PlatformService(prisma);
+    const notifications = new NotificationsService(prisma, {} as any);
+    const service = new PlatformService(prisma, notifications);
     const campaign = await service.createCampaign(workspace, { destinationKind: "TIKTOK_LIVE" });
     const smm = await service.createSmmOrder(workspace, { serviceKind: "FOLLOWERS", quantity: 500 });
     const ticket = service.createSupportTicket(workspace, { subject: "Need review" });
