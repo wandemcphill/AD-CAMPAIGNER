@@ -107,7 +107,15 @@ const eventMap: Record<
     event: "managed_ads_performance_snapshot_recorded",
     entityType: "campaign",
     actorType: "merchant"
-  }
+  },
+  VirtualAccountCreated: { event: "virtual_account_created", entityType: "virtual_account", actorType: "merchant" },
+  VirtualAccountCredited: { event: "virtual_account_credited", entityType: "virtual_account", actorType: "system" },
+  VirtualCardIssued: { event: "virtual_card_issued", entityType: "virtual_card", actorType: "merchant" },
+  VirtualCardStatusChanged: { event: "virtual_card_status_changed", entityType: "virtual_card", actorType: "merchant" },
+  RemittanceInitiated: { event: "remittance_initiated", entityType: "remittance_transfer", actorType: "merchant" },
+  RemittanceCompleted: { event: "remittance_completed", entityType: "remittance_transfer", actorType: "system" },
+  RemittanceFailed: { event: "remittance_failed", entityType: "remittance_transfer", actorType: "system" },
+  KycStatusChanged: { event: "kyc_status_changed", entityType: "kyc_verification", actorType: "system" }
 };
 
 export class AiBrainClient {

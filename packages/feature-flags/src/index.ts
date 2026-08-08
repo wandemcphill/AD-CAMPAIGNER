@@ -25,9 +25,16 @@ export const featureFlags = {
   digitalValueAdmin: true,
   trustEngine: false,
   trustEngineAdmin: false,
-  virtualAccounts: true,
-  virtualCards: true,
-  remittance: true,
+  // Financial products remain DISABLED until each provider integration is
+  // sandbox-verified end-to-end (auth + real transaction + webhook + idempotency
+  // + ledger reconciliation) per the provider-integration governance rule. The
+  // adapters are documented/code-complete but NOT production-ready. Do not flip
+  // these on from code — enable per-provider via ProviderConfig after sign-off.
+  virtualAccounts: false,
+  virtualCards: false,
+  remittance: false,
+  kycVerification: false,
+  kybVerification: false,
   telecomGateway: true,
   guestCheckout: true,
   support: true

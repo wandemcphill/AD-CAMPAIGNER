@@ -11,6 +11,7 @@ import { Prisma, type DatabaseClient } from "@fliptrybe/database";
 import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
+  createPayscribeVirtualAccountProvider,
   createPayscribeVirtualCardProvider,
   createSwapprRemittanceProvider,
   createSwapprVirtualAccountProvider,
@@ -99,6 +100,16 @@ export class FinancialProductsService {
           apiKey: process.env["SWAPPR_API_KEY"] ?? "",
           ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {})
         });
+      case "payscribe":
+        // Payscribe NGN virtual accounts (documented adapter). Not production-
+        // ready until sandbox-verified — keep the ProviderConfig row DISABLED.
+        return createPayscribeVirtualAccountProvider({
+          apiKey: process.env["PAYSCRIBE_API_KEY"] ?? "",
+          ...(process.env["PAYSCRIBE_BASE_URL"] ? { baseUrl: process.env["PAYSCRIBE_BASE_URL"] } : {}),
+          ...(process.env["PAYSCRIBE_WEBHOOK_SECRET"]
+            ? { webhookSecret: process.env["PAYSCRIBE_WEBHOOK_SECRET"] }
+            : {})
+        });
       default:
         throw new ServiceUnavailableException(
           `No virtual account provider adapter is implemented for "${providerName}".`
@@ -111,7 +122,10 @@ export class FinancialProductsService {
       case "payscribe":
         return createPayscribeVirtualCardProvider({
           apiKey: process.env["PAYSCRIBE_API_KEY"] ?? "",
-          ...(process.env["PAYSCRIBE_BASE_URL"] ? { baseUrl: process.env["PAYSCRIBE_BASE_URL"] } : {})
+          ...(process.env["PAYSCRIBE_BASE_URL"] ? { baseUrl: process.env["PAYSCRIBE_BASE_URL"] } : {}),
+          ...(process.env["PAYSCRIBE_WEBHOOK_SECRET"]
+            ? { webhookSecret: process.env["PAYSCRIBE_WEBHOOK_SECRET"] }
+            : {})
         });
       default:
         throw new ServiceUnavailableException(

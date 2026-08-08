@@ -7,12 +7,21 @@ import { WorkspaceContextMiddleware } from "../workspace-context.middleware";
 import { ProvidersModule } from "../providers/providers.module";
 import { AdminVtuController, VtuController } from "./vtu.controller";
 import { VtuService } from "./vtu.service";
+import { VtuRouterService } from "./vtu-router.service";
+import { VtuQuoteService } from "./vtu-quote.service";
 
 @Module({
   imports: [PrismaModule, ProvidersModule],
   controllers: [VtuController, AdminVtuController],
-  providers: [QueueProducerService, AuthSessionService, WorkspaceContextMiddleware, VtuService],
-  exports: [VtuService]
+  providers: [
+    QueueProducerService,
+    AuthSessionService,
+    WorkspaceContextMiddleware,
+    VtuService,
+    VtuRouterService,
+    VtuQuoteService
+  ],
+  exports: [VtuService, VtuRouterService, VtuQuoteService]
 })
 export class VtuModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

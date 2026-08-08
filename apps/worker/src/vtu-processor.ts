@@ -5,9 +5,16 @@ import {
   createMockVtuAdapter,
   createVtpassAdapter,
   createClubKonnectAdapter,
+  createSwiftlinkAdapter,
+  createEBillsFullAdapter,
+  createTopupWizardAdapter,
+  createISquareDataAdapter,
+  createInlomaxAdapter,
+  createVTUGateAdapter,
   type VtuProviderAdapter
 } from "@fliptrybe/providers";
 
+import { VtuPricingSourceType } from "@fliptrybe/database";
 import type { VtuFulfilmentJob } from "./queues";
 
 // Real DB-backed handlers for the vtu-fulfilment queue. Unlike the other queues in
@@ -45,6 +52,36 @@ function buildAdapter(providerName: string): VtuProviderAdapter {
         ...(process.env["CLUBKONNECT_CALLBACK_URL"]
           ? { callbackUrl: process.env["CLUBKONNECT_CALLBACK_URL"] }
           : {})
+      });
+    case "swiftlink":
+      return createSwiftlinkAdapter({
+        apiKey: process.env["SWIFTLINK_API_KEY"] ?? "",
+        ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
+      });
+    case "ebills":
+      return createEBillsFullAdapter({
+        apiKey: process.env["EBILLS_API_KEY"] ?? "",
+        ...(process.env["EBILLS_BASE_URL"] ? { baseUrl: process.env["EBILLS_BASE_URL"] } : {})
+      });
+    case "topupwizard":
+      return createTopupWizardAdapter({
+        apiKey: process.env["TOPUPWIZARD_API_KEY"] ?? "",
+        ...(process.env["TOPUPWIZARD_BASE_URL"] ? { baseUrl: process.env["TOPUPWIZARD_BASE_URL"] } : {})
+      });
+    case "isquaredata":
+      return createISquareDataAdapter({
+        apiKey: process.env["ISQUAREDATA_API_KEY"] ?? "",
+        ...(process.env["ISQUAREDATA_BASE_URL"] ? { baseUrl: process.env["ISQUAREDATA_BASE_URL"] } : {})
+      });
+    case "inlomax":
+      return createInlomaxAdapter({
+        apiKey: process.env["INLOMAX_API_KEY"] ?? "",
+        ...(process.env["INLOMAX_BASE_URL"] ? { baseUrl: process.env["INLOMAX_BASE_URL"] } : {})
+      });
+    case "vtugate":
+      return createVTUGateAdapter({
+        apiKey: process.env["VTUGATE_API_KEY"] ?? "",
+        ...(process.env["VTUGATE_BASE_URL"] ? { baseUrl: process.env["VTUGATE_BASE_URL"] } : {})
       });
     default:
       return createMockVtuAdapter(providerName);
@@ -470,6 +507,147 @@ export function processOpsReview(job: Job<VtuFulfilmentJob>): string {
   return `ops_review: order ${job.data.orderId ?? "unknown"} flagged for manual resolution`;
 }
 
+// ─── provider_balance_check ──────────────────────────────────────────────────
+// Polls the balance for every ACTIVE or PRODUCTION_READY provider and upserts a
+// VtuProviderBalance snapshot. If the balance falls below the VtuProviderConfig
+// minBalanceMinor threshold the status flips to LOW_BALANCE so the router
+// deprioritises (balanceWeight) or skips that provider.
+// Run on a cron: every 30 minutes.
+
+export async function processProviderBalanceCheck(job: Job<VtuFulfilmentJob>): Promise<string> {
+  const db = getDb();
+
+  const providerName = job.data.providerName;
+
+  const configs = providerName
+    ? await db.vtuProviderConfig.findMany({ where: { providerName } })
+    : await db.vtuProviderConfig.findMany({
+        where: { status: { in: ["ACTIVE", "PRODUCTION_READY", "CONFIGURED"] }, maintenanceMode: false }
+      });
+
+  const results: string[] = [];
+
+  for (const cfg of configs) {
+    try {
+      const adapter = buildAdapter(cfg.providerName);
+      if (!adapter.getBalance) {
+        results.push(`${cfg.providerName}: no getBalance — skipped`);
+        continue;
+      }
+
+      const balanceResult = await adapter.getBalance();
+      const balanceMinor = balanceResult.balanceMinor;
+      const status =
+        balanceMinor <= 0
+          ? "INSUFFICIENT"
+          : cfg.minBalanceMinor > 0 && balanceMinor < cfg.minBalanceMinor
+            ? "LOW_BALANCE"
+            : "HEALTHY";
+
+      await db.vtuProviderBalance.upsert({
+        where: { providerName: cfg.providerName },
+        create: {
+          id: `vbal_${Math.random().toString(36).slice(2, 10)}`,
+          providerName: cfg.providerName,
+          balanceMinor,
+          status,
+          threshold: cfg.minBalanceMinor,
+          checkedAt: new Date()
+        },
+        update: {
+          balanceMinor,
+          status,
+          threshold: cfg.minBalanceMinor,
+          checkedAt: new Date()
+        }
+      });
+
+      results.push(`${cfg.providerName}: ₦${(balanceMinor / 100).toFixed(2)} [${status}]`);
+    } catch (err) {
+      results.push(`${cfg.providerName}: ERROR — ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return `provider_balance_check: ${results.join("; ")}`;
+}
+
+// ─── price_sync ──────────────────────────────────────────────────────────────
+// Refreshes live cost prices from ACTIVE providers that have listDataPlans().
+// Diffs against existing VtuProviderSkuMapping rows: updates costMinor,
+// writes a VtuProviderPricingHistory row for any change > 0.5%, and updates
+// lastSyncedAt. This keeps the router's cost-comparison data fresh.
+// Run on a cron: every 6 hours.
+
+export async function processPriceSync(job: Job<VtuFulfilmentJob>): Promise<string> {
+  const db = getDb();
+  const providerName = job.data.providerName;
+
+  const configs = providerName
+    ? await db.vtuProviderConfig.findMany({ where: { providerName } })
+    : await db.vtuProviderConfig.findMany({
+        where: { status: { in: ["ACTIVE", "PRODUCTION_READY"] }, maintenanceMode: false }
+      });
+
+  let updated = 0;
+  let unchanged = 0;
+  const historyEntries: Array<{
+    id: string; providerName: string; providerSku: string;
+    oldCostMinor: number | null; newCostMinor: number; sourceType: VtuPricingSourceType;
+  }> = [];
+
+  for (const cfg of configs) {
+    if (!cfg.enabledServices.includes("DATA")) continue;
+
+    try {
+      const adapter = buildAdapter(cfg.providerName);
+      const plans = await adapter.listDataPlans();
+
+      for (const plan of plans) {
+        const mapping = await db.vtuProviderSkuMapping.findUnique({
+          where: { providerName_providerSku: { providerName: cfg.providerName, providerSku: plan.providerPlanId } }
+        });
+
+        if (!mapping) continue; // only update existing admin-approved mappings
+
+        const delta = Math.abs(plan.costMinor - mapping.costMinor);
+        const changePct = mapping.costMinor > 0 ? delta / mapping.costMinor : 1;
+
+        await db.vtuProviderSkuMapping.update({
+          where: { id: mapping.id },
+          data: {
+            costMinor: plan.costMinor,
+            pricingSourceType: "LIVE_PROVIDER",
+            lastSyncedAt: new Date()
+          }
+        });
+
+        if (changePct > 0.005 || mapping.pricingSourceType === "RESEARCHED_PUBLIC_PRICE") {
+          historyEntries.push({
+            id: `vph_${Math.random().toString(36).slice(2, 10)}`,
+            providerName: cfg.providerName,
+            providerSku: plan.providerPlanId,
+            oldCostMinor: mapping.costMinor,
+            newCostMinor: plan.costMinor,
+            sourceType: VtuPricingSourceType.LIVE_PROVIDER
+          });
+          updated++;
+        } else {
+          unchanged++;
+        }
+      }
+    } catch (err) {
+      // Log but don't fail the whole job — other providers should still sync.
+      console.error(`price_sync: ${cfg.providerName} error: ${String(err)}`);
+    }
+  }
+
+  if (historyEntries.length > 0) {
+    await db.vtuProviderPricingHistory.createMany({ data: historyEntries });
+  }
+
+  return `price_sync: ${updated} prices updated, ${unchanged} unchanged, ${historyEntries.length} history entries written`;
+}
+
 export async function processVtuFulfilmentJob(job: Job<VtuFulfilmentJob>): Promise<string> {
   switch (job.name) {
     case "poll_status":
@@ -486,6 +664,10 @@ export async function processVtuFulfilmentJob(job: Job<VtuFulfilmentJob>): Promi
       return processEducationCatalogSync(job);
     case "provider_health":
       return processProviderHealth(job);
+    case "provider_balance_check":
+      return processProviderBalanceCheck(job);
+    case "price_sync":
+      return processPriceSync(job);
     case "ops_review":
       return processOpsReview(job);
     default:

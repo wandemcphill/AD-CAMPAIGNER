@@ -75,6 +75,8 @@ export type VtuFulfilmentJobName =
   | "betting_catalog_sync"
   | "education_catalog_sync"
   | "provider_health"
+  | "provider_balance_check"
+  | "price_sync"
   | "ops_review";
 
 export interface VtuFulfilmentJob {

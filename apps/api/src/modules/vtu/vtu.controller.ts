@@ -17,6 +17,7 @@ import type {
   BuyAirtimeDto,
   BuyDataDto,
   CablePackagesQueryDto,
+  GetVtuQuoteDto,
   ValidateMeterDto,
   VerifyBettingDto,
   VerifyCableDto,
@@ -29,6 +30,12 @@ import { VtuService } from "./vtu.service";
 @RequirePermissions("analytics:read")
 export class VtuController {
   constructor(@Inject(VtuService) private readonly vtu: VtuService) {}
+
+  @Get("quote")
+  @RequirePermissions("analytics:read")
+  getQuote(@Query() query: GetVtuQuoteDto) {
+    return this.vtu.createQuoteForProduct(query);
+  }
 
   @Get("data-plans")
   listDataPlans(@Query("network") network?: BuyDataDto["network"]) {
@@ -177,5 +184,63 @@ export class AdminVtuController {
     @Query() query: { status?: string; productType?: string; days?: number; limit?: number }
   ) {
     return this.vtu.adminBillsOrders(query);
+  }
+
+  // ─── Canonical SKU management ─────────────────────────────────────────────────
+
+  @Get("skus")
+  listCanonicalSkus(@Query() query: { network?: string; category?: string }) {
+    return this.vtu.adminListCanonicalSkus(query);
+  }
+
+  @Patch("skus/mappings/:mappingId")
+  updateSkuMapping(
+    @Param("mappingId") mappingId: string,
+    @Body() body: { costMinor?: number; active?: boolean; adminApproved?: boolean },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.vtu.adminUpdateSkuMapping(mappingId, body, workspaceContextFromRequest(request));
+  }
+
+  // ─── Provider Control Center ─────────────────────────────────────────────────
+
+  @Get("providers")
+  listProviderConfigs() {
+    return this.vtu.adminListProviderConfigs();
+  }
+
+  @Patch("providers/:providerName")
+  updateProviderConfig(
+    @Param("providerName") providerName: string,
+    @Body()
+    body: {
+      status?: string;
+      maintenanceMode?: boolean;
+      minBalanceMinor?: number;
+      maxTransactionMinor?: number;
+      costWeight?: number;
+      successRateWeight?: number;
+      latencyWeight?: number;
+      balanceWeight?: number;
+      trafficAllocationPct?: number;
+      enabledServices?: string[];
+    },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.vtu.adminUpdateProviderConfig(
+      providerName,
+      body,
+      workspaceContextFromRequest(request)
+    );
+  }
+
+  @Get("providers/:providerName/balance")
+  getProviderBalance(@Param("providerName") providerName: string) {
+    return this.vtu.adminGetProviderBalance(providerName);
+  }
+
+  @Get("providers/routing-matrix")
+  getRoutingMatrix() {
+    return this.vtu.adminGetRoutingMatrix();
   }
 }

@@ -369,6 +369,7 @@ enum ProviderDomain {
   VIRTUAL_CARD
   REMITTANCE
   TELECOM
+  KYC
 }
 
 enum ProviderTier {
@@ -458,6 +459,25 @@ enum VtuOrderStatus {
   AMBIGUOUS
   REVERSED
   REFUNDED
+}
+
+enum VtuProviderStatus {
+  DISCOVERED
+  CONFIGURED
+  SANDBOX
+  VERIFIED
+  PRODUCTION_READY
+  ACTIVE
+  PAUSED
+  DEGRADED
+  DISABLED
+  BLOCKED_PENDING_CREDENTIALS
+}
+
+enum VtuPricingSourceType {
+  RESEARCHED_PUBLIC_PRICE
+  LIVE_PROVIDER
+  MANUAL_OVERRIDE
 }
 
 // ─── Phase 2: Virtual Numbers (International SMS) ────────────────────────────
@@ -2014,6 +2034,7 @@ model VirtualAccount {
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   closedAt          DateTime?
+  inboundCredits    VirtualAccountCredit[]
 
   @@unique([providerName, providerAccountId])
   @@index([workspaceId, status])
@@ -2120,6 +2141,150 @@ model RemittanceWalletCharge {
 
   @@index([workspaceId, status])
   @@index([transferId])
+}
+
+// Saved payout recipients for customer-facing remittance (separate from
+// SettlementBeneficiary which is FlipTrybe's own settlement infra).
+model RemittanceBeneficiary {
+  id                    String   @id @default(uuid())
+  workspaceId           String
+  userId                String?
+  nickname              String?
+  recipientName         String
+  country               String
+  currency              String
+  bankName              String?
+  bankCode              String?
+  accountNumber         String?
+  mobileNumber          String?
+  payoutMethod          String   @default("BANK_ACCOUNT")
+  providerBeneficiaryId String?
+  verifiedName          String?
+  verificationStatus    String   @default("UNVERIFIED")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([workspaceId, country])
+  @@index([userId])
+}
+
+// Supported remittance corridors — configures which source→destination pairs
+// are enabled and which providers handle them. Database-driven so corridors
+// can be toggled without a deploy.
+model RemittanceCorridor {
+  id                  String   @id @default(uuid())
+  sourceCountry       String
+  sourceCurrency      String
+  destinationCountry  String
+  destinationCurrency String
+  enabled             Boolean  @default(false)
+  primaryProvider     String?
+  fallbackProvider    String?
+  fxProvider          String?
+  minAmountMinor      Int      @default(100)
+  maxAmountMinor      Int      @default(100000000)
+  fixedFeeMinor       Int      @default(0)
+  percentageFeeBps    Int      @default(0)
+  etaMinutes          Int      @default(60)
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([sourceCountry, sourceCurrency, destinationCountry, destinationCurrency])
+  @@index([sourceCountry, destinationCountry, enabled])
+}
+
+// Inbound credit recorded each time a virtual account receives money from
+// the provider via webhook. The credit is applied to the workspace wallet.
+model VirtualAccountCredit {
+  id                  String   @id @default(uuid())
+  virtualAccountId    String
+  workspaceId         String
+  providerEventId     String   @unique
+  providerReference   String?
+  amountMinor         Int
+  currency            String
+  senderName          String?
+  senderAccount       String?
+  creditLedgerEntryId String?
+  status              String   @default("PENDING")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  virtualAccount VirtualAccount @relation(fields: [virtualAccountId], references: [id])
+
+  @@index([workspaceId, status])
+  @@index([virtualAccountId])
+}
+
+// ─── KYC / KYB ────────────────────────────────────────────────────────────────
+
+enum KycVerificationStatus {
+  NOT_STARTED
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+  REQUIRES_ACTION
+}
+
+enum KycVerificationLevel {
+  LIGHT
+  STANDARD
+  ENHANCED
+}
+
+// Per-user KYC verification record. A user may have multiple records if they
+// go through re-verification or use different providers.
+model KycVerification {
+  id                String                 @id @default(uuid())
+  workspaceId       String
+  userId            String
+  providerName      String
+  providerReference String?
+  country           String
+  level             KycVerificationLevel   @default(STANDARD)
+  status            KycVerificationStatus  @default(NOT_STARTED)
+  failureReason     String?
+  submittedAt       DateTime?
+  completedAt       DateTime?
+  expiresAt         DateTime?
+  metadata          Json                   @default("{}")
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@index([userId, status])
+  @@index([workspaceId, status])
+  @@unique([userId, providerName, level])
+}
+
+enum KybApplicationStatus {
+  NOT_STARTED
+  PENDING
+  APPROVED
+  REJECTED
+  REQUIRES_ACTION
+}
+
+// Business KYB — used when a workspace represents a business entity and the
+// provider requires business verification before enabling higher-value products.
+model KybApplication {
+  id              String               @id @default(uuid())
+  workspaceId     String               @unique
+  providerName    String
+  providerRef     String?
+  status          KybApplicationStatus @default(NOT_STARTED)
+  companyName     String?
+  registrationNo  String?
+  country         String?
+  failureReason   String?
+  submittedAt     DateTime?
+  completedAt     DateTime?
+  metadata        Json                 @default("{}")
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([status])
 }
 
 model GiftCardWalletCharge {
@@ -2487,6 +2652,145 @@ model VtuWalletCharge {
 
   @@unique([workspaceId, orderId])
   @@index([walletId, createdAt])
+}
+
+// ─── VTU Procurement Engine (multi-provider routing) ─────────────────────────
+// Canonical SKU model — the FlipTrybe-internal product identifier that provider
+// SKUs are mapped onto. Customers always see canonical products; providers are hidden.
+
+model VtuCanonicalSku {
+  id              String   @id @default(uuid())
+  category        String   // AIRTIME | DATA | CABLE | ELECTRICITY | BETTING | EDUCATION | EPIN
+  network         String?  // MTN | GLO | AIRTEL | NINE_MOBILE | null for cable/electricity
+  productFamily   String?  // e.g. "DATA_MOBILE" | "DATA_ROUTER" | "CABLE_DSTV"
+  displayName     String
+  sizeMb          Int?     // data volume in MB
+  unit            String?  // "MB" | "GB"
+  validityDays    Int?
+  planType        String?  // SME | CG | GIFTING | CORPORATE
+  active          Boolean  @default(true)
+  adminApproved   Boolean  @default(false)
+  sellingPriceMinor Int?   // optional fixed customer price override
+  minMarginBps    Int      @default(200) // minimum acceptable margin; blocks order if violated
+  metadata        Json     @default("{}")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  providerMappings VtuProviderSkuMapping[]
+
+  @@index([category, network, active])
+  @@index([adminApproved, active])
+}
+
+// Maps a provider's internal product code to a FlipTrybe canonical SKU.
+// Admin must approve each mapping before it is used in live routing.
+
+model VtuProviderSkuMapping {
+  id                 String              @id @default(uuid())
+  canonicalSkuId     String
+  providerName       String
+  providerSku        String              // provider's internal product code / plan ID
+  providerProductName String?            // provider's display name for this SKU
+  costMinor          Int                 // provider procurement cost in NGN kobo
+  currency           String              @default("NGN")
+  pricingSourceType  VtuPricingSourceType @default(RESEARCHED_PUBLIC_PRICE)
+  active             Boolean            @default(true)
+  adminApproved      Boolean            @default(false)
+  lastVerifiedAt     DateTime?
+  lastSyncedAt       DateTime?
+  metadata           Json               @default("{}")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  canonicalSku VtuCanonicalSku @relation(fields: [canonicalSkuId], references: [id])
+
+  @@unique([providerName, providerSku])
+  @@index([canonicalSkuId, active, adminApproved])
+  @@index([providerName, active])
+}
+
+// Price history — tracks every time a provider mapping's costMinor changes.
+
+model VtuProviderPricingHistory {
+  id             String              @id @default(uuid())
+  providerName   String
+  providerSku    String
+  canonicalSkuId String?
+  oldCostMinor   Int?
+  newCostMinor   Int
+  currency       String              @default("NGN")
+  sourceType     VtuPricingSourceType @default(LIVE_PROVIDER)
+  changedAt      DateTime            @default(now())
+  metadata       Json                @default("{}")
+
+  @@index([providerName, providerSku, changedAt])
+  @@index([canonicalSkuId, changedAt])
+}
+
+// Provider balance snapshots — refreshed by the balance_monitor worker job.
+
+model VtuProviderBalance {
+  id           String   @id @default(uuid())
+  providerName String
+  balanceMinor Int
+  currency     String   @default("NGN")
+  status       String   @default("HEALTHY") // HEALTHY | LOW_BALANCE | INSUFFICIENT | UNKNOWN
+  threshold    Int      @default(0)          // alert threshold in kobo
+  checkedAt    DateTime @default(now())
+  metadata     Json     @default("{}")
+
+  @@unique([providerName])
+  @@index([providerName, checkedAt])
+}
+
+// Provider configuration for the multi-provider routing engine.
+// One row per VTU provider; controls enable/disable and routing weights.
+
+model VtuProviderConfig {
+  id                  String            @id @default(uuid())
+  providerName        String            @unique
+  displayName         String
+  status              VtuProviderStatus @default(DISCOVERED)
+  enabledServices     String[]          @default([]) // AIRTIME | DATA | CABLE | ELECTRICITY | etc.
+  priority            Int               @default(100)
+  costWeight          Int               @default(70)         // 0-100 weight for cost in scoring
+  successRateWeight   Int               @default(20)         // 0-100 weight for reliability
+  latencyWeight       Int               @default(5)          // 0-100 weight for speed
+  balanceWeight       Int               @default(5)          // 0-100 weight for balance health
+  minBalanceMinor     Int               @default(0)          // route disabled if balance below this
+  maxTransactionMinor Int               @default(50000000)   // per-transaction cap (₦500k)
+  trafficAllocationPct Int              @default(100)        // 0-100 for gradual rollout
+  maintenanceMode     Boolean           @default(false)
+  notes               String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([status, priority])
+}
+
+// Price-locked quote — created when customer starts checkout, consumed on payment.
+// Protects both FlipTrybe and the customer from price changes during checkout flow.
+
+model VtuQuote {
+  id                String   @id @default(uuid())
+  canonicalSkuId    String?
+  providerName      String
+  providerSku       String
+  productType       String
+  network           String?
+  costMinor         Int      // provider procurement cost locked at quote time
+  customerPriceMinor Int     // price customer will be charged
+  markupMinor       Int      // FlipTrybe gross margin (customerPrice - cost)
+  markupBps         Int      // effective markup in basis points
+  currency          String   @default("NGN")
+  expiresAt         DateTime
+  usedAt            DateTime?
+  orderId           String?  // set when the quote is consumed
+  metadata          Json     @default("{}")
+  createdAt         DateTime @default(now())
+
+  @@index([orderId])
+  @@index([expiresAt])
 }
 
 // ─── Guest Checkout (unauthenticated bill payments) ───────────────────────────

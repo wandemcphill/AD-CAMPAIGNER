@@ -84,6 +84,18 @@ async function scheduleVtuRecurringJobs() {
       { every: 5 * 60_000 }, // every 5 minutes
       { name: "provider_health", data: { providerName } }
     );
+
+    await queue.upsertJobScheduler(
+      `vtu-balance-${providerName}`,
+      { every: 30 * 60_000 }, // every 30 minutes
+      { name: "provider_balance_check", data: { providerName } }
+    );
+
+    await queue.upsertJobScheduler(
+      `vtu-price-sync-${providerName}`,
+      { every: 6 * 60 * 60_000 }, // every 6 hours
+      { name: "price_sync", data: { providerName } }
+    );
   }
 
   return queue;

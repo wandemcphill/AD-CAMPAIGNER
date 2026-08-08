@@ -257,6 +257,253 @@ async function seedCablePackages(db: ReturnType<typeof createPrismaClient>) {
   console.log(`VtuCablePackage: ${CLUBKONNECT_CABLE_PACKAGES.length} rows upserted (clubkonnect/dstv)`);
 }
 
+// ─── VtuCanonicalSku + VtuProviderSkuMapping seed ───────────────────────────
+// Canonical SKUs are network/size/validity tuples that abstract over provider-specific
+// plan IDs. The router uses them to compare costs across providers for the same product.
+// pricingSource: LIVE_PROVIDER = pulled from the API; RESEARCHED_PUBLIC_PRICE = public docs/verifiable.
+// ClubKonnect costs are LIVE_PROVIDER (verified against the funded account 2026-08-05).
+// VTpass costs are RESEARCHED_PUBLIC_PRICE (publicly documented; not yet live-pulled).
+// adminApproved: true on ClubKonnect (verified live); false on VTpass (pending live test).
+
+interface CanonicalSkuSeed {
+  id: string;
+  displayName: string;
+  network: string;
+  sizeMb: number;
+  validityDays: number;
+  minMarginBps: number;
+  mappings: Array<{
+    providerName: string;
+    providerSku: string;
+    costMinor: number;
+    adminApproved: boolean;
+    pricingSourceType: "LIVE_PROVIDER" | "RESEARCHED_PUBLIC_PRICE";
+  }>;
+}
+
+const CANONICAL_SKUS: CanonicalSkuSeed[] = [
+  {
+    id: "sku_mtn_500mb_7d",
+    displayName: "MTN 500MB Weekly",
+    network: "MTN",
+    sizeMb: 500,
+    validityDays: 7,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "500", costMinor: 30700, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" }
+    ]
+  },
+  {
+    id: "sku_mtn_1gb_7d",
+    displayName: "MTN 1GB Weekly",
+    network: "MTN",
+    sizeMb: 1024,
+    validityDays: 7,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "1000", costMinor: 41000, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" }
+    ]
+  },
+  {
+    id: "sku_mtn_1gb_30d",
+    displayName: "MTN 1GB Monthly",
+    network: "MTN",
+    sizeMb: 1024,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "1000.00", costMinor: 56300, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "mtn-1gb-500", costMinor: 22800, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_mtn_2gb_30d",
+    displayName: "MTN 2GB Monthly",
+    network: "MTN",
+    sizeMb: 2048,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "2000.00", costMinor: 111700, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "mtn-2gb-1000", costMinor: 45600, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_mtn_3gb_30d",
+    displayName: "MTN 3GB Monthly",
+    network: "MTN",
+    sizeMb: 3072,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "3000.00", costMinor: 162900, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" }
+    ]
+  },
+  {
+    id: "sku_mtn_5gb_30d",
+    displayName: "MTN 5GB Monthly",
+    network: "MTN",
+    sizeMb: 5120,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "5000.00", costMinor: 251100, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "mtn-5gb-2500", costMinor: 114000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_glo_1gb_30d",
+    displayName: "Glo 1GB Monthly",
+    network: "GLO",
+    sizeMb: 1024,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "1000", costMinor: 46100, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "glo-1gb-350", costMinor: 27000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_glo_2gb_30d",
+    displayName: "Glo 2GB Monthly",
+    network: "GLO",
+    sizeMb: 2048,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "2000", costMinor: 92200, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "glo-2gb-700", costMinor: 47500, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_glo_5gb_30d",
+    displayName: "Glo 5GB Monthly",
+    network: "GLO",
+    sizeMb: 5120,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "5000", costMinor: 230600, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "glo-5gb-1500", costMinor: 115000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_airtel_2gb_30d",
+    displayName: "Airtel 2GB Monthly",
+    network: "AIRTEL",
+    sizeMb: 2048,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "1499.93", costMinor: 145493, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "airtel-2gb-600", costMinor: 55000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_airtel_3gb_30d",
+    displayName: "Airtel 3GB Monthly",
+    network: "AIRTEL",
+    sizeMb: 3072,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "1999.91", costMinor: 193991, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" }
+    ]
+  },
+  {
+    id: "sku_9mobile_1gb_30d",
+    displayName: "9mobile 1GB Monthly",
+    network: "NINE_MOBILE",
+    sizeMb: 1024,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "1000", costMinor: 49200, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "etisalat-1gb-300", costMinor: 25000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  },
+  {
+    id: "sku_9mobile_2gb_30d",
+    displayName: "9mobile 2GB Monthly",
+    network: "NINE_MOBILE",
+    sizeMb: 2048,
+    validityDays: 30,
+    minMarginBps: 200,
+    mappings: [
+      { providerName: "clubkonnect", providerSku: "2000", costMinor: 98400, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
+      { providerName: "vtpass", providerSku: "etisalat-2gb-600", costMinor: 48000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
+    ]
+  }
+];
+
+async function seedCanonicalSkus(db: ReturnType<typeof createPrismaClient>) {
+  const mappingUid = () => `vpsm_${Math.random().toString(36).slice(2, 12)}`;
+  let skuCreated = 0;
+  let skuSkipped = 0;
+  let mappingCreated = 0;
+  let mappingSkipped = 0;
+
+  for (const sku of CANONICAL_SKUS) {
+    const existing = await db.vtuCanonicalSku.findUnique({ where: { id: sku.id } });
+    if (!existing) {
+      await db.vtuCanonicalSku.create({
+        data: {
+          id: sku.id,
+          displayName: sku.displayName,
+          category: "DATA",
+          network: sku.network,
+          sizeMb: sku.sizeMb,
+          validityDays: sku.validityDays,
+          minMarginBps: sku.minMarginBps,
+          active: true,
+          adminApproved: true,
+          metadata: {}
+        }
+      });
+      skuCreated++;
+    } else {
+      await db.vtuCanonicalSku.update({
+        where: { id: sku.id },
+        data: { displayName: sku.displayName, active: true }
+      });
+      skuSkipped++;
+    }
+
+    for (const m of sku.mappings) {
+      const existingMapping = await db.vtuProviderSkuMapping.findFirst({
+        where: { canonicalSkuId: sku.id, providerName: m.providerName }
+      });
+      if (!existingMapping) {
+        await db.vtuProviderSkuMapping.create({
+          data: {
+            id: mappingUid(),
+            canonicalSkuId: sku.id,
+            providerName: m.providerName,
+            providerSku: m.providerSku,
+            costMinor: m.costMinor,
+            adminApproved: m.adminApproved,
+            active: true,
+            pricingSourceType: m.pricingSourceType,
+            lastSyncedAt: new Date(),
+            metadata: {}
+          }
+        });
+        mappingCreated++;
+      } else {
+        await db.vtuProviderSkuMapping.update({
+          where: { id: existingMapping.id },
+          data: { costMinor: m.costMinor, active: true, lastSyncedAt: new Date() }
+        });
+        mappingSkipped++;
+      }
+    }
+  }
+
+  console.log(
+    `VtuCanonicalSku: ${skuCreated} created, ${skuSkipped} updated | VtuProviderSkuMapping: ${mappingCreated} created, ${mappingSkipped} updated`
+  );
+}
+
 async function main() {
   const db = createPrismaClient();
 
@@ -265,9 +512,138 @@ async function main() {
     await seedBillsRoutes(db);
     await seedDataPlans(db);
     await seedCablePackages(db);
+    await seedProviderConfigs(db);
+    await seedCanonicalSkus(db);
   } finally {
     await db.$disconnect();
   }
+}
+
+// ─── VtuProviderConfig seed ──────────────────────────────────────────────────
+// Bootstraps routing configuration for all known providers.
+// Status reflects whether real API credentials are available and verified.
+// Weights: costWeight 70 / successRateWeight 20 / latencyWeight 5 / balanceWeight 5.
+// These can be tuned per-provider via admin UI after launch.
+
+const PROVIDER_CONFIGS: Array<{
+  providerName: string;
+  displayName: string;
+  status: string;
+  enabledServices: string[];
+  priority: number;
+}> = [
+  {
+    providerName: "clubkonnect",
+    displayName: "ClubKonnect (Nellobyte)",
+    status: "ACTIVE",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "BETTING", "EDUCATION"],
+    priority: 10
+  },
+  {
+    providerName: "vtpass",
+    displayName: "VTpass",
+    status: "PRODUCTION_READY",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"],
+    priority: 20
+  },
+  {
+    providerName: "topupwizard",
+    displayName: "TopupWizard",
+    // API docs verified (topupwizard.com/apidocs); endpoints implemented.
+    // Status: CONFIGURED — awaiting credential provisioning before first test call.
+    status: "CONFIGURED",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"],
+    priority: 30
+  },
+  {
+    providerName: "inlomax",
+    displayName: "Inlomax",
+    // API docs verified (inlomax.com/docs); endpoints implemented.
+    // Status: CONFIGURED — awaiting credential provisioning.
+    status: "CONFIGURED",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"],
+    priority: 40
+  },
+  {
+    providerName: "vtugate",
+    displayName: "VTUGate",
+    // API docs verified (vtugate.com/docs); endpoints implemented.
+    // Test API Key available from dashboard; sandbox testing pending.
+    status: "CONFIGURED",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"],
+    priority: 50
+  },
+  {
+    providerName: "swiftlink",
+    displayName: "Swiftlink Nigeria",
+    // Postman collection present; base URL confirmed; full endpoint list pending auth.
+    status: "DISCOVERED",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY"],
+    priority: 60
+  },
+  {
+    providerName: "ebills",
+    displayName: "eBills.ng",
+    // Electricity/betting endpoints require credentials; airtime/data docs partially accessible.
+    status: "BLOCKED_PENDING_CREDENTIALS",
+    enabledServices: ["AIRTIME", "DATA", "ELECTRICITY", "BETTING"],
+    priority: 70
+  },
+  {
+    providerName: "isquaredata",
+    displayName: "iSquareData",
+    // Developer page has plan IDs; auth and base URL not publicly documented.
+    status: "DISCOVERED",
+    enabledServices: ["DATA", "EDUCATION"],
+    priority: 80
+  }
+];
+
+async function seedProviderConfigs(db: ReturnType<typeof createPrismaClient>) {
+  const uid = () => `vpconf_${Math.random().toString(36).slice(2, 12)}`;
+  let created = 0;
+  let updated = 0;
+
+  for (const cfg of PROVIDER_CONFIGS) {
+    const existing = await db.vtuProviderConfig.findUnique({
+      where: { providerName: cfg.providerName }
+    });
+
+    if (existing) {
+      await db.vtuProviderConfig.update({
+        where: { providerName: cfg.providerName },
+        data: {
+          displayName: cfg.displayName,
+          enabledServices: cfg.enabledServices,
+          priority: cfg.priority
+          // status is NOT overwritten — admin controls it after initial seed
+        }
+      });
+      updated++;
+    } else {
+      await db.vtuProviderConfig.create({
+        data: {
+          id: uid(),
+          providerName: cfg.providerName,
+          displayName: cfg.displayName,
+          status: cfg.status as never,
+          enabledServices: cfg.enabledServices,
+          priority: cfg.priority,
+          costWeight: 70,
+          successRateWeight: 20,
+          latencyWeight: 5,
+          balanceWeight: 5,
+          minBalanceMinor: 0,
+          maxTransactionMinor: 50000000,
+          trafficAllocationPct: 100,
+          maintenanceMode: false
+        }
+      });
+      created++;
+    }
+  }
+
+  console.log(`VtuProviderConfig: ${created} created, ${updated} updated`);
 }
 
 main().catch((error: unknown) => {

@@ -130,6 +130,18 @@ export default function AdminVtuPage() {
             <h1 className="text-xl font-bold">VTU provider routing</h1>
           </div>
           <div className="flex items-center gap-2">
+            <a
+              href="/vtu/skus"
+              className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+            >
+              SKU Mappings →
+            </a>
+            <a
+              href="/vtu/providers"
+              className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+            >
+              Provider Control Center →
+            </a>
             <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
               <RefreshCcw className="size-4" />
               Refresh

@@ -33,7 +33,16 @@ export const eventNames = [
   "ManagedAdsRequestCreated",
   "ManagedAdsRequestUpdated",
   "ManagedAdsCampaignLaunched",
-  "ManagedAdsPerformanceSnapshotRecorded"
+  "ManagedAdsPerformanceSnapshotRecorded",
+  // Financial products
+  "VirtualAccountCreated",
+  "VirtualAccountCredited",
+  "VirtualCardIssued",
+  "VirtualCardStatusChanged",
+  "RemittanceInitiated",
+  "RemittanceCompleted",
+  "RemittanceFailed",
+  "KycStatusChanged"
 ] as const;
 
 export type PlatformEventName = (typeof eventNames)[number];
@@ -165,6 +174,81 @@ export type ManagedAdsPlatformEvent =
   | ManagedAdsCampaignLaunchedEvent
   | ManagedAdsPerformanceSnapshotRecordedEvent;
 
+// ─── Financial Product Events ──────────────────────────────────────────────────
+
+export type VirtualAccountCreatedEvent = PlatformEventBase<
+  "VirtualAccountCreated",
+  { virtualAccountId: string; workspaceId: string; currency: string; accountNumber: string }
+>;
+
+export type VirtualAccountCreditedEvent = PlatformEventBase<
+  "VirtualAccountCredited",
+  {
+    virtualAccountId: string;
+    creditId: string;
+    workspaceId: string;
+    amountMinor: number;
+    currency: string;
+    senderName?: string;
+    creditLedgerEntryId?: string;
+  }
+>;
+
+export type VirtualCardIssuedEvent = PlatformEventBase<
+  "VirtualCardIssued",
+  { virtualCardId: string; workspaceId: string; currency: string; last4: string }
+>;
+
+export type VirtualCardStatusChangedEvent = PlatformEventBase<
+  "VirtualCardStatusChanged",
+  { virtualCardId: string; workspaceId: string; previousStatus: string; nextStatus: string }
+>;
+
+export type RemittanceInitiatedEvent = PlatformEventBase<
+  "RemittanceInitiated",
+  {
+    transferId: string;
+    workspaceId: string;
+    sourceAmountMinor: number;
+    sourceCurrency: string;
+    destinationAmountMinor: number;
+    destinationCurrency: string;
+    recipientName: string;
+  }
+>;
+
+export type RemittanceCompletedEvent = PlatformEventBase<
+  "RemittanceCompleted",
+  { transferId: string; workspaceId: string; providerReference?: string }
+>;
+
+export type RemittanceFailedEvent = PlatformEventBase<
+  "RemittanceFailed",
+  { transferId: string; workspaceId: string; reason?: string }
+>;
+
+export type KycStatusChangedEvent = PlatformEventBase<
+  "KycStatusChanged",
+  {
+    kycVerificationId: string;
+    userId: string;
+    workspaceId: string;
+    previousStatus: string;
+    nextStatus: string;
+    level: string;
+  }
+>;
+
+export type FinancialProductPlatformEvent =
+  | VirtualAccountCreatedEvent
+  | VirtualAccountCreditedEvent
+  | VirtualCardIssuedEvent
+  | VirtualCardStatusChangedEvent
+  | RemittanceInitiatedEvent
+  | RemittanceCompletedEvent
+  | RemittanceFailedEvent
+  | KycStatusChangedEvent;
+
 export type PlatformEvent =
   | CampaignCreatedEvent
   | CampaignStartedEvent
@@ -182,7 +266,8 @@ export type PlatformEvent =
   | DigitalAccessRequestCreatedEvent
   | DigitalAccessRequestUpdatedEvent
   | DigitalAccessRequestRefundedEvent
-  | ManagedAdsPlatformEvent;
+  | ManagedAdsPlatformEvent
+  | FinancialProductPlatformEvent;
 
 export const platformEvents = eventNames.map((name) => ({ name }));
 

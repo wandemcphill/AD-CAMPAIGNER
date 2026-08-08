@@ -13,6 +13,12 @@ import {
   createMockVtuAdapter,
   createVtpassAdapter,
   createClubKonnectAdapter,
+  createSwiftlinkAdapter,
+  createEBillsFullAdapter,
+  createTopupWizardAdapter,
+  createISquareDataAdapter,
+  createInlomaxAdapter,
+  createVTUGateAdapter,
   type VtuProviderAdapter,
   type VtuNetwork
 } from "@fliptrybe/providers";
@@ -20,6 +26,8 @@ import {
 import { PrismaService } from "../prisma.service";
 import { QueueProducerService } from "../queue-producer.service";
 import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing-rule.service";
+import { VtuRouterService } from "./vtu-router.service";
+import { VtuQuoteService } from "./vtu-quote.service";
 import { featureFlags } from "@fliptrybe/feature-flags";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
@@ -32,6 +40,7 @@ import type {
   BuyCableDto,
   BuyEducationDto,
   BuyElectricityDto,
+  GetVtuQuoteDto,
   ValidateMeterDto
 } from "./vtu.dtos";
 import type { VtuEpin } from "@fliptrybe/providers";
@@ -157,7 +166,9 @@ export class VtuService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly queue: QueueProducerService,
-    private readonly pricingRules: PricingRuleService
+    private readonly pricingRules: PricingRuleService,
+    private readonly vtuRouter: VtuRouterService,
+    private readonly vtuQuote: VtuQuoteService
   ) {}
 
   private get db(): DatabaseClient {
@@ -193,12 +204,45 @@ export class VtuService {
             ? { callbackUrl: process.env["CLUBKONNECT_CALLBACK_URL"] }
             : {})
         });
+      case "swiftlink":
+        return createSwiftlinkAdapter({
+          apiKey: process.env["SWIFTLINK_API_KEY"] ?? "",
+          ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
+        });
+      case "ebills":
+        return createEBillsFullAdapter({
+          apiKey: process.env["EBILLS_API_KEY"] ?? "",
+          ...(process.env["EBILLS_BASE_URL"] ? { baseUrl: process.env["EBILLS_BASE_URL"] } : {})
+        });
+      case "topupwizard":
+        return createTopupWizardAdapter({
+          apiKey: process.env["TOPUPWIZARD_API_KEY"] ?? "",
+          ...(process.env["TOPUPWIZARD_BASE_URL"] ? { baseUrl: process.env["TOPUPWIZARD_BASE_URL"] } : {})
+        });
+      case "isquaredata":
+        return createISquareDataAdapter({
+          apiKey: process.env["ISQUAREDATA_API_KEY"] ?? "",
+          ...(process.env["ISQUAREDATA_BASE_URL"] ? { baseUrl: process.env["ISQUAREDATA_BASE_URL"] } : {})
+        });
+      case "inlomax":
+        return createInlomaxAdapter({
+          apiKey: process.env["INLOMAX_API_KEY"] ?? "",
+          ...(process.env["INLOMAX_BASE_URL"] ? { baseUrl: process.env["INLOMAX_BASE_URL"] } : {})
+        });
+      case "vtugate":
+        return createVTUGateAdapter({
+          apiKey: process.env["VTUGATE_API_KEY"] ?? "",
+          ...(process.env["VTUGATE_BASE_URL"] ? { baseUrl: process.env["VTUGATE_BASE_URL"] } : {})
+        });
       default:
         return createMockVtuAdapter(providerName);
     }
   }
 
   // ─── Provider routing ────────────────────────────────────────────────────────
+  // Uses the multi-provider cost-comparison router (VtuRouterService) when
+  // VtuProviderConfig rows exist. Falls back to the legacy VtuProviderRoute
+  // priority table for accounts that haven't been migrated to the new model yet.
 
   private async selectAdapter(
     productType: "AIRTIME" | "DATA",
@@ -206,6 +250,22 @@ export class VtuService {
     db: DbClient = this.db
   ): Promise<VtuProviderAdapter> {
     await this.ensureDefaultCatalog(db);
+
+    // Try cost-comparison router first.
+    const configCount = await db.vtuProviderConfig.count({
+      where: { status: { in: ["ACTIVE", "PRODUCTION_READY"] } }
+    });
+
+    if (configCount > 0) {
+      try {
+        const result = await this.vtuRouter.route({ productType, network });
+        return this.buildAdapter(result.winner.providerName);
+      } catch {
+        // Router found no eligible provider — fall through to legacy table.
+      }
+    }
+
+    // Legacy: VtuProviderRoute priority table.
     const routes = await db.vtuProviderRoute.findMany({
       where: { productType, network, active: true },
       orderBy: { priority: "asc" }
@@ -217,8 +277,6 @@ export class VtuService {
       );
     }
 
-    // Latest health check per provider (VTU domain). Missing health = treat as usable —
-    // a freshly seeded route shouldn't be blocked before the first health-check job runs.
     const healthRows = await db.providerHealth.findMany({
       where: { providerName: { in: routes.map((r) => r.provider) }, domain: "VTU" },
       orderBy: { checkedAt: "desc" },
@@ -294,6 +352,54 @@ export class VtuService {
     return { charge, ledgerEntry };
   }
 
+  // ─── Price-locked quote ──────────────────────────────────────────────────────
+  // GET /vtu/quote — returns a 15-minute price-locked quote the client can then
+  // submit alongside their buy request to guarantee no price slippage.
+
+  async createQuoteForProduct(dto: GetVtuQuoteDto) {
+    if (dto.productType === "AIRTIME") {
+      if (!dto.faceValueMinor || !Number.isInteger(dto.faceValueMinor) || dto.faceValueMinor <= 0) {
+        throw new BadRequestException("faceValueMinor is required for AIRTIME quotes.");
+      }
+      const result = await this.vtuRouter.route({
+        productType: "AIRTIME",
+        network: dto.network,
+        faceValueMinor: dto.faceValueMinor
+      });
+      const adapter = this.buildAdapter(result.winner.providerName);
+      const discountBps = await adapter.getAirtimeDiscountBps(dto.network);
+      const costMinor = Math.ceil(dto.faceValueMinor * (1 - discountBps / 10_000));
+      return this.vtuQuote.createQuote({
+        productType: "AIRTIME",
+        network: dto.network,
+        providerName: result.winner.providerName,
+        providerSku: "airtime",
+        costMinor
+      });
+    }
+
+    if (dto.productType === "DATA") {
+      if (!dto.canonicalSkuId) {
+        throw new BadRequestException("canonicalSkuId is required for DATA quotes.");
+      }
+      const result = await this.vtuRouter.route({
+        productType: "DATA",
+        network: dto.network,
+        canonicalSkuId: dto.canonicalSkuId
+      });
+      return this.vtuQuote.createQuote({
+        productType: "DATA",
+        network: dto.network,
+        canonicalSkuId: dto.canonicalSkuId,
+        providerName: result.winner.providerName,
+        providerSku: result.winner.providerSku,
+        costMinor: result.winner.costMinor
+      });
+    }
+
+    throw new BadRequestException("Unsupported productType for quote.");
+  }
+
   // ─── Airtime purchase ────────────────────────────────────────────────────────
 
   async buyAirtime(ctx: AuthenticatedRequestContext, dto: BuyAirtimeDto) {
@@ -309,16 +415,30 @@ export class VtuService {
       throw new BadRequestException("Airtime amount must be between ₦50 and ₦500,000.");
     }
 
-    const adapter = await this.selectAdapter("AIRTIME", dto.network);
-    const discountBps = await adapter.getAirtimeDiscountBps(dto.network);
-    const wholesaleCost = Math.ceil(dto.faceValueMinor * (1 - discountBps / 10_000));
-    const chargeMinor = await this.applyMarkup(wholesaleCost, {
-      network: dto.network,
-      productType: "AIRTIME",
-      providerName: adapter.name
-    });
-
     const orderId = uid("vtu");
+    let adapter: VtuProviderAdapter;
+    let wholesaleCost: number;
+    let chargeMinor: number;
+
+    if (dto.quoteId) {
+      // Quote flow: frozen pricing — consume the quote now, linking it to this orderId.
+      // If the downstream transaction fails the quote is consumed but idempotent retry
+      // with a fresh quote is always an option (quote TTL protects against stale prices).
+      const q = await this.vtuQuote.consumeQuote(dto.quoteId, orderId);
+      adapter = this.buildAdapter(q.providerName);
+      wholesaleCost = q.costMinor;
+      chargeMinor = q.customerPriceMinor;
+    } else {
+      adapter = await this.selectAdapter("AIRTIME", dto.network);
+      const discountBps = await adapter.getAirtimeDiscountBps(dto.network);
+      wholesaleCost = Math.ceil(dto.faceValueMinor * (1 - discountBps / 10_000));
+      chargeMinor = await this.applyMarkup(wholesaleCost, {
+        network: dto.network,
+        productType: "AIRTIME",
+        providerName: adapter.name
+      });
+    }
+
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const msisdnMasked = dto.msisdn.slice(0, 4) + "****" + dto.msisdn.slice(-3);
 
@@ -428,26 +548,48 @@ export class VtuService {
     if (!dto.msisdn.match(/^\+?[1-9]\d{6,14}$/)) {
       throw new BadRequestException("Invalid MSISDN format.");
     }
-    if (!dto.providerPlanId) throw new BadRequestException("providerPlanId is required.");
 
-    const adapter = await this.selectAdapter("DATA", dto.network);
-
-    const plan = await this.db.vtuDataPlan.findFirst({
-      where: {
-        providerName: adapter.name,
-        providerPlanId: dto.providerPlanId,
-        network: dto.network,
-        active: true
-      }
-    });
-    if (!plan) throw new NotFoundException("Data plan not found or unavailable.");
-
-    const chargeMinor = await this.applyMarkup(plan.costMinor, {
-      network: dto.network,
-      productType: "DATA",
-      providerName: adapter.name
-    });
     const orderId = uid("vtu");
+    let adapter: VtuProviderAdapter;
+    let chargeMinor: number;
+    let planCostMinor: number;
+    let planId: string | undefined;
+    let providerPlanId: string;
+
+    if (dto.quoteId) {
+      // Quote flow: pricing frozen at quote time; provider and SKU resolved by router.
+      const q = await this.vtuQuote.consumeQuote(dto.quoteId, orderId);
+      adapter = this.buildAdapter(q.providerName);
+      planCostMinor = q.costMinor;
+      chargeMinor = q.customerPriceMinor;
+      providerPlanId = q.providerSku;
+      // Look up the plan row by providerSku so we can link planId on the order.
+      const planRow = await this.db.vtuDataPlan.findFirst({
+        where: { providerName: q.providerName, providerPlanId: q.providerSku, active: true }
+      });
+      planId = planRow?.id;
+    } else {
+      if (!dto.providerPlanId) throw new BadRequestException("providerPlanId is required.");
+      adapter = await this.selectAdapter("DATA", dto.network);
+      const plan = await this.db.vtuDataPlan.findFirst({
+        where: {
+          providerName: adapter.name,
+          providerPlanId: dto.providerPlanId,
+          network: dto.network,
+          active: true
+        }
+      });
+      if (!plan) throw new NotFoundException("Data plan not found or unavailable.");
+      planCostMinor = plan.costMinor;
+      planId = plan.id;
+      providerPlanId = dto.providerPlanId;
+      chargeMinor = await this.applyMarkup(plan.costMinor, {
+        network: dto.network,
+        productType: "DATA",
+        providerName: adapter.name
+      });
+    }
+
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
     const msisdnMasked = dto.msisdn.slice(0, 4) + "****" + dto.msisdn.slice(-3);
 
@@ -474,9 +616,9 @@ export class VtuService {
               network: dto.network,
               msisdnMasked,
               msisdnEncrypted: dto.msisdn,
-              planId: plan.id,
+              ...(planId ? { planId } : {}),
               amountMinor: chargeMinor,
-              costMinor: plan.costMinor,
+              costMinor: planCostMinor,
               currency: "NGN",
               providerName: adapter.name,
               providerReference: reference,
@@ -489,7 +631,7 @@ export class VtuService {
             wallet.id,
             workspaceId,
             chargeMinor,
-            `Data ${plan.displayName} ${dto.network} → ${msisdnMasked}`,
+            `Data ${dto.network} → ${msisdnMasked}`,
             orderId,
             tx
           );
@@ -509,7 +651,7 @@ export class VtuService {
         const result = await adapter.purchaseData({
           network: dto.network,
           msisdn: dto.msisdn,
-          providerPlanId: dto.providerPlanId,
+          providerPlanId,
           reference: order.providerReference!
         });
 
@@ -977,13 +1119,27 @@ export class VtuService {
     productType: "ELECTRICITY" | "CABLE" | "BETTING" | "EDUCATION",
     db: DbClient = this.db
   ): Promise<VtuProviderAdapter> {
+    // Try cost-comparison router first.
+    const configCount = await db.vtuProviderConfig.count({
+      where: { status: { in: ["ACTIVE", "PRODUCTION_READY"] } }
+    });
+
+    if (configCount > 0) {
+      try {
+        const result = await this.vtuRouter.route({ productType });
+        return this.buildAdapter(result.winner.providerName);
+      } catch {
+        // No eligible provider from router — fall through.
+      }
+    }
+
+    // Legacy: VtuProviderRoute priority table (network=null for bills).
     const routes = await db.vtuProviderRoute.findMany({
       where: { productType: productType as never, network: null, active: true },
       orderBy: { priority: "asc" }
     });
 
     if (routes.length === 0) {
-      // Fall back to clubkonnect, the default Nigerian bills provider.
       return this.buildAdapter(DEFAULT_VTU_PROVIDER);
     }
 
@@ -1713,6 +1869,221 @@ export class VtuService {
     ]);
 
     return { orders, total, page, limit };
+  }
+
+  // ─── Admin: Provider Control Center ─────────────────────────────────────────
+
+  async adminListProviderConfigs() {
+    const [configs, balances, healthRows] = await Promise.all([
+      this.db.vtuProviderConfig.findMany({ orderBy: { priority: "asc" } }),
+      this.db.vtuProviderBalance.findMany({ orderBy: { checkedAt: "desc" } }),
+      this.db.providerHealth.findMany({
+        where: { domain: "VTU" },
+        orderBy: { checkedAt: "desc" },
+        distinct: ["providerName"]
+      })
+    ]);
+
+    const balanceMap = new Map(balances.map((b) => [b.providerName, b]));
+    const healthMap = new Map(healthRows.map((h) => [h.providerName, h]));
+
+    return configs.map((cfg) => ({
+      ...cfg,
+      balance: balanceMap.get(cfg.providerName) ?? null,
+      health: healthMap.get(cfg.providerName) ?? null
+    }));
+  }
+
+  async adminUpdateProviderConfig(
+    providerName: string,
+    dto: {
+      status?: string;
+      maintenanceMode?: boolean;
+      minBalanceMinor?: number;
+      maxTransactionMinor?: number;
+      costWeight?: number;
+      successRateWeight?: number;
+      latencyWeight?: number;
+      balanceWeight?: number;
+      trafficAllocationPct?: number;
+      enabledServices?: string[];
+    },
+    ctx: AuthenticatedRequestContext
+  ) {
+    const cfg = await this.db.vtuProviderConfig.findUnique({ where: { providerName } });
+    if (!cfg) throw new NotFoundException(`Provider config not found for "${providerName}".`);
+
+    const updated = await this.db.vtuProviderConfig.update({
+      where: { providerName },
+      data: {
+        ...(dto.status !== undefined ? { status: dto.status as never } : {}),
+        ...(dto.maintenanceMode !== undefined ? { maintenanceMode: dto.maintenanceMode } : {}),
+        ...(dto.minBalanceMinor !== undefined ? { minBalanceMinor: dto.minBalanceMinor } : {}),
+        ...(dto.maxTransactionMinor !== undefined
+          ? { maxTransactionMinor: dto.maxTransactionMinor }
+          : {}),
+        ...(dto.costWeight !== undefined ? { costWeight: dto.costWeight } : {}),
+        ...(dto.successRateWeight !== undefined ? { successRateWeight: dto.successRateWeight } : {}),
+        ...(dto.latencyWeight !== undefined ? { latencyWeight: dto.latencyWeight } : {}),
+        ...(dto.balanceWeight !== undefined ? { balanceWeight: dto.balanceWeight } : {}),
+        ...(dto.trafficAllocationPct !== undefined
+          ? { trafficAllocationPct: dto.trafficAllocationPct }
+          : {}),
+        ...(dto.enabledServices !== undefined ? { enabledServices: dto.enabledServices } : {})
+      }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        action: "VTU_PROVIDER_CONFIG_UPDATED",
+        actorUserId: ctx.userId,
+        entityType: "VtuProviderConfig",
+        entityId: cfg.id,
+        metadata: dto
+      }
+    });
+
+    return updated;
+  }
+
+  async adminGetProviderBalance(providerName: string) {
+    const balance = await this.db.vtuProviderBalance.findUnique({ where: { providerName } });
+    if (!balance) throw new NotFoundException(`No balance snapshot for provider "${providerName}".`);
+    return balance;
+  }
+
+  async adminGetRoutingMatrix() {
+    const productTypes = ["AIRTIME", "DATA", "ELECTRICITY", "CABLE", "BETTING", "EDUCATION"];
+    const networks = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
+
+    const matrix: Array<{
+      productType: string;
+      network: string | null;
+      winner: string | null;
+      allCandidates: Array<{ providerName: string; score: number; costMinor: number }>;
+    }> = [];
+
+    for (const productType of productTypes) {
+      const isNetworked = productType === "AIRTIME" || productType === "DATA";
+      const networkList = isNetworked ? networks : [null];
+
+      for (const network of networkList) {
+        try {
+          const result = await this.vtuRouter.route({
+            productType,
+            ...(network ? { network } : {})
+          });
+          matrix.push({
+            productType,
+            network,
+            winner: result.winner.providerName,
+            allCandidates: result.allCandidates.map((c) => ({
+              providerName: c.providerName,
+              score: c.score,
+              costMinor: c.costMinor
+            }))
+          });
+        } catch {
+          matrix.push({ productType, network, winner: null, allCandidates: [] });
+        }
+      }
+    }
+
+    return matrix;
+  }
+
+  // ─── Admin: canonical SKU management ─────────────────────────────────────────
+
+  async adminListCanonicalSkus(query: { network?: string; category?: string }) {
+    const skus = await this.db.vtuCanonicalSku.findMany({
+      where: {
+        ...(query.network ? { network: query.network } : {}),
+        ...(query.category ? { category: query.category } : {})
+      },
+      orderBy: [{ network: "asc" }, { sizeMb: "asc" }, { validityDays: "asc" }]
+    });
+
+    // For each SKU, load its provider mappings.
+    const skuIds = skus.map((s) => s.id);
+    const mappings = await this.db.vtuProviderSkuMapping.findMany({
+      where: { canonicalSkuId: { in: skuIds } },
+      orderBy: { costMinor: "asc" }
+    });
+    const mappingsBySkuId = new Map<string, typeof mappings>();
+    for (const m of mappings) {
+      const list = mappingsBySkuId.get(m.canonicalSkuId) ?? [];
+      list.push(m);
+      mappingsBySkuId.set(m.canonicalSkuId, list);
+    }
+
+    return skus.map((sku) => ({
+      ...sku,
+      providerMappings: mappingsBySkuId.get(sku.id) ?? []
+    }));
+  }
+
+  async adminApproveSkuMapping(mappingId: string, approved: boolean, ctx: AuthenticatedRequestContext) {
+    const mapping = await this.db.vtuProviderSkuMapping.findUnique({ where: { id: mappingId } });
+    if (!mapping) throw new NotFoundException("SKU mapping not found.");
+
+    const updated = await this.db.vtuProviderSkuMapping.update({
+      where: { id: mappingId },
+      data: { adminApproved: approved }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        actorUserId: ctx.userId,
+        action: approved ? "VTU_SKU_MAPPING_APPROVED" : "VTU_SKU_MAPPING_REJECTED",
+        entityType: "VtuProviderSkuMapping",
+        entityId: mappingId,
+        metadata: {
+          providerName: mapping.providerName,
+          providerSku: mapping.providerSku,
+          costMinor: mapping.costMinor,
+          approved
+        }
+      }
+    });
+
+    return updated;
+  }
+
+  async adminUpdateSkuMapping(
+    mappingId: string,
+    patch: { costMinor?: number; active?: boolean; adminApproved?: boolean },
+    ctx: AuthenticatedRequestContext
+  ) {
+    const mapping = await this.db.vtuProviderSkuMapping.findUnique({ where: { id: mappingId } });
+    if (!mapping) throw new NotFoundException("SKU mapping not found.");
+
+    if (patch.costMinor !== undefined && (!Number.isInteger(patch.costMinor) || patch.costMinor <= 0)) {
+      throw new BadRequestException("costMinor must be a positive integer.");
+    }
+
+    const updated = await this.db.vtuProviderSkuMapping.update({
+      where: { id: mappingId },
+      data: {
+        ...(patch.costMinor !== undefined ? { costMinor: patch.costMinor, pricingSourceType: "MANUAL_OVERRIDE" } : {}),
+        ...(patch.active !== undefined ? { active: patch.active } : {}),
+        ...(patch.adminApproved !== undefined ? { adminApproved: patch.adminApproved } : {})
+      }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        actorUserId: ctx.userId,
+        action: "VTU_SKU_MAPPING_UPDATED",
+        entityType: "VtuProviderSkuMapping",
+        entityId: mappingId,
+        metadata: patch
+      }
+    });
+
+    return updated;
   }
 
   // ─── Admin: bills ops queue ──────────────────────────────────────────────────

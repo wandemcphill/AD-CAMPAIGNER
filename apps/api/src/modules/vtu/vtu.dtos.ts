@@ -4,12 +4,26 @@ export interface BuyAirtimeDto {
   network: VtuNetwork;
   msisdn: string;
   faceValueMinor: number;
+  /** Optional: a price-locked quoteId obtained from GET /vtu/quote. If provided, pricing is taken from the quote instead of live rates. */
+  quoteId?: string;
 }
 
 export interface BuyDataDto {
   network: VtuNetwork;
   msisdn: string;
+  /** Legacy: provider-specific plan ID (ClubKonnect). Use canonicalSkuId via the quote flow for multi-provider routing. */
   providerPlanId: string;
+  /** Optional: a price-locked quoteId obtained from GET /vtu/quote. If provided, pricing is taken from the quote instead of live rates. */
+  quoteId?: string;
+}
+
+export interface GetVtuQuoteDto {
+  productType: "AIRTIME" | "DATA";
+  network: VtuNetwork;
+  /** For DATA quotes: the canonical SKU to price. Required when productType is DATA. */
+  canonicalSkuId?: string;
+  /** For AIRTIME quotes: the face value in NGN kobo. Required when productType is AIRTIME. */
+  faceValueMinor?: number;
 }
 
 export interface BuyAirtimeEpinDto {
