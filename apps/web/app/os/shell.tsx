@@ -11,11 +11,11 @@ import {
   Bot,
   Briefcase,
   Building2,
+  ChevronDown,
   CreditCard,
   FileText,
   Folder,
   Gift,
-  GraduationCap,
   Globe,
   Globe2,
   KeyRound,
@@ -36,11 +36,9 @@ import {
   Store,
   Ticket,
   Trophy,
-  Tv,
   UserCircle,
   Users,
   Wand2,
-  Wifi,
   Workflow,
   X,
   Zap,
@@ -55,32 +53,32 @@ type NavGroup = { title: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    title: "Core",
+    title: "Home",
     items: [
       { label: "Dashboard", href: "/os", icon: LayoutDashboard },
-      { label: "AI Studio", href: "/os/studio", icon: Sparkles },
       { label: "Search", href: "/os/search", icon: Search },
     ],
   },
   {
     title: "Campaigns",
     items: [
-      { label: "Campaign Builder", href: "/os/campaigns/new", icon: Wand2 },
       { label: "Campaign Manager", href: "/os/campaigns", icon: Megaphone },
+      { label: "New Campaign", href: "/os/campaigns/new", icon: Wand2 },
       { label: "Analytics", href: "/os/analytics", icon: BarChart3 },
       { label: "Reports", href: "/os/reports", icon: FileText },
       { label: "Automation", href: "/os/automation", icon: Workflow },
     ],
   },
   {
-    title: "Creative",
+    title: "Creative Studio",
     items: [
+      { label: "AI Studio", href: "/os/studio", icon: Sparkles },
       { label: "Creative Library", href: "/os/library", icon: Folder },
       { label: "AI Personas", href: "/os/personas", icon: Bot },
     ],
   },
   {
-    title: "Growth",
+    title: "Growth & Marketplace",
     items: [
       { label: "Growth Services", href: "/os/growth", icon: Zap },
       { label: "Digital Access", href: "/os/digital-access", icon: KeyRound },
@@ -90,43 +88,32 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: "Digital Products",
+    title: "Products & Services",
     items: [
-      { label: "International Numbers", href: "/os/numbers", icon: Globe },
-      { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone },
+      { label: "Airtime & Data", href: "/os/airtime", icon: Phone },
+      { label: "Bills & Utilities", href: "/os/utilities", icon: Lightbulb },
       { label: "Gift Cards", href: "/os/digital-value", icon: Gift },
-      { label: "Airtime", href: "/os/airtime", icon: Phone },
-      { label: "Data", href: "/os/data", icon: Wifi },
-      { label: "International Top-Up", href: "/os/telecom", icon: Globe2 },
-      { label: "Electricity", href: "/os/utilities", icon: Lightbulb },
-      { label: "Cable TV", href: "/os/utilities?tab=cable", icon: Tv },
-      { label: "Bet Funding", href: "/os/utilities?tab=betting", icon: Trophy },
-      { label: "Education", href: "/os/utilities?tab=education", icon: GraduationCap },
+      { label: "International Numbers", href: "/os/numbers", icon: Globe2 },
+      { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone },
+      { label: "International Top-Up", href: "/os/telecom", icon: Send },
       { label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin },
       { label: "Buy RMB", href: "/os/rmb", icon: Banknote },
     ],
   },
   {
-    title: "Financial Products",
+    title: "Financial",
     items: [
-      { label: "Virtual Accounts", href: "/os/financial-products", icon: Building2 },
-      { label: "Virtual Cards", href: "/os/financial-products?tab=cards", icon: CreditCard },
-      { label: "Remittance", href: "/os/financial-products?tab=remittance", icon: Send },
+      { label: "Financial Products", href: "/os/financial-products", icon: Building2 },
     ],
   },
   {
-    title: "Rewards",
-    items: [
-      { label: "Reward Campaigns", href: "/os/rewards", icon: Trophy },
-      { label: "My Progress", href: "/os/rewards/progress", icon: Gift },
-      { label: "Scan QR", href: "/os/rewards/scan", icon: QrCode },
-    ],
-  },
-  {
-    title: "Finance",
+    title: "Wallet & Rewards",
     items: [
       { label: "Wallet", href: "/os/wallet", icon: CreditCard },
       { label: "Vouchers", href: "/os/vouchers", icon: Ticket },
+      { label: "Reward Campaigns", href: "/os/rewards", icon: Trophy },
+      { label: "My Progress", href: "/os/rewards/progress", icon: Gift },
+      { label: "Scan QR", href: "/os/rewards/scan", icon: QrCode },
     ],
   },
   {
@@ -143,8 +130,8 @@ const NAV_GROUPS: NavGroup[] = [
 
 const MOBILE_NAV: NavItem[] = [
   { label: "Home", href: "/os", icon: LayoutDashboard },
-  { label: "Studio", href: "/os/studio", icon: Sparkles },
   { label: "Campaigns", href: "/os/campaigns", icon: Megaphone },
+  { label: "Studio", href: "/os/studio", icon: Sparkles },
   { label: "Wallet", href: "/os/wallet", icon: CreditCard },
   { label: "More", href: "/os/search", icon: Menu },
 ];
@@ -157,6 +144,11 @@ export function OsShell({ children }: { children: ReactNode }) {
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantMsg, setAssistantMsg] = useState("");
   const [signingOut, setSigningOut] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  function toggleGroup(title: string) {
+    setCollapsedGroups((prev) => ({ ...prev, [title]: !prev[title] }));
+  }
 
   useEffect(() => {
     if (!loading && !session) {
@@ -216,28 +208,54 @@ export function OsShell({ children }: { children: ReactNode }) {
         </button>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {NAV_GROUPS.map((group) => (
-            <div className="mb-4" key={group.title}>
-              <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                {group.title}
-              </p>
-              {group.items.map((item) => (
-                <a
-                  className={cn(
-                    "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium transition",
-                    isActive(item.href)
-                      ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
-                      : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
-                  )}
-                  href={item.href}
-                  key={item.href}
+          {NAV_GROUPS.map((group) => {
+            const containsActive = group.items.some((item) => isActive(item.href));
+            const open = containsActive || !collapsedGroups[group.title];
+            return (
+              <div className="mb-1.5" key={group.title}>
+                <button
+                  aria-expanded={open}
+                  className="group/nav flex w-full items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.15em] text-[var(--ft-text-muted)] transition hover:text-[var(--ft-text-secondary)]"
+                  onClick={() => toggleGroup(group.title)}
+                  type="button"
                 >
-                  <item.icon className="size-4 shrink-0" />
-                  {item.label}
-                </a>
-              ))}
-            </div>
-          ))}
+                  <ChevronDown
+                    className={cn(
+                      "size-3 shrink-0 transition-transform duration-200",
+                      open ? "" : "-rotate-90"
+                    )}
+                  />
+                  <span className="flex-1 text-left">{group.title}</span>
+                  {containsActive ? (
+                    <span className="size-1.5 rounded-full bg-[var(--ft-accent)]" />
+                  ) : null}
+                </button>
+                {open
+                  ? group.items.map((item) => {
+                      const active = isActive(item.href);
+                      return (
+                        <a
+                          className={cn(
+                            "relative flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] pl-4 pr-3 text-[13px] font-medium transition",
+                            active
+                              ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
+                              : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
+                          )}
+                          href={item.href}
+                          key={item.href}
+                        >
+                          {active ? (
+                            <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-[var(--ft-accent)]" />
+                          ) : null}
+                          <item.icon className="size-4 shrink-0" />
+                          {item.label}
+                        </a>
+                      );
+                    })
+                  : null}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="border-t border-[var(--ft-border)] p-3">
