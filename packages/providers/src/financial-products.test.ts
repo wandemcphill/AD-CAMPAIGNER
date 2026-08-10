@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  createFincraRemittanceProvider,
   createMockRemittanceProvider,
   createMockVirtualAccountProvider,
   createMockVirtualCardProvider,
@@ -10,6 +11,7 @@ import {
   createSwapprRemittanceProvider,
   createSwapprVirtualAccountProvider,
   createYativoRemittanceProvider,
+  verifyFincraWebhook,
   verifySwapprWebhook
 } from './financial-products.js';
 
@@ -464,5 +466,178 @@ describe('Payscribe virtual account adapter — capability declaration', () => {
       supportsMerchantAccountCreation: false,
       supportsCustomerVirtualAccounts: true
     });
+  });
+});
+
+describe('Fincra remittance adapter — mapped against live-verified sandbox behavior', () => {
+  it('declares genuine locked quotes (live-confirmed, unlike Swappr)', () => {
+    const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1' });
+    expect(provider.remittanceCapabilities.supportsLockedQuotes).toBe(true);
+    expect(provider.remittanceCapabilities.supportsBeneficiaries).toBe(false);
+  });
+
+  it('fetches a locked quote and maps minor-unit amounts', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          message: 'ok',
+          data: {
+            sourceCurrency: 'NGN',
+            destinationCurrency: 'USD',
+            sourceAmount: 1_000_000,
+            destinationAmount: 670,
+            fee: 500,
+            rate: 0.00067,
+            reference: 'quote_abc123',
+            expireAt: '2026-08-10T12:00:30.000Z'
+          }
+        }),
+        { status: 200 }
+      )
+    );
+    const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1', fetcher });
+    const quote = await provider.getQuote({
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'USD',
+      sourceAmountMinor: 1_000_000
+    });
+    expect(quote.isLocked).toBe(true);
+    expect(quote.quoteId).toBe('quote_abc123');
+    expect(quote.destinationAmountMinor).toBe(670);
+    expect(quote.feeMinor).toBe(500);
+    expect(quote.expiresAt).toBe('2026-08-10T12:00:30.000Z');
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://sandboxapi.fincra.com/quotes/generate');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({ business: 'biz_1', amount: '1000000' });
+  });
+
+  it('rejects sendTransfer with a missing/zero amount', async () => {
+    const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1' });
+    await expect(
+      provider.sendTransfer({
+        reference: 'r1',
+        idempotencyKey: 'idem1',
+        amountMinor: 0,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'NGN',
+        recipient: { name: 'X', accountNumber: '0690000032', bankCode: '044', country: 'NG' }
+      })
+    ).rejects.toThrow(/positive integer amountMinor/);
+  });
+
+  it('rejects sendTransfer without an idempotencyKey', async () => {
+    const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1' });
+    await expect(
+      provider.sendTransfer({
+        reference: 'r1',
+        idempotencyKey: '',
+        amountMinor: 5_000,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'NGN',
+        recipient: { name: 'X', accountNumber: '0690000032', bankCode: '044', country: 'NG' }
+      })
+    ).rejects.toThrow(/idempotencyKey/);
+  });
+
+  it('sends a documented NGN payout request (amount in minor units) and maps a successful response', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          message: 'ok',
+          data: { id: 12345, reference: 'fncr_ref_abc', customerReference: 'idem-abc', status: 'successful' }
+        }),
+        { status: 200 }
+      )
+    );
+    const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1', fetcher });
+    const result = await provider.sendTransfer({
+      reference: 'flp_ref_1',
+      idempotencyKey: 'idem-abc',
+      amountMinor: 500_000,
+      sourceCurrency: 'NGN',
+      destinationCurrency: 'NGN',
+      recipient: { name: 'Adaeze Nwafor', accountNumber: '0690000032', bankCode: '044', country: 'NG' }
+    });
+
+    expect(result.providerReference).toBe('fncr_ref_abc');
+    expect(result.status).toBe('COMPLETED');
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://sandboxapi.fincra.com/disbursements/payouts');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const body = JSON.parse(init.body as string);
+    expect(body).toMatchObject({
+      amount: '500000', // minor units — live-confirmed via sandbox balance math
+      customerReference: 'idem-abc',
+      beneficiary: { accountNumber: '0690000032', bankCode: '044', firstName: 'Adaeze', lastName: 'Nwafor' }
+    });
+  });
+
+  it('surfaces a duplicate customerReference as a 422 ProviderApiError (reject-on-duplicate, not replay)', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ success: false, message: 'customerReference already used' }), { status: 422 })
+      );
+    const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1', fetcher });
+    await expect(
+      provider.sendTransfer({
+        reference: 'flp_ref_1',
+        idempotencyKey: 'idem-dup',
+        amountMinor: 100,
+        sourceCurrency: 'NGN',
+        destinationCurrency: 'NGN',
+        recipient: { name: 'X', accountNumber: '0690000032', bankCode: '044', country: 'NG' }
+      })
+    ).rejects.toThrow(/HTTP 422/);
+  });
+
+  it('maps successful/failed/processing statuses via the reference status endpoint', async () => {
+    for (const [raw, expected] of [
+      ['successful', 'COMPLETED'],
+      ['failed', 'FAILED'],
+      ['processing', 'PROCESSING'],
+      ['pending', 'PROCESSING']
+    ] as const) {
+      const fetcher = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ success: true, message: 'ok', data: { status: raw } }), { status: 200 })
+      );
+      const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1', fetcher });
+      const status = await provider.getTransferStatus('fncr_ref_x');
+      expect(status.status).toBe(expected);
+    }
+  });
+
+  it('throws a ProviderApiError on a 5xx response', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('server error', { status: 502 }));
+    const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1', fetcher });
+    await expect(provider.getTransferStatus('fncr_ref_x')).rejects.toThrow(/HTTP 502/);
+  });
+});
+
+describe('verifyFincraWebhook', () => {
+  const key = 'whenc_test_abc';
+
+  function sign(rawBody: string): string {
+    return createHmac('sha512', key).update(rawBody).digest('hex');
+  }
+
+  it('accepts a validly signed webhook', () => {
+    const rawBody = JSON.stringify({ event: 'payout.successful', reference: 'fncr_ref_abc' });
+    expect(verifyFincraWebhook(rawBody, sign(rawBody), key)).toBe(true);
+  });
+
+  it('rejects a tampered body', () => {
+    const rawBody = JSON.stringify({ event: 'payout.successful', reference: 'fncr_ref_abc' });
+    expect(verifyFincraWebhook(rawBody + 'tampered', sign(rawBody), key)).toBe(false);
+  });
+
+  it('rejects a missing signature header', () => {
+    expect(verifyFincraWebhook('{}', '', key)).toBe(false);
   });
 });

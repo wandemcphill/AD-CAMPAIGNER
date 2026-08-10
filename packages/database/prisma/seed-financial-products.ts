@@ -60,6 +60,21 @@ const SEEDS: ProviderConfigSeed[] = [
       role: "fallback",
       note: "No live credentials yet — YATIVO_API_KEY unset."
     }
+  },
+  {
+    name: "fincra-remittance",
+    domain: "REMITTANCE",
+    // Live sandbox-verified NGN payouts (2026-08-10) — see docs/providers/fincra.md.
+    // Still DISABLED like every other row here until FINCRA_API_KEY/
+    // FINCRA_BUSINESS_ID are production credentials and the enabled
+    // ProviderCapabilityGrant is flipped on (see seed-provider-capability-grants.ts).
+    priority: 15,
+    enabledCountries: ["NG"],
+    metadata: {
+      providerKey: "fincra",
+      role: "candidate",
+      note: "Sandbox-verified NGN payouts; no production credentials yet — FINCRA_API_KEY unset."
+    }
   }
 ];
 

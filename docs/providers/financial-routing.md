@@ -138,3 +138,54 @@ this session:
 
 This invariant is provider-agnostic — it will apply to a future Fincra
 adapter exactly as it applies to Swappr today, with no special-casing needed.
+
+## Update (2026-08-10) — both §I gaps closed
+
+Both blockers named in §I above are now resolved at the code level. Neither
+changes what's *enabled* in production — both remain off.
+
+1. **`createFincraRemittanceProvider` now exists**
+   (`packages/providers/src/financial-products.ts`), implementing
+   `RemittanceProvider` against the live-verified sandbox endpoints from the
+   2026-08-10 verification sprint (`POST /quotes/generate`,
+   `POST /disbursements/payouts`,
+   `GET /disbursements/payouts/reference/{ref}`). It declares
+   `supportsLockedQuotes: true` (live-confirmed) and
+   `supportsBeneficiaries: false` (unverified). `sendTransfer` requires an
+   `idempotencyKey` and documents Fincra's reject-not-replay 422 behavior on a
+   reused `customerReference` rather than papering over it. Wired into
+   `financial-products.service.ts`'s `buildRemittanceAdapter` under
+   `case "fincra"`, reading `FINCRA_API_KEY`/`FINCRA_BUSINESS_ID`/
+   `FINCRA_BASE_URL`/`FINCRA_WEBHOOK_ENCRYPTION_KEY`. A `fincra-remittance`
+   `ProviderConfig` row was added to `seed-financial-products.ts` —
+   `status: "DISABLED"`, same as every other row there. 16 new unit tests in
+   `financial-products.test.ts`.
+
+2. **`ProviderRouterService.select()` now consults `ProviderCapabilityGrant`.**
+   `apps/api/src/modules/providers/provider-router.service.ts` adds a hard
+   gate: a provider is only routable if it holds an `enabled: true`
+   `ProviderCapabilityGrant` row for that domain, in addition to the existing
+   `ProviderConfig`/`ProviderHealth` checks. `NO_CANDIDATE`
+   `ProviderRoutingAttempt` rows now distinguish "no ProviderConfig" from
+   "configured but ungranted" in their `reason` text. A seed script,
+   `packages/database/prisma/seed-provider-capability-grants.ts`
+   (`pnpm --filter @fliptrybe/database seed:provider-capability-grants`),
+   grants rows for all five financial-products `ProviderConfig` entries
+   (swappr-virtual-account, swappr-remittance, payscribe-virtual-card,
+   yativo-remittance, fincra-remittance) — every row seeded with
+   `enabled: false`, matching each capability's real, currently-unverified or
+   sandbox-only status; `fincra-remittance` is the only row with
+   `sandboxVerified: true`. **This gate applies to every domain
+   `ProviderRouterService` serves, not just financial-products** — it was the
+   only real caller of `selectProviders()` at the time of this change (vtu/
+   virtual-numbers/etc. use separate routing services), so nothing else was
+   affected, but any future caller must seed a grant row or its routing will
+   silently return `NO_CANDIDATE`.
+   `provider-router.service.test.ts` (new) unit-tests the gate directly with
+   a mocked Prisma client.
+
+Since every `ProviderConfig` row for financial-products is still
+`status: "DISABLED"` and every `ProviderCapabilityGrant` row is still
+`enabled: false`, **routing behavior in production is unchanged** — this is
+the adapter/gate infrastructure the routing decision above was blocked on,
+not a decision to enable anything.

@@ -1044,6 +1044,220 @@ export function verifySwapprWebhook(input: SwapprWebhookVerifyInput): boolean {
   }
 }
 
+// Fincra remittance (payout) adapter — mapped against the OFFICIAL Fincra API
+// documentation AND a live sandbox verification sprint (2026-08-10) that ran
+// real calls against sandboxapi.fincra.com with real sandbox credentials. See
+// docs/providers/fincra.md for the full verification log. Facts below are
+// LIVE-CONFIRMED, not doc-only, unless marked otherwise:
+//   - POST /quotes/generate returns a real locked quote (`reference` +
+//     `expireAt`, ~30s TTL). Fincra DOES support locked quotes, unlike Swappr.
+//   - POST /disbursements/payouts: `amount` is MINOR units (kobo) — confirmed
+//     by observing an exact ₦2 balance drop across two ₦1 sandbox payouts.
+//   - Idempotency is REJECT-ON-DUPLICATE, not replay: submitting the same
+//     `customerReference` twice (even with an identical body) returns 422,
+//     it does not return the original response. There is also no
+//     "look up by customerReference" recovery endpoint — only
+//     GET /disbursements/payouts/reference/{fincraReference} (our own
+//     providerReference, returned on the *first* successful call) can be
+//     polled afterward. A caller that loses the response to a network error
+//     before seeing a reference has no way to recover it from Fincra directly;
+//     this is a genuine gap, not an adapter limitation — surfaced via
+//     ProviderApiError(422) so the saga's ambiguous-failure path can flag it
+//     for reconciliation rather than silently retrying (see
+//     FALLBACK SAFETY INVARIANT note on selectRemittanceAdapter callers).
+//   - Sandbox does NOT reject an invalid beneficiary account number — a payout
+//     to a fabricated account still returns "successful". This is a sandbox
+//     limitation, not a verified production safety guarantee; the adapter
+//     cannot compensate for it, only flag it (remittanceCapabilities has no
+//     field for this — noted here so it isn't silently assumed safe).
+//   - Webhook enablement is DASHBOARD-ONLY — there is no API call that turns
+//     it on. verifyFincraWebhook below implements the documented signature
+//     scheme so it's ready the moment webhooks are enabled, but no webhook
+//     has actually been received/verified live yet.
+//   - Only the NGN payout recipient shape (accountNumber + bankCode) has been
+//     live-tested. Cross-currency quotes were exercised via
+//     createFincraFxProvider/createFincraSettlementProvider in index.ts
+//     (a separate, unrelated FxProvider/SettlementProvider pair used only by
+//     the `fx` module) — NOT via this RemittanceProvider adapter. Declaring
+//     only NG here until GBP/EUR/USD recipient shapes are mapped and tested
+//     through this adapter specifically.
+export interface FincraRemittanceConfig {
+  // `api-key` header value: sk_test_... (sandbox) or sk_live_... (production).
+  apiKey: string;
+  // Fincra business id — required on every quote/payout body.
+  businessId: string;
+  // Defaults to sandbox: https://sandboxapi.fincra.com. Production:
+  // https://api.fincra.com.
+  baseUrl?: string;
+  // HMAC-SHA512 encryption key from the Fincra dashboard, used to verify
+  // inbound webhook signatures (see verifyFincraWebhook).
+  webhookEncryptionKey?: string;
+  fetcher?: typeof fetch;
+}
+
+async function callFincraApi(
+  config: FincraRemittanceConfig,
+  method: string,
+  path: string,
+  body?: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  if (!config.apiKey) throw new Error('Fincra adapter requires config.apiKey.');
+  if (!config.businessId) throw new Error('Fincra adapter requires config.businessId.');
+  const f = config.fetcher ?? fetch;
+  const base = config.baseUrl ?? 'https://sandboxapi.fincra.com';
+  const res = await f(`${base}${path}`, {
+    method,
+    headers: {
+      'api-key': config.apiKey,
+      'content-type': 'application/json',
+      accept: 'application/json'
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+
+  const text = await res.text().catch(() => '');
+  let json: Record<string, unknown>;
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    json = { raw: text };
+  }
+  const success = json['success'];
+  if (!res.ok || success === false) {
+    const msg = (typeof json['message'] === 'string' && json['message']) || text || res.statusText;
+    throw new ProviderApiError('fincra', res.status, String(msg));
+  }
+  return json;
+}
+
+function mapFincraPayoutStatus(raw: unknown): 'PROCESSING' | 'COMPLETED' | 'FAILED' {
+  const v = (typeof raw === 'string' ? raw : '').toLowerCase();
+  if (v === 'successful') return 'COMPLETED';
+  if (v === 'failed') return 'FAILED';
+  // processing | pending | any other value: caller polls getTransferStatus.
+  return 'PROCESSING';
+}
+
+export function createFincraRemittanceProvider(config: FincraRemittanceConfig): RemittanceProvider {
+  const name = 'fincra';
+  const paymentSchemes: Record<string, string> = { GBP: 'fps', EUR: 'sepa', USD: 'swift', NGN: '' };
+
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'REMITTANCE',
+    remittanceCapabilities: {
+      supportsIndicativeRates: true,
+      supportsLockedQuotes: true, // live-confirmed: POST /quotes/generate returns a real reference + ~30s expireAt
+      supportsConversions: false, // not wired/verified through this adapter
+      supportsPayouts: true,
+      supportsBeneficiaries: false // payout takes an inline beneficiary; no beneficiary-management endpoints verified
+    },
+    // Only NG live-tested through this adapter — see header note.
+    getCapabilities: () => liveCapabilities('REMITTANCE', ['BANK_TRANSFER'], ['NG']),
+    checkHealth: () => liveHealth(name),
+
+    async getQuote(input) {
+      const json = await callFincraApi(config, 'POST', '/quotes/generate', {
+        business: config.businessId,
+        sourceCurrency: input.sourceCurrency,
+        destinationCurrency: input.destinationCurrency,
+        amount: String(input.sourceAmountMinor), // minor units — confirmed via payout balance math
+        action: 'send',
+        transactionType: 'disbursement',
+        paymentDestination: 'bank_account',
+        feeBearer: 'business',
+        ...(paymentSchemes[input.destinationCurrency]
+          ? { paymentScheme: paymentSchemes[input.destinationCurrency] }
+          : {})
+      });
+      const data = json['data'] as Record<string, unknown>;
+      return {
+        quoteId: toStr(data['reference']),
+        sourceAmountMinor: input.sourceAmountMinor,
+        sourceCurrency: input.sourceCurrency,
+        destinationAmountMinor: Math.round(Number(data['destinationAmount'])),
+        destinationCurrency: input.destinationCurrency,
+        feeMinor: Math.round(Number(data['fee'] ?? 0)),
+        rate: Number(data['rate']),
+        expiresAt: toStr(data['expireAt']) || new Date(Date.now() + 30_000).toISOString(),
+        isLocked: true
+      };
+    },
+
+    async sendTransfer(input) {
+      if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) {
+        throw new Error('sendTransfer requires a positive integer amountMinor');
+      }
+      if (!input.idempotencyKey) {
+        throw new Error('sendTransfer requires an idempotencyKey — Fincra rejects a reused customerReference with 422 rather than replaying');
+      }
+      const [firstName = '', ...lastParts] = input.recipient.name.split(' ');
+      const lastName = lastParts.join(' ') || firstName;
+
+      const json = await callFincraApi(config, 'POST', '/disbursements/payouts', {
+        business: config.businessId,
+        sourceCurrency: input.sourceCurrency,
+        destinationCurrency: input.destinationCurrency,
+        amount: String(input.amountMinor), // minor units — confirmed via payout balance math
+        description: 'FlipTrybe remittance',
+        paymentDestination: 'bank_account',
+        customerReference: input.idempotencyKey,
+        beneficiary: {
+          firstName,
+          lastName,
+          accountHolderName: input.recipient.name,
+          accountNumber: input.recipient.accountNumber,
+          bankCode: input.recipient.bankCode,
+          type: 'individual',
+          country: input.recipient.country
+        },
+        ...(input.quoteId ? { quoteReference: input.quoteId } : {}),
+        ...(paymentSchemes[input.destinationCurrency]
+          ? { paymentScheme: paymentSchemes[input.destinationCurrency] }
+          : {})
+      });
+      const data = json['data'] as Record<string, unknown>;
+      return {
+        providerReference: toStr(data['reference']) || toStr(data['id']),
+        status: mapFincraPayoutStatus(data['status'])
+      };
+    },
+
+    async getTransferStatus(providerReference) {
+      const json = await callFincraApi(
+        config,
+        'GET',
+        `/disbursements/payouts/reference/${encodeURIComponent(providerReference)}`
+      );
+      const data = json['data'] as Record<string, unknown>;
+      const status = mapFincraPayoutStatus(data['status']);
+      return {
+        status,
+        ...(status === 'FAILED'
+          ? { failureReason: `Fincra payout status: ${toStr(data['status'])}` }
+          : {})
+      };
+    }
+  };
+}
+
+// Verifies an inbound Fincra webhook signature.
+//
+// Documented scheme: header X-Fincra-Signature carries an HMAC-SHA512 hex
+// digest of the raw request body, keyed with the dashboard-issued webhook
+// encryption key. NOT live-verified — webhook enablement is dashboard-only
+// and no webhook has been received in the sandbox sprint (see header note).
+export function verifyFincraWebhook(rawBody: string, signatureHeader: string, webhookEncryptionKey: string): boolean {
+  if (!webhookEncryptionKey || !signatureHeader) return false;
+  const expected = createHmac('sha512', webhookEncryptionKey).update(rawBody).digest('hex');
+  try {
+    return timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signatureHeader.toLowerCase(), 'hex'));
+  } catch {
+    return false;
+  }
+}
+
 // Payscribe virtual (USD) card adapter — mapped against the OFFICIAL Payscribe
 // API documentation (2026-08-08). See docs/providers/payscribe.md.
 //

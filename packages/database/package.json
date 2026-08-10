@@ -19,6 +19,7 @@
     "seed:marketplace": "tsx prisma/seed-marketplace.ts",
     "seed:virtual-numbers": "tsx prisma/seed-virtual-numbers.ts",
     "seed:financial-products": "tsx prisma/seed-financial-products.ts",
+    "seed:provider-capability-grants": "tsx prisma/seed-provider-capability-grants.ts",
     "backfill:provider-mapping": "tsx prisma/backfill-provider-mapping.ts"
   },
   "dependencies": {

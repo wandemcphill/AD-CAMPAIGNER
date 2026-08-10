@@ -12,6 +12,7 @@ import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
   classifyFallbackSafety,
+  createFincraRemittanceProvider,
   createPayscribeVirtualAccountProvider,
   createPayscribeVirtualCardProvider,
   createSwapprRemittanceProvider,
@@ -152,6 +153,15 @@ export class FinancialProductsService {
           apiKey: process.env["YATIVO_API_KEY"] ?? "",
           accountId: process.env["YATIVO_ACCOUNT_ID"] ?? "",
           ...(process.env["YATIVO_BASE_URL"] ? { baseUrl: process.env["YATIVO_BASE_URL"] } : {})
+        });
+      case "fincra":
+        return createFincraRemittanceProvider({
+          apiKey: process.env["FINCRA_API_KEY"] ?? "",
+          businessId: process.env["FINCRA_BUSINESS_ID"] ?? "",
+          ...(process.env["FINCRA_BASE_URL"] ? { baseUrl: process.env["FINCRA_BASE_URL"] } : {}),
+          ...(process.env["FINCRA_WEBHOOK_ENCRYPTION_KEY"]
+            ? { webhookEncryptionKey: process.env["FINCRA_WEBHOOK_ENCRYPTION_KEY"] }
+            : {})
         });
       default:
         throw new ServiceUnavailableException(
