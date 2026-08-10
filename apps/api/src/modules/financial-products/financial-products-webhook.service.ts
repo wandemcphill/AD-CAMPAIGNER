@@ -12,6 +12,8 @@
  */
 import { Injectable, Logger } from "@nestjs/common";
 
+import { type RemittanceTransferStatus } from "@fliptrybe/database";
+
 import { PrismaService } from "../prisma.service";
 
 const toStr = (v: unknown, fallback = ''): string =>
@@ -222,7 +224,7 @@ export class FinancialProductsWebhookService {
     await this.prisma.client.remittanceTransfer.update({
       where: { id: transfer.id },
       data: {
-        status: nextStatus,
+        status: nextStatus as RemittanceTransferStatus,
         ...(nextStatus === "COMPLETED" ? { completedAt: new Date() } : {})
       }
     });

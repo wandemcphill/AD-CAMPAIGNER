@@ -12,6 +12,8 @@
  */
 import { Injectable, Logger } from "@nestjs/common";
 
+import { type Prisma } from "@fliptrybe/database";
+
 import { PrismaService } from "../prisma.service";
 
 type ProviderDomain = "VIRTUAL_ACCOUNT" | "VIRTUAL_CARD" | "REMITTANCE";
@@ -80,7 +82,7 @@ export class FinancialReconciliationService {
         status: "OPEN",
         workspaceId: workspaceId ?? null,
         detail: detail ?? null,
-        ...(metadata ? { metadata } : {}),
+        ...(metadata ? { metadata: metadata as Prisma.InputJsonValue } : {}),
         domain: rest.domain,
         providerName: rest.providerName,
         internalStatus: rest.internalStatus ?? null,
@@ -102,7 +104,7 @@ export class FinancialReconciliationService {
         providerFeeMinor: rest.providerFeeMinor ?? null,
         providerReference: rest.providerReference ?? null,
         detail: detail ?? null,
-        ...(metadata ? { metadata: metadata as object } : {})
+        ...(metadata ? { metadata: metadata as Prisma.InputJsonValue } : {})
       }
     });
 

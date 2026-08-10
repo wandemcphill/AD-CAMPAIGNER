@@ -16,6 +16,7 @@ import {
   ServiceUnavailableException
 } from "@nestjs/common";
 
+import { type Prisma } from "@fliptrybe/database";
 import { featureFlags } from "@fliptrybe/feature-flags";
 import { createMockKycProvider, type KycProviderAdapter } from "@fliptrybe/providers";
 
@@ -132,7 +133,7 @@ export class KycService {
         status: nextStatus,
         failureReason: result.failureReason ?? null,
         completedAt: isDone ? new Date() : null,
-        ...(result.metadata ? { metadata: result.metadata } : {})
+        ...(result.metadata ? { metadata: result.metadata as Prisma.InputJsonValue } : {})
       }
     });
 
