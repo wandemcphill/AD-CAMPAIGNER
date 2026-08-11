@@ -810,7 +810,7 @@ export class NotificationsController {
   @Put("preferences/:eventName")
   updatePreference(
     @Param("eventName") eventName: string,
-    @Body() body: { inApp?: boolean; email?: boolean; whatsapp?: boolean },
+    @Body() body: { inApp?: boolean; email?: boolean; sms?: boolean; whatsapp?: boolean },
     @Req() request: WorkspaceContextRequest
   ) {
     return this.managedAds.upsertNotificationPreference(

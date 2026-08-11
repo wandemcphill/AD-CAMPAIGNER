@@ -25,6 +25,7 @@ export type NotificationPreferenceRecord = {
   eventName: string;
   inApp: boolean;
   email: boolean;
+  sms: boolean;
   whatsapp: boolean;
 };
 
@@ -48,7 +49,7 @@ export async function loadNotificationPreferences() {
 
 export async function updateNotificationPreference(
   eventName: string,
-  input: { inApp?: boolean; email?: boolean; whatsapp?: boolean }
+  input: { inApp?: boolean; email?: boolean; sms?: boolean; whatsapp?: boolean }
 ) {
   return apiRequest<NotificationPreferenceRecord>(
     `/notifications/preferences/${encodeURIComponent(eventName)}`,

@@ -3146,7 +3146,7 @@ export class ManagedAdsService {
   async upsertNotificationPreference(
     context: AuthenticatedRequestContext | undefined,
     eventName: string,
-    input: { inApp?: boolean; email?: boolean; whatsapp?: boolean }
+    input: { inApp?: boolean; email?: boolean; sms?: boolean; whatsapp?: boolean }
   ) {
     const scope = requireScope(context);
     const trimmedEventName = eventName.trim();
@@ -3168,11 +3168,13 @@ export class ManagedAdsService {
         eventName: trimmedEventName,
         inApp: input.inApp ?? true,
         email: input.email ?? true,
+        sms: input.sms ?? true,
         whatsapp: input.whatsapp ?? false
       },
       update: {
         ...(input.inApp === undefined ? {} : { inApp: input.inApp }),
         ...(input.email === undefined ? {} : { email: input.email }),
+        ...(input.sms === undefined ? {} : { sms: input.sms }),
         ...(input.whatsapp === undefined ? {} : { whatsapp: input.whatsapp })
       }
     });

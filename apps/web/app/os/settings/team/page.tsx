@@ -7,6 +7,7 @@ import { Badge, Button } from "@fliptrybe/ui";
 import { Drawer, Input } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { useApiSession } from "../../../lib/use-session";
 import {
   TEAM_ROLES,
   inviteTeamMember,
@@ -31,6 +32,8 @@ function initials(name: string) {
 }
 
 export default function TeamSettingsPage() {
+  const { session } = useApiSession();
+  const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
   const { error, loading, members, refresh } = useTeamData();
   const [showInvite, setShowInvite] = useState(false);
   const [inviteUsername, setInviteUsername] = useState("");
@@ -89,10 +92,18 @@ export default function TeamSettingsPage() {
             <h2 className="font-semibold">Team Members</h2>
             <Badge tone="neutral">{loading ? "..." : members.length}</Badge>
           </div>
-          <Button onClick={() => setShowInvite(true)}>
-            <Plus className="size-4" /> Invite
-          </Button>
+          {isAdmin && (
+            <Button onClick={() => setShowInvite(true)}>
+              <Plus className="size-4" /> Invite
+            </Button>
+          )}
         </div>
+
+        {!isAdmin && (
+          <p className="mt-3 text-xs text-[var(--ft-text-muted)]">
+            Only workspace owners and admins can invite members or change roles.
+          </p>
+        )}
 
         <ErrorNotice message={error} />
 
@@ -124,7 +135,7 @@ export default function TeamSettingsPage() {
                     {member.permissions.length} permission{member.permissions.length === 1 ? "" : "s"}
                   </div>
                 </div>
-                {member.role === "OWNER" ? (
+                {member.role === "OWNER" || !isAdmin ? (
                   <Badge tone={ROLE_TONE[member.role] ?? "neutral"}>{member.role}</Badge>
                 ) : (
                   <>
