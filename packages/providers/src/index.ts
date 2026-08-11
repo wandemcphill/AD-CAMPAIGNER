@@ -2377,6 +2377,130 @@ export function createFincraFxProvider(
   };
 }
 
+// ─── Swappr FX Provider ────────────────────────────────────────────────────
+// Swappr has no standalone rate-lookup endpoint — POST /v1/payouts/quote is a
+// read-only, PII-free advisory quote (no capability/enablement gate beyond a
+// valid key) that returns an `fx` block for any funding_currency → currency
+// pair. We use that purely to read fx.rate; no payout is ever created here.
+
+type SwapprFetcher = (url: string, init: RequestInit) => Promise<Response>;
+
+interface SwapprConfig {
+  secretKey: string;
+  baseUrl?: string;
+}
+
+interface SwapprQuoteResponse {
+  object: string;
+  currency: string;
+  amount_minor: string;
+  fee_minor: string;
+  tax_minor: string;
+  levy_minor: string;
+  total_debit_minor: string;
+  fx: {
+    funding_currency: string;
+    source_debit_minor: string;
+    converted_minor: string;
+    fee_source_minor: string;
+    rate: string;
+    as_of: string | null;
+    indicative: boolean;
+  } | null;
+}
+
+interface SwapprErrorResponse {
+  error: { type: string; code: string; message: string };
+}
+
+const SWAPPR_BASE_URL = "https://api.swappr.me/api/v1";
+const SWAPPR_SUPPORTED_CURRENCIES = ["NGN", "GBP", "USD", "EUR", "CAD"];
+
+async function swapprRequest<T>(
+  baseUrl: string,
+  secretKey: string,
+  method: string,
+  path: string,
+  body: object | undefined,
+  fetcher: SwapprFetcher
+): Promise<T> {
+  const res = await fetcher(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/json",
+      ...(method === "POST" ? { "Idempotency-Key": `sw_${Math.random().toString(36).slice(2, 12)}` } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  const json = (await res.json()) as T & Partial<SwapprErrorResponse>;
+
+  if (!res.ok || json.error) {
+    throw new Error(json.error?.message ?? `Swappr request failed (${res.status})`);
+  }
+
+  return json;
+}
+
+export function createSwapprFxProvider(
+  config: SwapprConfig,
+  fetcher: SwapprFetcher = globalThis.fetch
+): FxProvider {
+  const baseUrl = config.baseUrl ?? SWAPPR_BASE_URL;
+
+  return {
+    name: "swappr",
+
+    async getRate(baseCurrency: string, quoteCurrency: string): Promise<FxRate> {
+      const quote = await swapprRequest<SwapprQuoteResponse>(
+        baseUrl, config.secretKey, "POST", "/payouts/quote",
+        {
+          currency: quoteCurrency,
+          funding_currency: baseCurrency,
+          amount_minor: "1000000"
+        },
+        fetcher
+      );
+
+      if (!quote.fx) {
+        throw new Error(`Swappr returned no fx block for ${baseCurrency}-${quoteCurrency}`);
+      }
+
+      return {
+        baseCurrency,
+        quoteCurrency,
+        rateMicros: BigInt(Math.round(Number(quote.fx.rate) * 1_000_000)),
+        timestamp: quote.fx.as_of ? new Date(quote.fx.as_of) : new Date(),
+        provider: "swappr",
+      };
+    },
+
+    async getRates(baseCurrency: string, quoteCurrencies: string[]): Promise<FxRate[]> {
+      return Promise.all(
+        quoteCurrencies.map((qc) => this.getRate(baseCurrency, qc))
+      );
+    },
+
+    getSupportedCurrencies(): Promise<string[]> {
+      return Promise.resolve(SWAPPR_SUPPORTED_CURRENCIES);
+    },
+
+    async healthCheck(): Promise<{ healthy: boolean; message?: string }> {
+      try {
+        await swapprRequest<SwapprQuoteResponse>(
+          baseUrl, config.secretKey, "POST", "/payouts/quote",
+          { currency: "NGN", amount_minor: "100000" },
+          fetcher
+        );
+        return { healthy: true };
+      } catch (err) {
+        return { healthy: false, message: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  };
+}
+
 export function createFincraSettlementProvider(
   config: FincraConfig,
   fetcher: FincraFetcher = globalThis.fetch

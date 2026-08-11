@@ -5,7 +5,9 @@ import type { DatabaseClient, Prisma } from "@fliptrybe/database";
 import {
   createMockFxProvider,
   createFincraFxProvider,
-  type FxProvider
+  createSwapprFxProvider,
+  type FxProvider,
+  type FxRate
 } from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
@@ -53,7 +55,11 @@ function fromMicros(micros: bigint): number {
 @Injectable()
 export class FxService implements OnModuleInit {
   private readonly logger = new Logger(FxService.name);
-  private fxProvider: FxProvider;
+  // Every configured provider is queried for every pair; the best (highest)
+  // rate wins. A provider that doesn't serve a pair (e.g. Fincra has no CAD
+  // corridor) just fails its own getRate() call and is excluded from that
+  // pair's comparison — see getBestRate().
+  private fxProviders: FxProvider[] = [];
   private cacheRefreshInProgress = false;
 
   constructor(private readonly prismaService: PrismaService) {
@@ -62,24 +68,81 @@ export class FxService implements OnModuleInit {
 
     if (fincraApiKey && fincraBusinessId) {
       const isProduction = process.env["FINCRA_ENV"] === "production";
-      this.fxProvider = createFincraFxProvider({
-        apiKey: fincraApiKey,
-        businessId: fincraBusinessId,
-        ...(isProduction ? { baseUrl: "https://api.fincra.com" } : {}),
-      });
-    } else {
-      this.fxProvider = createMockFxProvider();
+      this.fxProviders.push(
+        createFincraFxProvider({
+          apiKey: fincraApiKey,
+          businessId: fincraBusinessId,
+          ...(isProduction ? { baseUrl: "https://api.fincra.com" } : {}),
+        })
+      );
+    }
+
+    const swapprSecretKey = process.env["SWAPPR_SECRET_KEY"];
+    if (swapprSecretKey) {
+      this.fxProviders.push(
+        createSwapprFxProvider({
+          secretKey: swapprSecretKey,
+          ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {}),
+        })
+      );
+    }
+
+    if (this.fxProviders.length === 0) {
+      this.fxProviders.push(createMockFxProvider());
     }
   }
 
   async onModuleInit() {
-    this.logger.log(`Initialized FX service with provider: ${this.fxProvider.name}`);
+    this.logger.log(`Initialized FX service with providers: ${this.fxProviders.map((p) => p.name).join(", ")}`);
     // Trigger initial cache warm-up
     try {
       await this.refreshRateCache({ forceRefresh: true });
     } catch (err) {
       this.logger.warn(`Initial rate cache warm-up failed: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  // Queries every configured provider for the same pair and keeps the best
+  // (highest) rate — more destination currency per unit of source currency
+  // is strictly better for a diaspora-payout recipient. A provider that
+  // doesn't serve the pair is excluded rather than failing the whole lookup.
+  private async getBestRate(baseCurrency: string, quoteCurrency: string): Promise<FxRate> {
+    const attempts = await Promise.allSettled(
+      this.fxProviders.map(async (provider) => {
+        try {
+          return await provider.getRate(baseCurrency, quoteCurrency);
+        } catch (err) {
+          throw new Error(
+            `${provider.name} has no rate for ${baseCurrency}/${quoteCurrency}: ` +
+              `${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      })
+    );
+
+    const rates: FxRate[] = [];
+    attempts.forEach((attempt) => {
+      if (attempt.status === "fulfilled") {
+        rates.push(attempt.value);
+      } else {
+        this.logger.debug(attempt.reason instanceof Error ? attempt.reason.message : String(attempt.reason));
+      }
+    });
+
+    if (rates.length === 0) {
+      throw new Error(`No configured provider returned a rate for ${baseCurrency}/${quoteCurrency}`);
+    }
+
+    const best = rates.reduce((a, b) => (b.rateMicros > a.rateMicros ? b : a));
+
+    if (rates.length > 1) {
+      this.logger.debug(
+        `Best rate for ${baseCurrency}/${quoteCurrency}: ${best.provider} ` +
+          `(${rates.map((r) => `${r.provider}=${fromMicros(r.rateMicros)}`).join(", ")})`
+      );
+    }
+
+    return best;
   }
 
   private get db(): DatabaseClient {
@@ -126,7 +189,7 @@ export class FxService implements OnModuleInit {
       const results = await Promise.allSettled(
         pairs.map(async ({ baseCurrency, quoteCurrency }) => {
           try {
-            const rate = await this.fxProvider.getRate(baseCurrency, quoteCurrency);
+            const rate = await this.getBestRate(baseCurrency, quoteCurrency);
             await this.validateAndCacheRate(rate, forceRefresh);
             return { success: true, baseCurrency, quoteCurrency };
           } catch (err) {
@@ -459,7 +522,18 @@ export class FxService implements OnModuleInit {
   // ─── Health & Status ───────────────────────────────────────────────────────
 
   async getHealth(): Promise<FxHealthDto> {
-    const providerHealth = await this.fxProvider.healthCheck();
+    const healthChecks = await Promise.all(
+      this.fxProviders.map(async (provider) => ({
+        name: provider.name,
+        result: await provider.healthCheck()
+      }))
+    );
+    const providerHealth = {
+      healthy: healthChecks.some((h) => h.result.healthy),
+      message: healthChecks
+        .map((h) => `${h.name}: ${h.result.healthy ? "ok" : (h.result.message ?? "unhealthy")}`)
+        .join("; ")
+    };
 
     const caches = await this.db.fxRateCache.findMany({
       where: { validationStatus: "VALID" }
@@ -496,7 +570,7 @@ export class FxService implements OnModuleInit {
       : -1;
 
     return {
-      provider: this.fxProvider.name,
+      provider: this.fxProviders.map((p) => p.name).join(", "),
       healthy: providerHealth.healthy,
       message: providerHealth.message,
       cacheStatus: {
