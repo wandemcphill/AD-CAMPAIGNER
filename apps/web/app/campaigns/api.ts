@@ -111,6 +111,7 @@ export type CampaignDashboardState = {
   campaigns: Campaign[];
   destinations: DestinationKind[];
   error?: string;
+  forbidden?: boolean;
   loading: boolean;
   source: ClientDataSource;
   wallet: Wallet | null;
@@ -126,6 +127,7 @@ export type CampaignBuilderState = {
 export type BillingState = {
   activity: BillingActivity[];
   error?: string;
+  forbidden?: boolean;
   loading: boolean;
   source: ClientDataSource;
   wallet: Wallet | null;

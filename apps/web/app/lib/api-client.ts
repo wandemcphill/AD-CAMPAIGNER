@@ -127,6 +127,12 @@ export class ApiClientError extends Error {
   }
 }
 
+// Use this in catch blocks after any apiRequest call to decide whether to render
+// the shared PermissionDenied UI (from @fliptrybe/ui) instead of a generic ErrorNotice.
+export function isForbiddenError(error: unknown): boolean {
+  return error instanceof ApiClientError && error.status === 403;
+}
+
 function endpoint(path: string) {
   return `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }

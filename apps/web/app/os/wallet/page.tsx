@@ -15,7 +15,16 @@ import {
   X
 } from "lucide-react";
 
-import { Badge, Button, InvoiceCard, Panel, SummaryStatStrip, WalletBalance, cn } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  InvoiceCard,
+  Panel,
+  PermissionDenied,
+  SummaryStatStrip,
+  WalletBalance,
+  cn
+} from "@fliptrybe/ui";
 import type { CurrencyCode, PaymentIntent } from "@fliptrybe/types";
 
 import {
@@ -228,7 +237,7 @@ function ActionRequiredPanel({
 }
 
 export default function BillingPage() {
-  const { activity, error, loading, refresh, source, wallet } = useBillingData();
+  const { activity, error, forbidden, loading, refresh, source, wallet } = useBillingData();
   const { session } = useApiSession();
   const [amount, setAmount] = useState("50000");
   const [activeTab, setActiveTab] = useState<BillingTab>("history");
@@ -344,6 +353,15 @@ export default function BillingPage() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     void submitTopUp(event);
+  }
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view the Finance Hub for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
   }
 
   return (
