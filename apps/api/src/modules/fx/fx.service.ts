@@ -24,6 +24,18 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
 // Bootstrap fallback only — used when no FxRate row has ever been set for this pair.
 const BOOTSTRAP_RATE_MICROS = 1_450_000_000n; // ₦1,450/USD
 
+// Launch corridor pairs refreshed by the scheduled cache job and initial
+// warm-up — all quoted directly against NGN, since createQuote() only ever
+// looks up a cached direct pair (it does not compose crosses through USD).
+// A pair the active provider doesn't serve just fails its own fetch and gets
+// skipped (see the Promise.allSettled loop below) — this list is provider-
+// agnostic on purpose so it keeps working as more providers are added.
+const DEFAULT_RATE_PAIRS: Array<{ baseCurrency: string; quoteCurrency: string }> = [
+  { baseCurrency: "USD", quoteCurrency: "NGN" },
+  { baseCurrency: "GBP", quoteCurrency: "NGN" },
+  { baseCurrency: "EUR", quoteCurrency: "NGN" }
+];
+
 const DEFAULT_SPREAD_BPS = 150; // 1.5% spread
 const DEFAULT_BUFFER_BPS = 100; // 1% buffer
 const FX_MAX_AGE_HOURS = 72;
@@ -96,21 +108,32 @@ export class FxService implements OnModuleInit {
     this.cacheRefreshInProgress = true;
 
     try {
-      const baseCurrency = dto?.baseCurrency ?? "USD";
-      const quoteCurrencies = dto?.quoteCurrencies ?? ["NGN", "GBP", "EUR"];
       const forceRefresh = dto?.forceRefresh ?? false;
 
-      this.logger.log(`Refreshing FX rate cache for ${baseCurrency} → [${quoteCurrencies.join(", ")}]`);
+      // Explicit dto.baseCurrency/quoteCurrencies (manual admin refresh) keeps
+      // the single-base-against-many-quotes shape. With no dto, refresh every
+      // pair in DEFAULT_RATE_PAIRS, including the direct non-USD crosses.
+      const pairs =
+        dto?.baseCurrency || dto?.quoteCurrencies
+          ? (dto.quoteCurrencies ?? ["NGN", "GBP", "EUR"]).map((qc) => ({
+              baseCurrency: dto.baseCurrency ?? "USD",
+              quoteCurrency: qc
+            }))
+          : DEFAULT_RATE_PAIRS;
+
+      this.logger.log(`Refreshing FX rate cache for [${pairs.map((p) => `${p.baseCurrency}/${p.quoteCurrency}`).join(", ")}]`);
 
       const results = await Promise.allSettled(
-        quoteCurrencies.map(async (qc) => {
+        pairs.map(async ({ baseCurrency, quoteCurrency }) => {
           try {
-            const rate = await this.fxProvider.getRate(baseCurrency, qc);
+            const rate = await this.fxProvider.getRate(baseCurrency, quoteCurrency);
             await this.validateAndCacheRate(rate, forceRefresh);
-            return { success: true, qc };
+            return { success: true, baseCurrency, quoteCurrency };
           } catch (err) {
-            this.logger.warn(`Failed to fetch ${baseCurrency}/${qc}: ${err instanceof Error ? err.message : String(err)}`);
-            return { success: false, qc, error: err };
+            this.logger.warn(
+              `Failed to fetch ${baseCurrency}/${quoteCurrency}: ${err instanceof Error ? err.message : String(err)}`
+            );
+            return { success: false, baseCurrency, quoteCurrency, error: err };
           }
         })
       );
@@ -245,7 +268,14 @@ export class FxService implements OnModuleInit {
     });
 
     if (!active) {
-      return { rateMicros: BOOTSTRAP_RATE_MICROS, fxRateId: null, isBootstrap: true, usingFallback: true };
+      if (baseCurrency === "USD" && quoteCurrency === "NGN") {
+        return { rateMicros: BOOTSTRAP_RATE_MICROS, fxRateId: null, isBootstrap: true, usingFallback: true };
+      }
+
+      throw new BadRequestException(
+        `No FX rate configured for ${baseCurrency}/${quoteCurrency}. This pair is not in the scheduled rate cache ` +
+          `and has no manual admin rate set — refusing to quote off the USD/NGN bootstrap rate for a different pair.`
+      );
     }
 
     const maxAgeHours = FX_MAX_AGE_HOURS;
