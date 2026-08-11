@@ -1881,6 +1881,303 @@ export function createSudoVirtualCardProvider(config: SudoConfig): VirtualCardPr
   };
 }
 
+export interface MapleradConfig {
+  // Bearer secret key from the Maplerad dashboard (Settings > API Keys). Docs
+  // (maplerad.dev/docs/authentication): "Authorization: Bearer SECRET_KEY".
+  // Live-confirmed 2026-08-11 against sandbox key mpr_sandbox_sk_...
+  apiKey: string;
+  // Single host for both environments — https://api.maplerad.com/v1
+  // (live-confirmed). Unlike the task brief's expectation of a Swappr-style
+  // key-prefix-selects-environment split, Maplerad's docs give no evidence of
+  // a separate sandbox host; the sandbox secret key
+  // (mpr_sandbox_sk_ecdafeb8-...) worked directly against
+  // https://api.maplerad.com/v1, so environment selection is inferred to be
+  // purely key-based server-side, same host either way. NOT separately
+  // verified against a production key (only the sandbox key was available).
+  baseUrl?: string;
+  fetcher?: typeof fetch;
+}
+
+// Documented + LIVE-VERIFIED Maplerad HTTP client (maplerad.dev, checked
+// 2026-08-11) against https://api.maplerad.com/v1 with real sandbox
+// credentials.
+//   - Auth: Authorization: Bearer <secret key> (maplerad.dev/docs/authentication).
+//   - Response envelope: { status: boolean, message: string, data: ... },
+//     confirmed on every endpoint exercised below.
+//   - Trailing-slash behavior is PER-ENDPOINT and inconsistent, live-confirmed:
+//       * POST /customers        -> 200 directly, no redirect either way
+//       * POST /customers/       -> 307 redirect (needs -L / manual follow)
+//       * GET  /wallets          -> 200 directly (no trailing slash)
+//       * GET  /wallets/         -> 301 redirect (trailing slash BREAKS this one)
+//       * POST /issuing/         -> 200 directly (trailing slash REQUIRED — no-slash form untested but
+//                                   the "Getting Started"-style base path pattern matches the task brief)
+//       * GET  /issuing/{id}     -> 200 directly, no trailing slash
+//       * PATCH /issuing/{id}/freeze|/unfreeze -> 200 directly, no trailing slash
+//       * GET  /issuing/?customer_id=... -> 200 (trailing slash before the query string; the
+//                                   no-slash form 301-redirected in live testing)
+//   This adapter always calls the exact path forms confirmed above; it does
+//   NOT assume a single universal trailing-slash rule.
+async function callMapleradApi(
+  config: MapleradConfig,
+  method: string,
+  path: string,
+  body?: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  if (!config.apiKey) throw new Error('Maplerad adapter requires config.apiKey.');
+  const f = config.fetcher ?? fetch;
+  const base = config.baseUrl ?? 'https://api.maplerad.com/v1';
+  const res = await f(`${base}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'content-type': 'application/json'
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+
+  const text = await res.text().catch(() => '');
+  let json: Record<string, unknown>;
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    json = { raw: text };
+  }
+  if (!res.ok) {
+    const msg = toStr(json['message']) || text || res.statusText;
+    throw new ProviderApiError('maplerad', res.status, msg);
+  }
+  // Maplerad's envelope carries a `status: false` even on HTTP 200 for some
+  // business-logic failures (e.g. "insufficient balance", "service is only
+  // available for Tier 1 customers") — live-confirmed. Surface those as
+  // errors too, not just non-2xx HTTP statuses.
+  if (json['status'] === false) {
+    throw new ProviderApiError('maplerad', res.status, toStr(json['message']) || 'request failed');
+  }
+  return json;
+}
+
+function mapleradData(json: Record<string, unknown>): Record<string, unknown> {
+  return (json['data'] as Record<string, unknown>) ?? {};
+}
+
+// Maplerad's card `issuer` field is documented/observed as "VISA" | "MASTERCARD"
+// directly — live-confirmed both work in this sandbox (see createMapleradVirtualCardProvider
+// doc comment below), unlike Sudo where only Verve was available. No
+// normalization/coercion needed; if Maplerad ever returns an unexpected value
+// this throws rather than guessing.
+function normalizeMapleradCardBrand(issuer: unknown): 'VISA' | 'MASTERCARD' {
+  const v = typeof issuer === 'string' ? issuer.toUpperCase() : '';
+  if (v === 'VISA') return 'VISA';
+  if (v === 'MASTERCARD') return 'MASTERCARD';
+  throw new ProviderApiError(
+    'maplerad',
+    200,
+    `Maplerad returned an unexpected card issuer "${v}" — VirtualCardDetails.brand only supports VISA|MASTERCARD.`
+  );
+}
+
+function mapMapleradCardStatus(s: unknown): 'ACTIVE' | 'FROZEN' | 'TERMINATED' {
+  const v = (typeof s === 'string' ? s : '').toUpperCase();
+  if (v === 'DISABLED') return 'FROZEN';
+  if (v === 'TERMINATED' || v === 'CANCELED' || v === 'CANCELLED') return 'TERMINATED';
+  return 'ACTIVE';
+}
+
+// Maplerad's documented "expiry" field is "MM/YY" (live-confirmed e.g. "08/31").
+function parseMapleradExpiry(expiry: unknown): { expiryMonth: number; expiryYear: number } {
+  const s = typeof expiry === 'string' ? expiry : '';
+  const [mm, yy] = s.split('/');
+  const month = Number(mm) || 0;
+  // Live-confirmed 2-digit year form ("31" for 2031); expand to 4 digits.
+  const yyNum = Number(yy) || 0;
+  const year = yyNum > 0 && yyNum < 100 ? 2000 + yyNum : yyNum;
+  return { expiryMonth: month, expiryYear: year };
+}
+
+function mapMapleradCard(card: Record<string, unknown>): VirtualCardDetails & { balanceMinor: number } {
+  const { expiryMonth, expiryYear } = parseMapleradExpiry(card['expiry']);
+  return {
+    providerCardId: toStr(card['id']),
+    // Maplerad returns both `masked_pan` (e.g. "222183******7030") and a
+    // full `card_number` in sandbox test responses; last4 is taken from
+    // masked_pan to avoid depending on the (production-unlikely-to-be-present)
+    // raw card_number field.
+    last4: toStr(card['masked_pan']).slice(-4),
+    expiryMonth,
+    expiryYear,
+    brand: normalizeMapleradCardBrand(card['issuer']),
+    currency: toStr(card['currency'], 'USD'),
+    status: mapMapleradCardStatus(card['status']),
+    balanceMinor: Number(card['balance'] ?? 0)
+  };
+}
+
+// Maplerad virtual-card adapter — mapped against the OFFICIAL Maplerad API
+// documentation (maplerad.dev, checked 2026-08-11) and LIVE-VERIFIED against
+// https://api.maplerad.com/v1 with the real sandbox secret key
+// (mpr_sandbox_sk_ecdafeb8-...). See docs/providers/maplerad.md for the full
+// endpoint-by-endpoint mapping and live evidence (real customer/card ids).
+//
+// Documented + live-confirmed facts encoded below:
+//   - Card issuance requires an existing Maplerad customer AT TIER 1 (not
+//     Tier 0). Live-confirmed: POST /issuing/ against a fresh Tier-0 customer
+//     returned `{"status":false,"message":"service is only available for
+//     Tier 1 customers"}` (HTTP 200). This adapter does NOT silently upgrade
+//     the customer — issueCard() throws a clear error if providerCustomerId
+//     is missing, matching the Sudo/Payscribe pattern: creating/upgrading the
+//     customer (POST /customers then PATCH /customers/upgrade/tier1, which
+//     requires a real identification_number/BVN) is a caller responsibility.
+//   - Card creation is genuinely ASYNCHRONOUS per the docs ("This operation
+//     is asynchronous, meaning we notify you via a webhook event on the
+//     final status") — live-confirmed: POST /issuing/ returns only
+//     `{reference}`, not a card id or card object. This adapter has no
+//     webhook receiver available in this pass, so issueCard() polls
+//     GET /issuing/?customer_id=... (short backoff, bounded attempts) for a
+//     newly-appeared card id not present before the create call, rather than
+//     guessing the reference doubles as the card id (live-confirmed it does
+//     NOT: reference "d8792f11-..." vs the resulting card id
+//     "15b94ef8-...-c5b0" were different values on the same create call).
+//   - Card funding requires the business's own SPEND wallet (not TREASURY)
+//     to hold sufficient balance in the card's currency. Live-confirmed:
+//     POST /issuing/ failed with "insufficient balance" against a TREASURY-only
+//     balance; POST /wallets/fund {source_wallet_type:"TREASURY",
+//     destination_wallet_type:"SPEND"} was required first. This adapter does
+//     NOT auto-provision that transfer (a real business-treasury decision,
+//     out of scope for a card-issuance adapter) — see docs/providers/maplerad.md
+//     for the sandbox-only test wallet funding flow used during verification.
+//   - Both VISA and MASTERCARD issuance are LIVE-CONFIRMED working in this
+//     sandbox (unlike Sudo, where Visa/MasterCard were account-wide
+//     disabled) — real card ids 15b94ef8-4a42-4df4-894f-68189f45c5b0 (VISA)
+//     and 51b91688-29b1-4e12-8404-c8de00d26c9b (MASTERCARD), both issued
+//     against the same Tier-1 customer 416e2f6d-ed4a-42c6-adaa-c349fef9a290.
+//   - fundCard: POST /issuing/{id}/fund {amount}. Live-confirmed: funding a
+//     card with amount:500 moved its balance from 200 (initial funding at
+//     creation) to 700, exactly.
+//   - freezeCard/unfreezeCard: PATCH /issuing/{id}/freeze and
+//     PATCH /issuing/{id}/unfreeze, no body. Live-confirmed: status flips
+//     ACTIVE <-> DISABLED (mapped to FROZEN) on GET /issuing/{id} after each call.
+//   - terminateCard: NOT IMPLEMENTED. No `terminate` reference page exists at
+//     maplerad.dev/reference/terminate-a-card (confirmed 404) or any
+//     discoverable variant; the only mention in the Issuing guide is
+//     "Termination: Cards can be terminated (available on dashboard)" with no
+//     documented API endpoint, method, or path. Per the governing instruction
+//     to skip rather than guess an irreversible operation's endpoint, this
+//     throws a clear error instead of fabricating a path.
+export function createMapleradVirtualCardProvider(config: MapleradConfig): VirtualCardProvider {
+  const name = 'maplerad';
+
+  async function listCardsForCustomer(customerId: string): Promise<Record<string, unknown>[]> {
+    const json = await callMapleradApi(
+      config,
+      'GET',
+      `/issuing/?customer_id=${encodeURIComponent(customerId)}&page_size=50`
+    );
+    const data = json['data'];
+    return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  }
+
+  async function fetchCard(
+    providerCardId: string
+  ): Promise<VirtualCardDetails & { balanceMinor: number }> {
+    const json = await callMapleradApi(config, 'GET', `/issuing/${encodeURIComponent(providerCardId)}`);
+    return mapMapleradCard(mapleradData(json));
+  }
+
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'VIRTUAL_CARD',
+    // Live-confirmed VISA + MASTERCARD USD virtual-card issuance in sandbox.
+    getCapabilities: () => liveCapabilities('VIRTUAL_CARD', ['USD_CARD'], ['NG']),
+    checkHealth: () => liveHealth(name),
+
+    async issueCard(input) {
+      if (!input.providerCustomerId) {
+        throw new Error(
+          'Maplerad card issuance requires a providerCustomerId for an existing Tier-1 customer — ' +
+            'create one via POST /customers then PATCH /customers/upgrade/tier1 first (Tier-1 requires ' +
+            'a real BVN/identification_number). See docs/providers/maplerad.md.'
+        );
+      }
+      const brand = input.brand === 'MASTERCARD' ? 'MASTERCARD' : 'VISA';
+
+      const before = await listCardsForCustomer(input.providerCustomerId);
+      const beforeIds = new Set(before.map((c) => toStr(c['id'])));
+
+      await callMapleradApi(config, 'POST', '/issuing/', {
+        customer_id: input.providerCustomerId,
+        currency: input.currency,
+        type: 'VIRTUAL',
+        auto_approve: true,
+        brand,
+        amount: input.fundingAmountMinor
+      });
+
+      // Card creation is async (see doc comment above) — poll for the newly
+      // appeared card rather than trusting the create response's `reference`
+      // to be the card id (live-confirmed those two values differ).
+      const maxAttempts = 10;
+      const delayMs = 1500;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        const after = await listCardsForCustomer(input.providerCustomerId);
+        const created = after.find(
+          (c) => !beforeIds.has(toStr(c['id'])) && toStr(c['issuer']).toUpperCase() === brand
+        );
+        if (created) {
+          return mapMapleradCard(created) as VirtualCardDetails;
+        }
+      }
+      throw new ProviderApiError(
+        'maplerad',
+        200,
+        `Card creation did not complete within ${(maxAttempts * delayMs) / 1000}s of polling ` +
+          `GET /issuing/?customer_id=${input.providerCustomerId} — Maplerad's card creation is ` +
+          'asynchronous and notifies completion via webhook, which this adapter does not yet receive.'
+      );
+    },
+
+    async fundCard(input) {
+      const json = await callMapleradApi(
+        config,
+        'POST',
+        `/issuing/${encodeURIComponent(input.providerCardId)}/fund`,
+        { amount: input.amountMinor }
+      );
+      const data = mapleradData(json);
+      const card = await fetchCard(input.providerCardId);
+      return {
+        providerReference: toStr(data['id']) || input.reference,
+        balanceMinor: card.balanceMinor
+      };
+    },
+
+    async freezeCard(providerCardId) {
+      await callMapleradApi(config, 'PATCH', `/issuing/${encodeURIComponent(providerCardId)}/freeze`);
+      return { status: 'FROZEN' };
+    },
+
+    async unfreezeCard(providerCardId) {
+      await callMapleradApi(config, 'PATCH', `/issuing/${encodeURIComponent(providerCardId)}/unfreeze`);
+      return { status: 'ACTIVE' };
+    },
+
+    terminateCard() {
+      // NOT IMPLEMENTED — genuinely undocumented. No reference page exists
+      // for card termination (maplerad.dev/reference/terminate-a-card 404s),
+      // and the Issuing guide only says termination is "available on
+      // dashboard" with no API path/method documented. See doc comment above.
+      throw new Error(
+        'Maplerad terminateCard is not implemented: no documented API endpoint for card termination ' +
+          'exists (only a dashboard-only mention in the Issuing guide; the reference page 404s). ' +
+          'See docs/providers/maplerad.md.'
+      );
+    },
+
+    getCard: (providerCardId) => fetchCard(providerCardId)
+  };
+}
+
 // Confirmed against real Yativo docs at docs.yativo.com (checked 2026-08-07):
 //   - Base URL: https://api.yativo.com/api/v1 (not bare https://api.yativo.com)
 //   - Auth: bearer token from account_id + app_secret via POST /auth/login,

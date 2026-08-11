@@ -6,6 +6,7 @@ import {
   createMockFxProvider,
   createFincraFxProvider,
   createSwapprFxProvider,
+  createMapleradFxProvider,
   type FxProvider,
   type FxRate
 } from "@fliptrybe/providers";
@@ -83,6 +84,16 @@ export class FxService implements OnModuleInit {
         createSwapprFxProvider({
           secretKey: swapprSecretKey,
           ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {}),
+        })
+      );
+    }
+
+    const mapleradSecretKey = process.env["MAPLERAD_SECRET_KEY"];
+    if (mapleradSecretKey) {
+      this.fxProviders.push(
+        createMapleradFxProvider({
+          apiKey: mapleradSecretKey,
+          ...(process.env["MAPLERAD_BASE_URL"] ? { baseUrl: process.env["MAPLERAD_BASE_URL"] } : {}),
         })
       );
     }
