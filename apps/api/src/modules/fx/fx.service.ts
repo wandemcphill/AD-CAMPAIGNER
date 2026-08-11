@@ -190,8 +190,11 @@ export class FxService implements OnModuleInit {
         pairs.map(async ({ baseCurrency, quoteCurrency }) => {
           try {
             const rate = await this.getBestRate(baseCurrency, quoteCurrency);
-            await this.validateAndCacheRate(rate, forceRefresh);
-            return { success: true, baseCurrency, quoteCurrency };
+            const cached = await this.validateAndCacheRate(rate, forceRefresh);
+            if (!cached) {
+              this.logger.warn(`Failed to fetch ${baseCurrency}/${quoteCurrency}: rate did not pass validation`);
+            }
+            return { success: cached, baseCurrency, quoteCurrency };
           } catch (err) {
             this.logger.warn(
               `Failed to fetch ${baseCurrency}/${quoteCurrency}: ${err instanceof Error ? err.message : String(err)}`
@@ -210,7 +213,11 @@ export class FxService implements OnModuleInit {
     }
   }
 
-  private async validateAndCacheRate(rate: { baseCurrency: string; quoteCurrency: string; rateMicros: bigint; timestamp: Date; provider: string }, forceRefresh = false): Promise<void> {
+  // Returns whether the rate was actually cached — validation/sanity-check
+  // failures log a warning and return false rather than throwing, so callers
+  // must check the return value instead of assuming "didn't throw" means
+  // "got cached" (see refreshRateCache's success accounting).
+  private async validateAndCacheRate(rate: { baseCurrency: string; quoteCurrency: string; rateMicros: bigint; timestamp: Date; provider: string }, forceRefresh = false): Promise<boolean> {
     // Validation checks
     const errors: string[] = [];
 
@@ -230,7 +237,7 @@ export class FxService implements OnModuleInit {
 
     if (errors.length > 0) {
       this.logger.warn(`Rate validation failed for ${rate.baseCurrency}/${rate.quoteCurrency}: ${errors.join("; ")}`);
-      return;
+      return false;
     }
 
     // Check for rate sanity (< 50% change from current)
@@ -250,7 +257,7 @@ export class FxService implements OnModuleInit {
 
       if (changeBps > 5_000) { // > 50% change
         this.logger.warn(`Rate sanity check failed: ${changeBps / 100}% change for ${rate.baseCurrency}/${rate.quoteCurrency}`);
-        return;
+        return false;
       }
     }
 
@@ -285,6 +292,7 @@ export class FxService implements OnModuleInit {
     });
 
     this.logger.debug(`Cached rate: ${rate.baseCurrency}/${rate.quoteCurrency} = ${fromMicros(rate.rateMicros).toFixed(2)}`);
+    return true;
   }
 
   private async getCachedRate(baseCurrency: string, quoteCurrency: string): Promise<{ rateMicros: bigint; ageSeconds: number } | null> {
