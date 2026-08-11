@@ -1020,6 +1020,7 @@ model VoucherProduct {
 
   @@index([category, active])
   @@index([handler, active])
+  @@index([active]) // Supports the RLS policy predicate on this table (public catalog read)
 }
 
 model Voucher {
@@ -2730,6 +2731,7 @@ model VtuDataPlan {
 
   @@unique([providerName, providerPlanId])
   @@index([network, planType, active])
+  @@index([active, network]) // Supports the RLS policy predicate on this table (public catalog read)
 }
 
 model VtuCablePackage {
@@ -3078,6 +3080,8 @@ model NumberCountry {
   flagEmoji  String
   enabled    Boolean @default(false)
   sortOrder  Int     @default(100)
+
+  @@index([enabled, sortOrder]) // Supports the RLS policy predicate on this table (public catalog read)
 }
 
 model VirtualNumberProduct {
@@ -3095,6 +3099,7 @@ model VirtualNumberProduct {
 
   @@unique([countryCode, capability, durationDays])
   @@index([countryCode, active])
+  @@index([active, countryCode]) // Supports the RLS policy predicate on this table (public catalog read)
 }
 
 model VirtualNumber {
@@ -3295,6 +3300,7 @@ model DigitalAccessCategory {
 
   @@index([isActive, sortOrder])
   @@index([deletedAt])
+  @@index([isActive, deletedAt, sortOrder]) // Supports the RLS policy predicate on this table (public catalog read)
   @@map("digital_access_categories")
 }
 
@@ -3320,6 +3326,7 @@ model DigitalAccessService {
   @@index([category, isActive])
   @@index([isFeatured, isActive])
   @@index([deletedAt])
+  @@index([isActive, deletedAt, category]) // Supports the RLS policy predicate on this table (public catalog read)
   @@map("digital_access_services")
 }
 
@@ -3340,6 +3347,7 @@ model DigitalAccessPlan {
 
   @@index([serviceId, isActive])
   @@index([deletedAt])
+  @@index([isActive, deletedAt, serviceId]) // Supports the RLS policy predicate on this table (public catalog read)
   @@map("digital_access_plans")
 }
 
@@ -3677,6 +3685,7 @@ model MarketplaceAgency {
 
   @@index([isActive, specialty])
   @@index([deletedAt])
+  @@index([isActive, deletedAt]) // Supports the RLS policy predicate on this table (public catalog read)
 }
 
 model MarketplaceCreator {
@@ -3699,6 +3708,7 @@ model MarketplaceCreator {
 
   @@index([isActive, niche])
   @@index([deletedAt])
+  @@index([isActive, deletedAt]) // Supports the RLS policy predicate on this table (public catalog read)
 }
 
 // ─── Two-factor authentication ─────────────────────────────────────────────

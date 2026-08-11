@@ -50,9 +50,21 @@ import {
 } from "lucide-react";
 
 import { ThemeToggle, cn } from "@fliptrybe/ui";
+import { useFeatureFlags } from "../lib/feature-flags";
 import { useApiSession } from "../lib/use-session";
 
-type NavItem = { label: string; href: string; icon: LucideIcon; permission?: string };
+/**
+ * `flag` names a runtime feature flag from the API (see lib/feature-flags).
+ * An item carrying one is hidden unless that flag resolved to true, so the
+ * sidebar never links to a vertical this deployment answers 503 for.
+ */
+type NavItem = {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+  permission?: string;
+  flag?: string;
+};
 type NavGroup = { title: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -74,7 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Approvals", href: "/os/approvals", icon: ClipboardCheck, permission: "campaign:approve" },
       // Mirrors TrustEngineController's @RequirePermissions("analytics:read") gate —
       // server-side enforcement is what actually protects /os/trust-engine.
-      { label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck, permission: "analytics:read" },
+      { label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck, permission: "analytics:read", flag: "trustEngine" },
     ],
   },
   {
@@ -84,7 +96,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Campaign Manager", href: "/os/campaigns", icon: Megaphone },
       { label: "Analytics", href: "/os/analytics", icon: BarChart3 },
       { label: "Reports", href: "/os/reports", icon: FileText },
-      { label: "Automation", href: "/os/automation", icon: Workflow },
+      { label: "Automation", href: "/os/automation", icon: Workflow, flag: "workflowAutomation" },
     ],
   },
   {
@@ -98,7 +110,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Growth",
     items: [
       { label: "Growth Services", href: "/os/growth", icon: Zap },
-      { label: "Digital Access", href: "/os/digital-access", icon: KeyRound },
+      { label: "Digital Access", href: "/os/digital-access", icon: KeyRound, flag: "digitalAccess" },
       { label: "Marketplace", href: "/os/marketplace", icon: Store },
       { label: "Agencies", href: "/os/marketplace/agencies", icon: Briefcase },
       { label: "Creators", href: "/os/marketplace/creators", icon: Globe },
@@ -107,34 +119,34 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Digital Products",
     items: [
-      { label: "International Numbers", href: "/os/numbers", icon: Globe },
-      { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone },
-      { label: "Gift Cards", href: "/os/digital-value", icon: Gift },
-      { label: "Airtime", href: "/os/airtime", icon: Phone },
-      { label: "Data", href: "/os/data", icon: Wifi },
-      { label: "International Top-Up", href: "/os/telecom", icon: Globe2 },
-      { label: "Electricity", href: "/os/utilities", icon: Lightbulb },
-      { label: "Cable TV", href: "/os/utilities?tab=cable", icon: Tv },
-      { label: "Bet Funding", href: "/os/utilities?tab=betting", icon: Trophy },
-      { label: "Education", href: "/os/utilities?tab=education", icon: GraduationCap },
-      { label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin },
-      { label: "Buy RMB", href: "/os/rmb", icon: Banknote },
+      { label: "International Numbers", href: "/os/numbers", icon: Globe, flag: "virtualNumbers" },
+      { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone, flag: "virtualNumbers" },
+      { label: "Gift Cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+      { label: "Airtime", href: "/os/airtime", icon: Phone, flag: "vtu" },
+      { label: "Data", href: "/os/data", icon: Wifi, flag: "vtu" },
+      { label: "International Top-Up", href: "/os/telecom", icon: Globe2, flag: "telecomGateway" },
+      { label: "Electricity", href: "/os/utilities", icon: Lightbulb, flag: "billsElectricity" },
+      { label: "Cable TV", href: "/os/utilities?tab=cable", icon: Tv, flag: "billsCable" },
+      { label: "Bet Funding", href: "/os/utilities?tab=betting", icon: Trophy, flag: "billsBetting" },
+      { label: "Education", href: "/os/utilities?tab=education", icon: GraduationCap, flag: "billsEducation" },
+      { label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell" },
+      { label: "Buy RMB", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" },
     ],
   },
   {
     title: "Financial Products",
     items: [
-      { label: "Virtual Accounts", href: "/os/financial-products", icon: Building2 },
-      { label: "Virtual Cards", href: "/os/financial-products?tab=cards", icon: CreditCard },
-      { label: "Remittance", href: "/os/financial-products?tab=remittance", icon: Send },
+      { label: "Virtual Accounts", href: "/os/financial-products", icon: Building2, flag: "virtualAccounts" },
+      { label: "Virtual Cards", href: "/os/financial-products?tab=cards", icon: CreditCard, flag: "virtualCards" },
+      { label: "Remittance", href: "/os/financial-products?tab=remittance", icon: Send, flag: "remittance" },
     ],
   },
   {
     title: "Rewards",
     items: [
-      { label: "Reward Campaigns", href: "/os/rewards", icon: Trophy },
-      { label: "My Progress", href: "/os/rewards/progress", icon: Gift },
-      { label: "Scan QR", href: "/os/rewards/scan", icon: QrCode },
+      { label: "Reward Campaigns", href: "/os/rewards", icon: Trophy, flag: "rewards" },
+      { label: "My Progress", href: "/os/rewards/progress", icon: Gift, flag: "rewards" },
+      { label: "Scan QR", href: "/os/rewards/scan", icon: QrCode, flag: "rewards" },
     ],
   },
   {
@@ -149,7 +161,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Team", href: "/os/team", icon: Users },
       { label: "Notifications", href: "/os/notifications", icon: Bell },
-      { label: "Support", href: "/os/support", icon: LifeBuoy },
+      { label: "Support", href: "/os/support", icon: LifeBuoy, flag: "support" },
       { label: "Profile", href: "/os/profile", icon: UserCircle },
       { label: "Settings", href: "/os/settings", icon: Settings },
     ],
@@ -167,6 +179,7 @@ const MOBILE_NAV: NavItem[] = [
 export function OsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { loading, session, signOut } = useApiSession();
+  const { flags, ready: flagsReady } = useFeatureFlags();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -202,6 +215,11 @@ export function OsShell({ children }: { children: ReactNode }) {
   const currentSession = session;
 
   function canSeeNavItem(item: NavItem) {
+    // Hidden until the flag set has loaded and says yes. Rendering the link
+    // optimistically and pulling it back would be worse than a brief absence.
+    if (item.flag && !(flagsReady && flags[item.flag] === true)) {
+      return false;
+    }
     if (!item.permission) return true;
     return (
       currentSession.isPlatformAdmin ||

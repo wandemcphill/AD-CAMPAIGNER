@@ -9,6 +9,7 @@ import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
+import { useFeatureFlags } from "../../lib/feature-flags";
 import {
   closeAccount,
   createAccount,
@@ -32,10 +33,13 @@ import {
   type VirtualCardStatus
 } from "./api";
 
+// Each tab is backed by its own feature flag and its own provider domain — a
+// deployment can run remittance without virtual cards. Tabs whose flag is off
+// are not rendered at all, because their endpoints answer 503.
 const TABS = [
-  { id: "accounts", label: "Accounts" },
-  { id: "cards", label: "Cards" },
-  { id: "remittance", label: "Remittance" }
+  { id: "accounts", label: "Accounts", flag: "virtualAccounts" },
+  { id: "cards", label: "Cards", flag: "virtualCards" },
+  { id: "remittance", label: "Remittance", flag: "remittance" }
 ];
 
 const ACCOUNT_STATUS_TONE: Record<VirtualAccountStatus, "success" | "neutral"> = {
@@ -59,6 +63,8 @@ const REMITTANCE_STATUS_TONE: Record<RemittanceStatus, "success" | "warning" | "
 };
 
 export default function FinancialProductsPage() {
+  const { flags, ready: flagsReady } = useFeatureFlags();
+  const availableTabs = TABS.filter((t) => flags[t.flag] === true);
   const [tab, setTab] = useState("accounts");
   const [error, setError] = useState<string>();
   const [forbidden, setForbidden] = useState(false);
@@ -142,6 +148,16 @@ export default function FinancialProductsPage() {
     }
     // Intentionally run once on mount.
   }, []);
+
+  // Once flags land, fall back to the first enabled tab if the current one (the
+  // "accounts" default, or a deep link) belongs to a vertical this deployment
+  // does not run — otherwise the page renders an empty body under a missing tab.
+  useEffect(() => {
+    if (!flagsReady || availableTabs.length === 0) return;
+    if (!availableTabs.some((t) => t.id === tab)) {
+      setTab(availableTabs[0]!.id);
+    }
+  }, [flagsReady, availableTabs, tab]);
 
   const submitCreateAccount = useCallback(async () => {
     setCreatingAccount(true);
@@ -301,6 +317,23 @@ export default function FinancialProductsPage() {
     );
   }
 
+  if (flagsReady && availableTabs.length === 0) {
+    return (
+      <div className="px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-3xl">
+          <div className="flex items-center gap-2">
+            <Building2 className="size-5 text-[var(--ft-accent)]" />
+            <h1 className="text-xl font-bold">Financial Products</h1>
+          </div>
+          <EmptyState
+            copy="Virtual accounts, virtual cards, and international transfers are not switched on for this workspace yet. Contact support if you were expecting access."
+            title="Not available yet"
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-3xl">
@@ -311,15 +344,20 @@ export default function FinancialProductsPage() {
         <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
           Virtual accounts, virtual cards, and international transfers.
         </p>
-        <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
-          These are sandbox/mock-backed for now — no real bank account, card, or transfer is
-          created yet.
-        </div>
+        {/* Only warn about sandbox behaviour when this deployment has NOT turned
+            on live provider integrations. Showing it against a live provider
+            would tell customers their real money movement is fake. */}
+        {flags["liveProviderIntegrations"] !== true && (
+          <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
+            These are sandbox/mock-backed in this environment — no real bank account, card, or
+            transfer is created yet.
+          </div>
+        )}
 
         <ErrorNotice message={error} />
 
         <div className="mt-4">
-          <TabBar items={TABS} onChange={setTab} value={tab} />
+          <TabBar items={availableTabs} onChange={setTab} value={tab} />
         </div>
 
         {tab === "accounts" && (

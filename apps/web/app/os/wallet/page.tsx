@@ -51,15 +51,19 @@ import {
 } from "../../campaigns/components";
 import type { BillingActivity } from "../../campaigns/data";
 import { useBillingData } from "../../campaigns/use-campaign-dashboard-data";
+import { useFeatureFlags } from "../../lib/feature-flags";
 import { useApiSession } from "../../lib/use-session";
 
 type BillingTab = "history" | "invoices" | "methods" | "withdraw";
 
-const billingTabs: Array<{ label: string; value: BillingTab }> = [
+// Withdrawals depend on a live NGN payout provider and are gated by the
+// `walletWithdrawals` flag; the tab is hidden entirely when this deployment
+// does not run them, since the endpoints behind it answer 503.
+const billingTabs: Array<{ label: string; value: BillingTab; flag?: string }> = [
   { label: "Spend History", value: "history" },
   { label: "Invoices", value: "invoices" },
   { label: "Payment Methods", value: "methods" },
-  { label: "Withdraw", value: "withdraw" }
+  { label: "Withdraw", value: "withdraw", flag: "walletWithdrawals" }
 ];
 
 function withdrawalStatusTone(status: WalletWithdrawalRecord["status"]): "neutral" | "success" | "warning" | "danger" | "info" {
@@ -288,6 +292,8 @@ export default function BillingPage() {
   const [withdrawFormError, setWithdrawFormError] = useState<string>();
   const [withdrawals, setWithdrawals] = useState<WalletWithdrawalRecord[]>();
   const [withdrawalsError, setWithdrawalsError] = useState<string>();
+  const { flags } = useFeatureFlags();
+  const visibleBillingTabs = billingTabs.filter((tab) => !tab.flag || flags[tab.flag] === true);
   const currency: CurrencyCode = wallet?.availableBalance.currency ?? "NGN";
   const available = wallet?.availableBalance ?? null;
   const held = wallet?.heldBalance ?? null;
@@ -330,12 +336,13 @@ export default function BillingPage() {
 
   useEffect(() => {
     if (activeTab !== "withdraw" || withdrawals !== undefined) return;
+    if (flags["walletWithdrawals"] !== true) return;
     void listWalletWithdrawals()
       .then(setWithdrawals)
       .catch((caught) =>
         setWithdrawalsError(caught instanceof Error ? caught.message : "Could not load withdrawal history.")
       );
-  }, [activeTab, withdrawals]);
+  }, [activeTab, withdrawals, flags]);
 
   async function submitWithdrawal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -665,7 +672,7 @@ export default function BillingPage() {
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {billingTabs.map((tab) => (
+                {visibleBillingTabs.map((tab) => (
                   <button
                     className={cn(
                       "h-9 rounded-[var(--radius-sm)] border px-3 text-sm font-medium transition",

@@ -15,6 +15,8 @@ import {
   Req
 } from "@nestjs/common";
 
+import { publicFeatureFlags } from "@fliptrybe/feature-flags";
+
 import type {
   CreateGrowthOrderDto,
   QuoteCampaignDto,
@@ -56,6 +58,24 @@ export class HealthController {
   @Get()
   getHealth() {
     return this.platform.getHealth();
+  }
+}
+
+/**
+ * Lets the browser bundle render navigation and screens against the same flag
+ * set the API enforces. Client components cannot read `process.env`, so without
+ * this the web app would keep linking to verticals that answer 503.
+ *
+ * Public and unauthenticated on purpose: which verticals a deployment runs is
+ * not a secret, and the nav has to be correct before a user signs in (guest
+ * checkout, marketing CTAs). No credentials or provider details are exposed.
+ */
+@Public()
+@Controller("platform")
+export class PlatformConfigController {
+  @Get("feature-flags")
+  getFeatureFlags() {
+    return { flags: publicFeatureFlags() };
   }
 }
 

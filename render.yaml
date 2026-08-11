@@ -8,7 +8,17 @@ services:
     autoDeployTrigger: commit
     healthCheckPath: /v1/health
     buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/api build
-    preDeployCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma migrate deploy && npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:digital-access
+    # Every seed is idempotent (skips rows that already exist). All of them must run:
+    # ProviderRouterService.select() returns no candidate when a domain has no
+    # ProviderConfig row, so an unseeded vertical answers 503 for every request.
+    preDeployCommand: >-
+      npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma migrate deploy &&
+      npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:digital-access &&
+      npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:vtu &&
+      npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:virtual-numbers &&
+      npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:financial-products &&
+      npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:provider-capability-grants &&
+      npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:marketplace
     startCommand: npx --yes pnpm@10.18.3 --filter @fliptrybe/api start
     envVars:
       - key: NODE_VERSION
@@ -242,6 +252,125 @@ services:
         value: "100000"
       - key: ENABLE_SETTLEMENT_RECONCILIATION_SCHEDULER
         value: "true"
+      - key: FINCRA_WEBHOOK_ENCRYPTION_KEY
+        sync: false
+
+      # ── Runtime feature flags ────────────────────────────────────────────
+      # Resolved by packages/feature-flags at process start (FEATURE_<FLAG> in
+      # UPPER_SNAKE_CASE). A flag only opens the API surface — a request still
+      # needs an ENABLED ProviderConfig row for its domain, so turning one on
+      # without credentials yields 503 rather than a bad charge.
+      - key: FEATURE_VTU
+        value: "true"
+      - key: FEATURE_BILLS_ELECTRICITY
+        value: "true"
+      - key: FEATURE_BILLS_CABLE
+        value: "true"
+      - key: FEATURE_BILLS_BETTING
+        value: "true"
+      - key: FEATURE_BILLS_EDUCATION
+        value: "true"
+      - key: FEATURE_TELECOM_GATEWAY
+        value: "true"
+      - key: FEATURE_GUEST_CHECKOUT
+        value: "true"
+      # Financial products: flip to "true" per-vertical only after that
+      # provider's sandbox verification has signed off.
+      - key: FEATURE_VIRTUAL_ACCOUNTS
+        sync: false
+      - key: FEATURE_VIRTUAL_CARDS
+        sync: false
+      - key: FEATURE_REMITTANCE
+        sync: false
+      - key: FEATURE_WALLET_WITHDRAWALS
+        sync: false
+      - key: FEATURE_KYC_VERIFICATION
+        sync: false
+      - key: FEATURE_KYB_VERIFICATION
+        sync: false
+      - key: FEATURE_LIVE_PROVIDER_INTEGRATIONS
+        sync: false
+
+      # ── VTU / bills suppliers (airtime, data, electricity, cable, betting) ──
+      - key: VTPASS_BASE_URL
+        value: https://vtpass.com/api
+      - key: VTPASS_API_KEY
+        sync: false
+      - key: VTPASS_PUBLIC_KEY
+        sync: false
+      - key: VTPASS_SECRET_KEY
+        sync: false
+      - key: CLUBKONNECT_BASE_URL
+        value: https://www.nellobytesystems.com
+      - key: CLUBKONNECT_USER_ID
+        sync: false
+      - key: CLUBKONNECT_API_KEY
+        sync: false
+      - key: CLUBKONNECT_CALLBACK_URL
+        value: https://ft-campaigner-api-fra.onrender.com/v1/api/webhooks/clubkonnect
+      - key: EBILLS_BASE_URL
+        value: https://ebills.africa/wp-json/api/v2
+      - key: EBILLS_API_KEY
+        sync: false
+      - key: INLOMAX_BASE_URL
+        sync: false
+      - key: INLOMAX_API_KEY
+        sync: false
+      - key: ISQUAREDATA_BASE_URL
+        sync: false
+      - key: ISQUAREDATA_API_KEY
+        sync: false
+      - key: SWIFTLINK_BASE_URL
+        sync: false
+      - key: SWIFTLINK_API_KEY
+        sync: false
+      - key: TOPUPWIZARD_BASE_URL
+        sync: false
+      - key: TOPUPWIZARD_API_KEY
+        sync: false
+      - key: VTUGATE_BASE_URL
+        sync: false
+      - key: VTUGATE_API_KEY
+        sync: false
+      # International top-up (telecom gateway)
+      - key: RELOADLY_AUTH_URL
+        value: https://auth.reloadly.com/oauth/token
+      - key: RELOADLY_BASE_URL
+        value: https://topups.reloadly.com
+      - key: RELOADLY_CLIENT_ID
+        sync: false
+      - key: RELOADLY_CLIENT_SECRET
+        sync: false
+
+      # ── Virtual accounts / cards / remittance providers ──────────────────
+      - key: SWAPPR_BASE_URL
+        sync: false
+      - key: SWAPPR_API_KEY
+        sync: false
+      - key: SWAPPR_SECRET_KEY
+        sync: false
+      - key: SWAPPR_WEBHOOK_SECRET
+        sync: false
+      - key: PAYSCRIBE_BASE_URL
+        sync: false
+      - key: PAYSCRIBE_API_KEY
+        sync: false
+      - key: PAYSCRIBE_WEBHOOK_SECRET
+        sync: false
+      - key: YATIVO_BASE_URL
+        sync: false
+      - key: YATIVO_API_KEY
+        sync: false
+      - key: YATIVO_ACCOUNT_ID
+        sync: false
+      - key: MAPLERAD_BASE_URL
+        sync: false
+      - key: MAPLERAD_SECRET_KEY
+        sync: false
+      - key: FX_NGN_MIN
+        sync: false
+      - key: FX_NGN_MAX
+        sync: false
 
   - type: web
     runtime: node
@@ -481,6 +610,89 @@ services:
         sync: false
       - key: TREASURY_ACCOUNT_NUMBER
         sync: false
+      # ── Runtime feature flags (must mirror the API service) ──────────────
+      # Worker queues are registered behind the same flags the API enforces; a
+      # mismatch means jobs are enqueued but never processed, or vice versa.
+      - key: FEATURE_VTU
+        value: "true"
+      - key: FEATURE_BILLS_ELECTRICITY
+        value: "true"
+      - key: FEATURE_BILLS_CABLE
+        value: "true"
+      - key: FEATURE_BILLS_BETTING
+        value: "true"
+      - key: FEATURE_BILLS_EDUCATION
+        value: "true"
+      - key: FEATURE_TELECOM_GATEWAY
+        value: "true"
+      - key: FEATURE_VIRTUAL_ACCOUNTS
+        sync: false
+      - key: FEATURE_VIRTUAL_CARDS
+        sync: false
+      - key: FEATURE_REMITTANCE
+        sync: false
+      - key: FEATURE_WALLET_WITHDRAWALS
+        sync: false
+      - key: FEATURE_KYC_VERIFICATION
+        sync: false
+      - key: FEATURE_LIVE_PROVIDER_INTEGRATIONS
+        sync: false
+
+      # ── VTU / bills suppliers ────────────────────────────────────────────
+      - key: VTPASS_BASE_URL
+        value: https://vtpass.com/api
+      - key: VTPASS_API_KEY
+        sync: false
+      - key: VTPASS_PUBLIC_KEY
+        sync: false
+      - key: VTPASS_SECRET_KEY
+        sync: false
+      - key: CLUBKONNECT_BASE_URL
+        value: https://www.nellobytesystems.com
+      - key: CLUBKONNECT_USER_ID
+        sync: false
+      - key: CLUBKONNECT_API_KEY
+        sync: false
+      - key: EBILLS_BASE_URL
+        value: https://ebills.africa/wp-json/api/v2
+      - key: EBILLS_API_KEY
+        sync: false
+      - key: RELOADLY_AUTH_URL
+        value: https://auth.reloadly.com/oauth/token
+      - key: RELOADLY_BASE_URL
+        value: https://topups.reloadly.com
+      - key: RELOADLY_CLIENT_ID
+        sync: false
+      - key: RELOADLY_CLIENT_SECRET
+        sync: false
+
+      # ── Virtual accounts / cards / remittance providers ──────────────────
+      - key: SWAPPR_BASE_URL
+        sync: false
+      - key: SWAPPR_API_KEY
+        sync: false
+      - key: SWAPPR_WEBHOOK_SECRET
+        sync: false
+      - key: PAYSCRIBE_BASE_URL
+        sync: false
+      - key: PAYSCRIBE_API_KEY
+        sync: false
+      - key: PAYSCRIBE_WEBHOOK_SECRET
+        sync: false
+      - key: YATIVO_BASE_URL
+        sync: false
+      - key: YATIVO_API_KEY
+        sync: false
+      - key: YATIVO_ACCOUNT_ID
+        sync: false
+      - key: FINCRA_API_KEY
+        sync: false
+      - key: FINCRA_BUSINESS_ID
+        sync: false
+      - key: FINCRA_WEBHOOK_ENCRYPTION_KEY
+        sync: false
+      - key: FINCRA_ENV
+        value: production
 
   - type: keyvalue
     name: fliptrybe-ads-campaigner-redis

@@ -25,6 +25,7 @@ import {
   OrganizationsController,
   WorkspaceController,
   PaymentsController,
+  PlatformConfigController,
   ReferralsController,
   RootController,
   SearchController,
@@ -110,6 +111,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
   controllers: [
     RootController,
     HealthController,
+    PlatformConfigController,
     AuthController,
     OrganizationsController,
     WorkspaceController,
