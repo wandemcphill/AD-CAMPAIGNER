@@ -45,6 +45,7 @@ import {
 import { PrismaService } from "./prisma.service";
 import { NotificationsService } from "./notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "./request-context";
+import { ApprovalsService } from "./approvals/approvals.service";
 
 type DbClient = Record<string, any>;
 
@@ -761,8 +762,53 @@ export class ManagedAdsService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly notifications: NotificationsService
-  ) {}
+    private readonly notifications: NotificationsService,
+    // Optional so unit tests that construct this service directly (without the full
+    // Nest module graph) keep working unchanged — mirrors the pattern already used
+    // by DigitalAccessHubService for the same ApprovalsService dependency.
+    private readonly approvals?: ApprovalsService
+  ) {
+    // Lets the unified `/approvals/:id/decide` endpoint actually carry out the
+    // campaign-status / KYC decision, instead of only flipping the ApprovalRequest
+    // row's own status. See ApprovalsService.decideAndExecute and the "type" filter
+    // (`ads` / `kyc`) the Growth OS Approvals Queue UI already renders.
+    this.approvals?.registerExecutor("ads", {
+      onApprove: async (approval) => {
+        const payload = approval.payload as { campaignId?: string };
+        if (!payload?.campaignId) return undefined;
+        const scope = { workspaceId: approval.workspaceId ?? "", userId: approval.decidedByUserId ?? "" };
+        return this.changeCampaignStatus(scope, payload.campaignId, "APPROVED", approval.decisionNote ?? undefined, true);
+      },
+      onReject: async (approval) => {
+        const payload = approval.payload as { campaignId?: string };
+        if (!payload?.campaignId) return undefined;
+        const scope = { workspaceId: approval.workspaceId ?? "", userId: approval.decidedByUserId ?? "" };
+        return this.changeCampaignStatus(scope, payload.campaignId, "REJECTED", approval.decisionNote ?? undefined, true);
+      }
+    });
+    this.approvals?.registerExecutor("kyc", {
+      onApprove: async (approval) => {
+        const payload = approval.payload as { adAccountId?: string };
+        if (!payload?.adAccountId) return undefined;
+        return this.applyKycDecision(
+          { workspaceId: approval.workspaceId ?? "", userId: approval.decidedByUserId ?? "" },
+          payload.adAccountId,
+          "VERIFIED",
+          approval.decisionNote ?? undefined
+        );
+      },
+      onReject: async (approval) => {
+        const payload = approval.payload as { adAccountId?: string };
+        if (!payload?.adAccountId) return undefined;
+        return this.applyKycDecision(
+          { workspaceId: approval.workspaceId ?? "", userId: approval.decidedByUserId ?? "" },
+          payload.adAccountId,
+          "REJECTED",
+          approval.decisionNote ?? undefined
+        );
+      }
+    });
+  }
 
   private get db(): DbClient {
     return this.prisma.client as unknown as DbClient;
@@ -910,6 +956,23 @@ export class ManagedAdsService {
       });
 
       return adAccount;
+    }).then(async (adAccount: any) => {
+      // Every new ad account starts kycStatus "UNVERIFIED" and needs an admin decision before it
+      // can spend -- surface it in the unified Approvals Queue (entityType "kyc") right away.
+      // Best-effort: outside the transaction (ApprovalsService uses its own PrismaService client)
+      // and must never fail account creation itself.
+      await this.approvals
+        ?.request({
+          workspaceId: scope.workspaceId,
+          action: "ad_account.kyc_review",
+          entityType: "kyc",
+          entityId: adAccount.id,
+          reason: "New ad account requires KYC/KYB review before it can spend.",
+          payload: { adAccountId: adAccount.id },
+          requestedByUserId: scope.userId
+        })
+        .catch(() => undefined);
+      return adAccount;
     });
   }
 
@@ -947,6 +1010,11 @@ export class ManagedAdsService {
   /**
    * Admin-gated KYC/KYB decision -- mirrors updateAdminStatus's approval permission tier. VERIFIED
    * activates the account for spend; REJECTED suspends it so it can't be used until resolved.
+   *
+   * This endpoint stays live as a direct admin override rather than being deprecated in favor of
+   * the unified Approvals Queue (POST /approvals/:id/decide) -- deprecating a working admin flow
+   * is riskier than keeping both entry points in sync. After applying the decision, it syncs any
+   * still-PENDING ApprovalRequest for this ad account so the queue doesn't show a stale row.
    */
   async reviewAdAccountKyc(
     context: AuthenticatedRequestContext | undefined,
@@ -955,8 +1023,35 @@ export class ManagedAdsService {
   ) {
     const scope = requireScope(context);
     await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:approve"]);
-    const existing = await this.findAdAccountOrThrow(this.db, scope.workspaceId, adAccountId);
     const kycStatus = normalizeKycStatus(input.kycStatus);
+    const adAccount = await this.applyKycDecision(scope, adAccountId, kycStatus, input.reason, input.kycTier);
+
+    if (kycStatus === "VERIFIED" || kycStatus === "REJECTED") {
+      await this.approvals?.syncExternalDecision({
+        entityType: "kyc",
+        entityId: adAccountId,
+        approve: kycStatus === "VERIFIED",
+        decidedByUserId: scope.userId,
+        note: input.reason
+      });
+    }
+
+    return adAccount;
+  }
+
+  /**
+   * Shared by the direct admin `reviewAdAccountKyc` endpoint and the ApprovalRequest executor
+   * registered for entityType "kyc" -- both need to land the exact same DB transition so the two
+   * decision paths (old ad-hoc endpoint vs. the unified Approvals Queue) can never diverge.
+   */
+  private async applyKycDecision(
+    scope: { workspaceId: string; userId: string },
+    adAccountId: string,
+    kycStatus: string,
+    reason?: string,
+    kycTier?: string
+  ) {
+    const existing = await this.findAdAccountOrThrow(this.db, scope.workspaceId, adAccountId);
     const nextStatus =
       kycStatus === "VERIFIED" ? "ACTIVE" : kycStatus === "REJECTED" ? "SUSPENDED" : existing.status;
 
@@ -966,14 +1061,14 @@ export class ManagedAdsService {
         data: {
           kycStatus,
           status: nextStatus,
-          kycTier: input.kycTier ? normalizeKycTier(input.kycTier) : undefined
+          kycTier: kycTier ? normalizeKycTier(kycTier) : undefined
         }
       });
 
       await this.audit(tx, scope, "ad_account.kyc_reviewed", "AdAccount", adAccount.id, {
         kycStatus,
         status: nextStatus,
-        reason: input.reason ?? null
+        reason: reason ?? null
       });
       await this.event(tx, scope.workspaceId, "AdAccountKycReviewed", "AdAccount", adAccount.id, {
         adAccountId: adAccount.id,
@@ -2821,10 +2916,30 @@ export class ManagedAdsService {
     return activity.map((item: any) => this.toAdminActivity(item));
   }
 
+  /**
+   * Stays live as a direct admin override rather than being deprecated in favor of the unified
+   * Approvals Queue (POST /approvals/:id/decide) -- deprecating a working admin flow is riskier
+   * than keeping both entry points in sync. When this lands the campaign on APPROVED or REJECTED
+   * (the two terminal decisions the queue cares about), it syncs any still-PENDING ApprovalRequest
+   * for the campaign so the queue doesn't show a stale row.
+   */
   async updateAdminStatus(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
     const scope = requireScope(context);
     await this.assertCampaignPermissions(this.db, scope, ["admin:access", "campaign:approve"]);
-    return this.changeCampaignStatus(scope, campaignId, normalizeCampaignStatus(input.status), input.reason, true);
+    const status = normalizeCampaignStatus(input.status);
+    const result = await this.changeCampaignStatus(scope, campaignId, status, input.reason, true);
+
+    if (status === "APPROVED" || status === "REJECTED") {
+      await this.approvals?.syncExternalDecision({
+        entityType: "ads",
+        entityId: campaignId,
+        approve: status === "APPROVED",
+        decidedByUserId: scope.userId,
+        note: input.reason
+      });
+    }
+
+    return result;
   }
 
   async updateAssignment(context: AuthenticatedRequestContext | undefined, campaignId: string, input: Record<string, any>) {
@@ -3928,6 +4043,30 @@ export class ManagedAdsService {
         actionUrl: `/campaigns/${campaignId}`
       });
       return this.toCampaign(campaign);
+    }).then(async (result: any) => {
+      // Surfaces the campaign in the unified Approvals Queue (entityType "ads") the moment
+      // it needs a decision. Fired outside the transaction since ApprovalsService uses its
+      // own PrismaService client, not this transaction's `tx`. Best-effort: a failure here
+      // must not roll back (or even fail) the status change itself.
+      if (status === "PENDING_REVIEW" && this.approvals) {
+        const alreadyPending = await this.db.approvalRequest
+          .findFirst({ where: { entityType: "ads", entityId: campaignId, status: "PENDING" } })
+          .catch(() => null);
+        if (!alreadyPending) {
+          await this.approvals
+            .request({
+              workspaceId: scope.workspaceId,
+              action: "campaign.launch_review",
+              entityType: "ads",
+              entityId: campaignId,
+              reason: reason ?? "Campaign submitted for launch review.",
+              payload: { campaignId },
+              requestedByUserId: scope.userId
+            })
+            .catch(() => undefined);
+        }
+      }
+      return result;
     });
   }
 

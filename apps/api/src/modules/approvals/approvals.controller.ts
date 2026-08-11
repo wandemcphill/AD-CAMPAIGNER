@@ -9,13 +9,16 @@ import { ApprovalsService } from "./approvals.service";
  * Unified Approvals Queue — a thin read/decide surface over ApprovalsService's
  * generic ApprovalRequest engine.
  *
- * IMPORTANT SCOPE NOTE: campaign launch approvals (PATCH
- * admin/campaign-ops/campaigns/:id/status in platform.controllers.ts) and ad-account
- * KYC approvals (PATCH ad-accounts/:id/kyc) do NOT go through ApprovalRequest today —
- * they're separate ad-hoc endpoints with their own status columns. This controller
- * only surfaces whatever domains actually call ApprovalsService.request() (currently
- * Digital Access refunds/reversals). Unifying campaign/KYC approval into this queue is
- * a deliberately deferred follow-up, not something this controller papers over.
+ * Campaign launch approvals (PATCH admin/campaign-ops/campaigns/:id/status in
+ * platform.controllers.ts) and ad-account KYC approvals (PATCH ad-accounts/:id/kyc)
+ * now ALSO create ApprovalRequest rows (entityType "ads" / "kyc") so they show up
+ * here — see ManagedAdsService.changeCampaignStatus / reviewAdAccountKyc /
+ * createAdAccount. Those old endpoints remain live as direct admin overrides (lower
+ * risk than deprecating working functionality); deciding here uses
+ * `decideAndExecute`, which runs whatever executor ManagedAdsService registered for
+ * that entityType so the decision actually lands on the campaign / ad account, not
+ * just on this row. If staff instead act through the old endpoint,
+ * ApprovalsService.syncExternalDecision keeps this row from being left stuck PENDING.
  */
 @Controller("approvals")
 @RequirePermissions("campaign:approve")
@@ -44,7 +47,7 @@ export class ApprovalsController {
     @Req() request: WorkspaceContextRequest
   ) {
     const context = workspaceContextFromRequest(request);
-    return this.approvals.decide(id, {
+    return this.approvals.decideAndExecute(id, {
       decidedByUserId: context.userId,
       approve: Boolean(body.approve),
       ...(body.note ? { note: body.note } : {})

@@ -277,6 +277,14 @@ function createService(
   options: {
     membership?: { permissions: string[]; role: string } | null;
     workspaceRecord?: { organizationId: string } | null;
+    // Only used by the ApprovalRequest integration tests -- omitted everywhere else so the
+    // ManagedAdsService constructor's approvals-executor registration and the ApprovalRequest
+    // side effects it gates stay entirely inert for the rest of this suite.
+    approvals?: {
+      request: ReturnType<typeof vi.fn>;
+      syncExternalDecision: ReturnType<typeof vi.fn>;
+      registerExecutor: ReturnType<typeof vi.fn>;
+    };
   } = {}
 ) {
   const membership = options.membership === undefined ? defaultMembership : options.membership;
@@ -634,6 +642,9 @@ function createService(
         create: adAccountCreate,
         update: adAccountUpdate
       },
+      approvalRequest: {
+        findFirst: vi.fn(() => Promise.resolve(null))
+      },
       campaignLedgerEntry: {
         upsert: campaignLedgerEntryUpsert
       },
@@ -682,7 +693,7 @@ function createService(
         findFirst: workspaceFindFirst
       }
     }
-  } as unknown as PrismaService, { send: vi.fn(() => Promise.resolve([])) } as unknown as NotificationsService);
+  } as unknown as PrismaService, { send: vi.fn(() => Promise.resolve([])) } as unknown as NotificationsService, options.approvals as never);
 
   return {
     analyticsMetricCreate,
@@ -1648,6 +1659,87 @@ describe("ManagedAdsService AdAccount management", () => {
     await expect(
       service.reviewAdAccountKyc(workspace, "ad_account_123", { kycStatus: "verified" })
     ).rejects.toThrow(/Missing required permission/i);
+  });
+});
+
+describe("ManagedAdsService <-> ApprovalsService integration", () => {
+  function createApprovalsMock() {
+    return {
+      request: vi.fn(() => Promise.resolve({ id: "appr_1" })),
+      syncExternalDecision: vi.fn(() => Promise.resolve(undefined)),
+      registerExecutor: vi.fn()
+    };
+  }
+
+  it("registers an executor for both 'ads' and 'kyc' entity types on construction", () => {
+    const approvals = createApprovalsMock();
+    createService({ approvals });
+
+    const registeredTypes = approvals.registerExecutor.mock.calls.map((call) => call[0]);
+    expect(registeredTypes).toContain("ads");
+    expect(registeredTypes).toContain("kyc");
+  });
+
+  it("creates a 'kyc' ApprovalRequest whenever a new ad account is created", async () => {
+    const approvals = createApprovalsMock();
+    const { service } = createService({ approvals });
+
+    const adAccount = await service.createAdAccount(workspace, { type: "MANAGED", label: "Shared pool" });
+
+    expect(approvals.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entityType: "kyc",
+        workspaceId: workspace.workspaceId,
+        payload: { adAccountId: (adAccount as { id: string }).id }
+      })
+    );
+  });
+
+  it("syncs the ApprovalRequest queue after reviewAdAccountKyc verifies or rejects", async () => {
+    const approvals = createApprovalsMock();
+    const { service, adAccountFindFirst } = createService({ approvals });
+    adAccountFindFirst.mockResolvedValueOnce({
+      id: "ad_account_123",
+      workspaceId: workspace.workspaceId,
+      status: "PENDING"
+    });
+
+    await service.reviewAdAccountKyc(workspace, "ad_account_123", { kycStatus: "verified" });
+
+    expect(approvals.syncExternalDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: "kyc", entityId: "ad_account_123", approve: true })
+    );
+  });
+
+  it("syncs the ApprovalRequest queue after updateAdminStatus lands on APPROVED", async () => {
+    const approvals = createApprovalsMock();
+    const { service } = createService({ approvals });
+
+    await service.updateAdminStatus(workspace, "campaign_123", { status: "APPROVED" });
+
+    expect(approvals.syncExternalDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: "ads", entityId: "campaign_123", approve: true })
+    );
+  });
+
+  it("syncs the ApprovalRequest queue after updateAdminStatus lands on REJECTED", async () => {
+    const approvals = createApprovalsMock();
+    const { service } = createService({ approvals });
+
+    await service.updateAdminStatus(workspace, "campaign_123", { status: "REJECTED" });
+
+    expect(approvals.syncExternalDecision).toHaveBeenCalledWith(
+      expect.objectContaining({ entityType: "ads", entityId: "campaign_123", approve: false })
+    );
+  });
+
+  it("does not sync the queue for admin status changes that aren't a terminal decision", async () => {
+    const approvals = createApprovalsMock();
+    const { service } = createService({ approvals });
+
+    await service.updateAdminStatus(workspace, "campaign_123", { status: "PAUSED" });
+
+    expect(approvals.syncExternalDecision).not.toHaveBeenCalled();
   });
 });
 
