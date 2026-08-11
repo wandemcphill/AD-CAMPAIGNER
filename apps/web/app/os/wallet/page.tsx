@@ -879,6 +879,60 @@ export default function BillingPage() {
           ) : activeTab === "withdraw" ? (
             <div className="grid gap-5 p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
               <div>
+                {/*
+                 * CRYPTO WITHDRAWAL — scoped, not built. Investigated 2026-08-12.
+                 *
+                 * Why it's disabled: the only crypto rail wired into this codebase is the
+                 * Sogo Partner API adapter (packages/providers/src/crypto.ts,
+                 * createSogoCryptoAdapter / CryptoSellProvider), used by
+                 * apps/api/src/modules/crypto/crypto.service.ts for the "Sell Crypto" flow.
+                 * That adapter is INBOUND-ONLY: listAssets, getEstimatedRate,
+                 * getOrCreateDepositAddress, simulateTestDeposit. There is no send/payout/
+                 * withdraw endpoint anywhere in the Sogo integration, and no other crypto
+                 * provider exists in packages/providers/src/ (Swappr, used by
+                 * requestWithdrawal() in financial-products.service.ts, is an NGN-only bank
+                 * remittance rail with no on-chain capability). There are also no
+                 * crypto-payout-shaped env vars reserved anywhere (checked .env.example and
+                 * SOGO_* usage) — this was never scaffolded, not just flag-gated off.
+                 *
+                 * What would need to happen to build this for real:
+                 *   1. Confirm with Sogo (or a dedicated payout-capable provider — e.g. a
+                 *      custodial/MPC signing service or exchange with a send-crypto API)
+                 *      whether an outbound endpoint exists or can be added to our contract.
+                 *      Do not assume Sogo's inbound deposit-address model extends to sends;
+                 *      most crypto-sell/gift-card style integrations are inbound-only by
+                 *      design (they only need to detect deposits, not custody keys).
+                 *   2. Once a real outbound-capable provider is confirmed, add a
+                 *      `sendCrypto` capability to a new/extended provider interface
+                 *      (mirroring CryptoSellProvider's shape) — never call an unverified
+                 *      endpoint speculatively; a wrong guess sends customer funds to nowhere
+                 *      with no chargeback.
+                 *   3. Address validation per chain BEFORE any hold is placed: checksum
+                 *      validation for EVM chains (EIP-55), base58/bech32 + length checks for
+                 *      Bitcoin, contract-vs-EOA detection where relevant to avoid burning
+                 *      funds sent to a contract that can't receive them, and explicit
+                 *      network/asset pairing (e.g. reject a BTC address on an ETH-network
+                 *      withdrawal request).
+                 *   4. Chain finality / confirmation semantics differ from the bank-payout
+                 *      ambiguous-outcome model already used for HOLD in requestWithdrawal():
+                 *      a broadcast tx is not "sent" until N confirmations, and unlike a bank
+                 *      transfer it can NEVER be reversed once final. The ledger discipline
+                 *      needs a distinct "broadcast but unconfirmed" state, not just
+                 *      HOLD -> RELEASE+DEBIT / RELEASE.
+                 *   5. Network/gas fee handling: fees are dynamic, paid in the source or
+                 *      native asset, and must be quoted to the user and reconciled against
+                 *      what's actually deducted on-chain — this has no analog in the NGN
+                 *      bank-payout flow.
+                 *   6. Start with a minimal chain/asset set (e.g. USDT/USDC on a single
+                 *      well-understood network) rather than mirroring all networks Sogo
+                 *      lists for deposits — deposit-supported networks are not evidence an
+                 *      outbound rail supports the same set.
+                 *
+                 * Unblocks when: a payout-capable provider is contracted and its sandbox
+                 * credentials are available to build and test against. Until then, keeping
+                 * this disabled is the safe behavior — do not wire a naive send-crypto call
+                 * against the Sogo inbound-only API.
+                 */}
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     className={cn(
