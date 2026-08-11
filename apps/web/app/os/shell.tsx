@@ -31,6 +31,7 @@ import {
   Search,
   Send,
   Settings,
+  ShieldCheck,
   Smartphone,
   Sparkles,
   Store,
@@ -77,6 +78,18 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Creative Library", href: "/os/library", icon: Folder },
       { label: "AI Personas", href: "/os/personas", icon: Bot },
+    ],
+  },
+  {
+    // Trust Engine review is staff-facing (7-stage asset validation pipeline —
+    // apps/api/src/modules/trust-engine). No client-side permission gate exists
+    // on NavItem in this shell yet (unlike a hypothetical Approvals-style queue),
+    // so this link is visible to everyone; the real gate is server-side
+    // (@RequirePermissions("analytics:read") + @RequireFeature("trustEngine") on
+    // TrustEngineController) — a user without access gets a 403 from the page.
+    title: "Governance",
+    items: [
+      { label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck },
     ],
   },
   {

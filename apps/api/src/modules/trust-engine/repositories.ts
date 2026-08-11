@@ -198,7 +198,7 @@ export class TrustEngineRepositories {
         const results = await db.stageResult.findMany({
           where: { validationRunId: runId },
         });
-        return results.map((r) => ({
+        return results.map((r: (typeof results)[number]) => ({
           id: r.id,
           validationRunId: r.validationRunId,
           stageKey: r.stageKey as StageKey,
@@ -212,6 +212,92 @@ export class TrustEngineRepositories {
           createdAt: r.createdAt,
         }));
       },
+    };
+  }
+
+  // Below: plain query helpers for the staff review queue (list + stage detail).
+  // These are NOT part of the SubmissionRepository/ValidationRunRepository/
+  // StageResultRepository interfaces consumed by TrustEngineService — they're
+  // read-only projections used directly by the controller, so adding them here
+  // doesn't touch the shared @fliptrybe/service-trust-engine package or its
+  // pipeline/arbiter logic.
+
+  async listSubmissions(params: {
+    workspaceId: string;
+    status?: string;
+    assetClass?: string;
+    take?: number;
+  }) {
+    const db = this.prismaService.client;
+    const submissions = await db.assetSubmission.findMany({
+      where: {
+        workspaceId: params.workspaceId,
+        ...(params.status ? { status: params.status as never } : {}),
+        ...(params.assetClass ? { assetClass: params.assetClass as never } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: params.take ?? 100,
+      include: {
+        validationRuns: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    });
+
+    return submissions.map((submission: (typeof submissions)[number]) => {
+      const latestRun = submission.validationRuns[0];
+      return {
+        id: submission.id,
+        workspaceId: submission.workspaceId,
+        userId: submission.userId,
+        assetClass: submission.assetClass,
+        status: submission.status,
+        createdAt: submission.createdAt,
+        updatedAt: submission.updatedAt,
+        latestVerdict: latestRun?.verdict ?? null,
+        latestVerdictReasons: latestRun?.verdictReasons ?? [],
+      };
+    });
+  }
+
+  async getSubmissionStages(submissionId: string) {
+    const db = this.prismaService.client;
+    const latestRun = await db.validationRun.findFirst({
+      where: { submissionId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!latestRun) {
+      return { submissionId, validationRun: null, stages: [] };
+    }
+
+    const stageResults = await db.stageResult.findMany({
+      where: { validationRunId: latestRun.id },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      submissionId,
+      validationRun: {
+        id: latestRun.id,
+        verdict: latestRun.verdict ?? 'REVIEW',
+        verdictReasons: latestRun.verdictReasons ?? [],
+        verdictExplained: latestRun.verdictExplained ?? '',
+        fraudScore: latestRun.fraudScore ?? 0,
+        trustScore: latestRun.trustScore ?? 0,
+        finalScore: latestRun.finalScore ?? 0,
+        createdAt: latestRun.createdAt,
+      },
+      stages: stageResults.map((stage: (typeof stageResults)[number]) => ({
+        stageKey: stage.stageKey,
+        status: stage.status,
+        reasonCodes: stage.reasonCodes ?? [],
+        durationMs: stage.durationMs,
+        retryCount: stage.retryCount,
+        ...(stage.failureMessage ? { failureMessage: stage.failureMessage } : {}),
+        createdAt: stage.createdAt,
+      })),
     };
   }
 }

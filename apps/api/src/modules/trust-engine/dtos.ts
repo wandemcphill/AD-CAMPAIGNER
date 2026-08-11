@@ -35,6 +35,54 @@ export class SubmissionStatusDto {
   submissionId!: string;
 }
 
+// List query for the staff review queue (GET /trust-engine/submissions). There is
+// no dedicated moderation-decision endpoint yet — ModerationQueue rows exist in the
+// schema but nothing in this module writes to them, so the queue below is read-only.
+export class ListSubmissionsQueryDto {
+  @IsOptional()
+  @IsEnum(['PENDING', 'PROCESSING', 'ACCEPTED', 'REVIEW', 'REJECTED', 'DISPUTED', 'COMPLETED'])
+  status?: 'PENDING' | 'PROCESSING' | 'ACCEPTED' | 'REVIEW' | 'REJECTED' | 'DISPUTED' | 'COMPLETED';
+
+  @IsOptional()
+  @IsEnum(['GIFT_CARD', 'AIRTIME_PIN', 'RECHARGE_VOUCHER', 'DIGITAL_COUPON'])
+  assetClass?: AssetClass;
+}
+
+export interface SubmissionListItemDto {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  assetClass: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  latestVerdict: string | null;
+  latestVerdictReasons: string[];
+}
+
+export interface SubmissionStagesResponseDto {
+  submissionId: string;
+  validationRun: {
+    id: string;
+    verdict: string;
+    verdictReasons: string[];
+    verdictExplained: string;
+    fraudScore: number;
+    trustScore: number;
+    finalScore: number;
+    createdAt: string;
+  } | null;
+  stages: Array<{
+    stageKey: string;
+    status: string;
+    reasonCodes: string[];
+    durationMs: number;
+    retryCount: number;
+    failureMessage?: string;
+    createdAt: string;
+  }>;
+}
+
 export class CreateSubmissionResponseDto {
   submissionId!: string;
   status!: string;
