@@ -7,7 +7,6 @@ import {
   Camera,
   Copy,
   Globe,
-  Key,
   Plug,
   Plus,
   Trash2,
@@ -18,20 +17,14 @@ import { Badge, Button } from "@fliptrybe/ui";
 import { Input, TabBar } from "@fliptrybe/ui/components";
 
 import { useApiSession } from "../../../lib/use-session";
+import { ApiKeysPanel } from "../../../developer/api-keys-panel";
 import {
-  API_KEY_SCOPES,
-  createApiKey,
   createWebhookSubscription,
-  loadApiKeys,
   loadProvidersOverview,
   loadSupportedWebhookEvents,
   loadWebhookDeliveries,
   loadWebhookSubscriptions,
-  revokeApiKey,
   revokeWebhookSubscription,
-  type ApiKeyEnvironment,
-  type ApiKeyRecord,
-  type CreatedApiKey,
   type CreatedWebhookSubscription,
   type OutgoingWebhookSubscription,
   type ProviderCategory,
@@ -360,169 +353,6 @@ function WebhooksTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function ApiKeysTab() {
-  const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
-  const [showCreate, setShowCreate] = useState(false);
-  const [name, setName] = useState("");
-  const [environment, setEnvironment] = useState<ApiKeyEnvironment>("TEST");
-  const [scopes, setScopes] = useState<string[]>([]);
-  const [createdKey, setCreatedKey] = useState<CreatedApiKey>();
-  const [busy, setBusy] = useState<string>();
-
-  async function refresh() {
-    setError(undefined);
-    try {
-      setKeys(await loadApiKeys());
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "API keys failed to load.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void refresh();
-  }, []);
-
-  function toggleScope(scope: string) {
-    setScopes((prev) => (prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope]));
-  }
-
-  async function onCreate() {
-    if (!name.trim()) return;
-    setBusy("create");
-    setError(undefined);
-    try {
-      const result = await createApiKey({ name: name.trim(), environment, scopes });
-      setCreatedKey(result);
-      setName("");
-      setScopes([]);
-      await refresh();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not create that key.");
-    } finally {
-      setBusy(undefined);
-    }
-  }
-
-  async function onRevoke(id: string) {
-    setBusy(id);
-    try {
-      await revokeApiKey(id);
-      await refresh();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not revoke that key.");
-    } finally {
-      setBusy(undefined);
-    }
-  }
-
-  return (
-    <div className="grid gap-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">API Keys</h3>
-        <Button onClick={() => setShowCreate((v) => !v)} variant="secondary">
-          <Plus className="size-4" /> New key
-        </Button>
-      </div>
-
-      {error ? <div className="text-sm text-[var(--ft-red)]">{error}</div> : null}
-
-      {showCreate && (
-        <div className="grid gap-3 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4">
-          <Input id="key-name" label="Name" onChange={(e) => setName(e.currentTarget.value)} placeholder="e.g. Zapier integration" value={name} />
-          <div className="flex gap-2">
-            {(["TEST", "PRODUCTION"] as ApiKeyEnvironment[]).map((env) => (
-              <button
-                className="rounded-full border px-3 py-1 text-xs"
-                key={env}
-                onClick={() => setEnvironment(env)}
-                style={
-                  environment === env
-                    ? { borderColor: "var(--ft-accent)", background: "var(--ft-accent-subtle)", color: "var(--ft-accent)" }
-                    : { borderColor: "var(--ft-border)" }
-                }
-                type="button"
-              >
-                {env}
-              </button>
-            ))}
-          </div>
-          <div>
-            <div className="mb-1.5 text-xs text-[var(--ft-text-muted)]">Scopes</div>
-            <div className="flex flex-wrap gap-1.5">
-              {API_KEY_SCOPES.map((scope) => (
-                <button
-                  className="rounded-full border px-2.5 py-1 text-xs"
-                  key={scope}
-                  onClick={() => toggleScope(scope)}
-                  style={
-                    scopes.includes(scope)
-                      ? { borderColor: "var(--ft-accent)", background: "var(--ft-accent-subtle)", color: "var(--ft-accent)" }
-                      : { borderColor: "var(--ft-border)" }
-                  }
-                  type="button"
-                >
-                  {scope}
-                </button>
-              ))}
-            </div>
-          </div>
-          <Button disabled={!name.trim() || busy === "create"} onClick={() => void onCreate()}>
-            {busy === "create" ? "Creating..." : "Create key"}
-          </Button>
-        </div>
-      )}
-
-      {createdKey ? (
-        <div className="rounded-[var(--radius-lg)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-4">
-          <div className="text-sm font-medium">API key (shown once — copy it now)</div>
-          <div className="mt-2 flex items-center justify-between gap-2 rounded-[var(--radius-md)] bg-[var(--ft-bg-raised)] p-2">
-            <code className="break-all text-xs">{createdKey.key}</code>
-            <button onClick={() => void navigator.clipboard.writeText(createdKey.key)} type="button">
-              <Copy className="size-4 text-[var(--ft-text-muted)]" />
-            </button>
-          </div>
-          <Button className="mt-3" onClick={() => setCreatedKey(undefined)} variant="secondary">Done</Button>
-        </div>
-      ) : null}
-
-      <div className="grid gap-2">
-        {loading ? (
-          <p className="text-sm text-[var(--ft-text-muted)]">Loading...</p>
-        ) : keys.length === 0 ? (
-          <p className="text-sm text-[var(--ft-text-muted)]">No API keys yet.</p>
-        ) : (
-          keys.map((key) => (
-            <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4" key={key.id}>
-              <Key className="size-4 shrink-0 text-[var(--ft-text-secondary)]" />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  {key.name}
-                  <Badge tone={key.environment === "PRODUCTION" ? "warning" : "neutral"}>{key.environment}</Badge>
-                </div>
-                <div className="mt-1 font-mono text-xs text-[var(--ft-text-muted)]">{key.keyPrefix}</div>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {key.scopes.map((s) => <Badge key={s} tone="neutral">{s}</Badge>)}
-                </div>
-              </div>
-              {key.revokedAt ? (
-                <Badge tone="neutral">revoked</Badge>
-              ) : (
-                <button disabled={busy === key.id} onClick={() => void onRevoke(key.id)} type="button">
-                  <Trash2 className="size-4 text-[var(--ft-red)]" />
-                </button>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function IntegrationsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -572,7 +402,7 @@ export default function IntegrationsPage() {
           {tab === "connected" && <ConnectedServicesTab />}
           {tab === "providers" && <ProvidersTab isAdmin={isAdmin} />}
           {tab === "webhooks" && <WebhooksTab isAdmin={isAdmin} />}
-          {tab === "keys" && <ApiKeysTab />}
+          {tab === "keys" && <ApiKeysPanel />}
         </div>
       </div>
     </div>
