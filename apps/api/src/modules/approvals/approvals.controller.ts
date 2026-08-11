@@ -18,7 +18,7 @@ import { ApprovalsService } from "./approvals.service";
  * a deliberately deferred follow-up, not something this controller papers over.
  */
 @Controller("approvals")
-@RequirePermissions("admin:access", "campaign:approve")
+@RequirePermissions("campaign:approve")
 export class ApprovalsController {
   constructor(private readonly approvals: ApprovalsService) {}
 
