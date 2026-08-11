@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Bell,
+  Bot,
   Building2,
   CreditCard,
   Plug,
@@ -38,6 +39,12 @@ const SETTINGS_NAV: SettingsNavGroup[] = [
   { group: "Billing", items: [
     { label: "Wallet", href: "/os/settings/wallet", icon: CreditCard },
   ]},
+  { group: "AI & Developer", items: [
+    // One page (see apps/web/app/os/settings/ai/page.tsx) holds both the AI Configuration
+    // form and the API Keys panel, mirroring the merged-screen mockup where both are
+    // sections of a single settings surface rather than separate routes.
+    { label: "AI Configuration / API Keys", href: "/os/settings/ai", icon: Bot },
+  ]},
   { group: "Integrations & Developer", items: [
     { label: "Integrations & Developer", href: "/os/settings/integrations", icon: Plug },
   ]},
@@ -47,9 +54,10 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { session } = useApiSession();
   const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
+  const adminOnlyHrefs: Route[] = ["/os/settings/integrations", "/os/settings/ai"];
   const visibleNav = SETTINGS_NAV.map((group) => ({
     ...group,
-    items: group.items.filter((item) => isAdmin || item.href !== "/os/settings/integrations")
+    items: group.items.filter((item) => isAdmin || !adminOnlyHrefs.includes(item.href))
   })).filter((group) => group.items.length > 0);
 
   return (
