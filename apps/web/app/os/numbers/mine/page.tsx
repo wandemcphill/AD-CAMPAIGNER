@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Globe, MessageSquare, Smartphone } from "lucide-react";
 
-import { Badge, Panel } from "@fliptrybe/ui";
+import { Badge, Panel, PermissionDenied } from "@fliptrybe/ui";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { isForbiddenError } from "../../../lib/api-client";
 import { loadMyNumbers, type VirtualNumber, type VirtualNumberStatus } from "../api";
 
 const STATUS_TONE: Record<VirtualNumberStatus, "success" | "warning" | "neutral" | "danger"> = {
@@ -32,13 +33,16 @@ export default function MyNumbersPage() {
   const [numbers, setNumbers] = useState<VirtualNumber[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
 
   const refresh = useCallback(async () => {
     setError(undefined);
+    setForbidden(false);
     try {
       setNumbers(await loadMyNumbers());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load your numbers.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
     }
@@ -47,6 +51,15 @@ export default function MyNumbersPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view your virtual numbers for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">

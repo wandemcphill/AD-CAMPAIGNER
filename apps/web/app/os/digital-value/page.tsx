@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Gift, RefreshCw, Send, Smartphone, Tags } from "lucide-react";
 
-import { Badge, Button, Panel, SummaryStatStrip, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, SummaryStatStrip, cn } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
-import { apiRequest } from "../../lib/api-client";
+import { apiRequest, isForbiddenError } from "../../lib/api-client";
 
 type GiftCardProduct = {
   productId: string;
@@ -57,6 +57,7 @@ export default function DigitalValuePage() {
   const [networks, setNetworks] = useState<AirtimeNetwork[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [sellBrand, setSellBrand] = useState(sellBrands[0] ?? "APPLE_GIFT_CARD");
   const [sellRegion, setSellRegion] = useState(sellRegions[0] ?? "US");
   const [sellDenomination, setSellDenomination] = useState(50);
@@ -88,6 +89,7 @@ export default function DigitalValuePage() {
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
+    setForbidden(false);
     try {
       const [giftCards, airtime] = await Promise.all([
         apiRequest<GiftCardProduct[]>("/digital-value/gift-cards/products"),
@@ -97,6 +99,7 @@ export default function DigitalValuePage() {
       setNetworks(airtime.networks);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Digital value catalog is unavailable.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
     }
@@ -299,6 +302,15 @@ export default function DigitalValuePage() {
     } finally {
       setBusy(undefined);
     }
+  }
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view gift cards and cashout for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
   }
 
   return (

@@ -68,6 +68,7 @@ export function useCampaignBuilderData() {
       setState({
         ...defaultCampaignBuilderState,
         error: errorMessage(caught, "Destination catalog is unavailable."),
+        forbidden: isForbiddenError(caught),
         loading: false
       });
     }
@@ -125,6 +126,7 @@ export function useOnboardingData() {
       setState({
         ...defaultOnboardingState,
         error: errorMessage(caught, "Onboarding APIs are unavailable."),
+        forbidden: isForbiddenError(caught),
         loading: false
       });
     }

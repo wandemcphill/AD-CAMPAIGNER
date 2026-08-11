@@ -4,10 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Building2, CreditCard, Send, Snowflake, X } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { isForbiddenError } from "../../lib/api-client";
 import {
   closeAccount,
   createAccount,
@@ -60,6 +61,7 @@ const REMITTANCE_STATUS_TONE: Record<RemittanceStatus, "success" | "warning" | "
 export default function FinancialProductsPage() {
   const [tab, setTab] = useState("accounts");
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
 
   // Accounts state
   const [accounts, setAccounts] = useState<VirtualAccount[]>([]);
@@ -90,10 +92,12 @@ export default function FinancialProductsPage() {
 
   const refreshAccounts = useCallback(async () => {
     setError(undefined);
+    setForbidden(false);
     try {
       setAccounts(await loadAccounts());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load your accounts.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setAccountsLoading(false);
     }
@@ -101,10 +105,12 @@ export default function FinancialProductsPage() {
 
   const refreshCards = useCallback(async () => {
     setError(undefined);
+    setForbidden(false);
     try {
       setCards(await loadCards());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load your cards.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setCardsLoading(false);
     }
@@ -112,10 +118,12 @@ export default function FinancialProductsPage() {
 
   const refreshTransfers = useCallback(async () => {
     setError(undefined);
+    setForbidden(false);
     try {
       setTransfers(await loadRemittanceTransfers());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load your transfers.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setTransfersLoading(false);
     }
@@ -283,6 +291,15 @@ export default function FinancialProductsPage() {
       setSending(false);
     }
   }, [quote, recipientAccountNumber, recipientBankCode, recipientCountry, recipientName, refreshTransfers]);
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view virtual accounts, cards, and remittance for this
+        workspace. Contact your workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">

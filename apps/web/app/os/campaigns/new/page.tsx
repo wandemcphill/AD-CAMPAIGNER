@@ -26,6 +26,7 @@ import {
   Badge,
   Button,
   Panel,
+  PermissionDenied,
   PlatformChip,
   PlatformSelectCard,
   UploadZone as SharedUploadZone,
@@ -490,7 +491,7 @@ function UploadZone({ label, spec }: { label: string; spec: string }) {
 }
 
 export default function NewCampaignPage() {
-  const { destinations, error, loading, refresh, source } = useCampaignBuilderData();
+  const { destinations, error, forbidden, loading, refresh, source } = useCampaignBuilderData();
   const { loading: sessionLoading, session } = useApiSession();
   const [form, setForm] = useState<CampaignFormState>(() => createInitialForm());
   const [activeStep, setActiveStep] = useState(() => storedWizardStep());
@@ -628,6 +629,15 @@ export default function NewCampaignPage() {
     setForm(createInitialForm());
     setFormError(undefined);
     window.localStorage.setItem(wizardStepStorageKey, "0");
+  }
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to create a new campaign for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
   }
 
   return (

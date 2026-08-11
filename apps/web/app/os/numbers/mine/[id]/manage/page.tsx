@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AlertTriangle, ChevronLeft, RefreshCcw, Trash2 } from "lucide-react";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
 
 import { ErrorNotice, LoadingBlock } from "../../../../../campaigns/components";
+import { isForbiddenError } from "../../../../../lib/api-client";
 import {
   loadNumberDetail,
   releaseNumber,
@@ -23,16 +24,19 @@ export default function ManageNumberPage() {
   const [number, setNumber] = useState<VirtualNumber>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmRelease, setConfirmRelease] = useState(false);
   const [renewNote, setRenewNote] = useState<string>();
 
   const refresh = useCallback(async () => {
     setError(undefined);
+    setForbidden(false);
     try {
       setNumber(await loadNumberDetail(numberId));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load this number.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
     }
@@ -71,6 +75,15 @@ export default function ManageNumberPage() {
       setError(caught instanceof Error ? caught.message : "Could not release this number.");
       setBusy(false);
     }
+  }
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view your virtual numbers for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
   }
 
   return (

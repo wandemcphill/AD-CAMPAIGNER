@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Banknote, Clock, Landmark, QrCode, X } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 
 import { EmptyState, LoadingBlock } from "../../campaigns/components";
+import { isForbiddenError } from "../../lib/api-client";
 import {
   createOrder,
   loadOrders,
@@ -46,16 +47,21 @@ export default function RmbPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [success, setSuccess] = useState<RmbOrder>();
 
   useEffect(() => {
     setLoading(true);
+    setForbidden(false);
     Promise.all([loadRates(), loadOrders()])
       .then(([r, o]) => {
         setRates(r);
         setOrders(o);
       })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "We could not load rates."))
+      .catch((caught) => {
+        setError(caught instanceof Error ? caught.message : "We could not load rates.");
+        setForbidden(isForbiddenError(caught));
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -127,6 +133,15 @@ export default function RmbPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view RMB for this workspace. Contact your workspace owner
+        if you believe this is a mistake.
+      </PermissionDenied>
+    );
   }
 
   return (
