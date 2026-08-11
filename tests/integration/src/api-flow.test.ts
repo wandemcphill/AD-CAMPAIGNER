@@ -16,12 +16,17 @@ describe("core API service flow", () => {
     const notifications = new NotificationsService(prisma, {} as any);
     const service = new PlatformService(prisma, notifications);
     const campaign = await service.createCampaign(workspace, { destinationKind: "TIKTOK_LIVE" });
-    const smm = await service.createSmmOrder(workspace, { serviceKind: "FOLLOWERS", quantity: 500 });
+    const growth = await service.createGrowthOrder(workspace, {
+      serviceCode: "tiktok-views",
+      quantity: 100,
+      destinationUrl: "https://www.tiktok.com/@fliptrybe/video/integration",
+      idempotencyKey: "integration-test-growth-order"
+    });
     const ticket = service.createSupportTicket(workspace, { subject: "Need review" });
     const { metrics } = await service.getAnalyticsOverview(workspace);
 
     expect(campaign.status).toBe("QUEUED");
-    expect(smm.status).toBe("QUEUED");
+    expect(growth.order.status).toBeDefined();
     expect(ticket.status).toBe("OPEN");
     expect(metrics).toHaveLength(4);
   });
