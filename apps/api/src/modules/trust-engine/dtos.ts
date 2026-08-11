@@ -35,6 +35,30 @@ export class SubmissionStatusDto {
   submissionId!: string;
 }
 
+// List query for the staff review queue (GET /trust-engine/submissions).
+export class ListSubmissionsQueryDto {
+  @IsOptional()
+  @IsEnum(['PENDING', 'PROCESSING', 'ACCEPTED', 'REVIEW', 'REJECTED', 'DISPUTED', 'COMPLETED'])
+  status?: 'PENDING' | 'PROCESSING' | 'ACCEPTED' | 'REVIEW' | 'REJECTED' | 'DISPUTED' | 'COMPLETED';
+
+  @IsOptional()
+  @IsEnum(['GIFT_CARD', 'AIRTIME_PIN', 'RECHARGE_VOUCHER', 'DIGITAL_COUPON'])
+  assetClass?: AssetClass;
+}
+
+// Body for POST /trust-engine/submissions/:submissionId/moderate — the human-decision
+// layer on top of the read-only staff review queue. 'decision' intentionally mirrors
+// the ModerationQueue.decision column (a free-form string in the schema) but is
+// constrained to these two values at the API boundary.
+export class ModerateSubmissionDto {
+  @IsEnum(['APPROVE', 'REJECT'])
+  decision!: 'APPROVE' | 'REJECT';
+
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
 export class CreateSubmissionResponseDto {
   submissionId!: string;
   status!: string;

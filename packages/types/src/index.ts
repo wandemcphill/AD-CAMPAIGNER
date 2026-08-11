@@ -179,7 +179,8 @@ export const permissions = [
   "team:manage",
   "admin:access",
   "support:manage",
-  "audit:read"
+  "audit:read",
+  "trust_engine:moderate"
 ] as const;
 export type Permission = (typeof permissions)[number];
 
