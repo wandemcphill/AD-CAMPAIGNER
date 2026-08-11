@@ -106,6 +106,26 @@ export const notificationTemplates = {
       <p>Date: {{date}}</p>
     `),
     smsBody: "Security alert: {{status}}. If this wasn't you, secure your account now. {{support_url}}"
+  },
+  password_reset: {
+    subject: "Reset your FlipTrybe password",
+    emailBody: EMAIL_WRAPPER(`
+      <p>We received a request to reset your password.</p>
+      <p style="margin: 24px 0;">
+        <a href="{{reference}}" style="background: #d97706; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">Reset password</a>
+      </p>
+      <p style="font-size: 13px; color: #666;">
+        Or paste this link into your browser:<br />
+        <span style="word-break: break-all;">{{reference}}</span>
+      </p>
+      <p>This link expires in {{status}} and can only be used once.</p>
+      <p>If you didn't request this, you can ignore this email — your password will not change.</p>
+    `),
+    // Deliberately no link in the SMS variant: reset links must not travel over
+    // a channel this flow never verifies ownership of.
+    smsBody:
+      "A FlipTrybe password reset was requested. Check your email for the link. " +
+      "If this wasn't you, contact {{support_url}}"
   }
 } as const satisfies Record<string, NotificationTemplate>;
 

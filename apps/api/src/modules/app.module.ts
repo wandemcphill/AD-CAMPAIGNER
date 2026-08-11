@@ -23,12 +23,12 @@ import {
   MediaController,
   NotificationsController,
   OrganizationsController,
+  WorkspaceController,
   PaymentsController,
   ReferralsController,
   RootController,
   SearchController,
   SmmController,
-  SupportController,
   TeamsController,
   WalletController,
   WebhooksController
@@ -37,6 +37,7 @@ import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { AuthSessionService } from "./auth-session.service";
 import { AuthorizationGuard } from "./authorization.guard";
+import { FeatureFlagGuard } from "./feature-flag.guard";
 import { RealtimeGateway } from "./realtime.gateway";
 import { PrismaModule } from "./prisma.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
@@ -100,6 +101,8 @@ import { NotificationsModule } from "./notifications/notifications.module";
     FinancialProductsModule,
     GuestCheckoutModule,
     SupportModule,
+    // Exports NotificationsService, which AuthSessionService injects to send
+    // password-reset emails.
     NotificationsModule
   ],
   controllers: [
@@ -107,6 +110,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     HealthController,
     AuthController,
     OrganizationsController,
+    WorkspaceController,
     TeamsController,
     ClientProfileController,
     CompanyProfilesController,
@@ -123,7 +127,6 @@ import { NotificationsModule } from "./notifications/notifications.module";
     AnalyticsController,
     NotificationsController,
     ReferralsController,
-    SupportController,
     MediaController,
     SearchController,
     AdminController,
@@ -143,6 +146,12 @@ import { NotificationsModule } from "./notifications/notifications.module";
     {
       provide: APP_GUARD,
       useClass: AuthorizationGuard
+    },
+    // Runs after AuthorizationGuard on purpose: an unauthorized caller gets
+    // 401/403, not a 503 that would disclose which verticals exist.
+    {
+      provide: APP_GUARD,
+      useClass: FeatureFlagGuard
     }
   ]
 })

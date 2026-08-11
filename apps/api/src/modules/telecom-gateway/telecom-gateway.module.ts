@@ -2,6 +2,7 @@ import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 
 import { PrismaModule } from "../prisma.module";
 import { AuthSessionService } from "../auth-session.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { WorkspaceContextMiddleware } from "../workspace-context.middleware";
 import { ProvidersModule } from "../providers/providers.module";
 import { TelecomGatewayController } from "./telecom-gateway.controller";
@@ -12,7 +13,7 @@ import { TelecomCatalogService } from "./telecom-catalog.service";
 import { TelecomHealthService } from "./telecom-health.service";
 
 @Module({
-  imports: [PrismaModule, ProvidersModule],
+  imports: [PrismaModule, ProvidersModule, NotificationsModule],
   controllers: [TelecomGatewayController],
   providers: [
     AuthSessionService,

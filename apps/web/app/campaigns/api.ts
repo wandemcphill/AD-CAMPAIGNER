@@ -41,6 +41,62 @@ type CampaignReportShape = {
   status?: string | null;
 };
 
+// Not in @fliptrybe/types — these mirror the CampaignNote / CampaignReport /
+// CampaignOutcome / CampaignCreative Prisma models (packages/database/prisma/
+// schema.prisma) as returned by GET /campaigns/:id/{notes,reports,outcome,assets}.
+export type CampaignNote = {
+  id: string;
+  authorUserId: string;
+  body: string;
+  createdAt: string;
+  pinnedAt: string | null;
+  visibility: "INTERNAL" | "CLIENT_VISIBLE";
+};
+
+export type CampaignReportScreenshot = {
+  id: string;
+  sourceUrl: string | null;
+  mediaAsset: { secureUrl?: string | null; url?: string | null } | null;
+};
+
+export type CampaignPublishedReport = {
+  id: string;
+  clicks: number;
+  conversions: number;
+  currency: CurrencyCode;
+  impressions: number;
+  periodEnd: string;
+  periodStart: string;
+  publishedAt: string | null;
+  revenueMinor: number | null;
+  screenshots: CampaignReportScreenshot[];
+  spendMinor: number;
+  summary: string | null;
+};
+
+export type CampaignOutcome = {
+  capturedAt: string | null;
+  currency: CurrencyCode;
+  estRevenueMinor: number | null;
+  messagesCount: number | null;
+  notes: string | null;
+  ordersCount: number | null;
+  rating: number | null;
+  wouldRunAgain: boolean | null;
+} | null;
+
+export type CampaignAsset = {
+  id: string;
+  callToAction: string | null;
+  format: "IMAGE" | "VIDEO" | "CAROUSEL" | "OTHER";
+  headline: string | null;
+  landingUrl: string | null;
+  mediaAsset: { secureUrl?: string | null; url?: string | null } | null;
+  name: string;
+  primaryText: string | null;
+  status: "DRAFT" | "PENDING_REVIEW" | "APPROVED" | "REJECTED";
+};
+
 type DashboardMetricTotals = {
   clicks: number;
   conversions: number;
@@ -334,6 +390,17 @@ export function startCampaign(campaignId: string) {
   });
 }
 
+// Moves a DRAFT (or CHANGES_REQUESTED) campaign into the review pipeline —
+// this is the call that actually sends the brief to the ops team. Creating a
+// campaign (POST /campaigns) only ever leaves it in DRAFT; skipping this call
+// after create silently strands the campaign there forever.
+export function submitCampaign(campaignId: string, input?: CampaignControlInput) {
+  return apiRequest<Campaign>(`/campaigns/${encodeURIComponent(campaignId)}/submit`, {
+    method: "POST",
+    body: JSON.stringify(input ?? {})
+  });
+}
+
 function campaignAction(campaignId: string, action: string, input: CampaignControlInput = {}) {
   return apiRequest<Campaign>(`/campaigns/${encodeURIComponent(campaignId)}/actions/${action}`, {
     method: "POST",
@@ -365,6 +432,10 @@ export function stopCampaign(campaignId: string, input?: CampaignControlInput) {
   return campaignAction(campaignId, "stop", input);
 }
 
+export function transferCampaignBudget(campaignId: string, input?: CampaignControlInput) {
+  return campaignAction(campaignId, "transfer-budget", input);
+}
+
 export function loadCampaignAuditTrail(campaignId: string) {
   return apiRequest<{ campaignId: string; items: CampaignAuditTrailItem[] }>(
     `/campaigns/${encodeURIComponent(campaignId)}/audit`
@@ -381,6 +452,80 @@ export function loadCampaignBudgetSummary(campaignId: string) {
 
 export function loadCampaignSpendBreakdown(campaignId: string) {
   return apiRequest<CampaignSpendBreakdown>(`/campaigns/${encodeURIComponent(campaignId)}/spend-breakdown`);
+}
+
+// payment:manage-gated finance operations. No frontend role check here,
+// matching increaseCampaignBudget/decreaseCampaignBudget above — the backend
+// enforces the permission and the UI surfaces whatever error comes back.
+export function createCampaignInvoice(
+  campaignId: string,
+  input: { subtotalMinor?: number; dueAt?: string } = {}
+) {
+  return apiRequest<CampaignInvoiceRecord>(`/campaigns/${encodeURIComponent(campaignId)}/invoices`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export type CampaignBudgetHold = {
+  id: string;
+  status: "ACTIVE" | "RELEASED" | "CAPTURED";
+  amountMinor: number;
+  currency: CurrencyCode;
+  reason: string | null;
+  createdAt: string;
+  releasedAt: string | null;
+  capturedAt: string | null;
+};
+
+export function createCampaignBudgetHold(
+  campaignId: string,
+  input: { amountMinor?: number; reason?: string } = {}
+) {
+  return apiRequest<CampaignBudgetHold>(`/campaigns/${encodeURIComponent(campaignId)}/budget-holds`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function captureCampaignBudgetHold(campaignId: string, holdId: string) {
+  return apiRequest<CampaignBudgetHold>(
+    `/campaigns/${encodeURIComponent(campaignId)}/budget-holds/${encodeURIComponent(holdId)}/capture`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
+export function releaseCampaignBudgetHold(campaignId: string, holdId: string) {
+  return apiRequest<CampaignBudgetHold>(
+    `/campaigns/${encodeURIComponent(campaignId)}/budget-holds/${encodeURIComponent(holdId)}/release`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
+export function loadCampaignNotes(campaignId: string) {
+  return apiRequest<CampaignNote[]>(`/campaigns/${encodeURIComponent(campaignId)}/notes`);
+}
+
+// The API always stores a note added through this route (rather than the
+// admin ops route) as CLIENT_VISIBLE — see addCampaignNote in
+// managed-ads.service.ts — so it reappears in the same GET immediately.
+export function addCampaignNote(campaignId: string, body: string) {
+  return apiRequest<CampaignNote>(`/campaigns/${encodeURIComponent(campaignId)}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ body })
+  });
+}
+
+export function loadCampaignReports(campaignId: string) {
+  return apiRequest<CampaignPublishedReport[]>(`/campaigns/${encodeURIComponent(campaignId)}/reports`);
+}
+
+export function loadCampaignOutcome(campaignId: string) {
+  return apiRequest<CampaignOutcome>(`/campaigns/${encodeURIComponent(campaignId)}/outcome`);
+}
+
+export function loadCampaignAssets(campaignId: string) {
+  return apiRequest<CampaignAsset[]>(`/campaigns/${encodeURIComponent(campaignId)}/assets`);
 }
 
 export async function loadCampaignFinancialData(campaignId: string) {
@@ -404,10 +549,60 @@ export function createPaymentIntent(input: CreatePaymentIntentInput) {
   });
 }
 
+// Manual re-check against the gateway, for when a user has paid but the
+// webhook hasn't landed yet and the intent still shows pending.
+export function verifyPayment(reference: string) {
+  return apiRequest<PaymentIntent>(`/payments/verify/${encodeURIComponent(reference)}`, {
+    method: "POST"
+  });
+}
+
 export function createWalletFundingIntent(input: CreatePaymentIntentInput) {
   return apiRequest<PaymentIntent>("/wallet/funding-intents", {
     method: "POST",
     body: JSON.stringify(input)
+  });
+}
+
+// Real campaign invoices (CampaignInvoice) — a distinct concept from the
+// PaymentIntent-based "Invoices" tab content above, which is really an
+// ahead-of-time wallet top-up prompt. These are invoices ops actually issued
+// against a specific campaign, with real line items and a real pay action.
+export type CampaignInvoiceStatus = "DRAFT" | "ISSUED" | "PARTIALLY_PAID" | "PAID" | "VOID" | "OVERDUE";
+
+export type CampaignInvoiceLineItem = { description: string; amountMinor: number };
+
+export type CampaignInvoiceRecord = {
+  id: string;
+  campaignId: string;
+  number: string;
+  status: CampaignInvoiceStatus;
+  subtotalMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  amountPaidMinor: number;
+  currency: CurrencyCode;
+  lineItems: CampaignInvoiceLineItem[];
+  issuedAt: string | null;
+  dueAt: string | null;
+  paidAt: string | null;
+};
+
+export function loadInvoices() {
+  return apiRequest<CampaignInvoiceRecord[]>("/invoices");
+}
+
+export function loadInvoice(invoiceId: string) {
+  return apiRequest<CampaignInvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}`);
+}
+
+// method "wallet" (default) debits the wallet directly; anything else opens
+// an external checkout via a new PaymentIntent (same shape as
+// createWalletFundingIntent above) — see payInvoice in managed-ads.service.ts.
+export function payInvoiceFromWallet(invoiceId: string) {
+  return apiRequest<CampaignInvoiceRecord>(`/invoices/${encodeURIComponent(invoiceId)}/pay`, {
+    method: "POST",
+    body: JSON.stringify({ method: "wallet" })
   });
 }
 

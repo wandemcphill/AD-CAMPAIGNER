@@ -600,4 +600,35 @@ export async function publishAdminCampaignReport(reportId: string) {
   });
 }
 
+// Mirrors CampaignLaunchSpec (services/campaigns/src/index.ts) — a step-by-step
+// "what to click in Meta Ads Manager" checklist, generated from the campaign's
+// stored targeting/budget/objective. There's no live Meta API integration, so
+// this is how an operator actually sets a campaign up by hand.
+export type CampaignLaunchSpec = {
+  platform: string;
+  campaign: { name: string; objective: string; buyingType: string };
+  adSet: { name: string; dailyBudgetMinor: number; currency: string; [key: string]: unknown };
+  ad: { name: string; destinationUrl: string; callToAction: string };
+  copyInstructions: string[];
+  warnings: string[];
+};
+
+export async function loadAdminCampaignLaunchSpec(campaignId: string) {
+  return apiRequest<CampaignLaunchSpec>(
+    `/admin/campaign-ops/campaigns/${encodeURIComponent(campaignId)}/launch-spec`
+  );
+}
+
+export type BulkCampaignAction =
+  | { action: "status"; payload: { status: string; reason?: string } }
+  | { action: "assign"; payload: { role: string } }
+  | { action: "add_note"; payload: { body: string; visibility?: string } };
+
+export async function bulkAdminCampaignAction(campaignIds: string[], action: BulkCampaignAction) {
+  return apiRequest<{ count: number; results: unknown[] }>("/admin/campaign-ops/bulk", {
+    method: "POST",
+    body: JSON.stringify({ campaignIds, ...action })
+  });
+}
+
 export { subscribeToSessionChanges };

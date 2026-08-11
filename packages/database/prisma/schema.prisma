@@ -608,6 +608,7 @@ model User {
   defaultWorkspace               Workspace?                      @relation("UserDefaultWorkspace", fields: [defaultWorkspaceId], references: [id])
   memberships                    TeamMember[]
   sessions                       Session[]
+  passwordResetTokens            PasswordResetToken[]
   auditLogs                      AuditLog[]                      @relation("AuditActor")
   approvalRequestsMade           ApprovalRequest[]               @relation("ApprovalRequestedBy")
   approvalRequestsDecided        ApprovalRequest[]               @relation("ApprovalDecidedBy")
@@ -723,6 +724,25 @@ model TeamMember {
 
   @@unique([userId, organizationId])
   @@index([organizationId, role])
+}
+
+// Single-use, expiring password-reset grant. Only the SHA-256 hash of the
+// token is stored (same posture as Session.tokenHash) so a database read
+// cannot be replayed to take over an account. `usedAt` enforces single use;
+// rows are never deleted on use so a replay attempt is auditable.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  requestIp String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, usedAt])
+  @@index([expiresAt])
 }
 
 model Session {

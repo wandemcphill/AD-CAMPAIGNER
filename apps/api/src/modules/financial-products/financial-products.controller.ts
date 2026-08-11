@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common"
 
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
 import { RequirePermissions } from "../authorization.decorators";
+import { RequireFeature } from "../feature-flag.decorators";
 import type {
   CreateVirtualAccountDto,
   FundVirtualCardDto,
@@ -20,24 +21,28 @@ export class FinancialProductsController {
   // ─── Virtual Accounts ───────────────────────────────────────────────────────
 
   @Post("accounts")
+  @RequireFeature("virtualAccounts")
   @RequirePermissions("campaign:create")
   createAccount(@Body() body: CreateVirtualAccountDto, @Req() request: WorkspaceContextRequest) {
     return this.financial.createAccount(workspaceContextFromRequest(request), body);
   }
 
   @Get("accounts")
+  @RequireFeature("virtualAccounts")
   @RequirePermissions("analytics:read")
   listAccounts(@Req() request: WorkspaceContextRequest) {
     return this.financial.listAccounts(workspaceContextFromRequest(request));
   }
 
   @Get("accounts/:id")
+  @RequireFeature("virtualAccounts")
   @RequirePermissions("analytics:read")
   getAccount(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.financial.getAccount(workspaceContextFromRequest(request), id);
   }
 
   @Post("accounts/:id/close")
+  @RequireFeature("virtualAccounts")
   @RequirePermissions("campaign:create")
   closeAccount(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.financial.closeAccount(workspaceContextFromRequest(request), id);
@@ -46,18 +51,21 @@ export class FinancialProductsController {
   // ─── Virtual Cards ──────────────────────────────────────────────────────────
 
   @Post("cards")
+  @RequireFeature("virtualCards")
   @RequirePermissions("campaign:create")
   issueCard(@Body() body: IssueVirtualCardDto, @Req() request: WorkspaceContextRequest) {
     return this.financial.issueCard(workspaceContextFromRequest(request), body);
   }
 
   @Get("cards")
+  @RequireFeature("virtualCards")
   @RequirePermissions("analytics:read")
   listCards(@Req() request: WorkspaceContextRequest) {
     return this.financial.listCards(workspaceContextFromRequest(request));
   }
 
   @Post("cards/:id/fund")
+  @RequireFeature("virtualCards")
   @RequirePermissions("campaign:create")
   fundCard(
     @Param("id") id: string,
@@ -68,18 +76,21 @@ export class FinancialProductsController {
   }
 
   @Post("cards/:id/freeze")
+  @RequireFeature("virtualCards")
   @RequirePermissions("campaign:create")
   freezeCard(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.financial.freezeCard(workspaceContextFromRequest(request), id);
   }
 
   @Post("cards/:id/unfreeze")
+  @RequireFeature("virtualCards")
   @RequirePermissions("campaign:create")
   unfreezeCard(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.financial.unfreezeCard(workspaceContextFromRequest(request), id);
   }
 
   @Post("cards/:id/terminate")
+  @RequireFeature("virtualCards")
   @RequirePermissions("campaign:create")
   terminateCard(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
     return this.financial.terminateCard(workspaceContextFromRequest(request), id);
@@ -88,18 +99,21 @@ export class FinancialProductsController {
   // ─── Remittance ─────────────────────────────────────────────────────────────
 
   @Post("remittance/quote")
+  @RequireFeature("remittance")
   @RequirePermissions("campaign:create")
   getRemittanceQuote(@Body() body: RemittanceQuoteDto) {
     return this.financial.getRemittanceQuote(body);
   }
 
   @Post("remittance/send")
+  @RequireFeature("remittance")
   @RequirePermissions("campaign:create")
   sendRemittance(@Body() body: SendRemittanceDto, @Req() request: WorkspaceContextRequest) {
     return this.financial.sendRemittance(workspaceContextFromRequest(request), body);
   }
 
   @Get("remittance")
+  @RequireFeature("remittance")
   @RequirePermissions("analytics:read")
   listRemittanceTransfers(@Req() request: WorkspaceContextRequest) {
     return this.financial.listRemittanceTransfers(workspaceContextFromRequest(request));

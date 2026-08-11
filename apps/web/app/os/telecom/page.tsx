@@ -11,6 +11,7 @@ import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/component
 import {
   buyTelecomAirtime,
   buyTelecomData,
+  checkTelecomOrderStatus,
   detectNumber,
   listProducts,
   loadTelecomOrders,
@@ -19,6 +20,8 @@ import {
   type TelecomDataBundle,
   type TelecomOrder
 } from "./api";
+
+const TERMINAL_ORDER_STATUSES = new Set(["DELIVERED", "FAILED", "REVERSED", "REFUNDED"]);
 
 const TABS = [
   { id: "buy", label: "Buy" },
@@ -46,6 +49,7 @@ export default function TelecomGatewayPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<TelecomOrder>();
+  const [checkingOrderId, setCheckingOrderId] = useState<string>();
 
   const refreshOrders = useCallback(async () => {
     try {
@@ -60,6 +64,18 @@ export default function TelecomGatewayPage() {
   useEffect(() => {
     void refreshOrders();
   }, [refreshOrders]);
+
+  async function checkOrderStatus(orderId: string) {
+    setCheckingOrderId(orderId);
+    try {
+      const updated = await checkTelecomOrderStatus(orderId);
+      setOrders((current) => current.map((order) => (order.id === orderId ? updated : order)));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not check this order's status.");
+    } finally {
+      setCheckingOrderId(undefined);
+    }
+  }
 
   const selectedOperator = useMemo(
     () => detected?.operators.find((op) => op.operatorId === selectedOperatorId),
@@ -419,6 +435,16 @@ export default function TelecomGatewayPage() {
                       >
                         {o.status.toLowerCase()}
                       </Badge>
+                      {!TERMINAL_ORDER_STATUSES.has(o.status) ? (
+                        <Button
+                          className="h-8 px-2 text-xs"
+                          disabled={checkingOrderId !== undefined}
+                          onClick={() => void checkOrderStatus(o.id)}
+                          variant="secondary"
+                        >
+                          {checkingOrderId === o.id ? "Checking..." : "Check status"}
+                        </Button>
+                      ) : null}
                     </div>
                   ))}
                 </div>

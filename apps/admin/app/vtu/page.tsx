@@ -131,6 +131,12 @@ export default function AdminVtuPage() {
           </div>
           <div className="flex items-center gap-2">
             <a
+              href="/vtu/orders"
+              className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+            >
+              Bills Orders →
+            </a>
+            <a
               href="/vtu/skus"
               className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
             >

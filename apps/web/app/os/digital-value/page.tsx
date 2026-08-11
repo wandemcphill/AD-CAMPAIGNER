@@ -27,6 +27,13 @@ type AirtimeNetwork = {
   displayName?: string;
 };
 
+type CashoutQuote = {
+  amountNgn: number;
+  feeNgn: number;
+  payoutNgn: number;
+  expiresAt: string;
+};
+
 const tabs = [
   { id: "buy", label: "Buy gift cards" },
   { id: "sell", label: "Sell gift cards" },
@@ -57,6 +64,21 @@ export default function DigitalValuePage() {
   const [sellQuote, setSellQuote] = useState<string>();
   const [busy, setBusy] = useState<string>();
   const [success, setSuccess] = useState<string>();
+
+  // Airtime cashout — a 4-step flow: request an OTP on the phone's own network
+  // (not FlipTrybe's), verify it to unlock the balance check, quote a specific
+  // amount, then initiate. sessionId is minted by verify and must ride along
+  // into initiate — it's how the provider knows this phone was proven owned.
+  const [cashoutNetwork, setCashoutNetwork] = useState("");
+  const [cashoutPhone, setCashoutPhone] = useState("");
+  const [cashoutOtp, setCashoutOtp] = useState("");
+  const [cashoutSessionId, setCashoutSessionId] = useState<string>();
+  const [cashoutBalanceNgn, setCashoutBalanceNgn] = useState<number>();
+  const [cashoutAmountNgn, setCashoutAmountNgn] = useState<number>(500);
+  const [cashoutQuote, setCashoutQuote] = useState<CashoutQuote>();
+  const [cashoutPin, setCashoutPin] = useState("");
+  const [cashoutResult, setCashoutResult] = useState<{ transactionId: string; status: string }>();
+  const [cashoutError, setCashoutError] = useState<string>();
 
   const availableProducts = useMemo(
     () => products.filter((product) => product.available),
@@ -171,6 +193,109 @@ export default function DigitalValuePage() {
       setSuccess(`Gift card sale ${result.transactionId} is ${result.status.toLowerCase()}.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not submit this gift card.");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  function resetCashoutFlow() {
+    setCashoutOtp("");
+    setCashoutSessionId(undefined);
+    setCashoutBalanceNgn(undefined);
+    setCashoutQuote(undefined);
+    setCashoutPin("");
+    setCashoutResult(undefined);
+    setCashoutError(undefined);
+  }
+
+  async function requestCashoutOtp() {
+    if (!cashoutNetwork || !cashoutPhone.trim()) {
+      setCashoutError("Choose a network and enter the phone number.");
+      return;
+    }
+    setBusy("cashout-otp");
+    setCashoutError(undefined);
+    try {
+      await apiRequest("/digital-value/airtime/cashout/otp", {
+        method: "POST",
+        body: JSON.stringify({ network: cashoutNetwork, phone: cashoutPhone.trim() })
+      });
+    } catch (caught) {
+      setCashoutError(caught instanceof Error ? caught.message : "Could not request a code.");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function verifyCashoutOtp() {
+    if (!cashoutOtp.trim()) {
+      setCashoutError("Enter the code that was sent.");
+      return;
+    }
+    setBusy("cashout-verify");
+    setCashoutError(undefined);
+    try {
+      const result = await apiRequest<{ verified: boolean; airtimeBalanceNgn: number; sessionId: string }>(
+        "/digital-value/airtime/cashout/verify",
+        {
+          method: "POST",
+          body: JSON.stringify({ network: cashoutNetwork, phone: cashoutPhone.trim(), otp: cashoutOtp.trim() })
+        }
+      );
+      setCashoutSessionId(result.sessionId);
+      setCashoutBalanceNgn(result.airtimeBalanceNgn);
+    } catch (caught) {
+      setCashoutError(caught instanceof Error ? caught.message : "That code didn't verify.");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function getCashoutQuote() {
+    if (!cashoutAmountNgn || cashoutAmountNgn <= 0) {
+      setCashoutError("Enter an amount to cash out.");
+      return;
+    }
+    setBusy("cashout-quote");
+    setCashoutError(undefined);
+    try {
+      const quote = await apiRequest<CashoutQuote>("/digital-value/airtime/cashout/quote", {
+        method: "POST",
+        body: JSON.stringify({
+          network: cashoutNetwork,
+          phone: cashoutPhone.trim(),
+          amountMinor: Math.round(cashoutAmountNgn * 100)
+        })
+      });
+      setCashoutQuote(quote);
+    } catch (caught) {
+      setCashoutError(caught instanceof Error ? caught.message : "Could not quote this amount.");
+    } finally {
+      setBusy(undefined);
+    }
+  }
+
+  async function initiateCashout() {
+    if (!cashoutSessionId) return;
+    setBusy("cashout-initiate");
+    setCashoutError(undefined);
+    try {
+      const result = await apiRequest<{ transactionId: string; status: string }>(
+        "/digital-value/airtime/cashout",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            network: cashoutNetwork,
+            phone: cashoutPhone.trim(),
+            amountMinor: Math.round(cashoutAmountNgn * 100),
+            sessionId: cashoutSessionId,
+            ...(cashoutPin.trim() ? { pin: cashoutPin.trim() } : {})
+          })
+        }
+      );
+      setCashoutResult(result);
+    } catch (caught) {
+      setCashoutError(caught instanceof Error ? caught.message : "Could not start the cashout.");
     } finally {
       setBusy(undefined);
     }
@@ -348,6 +473,7 @@ export default function DigitalValuePage() {
         ) : null}
 
         {activeTab === "airtime" ? (
+          <>
           <Panel className="mt-5 p-5">
             <div className="flex items-center gap-2">
               <Smartphone className="size-5 text-[var(--ft-accent)]" />
@@ -379,6 +505,160 @@ export default function DigitalValuePage() {
               </div>
             )}
           </Panel>
+
+          <Panel className="mt-4 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Send className="size-5 text-[var(--ft-accent)]" />
+                <h2 className="text-lg font-semibold">Cash out airtime</h2>
+              </div>
+              {cashoutSessionId ? (
+                <Button onClick={resetCashoutFlow} variant="secondary">
+                  Start over
+                </Button>
+              ) : null}
+            </div>
+
+            {cashoutError ? (
+              <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-text-primary)]">
+                {cashoutError}
+              </div>
+            ) : null}
+
+            {cashoutResult ? (
+              <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3 text-sm text-[var(--ft-text-primary)]">
+                Cashout {cashoutResult.transactionId} is {cashoutResult.status.toLowerCase()}. Payout lands in
+                your wallet once the network confirms.
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
+                    Network
+                    <select
+                      className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                      disabled={busy !== undefined || Boolean(cashoutSessionId)}
+                      onChange={(event) => setCashoutNetwork(event.target.value)}
+                      value={cashoutNetwork}
+                    >
+                      <option value="">Choose a network</option>
+                      {networks.map((network, index) => {
+                        const value = network.code ?? network.id ?? networkLabel(network);
+                        return (
+                          <option key={`${value}-${index}`} value={value}>
+                            {networkLabel(network)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
+                    Phone number
+                    <input
+                      className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                      disabled={busy !== undefined || Boolean(cashoutSessionId)}
+                      onChange={(event) => setCashoutPhone(event.target.value)}
+                      placeholder="080..."
+                      value={cashoutPhone}
+                    />
+                  </label>
+                </div>
+
+                {!cashoutSessionId ? (
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
+                      Verification code
+                      <input
+                        className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                        disabled={busy !== undefined}
+                        onChange={(event) => setCashoutOtp(event.target.value)}
+                        placeholder="Sent to your phone"
+                        value={cashoutOtp}
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <Button
+                        disabled={busy !== undefined || !cashoutNetwork || !cashoutPhone.trim()}
+                        onClick={() => void requestCashoutOtp()}
+                        variant="secondary"
+                      >
+                        {busy === "cashout-otp" ? "Sending..." : "Send code"}
+                      </Button>
+                      <Button disabled={busy !== undefined || !cashoutOtp.trim()} onClick={() => void verifyCashoutOtp()}>
+                        {busy === "cashout-verify" ? "Verifying..." : "Verify"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]">
+                      Verified. Available balance:{" "}
+                      <span className="font-semibold text-[var(--ft-text-primary)]">
+                        {cashoutBalanceNgn !== undefined ? formatNgn(cashoutBalanceNgn * 100) : "—"}
+                      </span>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                      <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
+                        Amount to cash out (NGN)
+                        <input
+                          className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                          disabled={busy !== undefined}
+                          onChange={(event) => setCashoutAmountNgn(Number(event.target.value) || 0)}
+                          type="number"
+                          value={cashoutAmountNgn}
+                        />
+                      </label>
+                      <Button disabled={busy !== undefined} onClick={() => void getCashoutQuote()} variant="secondary">
+                        {busy === "cashout-quote" ? "Quoting..." : "Get quote"}
+                      </Button>
+                    </div>
+
+                    {cashoutQuote ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
+                            <div className="text-xs text-[var(--ft-text-muted)]">Amount</div>
+                            <div className="font-semibold text-[var(--ft-text-primary)]">
+                              {formatNgn(cashoutQuote.amountNgn * 100)}
+                            </div>
+                          </div>
+                          <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
+                            <div className="text-xs text-[var(--ft-text-muted)]">Fee</div>
+                            <div className="font-semibold text-[var(--ft-text-primary)]">
+                              {formatNgn(cashoutQuote.feeNgn * 100)}
+                            </div>
+                          </div>
+                          <div className="rounded-[var(--radius-sm)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3">
+                            <div className="text-xs text-[var(--ft-text-muted)]">You receive</div>
+                            <div className="font-semibold text-[var(--ft-text-primary)]">
+                              {formatNgn(cashoutQuote.payoutNgn * 100)}
+                            </div>
+                          </div>
+                        </div>
+                        <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
+                          PIN (if your network requires one)
+                          <input
+                            className="h-10 max-w-xs rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                            disabled={busy !== undefined}
+                            onChange={(event) => setCashoutPin(event.target.value)}
+                            type="password"
+                            value={cashoutPin}
+                          />
+                        </label>
+                        <div>
+                          <Button disabled={busy !== undefined} onClick={() => void initiateCashout()}>
+                            {busy === "cashout-initiate" ? "Starting..." : "Cash out now"}
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            )}
+          </Panel>
+          </>
         ) : null}
       </div>
     </div>

@@ -17,14 +17,6 @@ const workspaceB: AuthenticatedRequestContext = {
   userId: "user_b"
 };
 
-function requireReference(value: string | undefined, label: string) {
-  if (!value) {
-    throw new Error(`${label} reference was not created.`);
-  }
-
-  return value;
-}
-
 function createTestSupplier(overrides: Partial<SmmSupplierAdapter> = {}): SmmSupplierAdapter {
   return {
     name: "test-smm",
@@ -236,8 +228,8 @@ describe("PlatformService", () => {
       expect(service.listAuditLogs(workspaceA)).toEqual([]);
       expect(await service.search()).toEqual({ query: "", results: [] });
       expect(service.getHealth().providers.smm).toBe("smm-router:none");
-      await expect(service.createSmmOrder(workspaceA, { quantity: 100 })).rejects.toThrow(
-        "No SMM supplier could quote this service."
+      await expect(service.getSmmSupplierBalance()).rejects.toThrow(
+        "No SMM supplier could return a balance."
       );
       await expect(service.quoteCampaign({})).rejects.toThrow("legacy mock provider");
       await expect(service.createCampaign(workspaceA, { name: "Launch" })).rejects.toThrow(
@@ -345,18 +337,6 @@ describe("PlatformService", () => {
         actorUserId: workspaceA.userId
       })
     ]);
-  });
-
-  it("rejects cross-workspace SMM supplier references", async () => {
-    const { service } = createTestService();
-    const order = await service.createSmmOrder(workspaceA, { quantity: 100 });
-    const supplierReference = requireReference(order.supplierReference, "supplier");
-
-    expect(() =>
-      service.getSmmOrderStatuses(workspaceB, {
-        supplierReferences: [supplierReference]
-      })
-    ).toThrow("One or more SMM supplier references do not belong to the active workspace.");
   });
 
   it("rejects protected platform reads without workspace context", async () => {

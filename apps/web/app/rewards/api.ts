@@ -103,3 +103,45 @@ export async function scanQrCode(token: string): Promise<TaskCompletion> {
     body: JSON.stringify({ token })
   });
 }
+
+export type RewardTaskType =
+  | "QR_SCAN"
+  | "REFERRAL"
+  | "FLIPTRYBE_LINK_VISIT"
+  | "TIKTOK_IDENTITY_BIND"
+  | "TIKTOK_VIDEO_PUBLISH"
+  | "CONTENT_MILESTONE"
+  | "MANUAL_PROOF";
+
+export interface CreateRewardCampaignInput {
+  name: string;
+  description?: string;
+  totalSlots: number;
+  rewardProductId: string;
+  rewardValueMinor: number;
+  currency?: string;
+  startsAt: string;
+  endsAt?: string;
+}
+
+export async function createRewardCampaign(input: CreateRewardCampaignInput): Promise<RewardCampaign> {
+  return apiRequest("/rewards/campaigns", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export interface AddRewardTaskInput {
+  taskType: RewardTaskType;
+  label: string;
+  description?: string;
+  sortOrder?: number;
+  required?: boolean;
+}
+
+export async function addRewardTask(campaignId: string, input: AddRewardTaskInput): Promise<RewardTask> {
+  return apiRequest(`/rewards/campaigns/${campaignId}/tasks`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}

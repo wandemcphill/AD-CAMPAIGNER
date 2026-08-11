@@ -226,6 +226,23 @@ export async function loadGrowthData(includeOrders: boolean) {
   };
 }
 
+export type GrowthCategory = { label: string; platform: string; serviceCount: number };
+
+// listGrowthCatalog on the backend is just listGrowthServices() reshaped into
+// categories + the same service list — fetching it here (instead of
+// /growth/services) buys the category groupings for free in one call.
+export async function loadGrowthCatalog() {
+  if (!growthEnabled) {
+    return { categories: [] as GrowthCategory[], services: [] as GrowthService[] };
+  }
+
+  const payload = await apiRequest<{ categories: GrowthCategory[]; services: ApiGrowthService[] }>(
+    "/growth/catalog"
+  );
+
+  return { categories: payload.categories, services: payload.services.map(mapService) };
+}
+
 export async function createGrowthOrder(input: CreateOrderInput) {
   const response = await apiRequest<CreateOrderResponse>("/growth/orders", {
     method: "POST",

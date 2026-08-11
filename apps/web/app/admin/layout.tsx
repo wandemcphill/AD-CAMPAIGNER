@@ -32,13 +32,24 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { loading, session } = useApiSession();
 
-  useEffect(() => {
-    if (!loading && !session) {
-      window.location.replace("/login");
-    }
-  }, [loading, session]);
+  // admin:access comes solely from isPlatformAdmin on the user record — never
+  // from a workspace role (every self-registered user is OWNER of their own
+  // workspace). Gating on `session` alone, as this layout previously did,
+  // exposed the staff console to every authenticated user.
+  const isPlatformAdmin = Boolean(session?.isPlatformAdmin);
 
-  if (loading || !session) {
+  useEffect(() => {
+    if (loading) return;
+    if (!session) {
+      window.location.replace("/login");
+      return;
+    }
+    if (!isPlatformAdmin) {
+      window.location.replace("/os");
+    }
+  }, [loading, session, isPlatformAdmin]);
+
+  if (loading || !session || !isPlatformAdmin) {
     return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
   }
 

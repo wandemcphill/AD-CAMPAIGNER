@@ -9,6 +9,7 @@ import { TabBar } from "@fliptrybe/ui/components";
 import { apiRequest } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
 import { AdminAuthState } from "../ui/admin-auth-state";
+import { FxSettlementOpsTab, SettlementAlertsTab, SettlementBeneficiariesTab } from "./settlement-ops";
 
 type VirtualNumberStatus =
   | "RESERVED"
@@ -184,7 +185,10 @@ const TABS = [
   { id: "reconciliation", label: "Reconciliation" },
   { id: "limits", label: "Purchase Limits" },
   { id: "fx", label: "FX Rate" },
-  { id: "settlements", label: "Settlements" }
+  { id: "settlements", label: "Settlements" },
+  { id: "settlement-alerts", label: "Settlement Alerts" },
+  { id: "beneficiaries", label: "Beneficiaries" },
+  { id: "fx-settlement-ops", label: "FX/Settlement Ops" }
 ];
 
 function formatNaira(amountMinor: number) {
@@ -776,6 +780,8 @@ export default function AdminDigitalProductsPage() {
                 </div>
               )}
             </Panel>
+
+            <FxHealthPanel />
           </div>
         )}
 
@@ -816,7 +822,102 @@ export default function AdminDigitalProductsPage() {
             )}
           </div>
         )}
+
+        {tab === "settlement-alerts" && session ? (
+          <SettlementAlertsTab currentUserId={session.user.id} />
+        ) : null}
+
+        {tab === "beneficiaries" && session ? (
+          <SettlementBeneficiariesTab currentUserId={session.user.id} />
+        ) : null}
+
+        {tab === "fx-settlement-ops" ? <FxSettlementOpsTab /> : null}
       </div>
     </main>
+  );
+}
+
+type FxHealth = {
+  provider: string;
+  healthy: boolean;
+  message?: string;
+  cacheStatus: {
+    pairs: { baseCurrency: string; quoteCurrency: string; isFresh: boolean }[];
+    lastRefreshAt: string;
+  };
+  fallbackStatus: { usingFallback: boolean; reason?: string; manualRateAge: number };
+};
+
+function FxHealthPanel() {
+  const [health, setHealth] = useState<FxHealth>();
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function checkHealth() {
+    setLoading(true);
+    setError(undefined);
+    try {
+      setHealth(await apiRequest<FxHealth>("/admin/digital-products/fx/health"));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not check FX provider health.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshCache() {
+    setRefreshing(true);
+    setError(undefined);
+    try {
+      await apiRequest("/admin/digital-products/fx/refresh", { method: "POST", body: JSON.stringify({}) });
+      await checkHealth();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not refresh the FX rate cache.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <Panel className="p-5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Activity className="size-4 text-[var(--ft-accent)]" />
+          <h2 className="font-semibold">Provider health</h2>
+        </div>
+        <div className="flex gap-2">
+          <Button disabled={loading} onClick={() => void checkHealth()} variant="secondary">
+            <RefreshCcw className="size-4" />
+            Check
+          </Button>
+          <Button disabled={refreshing} onClick={() => void refreshCache()}>
+            {refreshing ? "Refreshing..." : "Refresh cache"}
+          </Button>
+        </div>
+      </div>
+      {error ? <p className="mt-3 text-sm text-[var(--ft-red)]">{error}</p> : null}
+      {health ? (
+        <div className="mt-3 grid gap-2 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--ft-text-muted)]">Provider:</span>
+            <span className="font-medium">{health.provider}</span>
+            <Badge tone={health.healthy ? "success" : "danger"}>{health.healthy ? "healthy" : "unhealthy"}</Badge>
+          </div>
+          {health.fallbackStatus.usingFallback ? (
+            <div className="text-xs text-[var(--ft-yellow)]">
+              Using fallback rate ({health.fallbackStatus.manualRateAge}m old)
+              {health.fallbackStatus.reason ? ` — ${health.fallbackStatus.reason}` : ""}
+            </div>
+          ) : null}
+          {health.message ? <div className="text-xs text-[var(--ft-text-muted)]">{health.message}</div> : null}
+          <div className="text-xs text-[var(--ft-text-muted)]">
+            Cache last refreshed {new Date(health.cacheStatus.lastRefreshAt).toLocaleString()}
+          </div>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-[var(--ft-text-muted)]">Click "Check" to query the live FX provider.</p>
+      )}
+    </Panel>
   );
 }

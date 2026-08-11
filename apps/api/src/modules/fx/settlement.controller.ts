@@ -14,7 +14,17 @@ import type {
 } from "./settlement.dtos";
 import { SettlementService } from "./settlement.service";
 
+// No route here does workspace-scoped ownership checks (they all look up by
+// raw settlementInstructionId with no workspace comparison), and nothing in
+// the live remittance flow (financial-products.service.ts) calls this
+// service — it builds its own provider adapters directly. This controller
+// predates that flow and was left without ANY @RequirePermissions/@Public,
+// which meant AuthorizationGuard's fail-closed default 403'd every request
+// — accidentally safe, but only by luck. Gating explicitly as admin:access
+// (ops-only) rather than opening it to workspace users, since nothing here
+// verifies the caller owns the settlement they're acting on.
 @Controller("v1/settlements")
+@RequirePermissions("admin:access")
 export class SettlementController {
   constructor(@Inject(SettlementService) private readonly settlement: SettlementService) {}
 

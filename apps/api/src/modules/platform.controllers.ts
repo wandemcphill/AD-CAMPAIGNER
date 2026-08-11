@@ -16,12 +16,8 @@ import {
 } from "@nestjs/common";
 
 import type {
-  CreateSmmOrderDto,
   CreateGrowthOrderDto,
-  CreateSupportTicketDto,
   QuoteCampaignDto,
-  SmmSupplierReferenceDto,
-  SmmSupplierReferencesDto,
   UpdateGrowthOrderDto,
   UpdateGrowthServiceDto
 } from "./platform.dtos";
@@ -91,6 +87,26 @@ export class AuthController {
     return this.auth.logout(headers);
   }
 
+  // Both password-reset routes are @Public by necessity — the caller is locked
+  // out. The global ThrottlerGuard is the first line of defence; per-user
+  // issuance limits and enumeration-safe responses live in the service.
+  @Post("password/forgot")
+  @Public()
+  forgotPassword(@Body() body: { identifier?: string }, @Headers() headers: HeaderBag) {
+    const forwardedFor = headers["x-forwarded-for"];
+    const requestIp = (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor)
+      ?.split(",")[0]
+      ?.trim();
+
+    return this.auth.requestPasswordReset(body?.identifier ?? "", requestIp);
+  }
+
+  @Post("password/reset")
+  @Public()
+  resetPassword(@Body() body: { token?: string; password?: string }) {
+    return this.auth.resetPassword(body?.token ?? "", body?.password ?? "");
+  }
+
   @Get("sessions")
   sessions(@Headers() headers: HeaderBag) {
     return this.auth.listSessions(headers);
@@ -104,6 +120,25 @@ export class AuthController {
   @Post("exchange")
   exchange(@Headers() headers: HeaderBag) {
     return this.auth.issueSession(headers);
+  }
+}
+
+@Controller("workspace")
+@RequirePermissions("analytics:read")
+export class WorkspaceController {
+  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+
+  @Get()
+  get(@Req() request: WorkspaceContextRequest) {
+    return this.platform.getWorkspace(workspaceContextFromRequest(request));
+  }
+
+  // team:manage is OWNER/ADMIN only — MANAGER can run campaigns but must not be
+  // able to rename the workspace they operate in.
+  @Patch()
+  @RequirePermissions("team:manage")
+  update(@Body() body: { name?: string }, @Req() request: WorkspaceContextRequest) {
+    return this.platform.updateWorkspace(body, workspaceContextFromRequest(request));
   }
 }
 
@@ -613,35 +648,11 @@ export class SmmController {
     return this.platform.getSmmSupplierHealth();
   }
 
-  @Post("quote")
-  @RequirePermissions("campaign:create")
-  quote(@Body() body: CreateSmmOrderDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.quoteSmmOrder(workspaceContextFromRequest(request), body);
-  }
-
-  @Post("orders")
-  @RequirePermissions("campaign:create")
-  createOrder(@Body() body: CreateSmmOrderDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.createSmmOrder(workspaceContextFromRequest(request), body);
-  }
-
-  @Post("orders/status")
-  @RequirePermissions("campaign:manage")
-  statuses(@Body() body: SmmSupplierReferencesDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.getSmmOrderStatuses(workspaceContextFromRequest(request), body);
-  }
-
-  @Post("orders/refill")
-  @RequirePermissions("campaign:manage")
-  refill(@Body() body: SmmSupplierReferenceDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.requestSmmRefill(workspaceContextFromRequest(request), body);
-  }
-
-  @Post("orders/cancel")
-  @RequirePermissions("campaign:manage")
-  cancel(@Body() body: SmmSupplierReferencesDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.requestSmmCancel(workspaceContextFromRequest(request), body);
-  }
+  // quote / orders / orders/status / orders/refill / orders/cancel were removed
+  // (see platform.service.ts) — they placed real supplier-side orders through
+  // an in-memory smmOrders array with no ledger entry and no persisted row.
+  // Real SMM order placement has always gone through GrowthOrder; see
+  // GrowthController below and migration 20260807070000_drop_dead_smm_order_table.
 }
 
 @Controller("growth")
@@ -824,22 +835,15 @@ export class ReferralsController {
   }
 }
 
-@Controller("support")
-export class SupportController {
-  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
-
-  @Get("tickets")
-  @RequirePermissions("support:manage")
-  listTickets(@Req() request: WorkspaceContextRequest) {
-    return this.platform.listSupportTickets(workspaceContextFromRequest(request));
-  }
-
-  @Post("tickets")
-  @RequirePermissions("analytics:read")
-  createTicket(@Body() body: CreateSupportTicketDto, @Req() request: WorkspaceContextRequest) {
-    return this.platform.createSupportTicket(workspaceContextFromRequest(request), body);
-  }
-}
+// A duplicate SupportController (same class name, different file) already
+// lives in ./support/support.module.ts at the exact same route prefix
+// ("support/tickets") — GET/POST /support/tickets registered from BOTH here
+// and there. It's a genuine route-shadowing conflict, not a deliberate
+// alias: the frontend calls POST /support/tickets/:id/replies, which only
+// exists on the SupportModule version, confirming that's the one actually
+// winning at runtime — this one was dead code, reachable by nothing.
+// Removed rather than left in place, since which controller wins is an
+// accident of module-registration order, not something to depend on.
 
 @Controller("media")
 @RequirePermissions("campaign:manage")

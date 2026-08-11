@@ -2,7 +2,14 @@ import { ConflictException, UnauthorizedException } from "@nestjs/common";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { PrismaService } from "./prisma.service";
+import type { NotificationsService } from "./notifications/notifications.service";
 import { AuthSessionService } from "./auth-session.service";
+
+// AuthSessionService only reaches for notifications on the password-reset path,
+// which these session tests never exercise.
+function stubNotifications() {
+  return { send: () => Promise.resolve([]) } as unknown as NotificationsService;
+}
 
 type UserStatus = "ACTIVE" | "SUSPENDED" | "DELETED";
 
@@ -527,7 +534,7 @@ describe("AuthSessionService", () => {
 
   it("keeps trusted scoped auth headers available for a signed workspace session", async () => {
     const { prisma, sessions } = createPrisma();
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
 
     const issued = await service.issueSession({
       "x-user-id": "user_123",
@@ -556,7 +563,7 @@ describe("AuthSessionService", () => {
 
   it("resolves a default workspace when the authenticated user header is present without workspace scope", async () => {
     const { prisma } = createPrisma();
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
 
     const issued = await service.issueSession({
       "x-user-id": "user_123",
@@ -579,7 +586,7 @@ describe("AuthSessionService", () => {
     const { prisma, users, organizations, workspaces, teamMembers, sessions } = createPrisma({
       seedDefault: false
     });
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
 
     const registered = await service.register(
       {
@@ -619,7 +626,7 @@ describe("AuthSessionService", () => {
 
   it("rejects duplicate registration usernames", async () => {
     const { prisma } = createPrisma({ seedDefault: false });
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
     const body = {
       username: "owner",
       password: "correct-password",
@@ -633,7 +640,7 @@ describe("AuthSessionService", () => {
 
   it("logs in active members with username and password", async () => {
     const { prisma, sessions } = createPrisma({ seedDefault: false });
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
 
     const registered = await service.register(
       {
@@ -662,7 +669,7 @@ describe("AuthSessionService", () => {
 
   it("rejects invalid login passwords", async () => {
     const { prisma } = createPrisma({ seedDefault: false });
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
 
     await service.register(
       {
@@ -680,7 +687,7 @@ describe("AuthSessionService", () => {
 
   it("logs out by revoking the active stored session", async () => {
     const { prisma } = createPrisma({ seedDefault: false });
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
 
     const registered = await service.register(
       {
@@ -701,7 +708,7 @@ describe("AuthSessionService", () => {
 
   it("rejects revoked stored sessions for protected workspace context", async () => {
     const { prisma, sessions } = createPrisma();
-    const service = new AuthSessionService(prisma);
+    const service = new AuthSessionService(prisma, stubNotifications());
 
     const issued = await service.issueSession({
       "x-user-id": "user_123",

@@ -28,6 +28,7 @@ import {
   type HeaderBag,
   type RequestMetadataContext
 } from "./request-context";
+import { NotificationsService } from "./notifications/notifications.service";
 import { decryptTotpSecret, hashBackupCode } from "./security/totp-crypto";
 import { verifyTotp } from "./security/totp";
 
@@ -239,6 +240,20 @@ function normalizeUsername(value: string) {
   return username;
 }
 
+const passwordResetTtlMs = 60 * 60 * 1000;
+const passwordResetRateWindowMs = 15 * 60 * 1000;
+const passwordResetMaxPerWindow = 3;
+
+// Identical for every outcome — see requestPasswordReset.
+const passwordResetAcknowledgement = {
+  ok: true as const,
+  message: "If that account exists and has an email address, a reset link is on its way."
+};
+
+function passwordResetBaseUrl() {
+  return (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+}
+
 function normalizePassword(value: unknown) {
   if (typeof value !== "string") {
     throw new BadRequestException("password is required.");
@@ -332,7 +347,10 @@ function isUniqueConstraintError(error: unknown) {
 
 @Injectable()
 export class AuthSessionService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly notifications: NotificationsService
+  ) {}
 
   async getSession(headers: HeaderBag): Promise<Record<string, unknown> | null> {
     const context = optionalAuthenticatedContextFromHeaders(headers);
@@ -900,6 +918,136 @@ export class AuthSessionService {
       .digest("base64url");
 
     return `${encodedHeader}.${encodedPayload}.${signature}`;
+  }
+
+  // ─── Password reset ─────────────────────────────────────────────────────────
+
+  /**
+   * Issues a single-use reset link. ALWAYS resolves the same way regardless of
+   * whether the identifier matched an account, whether that account has an
+   * email, or whether it was rate limited — anything else turns this endpoint
+   * into an account-enumeration oracle.
+   */
+  async requestPasswordReset(identifier: string, requestIp?: string) {
+    const normalized = identifier.trim().toLowerCase();
+
+    if (!normalized) {
+      throw new BadRequestException("username or email is required.");
+    }
+
+    const user = await this.db.user.findFirst({
+      where: {
+        deletedAt: null,
+        status: "ACTIVE",
+        OR: [{ username: normalized }, { email: normalized }]
+      },
+      select: { id: true, email: true, name: true, displayName: true }
+    });
+
+    // No account, or an account with nowhere to send the link.
+    if (!user?.email) {
+      return passwordResetAcknowledgement;
+    }
+
+    const since = new Date(Date.now() - passwordResetRateWindowMs);
+    const recent = await this.db.passwordResetToken.count({
+      where: { userId: user.id, createdAt: { gte: since } }
+    });
+
+    if (recent >= passwordResetMaxPerWindow) {
+      return passwordResetAcknowledgement;
+    }
+
+    // Outstanding links for this user stop working the moment a newer one is
+    // issued, so a leaked older email cannot be used after a re-request.
+    await this.db.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() }
+    });
+
+    const token = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + passwordResetTtlMs);
+
+    await this.db.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash: hashToken(token),
+        expiresAt,
+        ...(requestIp ? { requestIp } : {})
+      }
+    });
+
+    const resetUrl = `${passwordResetBaseUrl()}/reset-password?token=${encodeURIComponent(token)}`;
+
+    await this.notifications.send({
+      userId: user.id,
+      template: "password_reset",
+      channels: ["EMAIL"],
+      category: "security",
+      priority: "high",
+      idempotencyKey: `password_reset:${hashToken(token)}`,
+      vars: {
+        first_name: user.displayName ?? user.name,
+        reference: resetUrl,
+        status: `${Math.round(passwordResetTtlMs / 60000)} minutes`
+      }
+    });
+
+    return passwordResetAcknowledgement;
+  }
+
+  /**
+   * Consumes a reset token and sets a new password. Every existing session is
+   * revoked: if the reset was triggered because the account was compromised,
+   * leaving the attacker's session alive would defeat the whole exercise.
+   */
+  async resetPassword(token: string, newPassword: string) {
+    const candidate = typeof token === "string" ? token.trim() : "";
+
+    if (!candidate) {
+      throw new BadRequestException("token is required.");
+    }
+
+    const password = normalizePassword(newPassword);
+
+    const record = await this.db.passwordResetToken.findUnique({
+      where: { tokenHash: hashToken(candidate) },
+      select: { id: true, userId: true, expiresAt: true, usedAt: true }
+    });
+
+    // Unknown, already-consumed and expired tokens are deliberately
+    // indistinguishable to the caller.
+    if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException("This reset link is invalid or has expired.");
+    }
+
+    const passwordHash = await createPasswordHash(password);
+    const now = new Date();
+
+    await this.db.$transaction(async (tx) => {
+      // Guarded update: if a concurrent request consumed this token first,
+      // count is 0 and we abort rather than resetting twice.
+      const claimed = await tx.passwordResetToken.updateMany({
+        where: { id: record.id, usedAt: null },
+        data: { usedAt: now }
+      });
+
+      if (claimed.count === 0) {
+        throw new BadRequestException("This reset link is invalid or has expired.");
+      }
+
+      await tx.user.update({
+        where: { id: record.userId },
+        data: { passwordHash }
+      });
+
+      await tx.session.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: now }
+      });
+    });
+
+    return { ok: true as const };
   }
 
   private get db() {

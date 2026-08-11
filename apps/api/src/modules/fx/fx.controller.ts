@@ -36,7 +36,12 @@ export class FxController {
   }
 }
 
+// Same gap as SettlementController (settlement.controller.ts) — no
+// @RequirePermissions/@Public meant this always 403'd via the guard's
+// fail-closed default. Gated admin:access to match the settlement flow it
+// feeds into, which is ops-only for the same reason (see that file's note).
 @Controller("v1/fx")
+@RequirePermissions("admin:access")
 export class FxQuoteController {
   constructor(@Inject(FxService) private readonly fx: FxService) {}
 

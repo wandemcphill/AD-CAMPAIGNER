@@ -2,12 +2,13 @@ import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 
 import { PrismaModule } from "../prisma.module";
 import { AuthSessionService } from "../auth-session.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { WorkspaceContextMiddleware } from "../workspace-context.middleware";
 import { AdminCryptoController, CryptoController } from "./crypto.controller";
 import { CryptoService } from "./crypto.service";
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NotificationsModule],
   controllers: [CryptoController, AdminCryptoController],
   providers: [AuthSessionService, WorkspaceContextMiddleware, CryptoService],
   exports: [CryptoService]

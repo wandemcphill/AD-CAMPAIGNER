@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Camera,
@@ -525,10 +525,16 @@ function ApiKeysTab() {
 
 export default function IntegrationsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { session } = useApiSession();
   const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
   const visibleTabs = isAdmin ? TABS : TABS.filter((tabItem) => tabItem.id === "connected");
-  const [tab, setTab] = useState("connected");
+  // ?tab= makes each section deep-linkable, which is what lets /os/settings/api
+  // redirect straight to the API Keys tab instead of duplicating it.
+  const requestedTab = searchParams.get("tab");
+  const [tab, setTab] = useState(
+    requestedTab && TABS.some((tabItem) => tabItem.id === requestedTab) ? requestedTab : "connected"
+  );
 
   useEffect(() => {
     if (session && !isAdmin) {

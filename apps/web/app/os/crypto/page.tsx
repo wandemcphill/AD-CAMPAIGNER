@@ -10,9 +10,11 @@ import { EmptyState, LoadingBlock } from "../../campaigns/components";
 import {
   createDepositAddress,
   loadAssets,
+  loadCryptoRate,
   loadDepositAddress,
   loadTransactions,
   type CryptoAsset,
+  type CryptoRate,
   type CryptoTransaction,
   type DepositAddress
 } from "./crypto-api";
@@ -30,6 +32,9 @@ export default function CryptoPage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string>();
   const [copied, setCopied] = useState(false);
+  const [rateAmount, setRateAmount] = useState("1");
+  const [rate, setRate] = useState<CryptoRate>();
+  const [rateLoading, setRateLoading] = useState(false);
 
   const refreshTransactions = useCallback(async () => {
     try {
@@ -57,6 +62,22 @@ export default function CryptoPage() {
       .then(setDepositAddress)
       .catch(() => setDepositAddress(null));
   }, [selectedAsset]);
+
+  useEffect(() => {
+    const amount = Number(rateAmount);
+    if (!selectedAsset || !Number.isFinite(amount) || amount <= 0) {
+      setRate(undefined);
+      return;
+    }
+    const handle = setTimeout(() => {
+      setRateLoading(true);
+      void loadCryptoRate(selectedAsset, amount)
+        .then(setRate)
+        .catch(() => setRate(undefined))
+        .finally(() => setRateLoading(false));
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [selectedAsset, rateAmount]);
 
   async function generateAddress() {
     if (!selectedAsset) return;
@@ -123,6 +144,35 @@ export default function CryptoPage() {
                   {selectedAssetInfo.defaultNetwork}
                 </p>
               )}
+
+              <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
+                <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
+                  Estimate payout for
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    className="h-9 w-28 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-2 text-sm outline-none focus:border-[var(--ft-accent)]"
+                    inputMode="decimal"
+                    onChange={(e) => setRateAmount(e.target.value)}
+                    value={rateAmount}
+                  />
+                  <span className="text-sm text-[var(--ft-text-secondary)]">
+                    {selectedAssetInfo?.symbol.toUpperCase()}
+                  </span>
+                  {rateLoading ? (
+                    <span className="text-xs text-[var(--ft-text-muted)]">Checking rate...</span>
+                  ) : rate ? (
+                    <span className="ml-auto text-sm font-semibold text-[var(--ft-text-primary)]">
+                      ≈ {formatNaira(rate.ngnAmountMinor)}
+                    </span>
+                  ) : null}
+                </div>
+                {rate ? (
+                  <p className="mt-1 text-xs text-[var(--ft-text-muted)]">
+                    Rate ₦{rate.usdNgnRate.toLocaleString()}/USD · fee {formatNaira(rate.feeNgnMinor)}
+                  </p>
+                ) : null}
+              </div>
 
               {depositAddress ? (
                 <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4">

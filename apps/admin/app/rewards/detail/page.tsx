@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle, RefreshCw, Trophy, XCircle } from "lucide-react";
+import { CheckCircle, Copy, QrCode, RefreshCw, ShieldCheck, Trophy, XCircle } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
@@ -17,6 +17,15 @@ interface TaskCompletion {
   participant: {
     user: { name: string; displayName?: string; email?: string };
   };
+}
+
+interface RewardQrCode {
+  id: string;
+  token: string;
+  maxScans: number;
+  scanCount: number;
+  expiresAt: string;
+  taskId: string;
 }
 
 interface CampaignDetail {
@@ -52,6 +61,17 @@ function AdminCampaignDetailContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [resolving, setResolving] = useState<string>();
+  const [qrCodes, setQrCodes] = useState<RewardQrCode[]>([]);
+  const [qrTaskId, setQrTaskId] = useState("");
+  const [qrCount, setQrCount] = useState("10");
+  const [qrExpiresAt, setQrExpiresAt] = useState("");
+  const [qrGenerating, setQrGenerating] = useState(false);
+  const [qrError, setQrError] = useState<string>();
+  const [entitlementId, setEntitlementId] = useState("");
+  const [entitlementReason, setEntitlementReason] = useState("");
+  const [entitlementBusy, setEntitlementBusy] = useState<"FULFILLED" | "REVERSED">();
+  const [entitlementError, setEntitlementError] = useState<string>();
+  const [entitlementSuccess, setEntitlementSuccess] = useState<string>();
 
   const refresh = useCallback(async () => {
     if (!campaignId) {
@@ -61,16 +81,20 @@ function AdminCampaignDetailContent() {
     }
     setError(undefined);
     try {
-      const [campaignData, reviewData] = await Promise.all([
+      const [campaignData, reviewData, qrData] = await Promise.all([
         apiRequest<{ campaigns: CampaignDetail[] }>(`/admin/rewards/campaigns`).then(
           (r) => r.campaigns?.find((c) => c.id === campaignId) ?? null
         ),
-        apiRequest<{ completions: TaskCompletion[] }>("/admin/rewards/review-queue")
+        apiRequest<{ completions: TaskCompletion[] }>("/admin/rewards/review-queue"),
+        apiRequest<RewardQrCode[]>(`/admin/rewards/campaigns/${encodeURIComponent(campaignId)}/qr-codes`).catch(
+          () => [] as RewardQrCode[]
+        )
       ]);
       setCampaign(campaignData);
       setReviewQueue(
         reviewData.completions.filter((c) => c.task?.campaign?.id === campaignId)
       );
+      setQrCodes(qrData);
     } catch {
       setError("Could not load campaign details.");
     } finally {
@@ -94,6 +118,60 @@ function AdminCampaignDetailContent() {
       alert(err instanceof Error ? err.message : "Could not resolve completion.");
     } finally {
       setResolving(undefined);
+    }
+  }
+
+  async function generateQrCodes() {
+    const count = Number(qrCount);
+    if (!qrTaskId || !Number.isFinite(count) || count < 1 || !qrExpiresAt) {
+      setQrError("Choose a QR_SCAN task, a code count, and an expiry date.");
+      return;
+    }
+    setQrGenerating(true);
+    setQrError(undefined);
+    try {
+      await apiRequest(`/admin/rewards/campaigns/${encodeURIComponent(campaignId)}/qr-codes`, {
+        method: "POST",
+        body: JSON.stringify({
+          taskId: qrTaskId,
+          count,
+          expiresAt: new Date(qrExpiresAt).toISOString()
+        })
+      });
+      await refresh();
+    } catch (caught) {
+      setQrError(caught instanceof Error ? caught.message : "Could not generate QR codes.");
+    } finally {
+      setQrGenerating(false);
+    }
+  }
+
+  function copyToken(token: string) {
+    void navigator.clipboard.writeText(token);
+  }
+
+  async function resolveEntitlement(resolution: "FULFILLED" | "REVERSED") {
+    const id = entitlementId.trim();
+    if (!id) return;
+    setEntitlementBusy(resolution);
+    setEntitlementError(undefined);
+    setEntitlementSuccess(undefined);
+    try {
+      await apiRequest(`/admin/rewards/entitlements/${encodeURIComponent(id)}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({
+          resolution,
+          ...(entitlementReason.trim() ? { reason: entitlementReason.trim() } : {})
+        })
+      });
+      setEntitlementSuccess(`Entitlement ${resolution === "FULFILLED" ? "marked fulfilled" : "reversed"}.`);
+      setEntitlementId("");
+      setEntitlementReason("");
+      await refresh();
+    } catch (caught) {
+      setEntitlementError(caught instanceof Error ? caught.message : "Could not resolve this entitlement.");
+    } finally {
+      setEntitlementBusy(undefined);
     }
   }
 
@@ -135,6 +213,116 @@ function AdminCampaignDetailContent() {
             <p className="text-sm text-muted-foreground">No tasks added yet.</p>
           )}
         </div>
+      </Panel>
+
+      {/* QR codes — only meaningful when the campaign has a QR_SCAN task */}
+      {campaign.tasks.some((task) => task.taskType === "QR_SCAN") ? (
+        <Panel>
+          <div className="flex items-center gap-2">
+            <QrCode className="h-5 w-5" />
+            <h2 className="font-semibold">QR codes</h2>
+          </div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+            <select
+              className="h-9 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 text-sm"
+              onChange={(event) => setQrTaskId(event.target.value)}
+              value={qrTaskId}
+            >
+              <option value="">Choose a QR_SCAN task</option>
+              {campaign.tasks
+                .filter((task) => task.taskType === "QR_SCAN")
+                .map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.label}
+                  </option>
+                ))}
+            </select>
+            <input
+              className="h-9 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 text-sm"
+              onChange={(event) => setQrCount(event.target.value)}
+              placeholder="Count"
+              type="number"
+              value={qrCount}
+            />
+            <input
+              className="h-9 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 text-sm"
+              onChange={(event) => setQrExpiresAt(event.target.value)}
+              type="date"
+              value={qrExpiresAt}
+            />
+            <Button disabled={qrGenerating} onClick={() => void generateQrCodes()}>
+              {qrGenerating ? "Generating..." : "Generate"}
+            </Button>
+          </div>
+          {qrError ? <p className="mt-2 text-sm text-destructive">{qrError}</p> : null}
+
+          <div className="mt-4 grid gap-1.5">
+            {qrCodes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No QR codes generated yet.</p>
+            ) : (
+              qrCodes.map((code) => (
+                <div className="flex items-center gap-3 rounded-md border border-[var(--ft-border)] p-2 text-xs" key={code.id}>
+                  <code className="flex-1 truncate font-mono">{code.token}</code>
+                  <span className="text-muted-foreground">
+                    {code.scanCount}/{code.maxScans} scanned
+                  </span>
+                  <span className="text-muted-foreground">
+                    expires {new Date(code.expiresAt).toLocaleDateString()}
+                  </span>
+                  <button onClick={() => copyToken(code.token)} title="Copy token" type="button">
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </Panel>
+      ) : null}
+
+      {/* Entitlement resolution — no listing endpoint exists for pending
+          entitlements (only the total count, via _count.entitlements below),
+          so this resolves by ID the same way the settlement refund-approval
+          panel does. */}
+      <Panel>
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5" />
+          <h2 className="font-semibold">Resolve entitlement</h2>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Marks a specific reward entitlement fulfilled (the reward was delivered) or reversed
+          (delivery failed or was denied). Find the entitlement ID from the participant's record.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-4">
+          <input
+            className="h-9 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 text-sm"
+            onChange={(event) => setEntitlementId(event.target.value)}
+            placeholder="Entitlement ID"
+            value={entitlementId}
+          />
+          <input
+            className="h-9 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 text-sm sm:col-span-2"
+            onChange={(event) => setEntitlementReason(event.target.value)}
+            placeholder="Reason (optional)"
+            value={entitlementReason}
+          />
+          <div className="flex gap-2">
+            <Button
+              disabled={!entitlementId.trim() || entitlementBusy !== undefined}
+              onClick={() => void resolveEntitlement("FULFILLED")}
+            >
+              {entitlementBusy === "FULFILLED" ? "Saving..." : "Fulfilled"}
+            </Button>
+            <Button
+              disabled={!entitlementId.trim() || entitlementBusy !== undefined}
+              onClick={() => void resolveEntitlement("REVERSED")}
+              variant="secondary"
+            >
+              {entitlementBusy === "REVERSED" ? "Saving..." : "Reverse"}
+            </Button>
+          </div>
+        </div>
+        {entitlementSuccess ? <p className="mt-2 text-sm text-green-600">{entitlementSuccess}</p> : null}
+        {entitlementError ? <p className="mt-2 text-sm text-destructive">{entitlementError}</p> : null}
       </Panel>
 
       {/* Manual review queue */}

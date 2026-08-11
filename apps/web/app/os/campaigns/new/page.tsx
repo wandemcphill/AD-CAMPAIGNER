@@ -35,7 +35,12 @@ import {
 } from "@fliptrybe/ui";
 import type { Campaign, CampaignObjective, CurrencyCode, DestinationKind } from "@fliptrybe/types";
 
-import { amountToMinor, createCampaign, formatCampaignMoney } from "../../../campaigns/api";
+import {
+  amountToMinor,
+  createCampaign,
+  formatCampaignMoney,
+  submitCampaign as submitCampaignForReview
+} from "../../../campaigns/api";
 import {
   EmptyState,
   ErrorNotice,
@@ -580,9 +585,25 @@ export default function NewCampaignPage() {
       if (!payload.budgetMinor) {
         throw new Error("Budget must be greater than zero.");
       }
+      // POST /campaigns only ever creates a DRAFT — it does not notify the ops
+      // team. The actual "send to team" action is /campaigns/:id/submit, which
+      // moves it into PENDING_REVIEW (or REJECTED, if risk controls block it;
+      // either way it returns normally, it does not throw). Skipping this call
+      // silently strands every brief in DRAFT with no review ever triggered.
       const created = await createCampaign(payload);
       window.localStorage.removeItem(wizardStepStorageKey);
-      setCreatedCampaign(created);
+
+      try {
+        const submitted = await submitCampaignForReview(created.id, { reason: "Submitted from Studio wizard" });
+        setCreatedCampaign(submitted);
+      } catch {
+        // The campaign row exists (as DRAFT) even though the submit call
+        // failed — say so, rather than implying nothing was saved.
+        setCreatedCampaign(created);
+        setFormError(
+          "Your campaign was saved as a draft, but we could not send it to the team just now. Open it from your campaigns list to try submitting again."
+        );
+      }
     } catch {
       setFormError("We could not send this brief right now. Your draft is still here, so try again in a moment.");
     } finally {
@@ -796,15 +817,26 @@ export default function NewCampaignPage() {
             <div className="grid gap-6 p-5">
               <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] pb-5">
                 <div>
-                  <div className="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-green)]/40 bg-[var(--ft-green-subtle)] px-2 py-1 font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-green)]">
+                  <div
+                    className={cn(
+                      "inline-flex items-center gap-2 rounded-[var(--radius-sm)] border px-2 py-1 font-mono text-[11px] uppercase tracking-[0.04em]",
+                      createdCampaign.status === "REJECTED"
+                        ? "border-[var(--ft-red)]/40 bg-[var(--ft-red-subtle)] text-[var(--ft-red)]"
+                        : "border-[var(--ft-green)]/40 bg-[var(--ft-green-subtle)] text-[var(--ft-green)]"
+                    )}
+                  >
                     <CheckCircle2 className="size-4 stroke-[1.5]" />
-                    Brief received
+                    {createdCampaign.status === "REJECTED" ? "Brief blocked" : "Brief received"}
                   </div>
                   <h2 className="mt-4 text-2xl font-semibold text-[var(--ft-text-primary)]">
-                    Our team has your campaign brief.
+                    {createdCampaign.status === "REJECTED"
+                      ? "This brief was blocked by our risk controls."
+                      : "Our team has your campaign brief."}
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
-                    Brief sent. Your campaign is now in review with the Fliptrybe team. We'll confirm your campaign plan within 1 business day and send you an invoice to fund your campaign.
+                    {createdCampaign.status === "REJECTED"
+                      ? "Nothing was charged. Open the campaign to see the reason, then get in touch or adjust the brief and resubmit."
+                      : "Brief sent. Your campaign is now in review with the Fliptrybe team. We'll confirm your campaign plan within 1 business day and send you an invoice to fund your campaign."}
                   </p>
                 </div>
                 <Rocket className="hidden size-6 stroke-[1.5] text-[var(--ft-accent)] sm:block" />

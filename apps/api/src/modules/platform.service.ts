@@ -31,7 +31,6 @@ import {
   calculateSmmPrice,
   calculateGrowthDeliveredQuantity,
   createSmmSupplierAudit,
-  createSmmFulfillmentQueueJob,
   createSmmServiceHealthMonitor,
   defaultGrowthServicesCatalog,
   defaultSmmPricingRules,
@@ -63,11 +62,8 @@ import {
 import type {
   CreateCampaignDto,
   CreateGrowthOrderDto,
-  CreateSmmOrderDto,
   CreateSupportTicketDto,
   QuoteCampaignDto,
-  SmmSupplierReferenceDto,
-  SmmSupplierReferencesDto,
   UpdateGrowthOrderDto,
   UpdateGrowthServiceDto
 } from "./platform.dtos";
@@ -434,6 +430,65 @@ export class PlatformService {
         smmPricingRules: defaultSmmPricingRules.length
       }
     };
+  }
+
+  async getWorkspace(context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const workspace = await this.db.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        defaultCurrency: true,
+        organizationId: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    if (!workspace) {
+      throw new NotFoundException("Workspace was not found.");
+    }
+
+    return workspace;
+  }
+
+  // Only `name` is editable. `defaultCurrency` is deliberately NOT settable
+  // here: wallets, ledger entries and every minor-unit amount already recorded
+  // are denominated in it, so changing it after the fact would silently
+  // reinterpret existing balances. It needs its own migration path, not a
+  // settings input.
+  async updateWorkspace(input: { name?: string }, context?: AuthenticatedRequestContext) {
+    const scope = requireWorkspaceContext(context);
+    const existing = await this.db.workspace.findFirst({
+      where: { id: scope.workspaceId, deletedAt: null },
+      select: { id: true }
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Workspace was not found.");
+    }
+
+    const name = input.name?.trim();
+
+    if (name !== undefined) {
+      if (name.length < 2 || name.length > 80) {
+        throw new BadRequestException("Workspace name must be between 2 and 80 characters.");
+      }
+    }
+
+    return this.db.workspace.update({
+      where: { id: existing.id },
+      data: { ...(name === undefined ? {} : { name }) },
+      select: {
+        id: true,
+        name: true,
+        defaultCurrency: true,
+        organizationId: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
   }
 
   async listOrganizations(context?: AuthenticatedRequestContext) {
@@ -823,58 +878,12 @@ export class PlatformService {
     ];
   }
 
-  async createSmmOrder(context: AuthenticatedRequestContext | undefined, input: CreateSmmOrderDto) {
-    const scope = requireWorkspaceContext(context);
-    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(
-      scope,
-      input
-    );
-
-    if (fraudAssessment.action === "BLOCK") {
-      throw new BadRequestException({
-        message: "SMM order blocked by fraud controls.",
-        fraudAssessment
-      });
-    }
-
-    const result = await this.smmSupplier.createOrder(order);
-    const readyOrder = {
-      ...order,
-      supplierReference: result.supplierReference,
-      status: result.status
-    };
-
-    this.smmOrders.unshift(readyOrder);
-    this.pushEvent(
-      createEvent({
-        name: "SMMOrderCreated",
-        tenantId: scope.workspaceId,
-        payload: { order: readyOrder }
-      })
-    );
-
-    return {
-      ...readyOrder,
-      pricing: pricedQuote,
-      fraudAssessment,
-      queueJob
-    };
-  }
-
-  async quoteSmmOrder(context: AuthenticatedRequestContext | undefined, input: CreateSmmOrderDto) {
-    const scope = requireWorkspaceContext(context);
-    const { fraudAssessment, order, pricedQuote, queueJob } = await this.prepareSmmOrder(
-      scope,
-      input
-    );
-
-    return {
-      order,
-      pricing: pricedQuote,
-      fraudAssessment,
-      queueJob
-    };
-  }
+  // createSmmOrder / quoteSmmOrder were removed together with the /smm/quote
+  // and /smm/orders routes — they placed real supplier orders through
+  // this.smmOrders (an in-memory array), with no ledger entry and no
+  // persisted row. GrowthOrder is the only real order-placement path;
+  // see createGrowthOrder below and
+  // migration 20260807070000_drop_dead_smm_order_table.
 
   listSmmServices() {
     const labels = {
@@ -917,53 +926,8 @@ export class PlatformService {
     };
   }
 
-  getSmmOrderStatuses(
-    context: AuthenticatedRequestContext | undefined,
-    input: SmmSupplierReferencesDto
-  ) {
-    const scope = requireWorkspaceContext(context);
-    const supplierReferences =
-      input.supplierReferences?.filter(Boolean) ??
-      this.smmOrders
-        .filter((order) => order.workspaceId === scope.workspaceId)
-        .map((order) => order.supplierReference)
-        .filter((reference): reference is string => Boolean(reference));
-    this.assertSmmReferencesBelongToWorkspace(scope, supplierReferences);
-
-    if (supplierReferences.length === 0) {
-      throw new BadRequestException("At least one SMM supplier reference is required.");
-    }
-
-    return this.smmSupplier.getOrderStatuses(supplierReferences);
-  }
-
-  requestSmmRefill(
-    context: AuthenticatedRequestContext | undefined,
-    input: SmmSupplierReferenceDto
-  ) {
-    const scope = requireWorkspaceContext(context);
-    if (!input.supplierReference) {
-      throw new BadRequestException("SMM supplier reference is required.");
-    }
-    this.assertSmmReferencesBelongToWorkspace(scope, [input.supplierReference]);
-
-    return this.smmSupplier.requestRefill(input.supplierReference);
-  }
-
-  requestSmmCancel(
-    context: AuthenticatedRequestContext | undefined,
-    input: SmmSupplierReferencesDto
-  ) {
-    const scope = requireWorkspaceContext(context);
-    const supplierReferences = input.supplierReferences?.filter(Boolean) ?? [];
-
-    if (supplierReferences.length === 0) {
-      throw new BadRequestException("At least one SMM supplier reference is required.");
-    }
-    this.assertSmmReferencesBelongToWorkspace(scope, supplierReferences);
-
-    return this.smmSupplier.requestCancel(supplierReferences);
-  }
+  // getSmmOrderStatuses / requestSmmRefill / requestSmmCancel were removed
+  // together — see the note above createGrowthOrder-adjacent listSmmServices.
 
   private listBaseGrowthServices(options?: { includeDisabled?: boolean }) {
     return this.growthServices
@@ -2236,24 +2200,6 @@ export class PlatformService {
     return {};
   }
 
-  private assertSmmReferencesBelongToWorkspace(
-    context: AuthenticatedRequestContext,
-    supplierReferences: string[]
-  ) {
-    const blockedReferences = supplierReferences.filter((reference) =>
-      this.smmOrders.some(
-        (order) =>
-          order.supplierReference === reference && order.workspaceId !== context.workspaceId
-      )
-    );
-
-    if (blockedReferences.length > 0) {
-      throw new BadRequestException(
-        "One or more SMM supplier references do not belong to the active workspace."
-      );
-    }
-  }
-
   private async requireGrowthService(
     serviceCode?: string,
     options?: { includeDisabled?: boolean }
@@ -2382,53 +2328,6 @@ export class PlatformService {
       }
       // Status refresh is best-effort; order pages should keep their last known lifecycle state.
     }
-  }
-
-  private async prepareSmmOrder(context: AuthenticatedRequestContext, input: CreateSmmOrderDto) {
-    const timestamp = now();
-    const order: SmmOrder = {
-      id: id("smm"),
-      workspaceId: context.workspaceId,
-      serviceKind: input.serviceKind ?? "FOLLOWERS",
-      destination: {
-        kind: input.destinationKind ?? "INSTAGRAM_PROFILE",
-        url: input.destinationUrl ?? "https://instagram.com/fliptrybe"
-      },
-      quantity: input.quantity ?? 1000,
-      status: "QUEUED",
-      createdAt: timestamp,
-      updatedAt: timestamp
-    };
-    const quote = await this.smmSupplier.quoteService({
-      serviceKind: order.serviceKind,
-      quantity: order.quantity,
-      destination: order.destination
-    });
-    const pricedQuote = calculateSmmPrice({
-      quote,
-      serviceKind: order.serviceKind
-    });
-    const fraudAssessment = assessSmmOrderFraud({
-      order,
-      quote,
-      recentOrders: this.smmOrders.filter(
-        (recentOrder) => recentOrder.workspaceId === context.workspaceId
-      )
-    });
-    const queueJob = createSmmFulfillmentQueueJob({
-      order,
-      pricedQuote,
-      fraudAssessment,
-      enqueuedAt: timestamp
-    });
-
-    return {
-      order,
-      quote,
-      pricedQuote,
-      fraudAssessment,
-      queueJob
-    };
   }
 
   private seedCampaign(

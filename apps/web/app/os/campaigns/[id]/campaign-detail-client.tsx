@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock,
   FileText,
+  ImageOff,
   LinkIcon,
   MessageSquare,
   Minus,
@@ -15,7 +16,9 @@ import {
   Plus,
   RefreshCw,
   ReceiptText,
+  Send,
   Square,
+  Star,
   UploadCloud,
   WalletCards,
   type LucideIcon
@@ -36,17 +39,31 @@ import {
 import type { Campaign, CampaignBudgetSummary, CampaignLedgerEntry, CampaignSpendBreakdown } from "@fliptrybe/types";
 
 import {
+  addCampaignNote,
   amountToMinor,
+  captureCampaignBudgetHold,
+  createCampaignBudgetHold,
+  createCampaignInvoice,
   decreaseCampaignBudget,
   formatCampaignMoney,
   formatCompact,
   formatDateTime,
   increaseCampaignBudget,
+  loadCampaignAssets,
   loadCampaignFinancialData,
+  loadCampaignNotes,
+  loadCampaignOutcome,
+  loadCampaignReports,
   pauseCampaign,
+  releaseCampaignBudgetHold,
   requestCampaignChanges,
   resumeCampaign,
-  stopCampaign
+  stopCampaign,
+  type CampaignAsset,
+  type CampaignBudgetHold,
+  type CampaignNote,
+  type CampaignOutcome,
+  type CampaignPublishedReport
 } from "../../../campaigns/api";
 import {
   EmptyState,
@@ -148,6 +165,22 @@ const defaultFinancialState: CampaignFinancialState = {
   ledger: [],
   loading: false,
   spendBreakdown: null
+};
+
+type CampaignDetailExtras = {
+  assets: CampaignAsset[];
+  loading: boolean;
+  notes: CampaignNote[];
+  outcome: CampaignOutcome;
+  reports: CampaignPublishedReport[];
+};
+
+const defaultExtrasState: CampaignDetailExtras = {
+  assets: [],
+  loading: false,
+  notes: [],
+  outcome: null,
+  reports: []
 };
 
 function platformFromDestination(kind: string) {
@@ -317,6 +350,197 @@ function budgetProgress(summary: CampaignBudgetSummary) {
   }
 
   return Math.min(100, Math.round((summary.fundsUsed.amountMinor / summary.totalBudget.amountMinor) * 100));
+}
+
+// payment:manage-gated — OWNER/ADMIN/FINANCE roles. No frontend role check,
+// matching the increase/decrease-budget actions already on this page; the
+// backend enforces the permission and this panel surfaces whatever error
+// comes back. Hold IDs aren't returned by any list endpoint, so they're
+// derived from campaignBudgetHoldId on the already-loaded ledger — the same
+// data source campaign-budget-summary itself is built from.
+function CampaignFinanceOpsPanel({
+  campaign,
+  financial,
+  onChanged
+}: {
+  campaign: Campaign;
+  financial: CampaignFinancialState;
+  onChanged: () => Promise<void>;
+}) {
+  const [invoiceAmount, setInvoiceAmount] = useState("");
+  const [invoicing, setInvoicing] = useState(false);
+  const [invoiceError, setInvoiceError] = useState<string>();
+  const [invoiceSuccess, setInvoiceSuccess] = useState<string>();
+
+  const [holdAmount, setHoldAmount] = useState("");
+  const [holdReason, setHoldReason] = useState("");
+  const [creatingHold, setCreatingHold] = useState(false);
+  const [holdError, setHoldError] = useState<string>();
+  const [holdBusyId, setHoldBusyId] = useState<string>();
+  const [holdOverrides, setHoldOverrides] = useState<Record<string, CampaignBudgetHold>>({});
+
+  const holdIds = Array.from(
+    new Set(financial.ledger.map((entry) => entry.campaignBudgetHoldId).filter((id): id is string => Boolean(id)))
+  );
+
+  async function handleCreateInvoice() {
+    setInvoicing(true);
+    setInvoiceError(undefined);
+    setInvoiceSuccess(undefined);
+    try {
+      const amountMinor = invoiceAmount.trim() ? amountToMinor(invoiceAmount) : undefined;
+      const invoice = await createCampaignInvoice(campaign.id, {
+        ...(amountMinor ? { subtotalMinor: amountMinor } : {})
+      });
+      setInvoiceSuccess(`Invoice ${invoice.number} issued for ${formatCampaignMoney({ amountMinor: invoice.totalMinor, currency: invoice.currency })}.`);
+      setInvoiceAmount("");
+      await onChanged();
+    } catch (caught) {
+      setInvoiceError(caught instanceof Error ? caught.message : "Could not create this invoice.");
+    } finally {
+      setInvoicing(false);
+    }
+  }
+
+  async function handleCreateHold() {
+    setCreatingHold(true);
+    setHoldError(undefined);
+    try {
+      const amountMinor = holdAmount.trim() ? amountToMinor(holdAmount) : undefined;
+      await createCampaignBudgetHold(campaign.id, {
+        ...(amountMinor ? { amountMinor } : {}),
+        ...(holdReason.trim() ? { reason: holdReason.trim() } : {})
+      });
+      setHoldAmount("");
+      setHoldReason("");
+      await onChanged();
+    } catch (caught) {
+      setHoldError(caught instanceof Error ? caught.message : "Could not create this budget hold.");
+    } finally {
+      setCreatingHold(false);
+    }
+  }
+
+  async function handleHoldAction(holdId: string, action: "capture" | "release") {
+    setHoldBusyId(holdId);
+    setHoldError(undefined);
+    try {
+      const updated =
+        action === "capture"
+          ? await captureCampaignBudgetHold(campaign.id, holdId)
+          : await releaseCampaignBudgetHold(campaign.id, holdId);
+      setHoldOverrides((current) => ({ ...current, [holdId]: updated }));
+      await onChanged();
+    } catch (caught) {
+      setHoldError(caught instanceof Error ? caught.message : `Could not ${action} this hold.`);
+    } finally {
+      setHoldBusyId(undefined);
+    }
+  }
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="border-b border-[var(--ft-border)] p-5">
+        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          Finance ops
+        </div>
+        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
+          Invoicing &amp; budget holds
+        </h2>
+        <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
+          Restricted to workspace owners, admins, and finance. Everyone else will see a permission
+          error if they try these.
+        </p>
+      </div>
+
+      <div className="grid gap-5 p-5 lg:grid-cols-2">
+        <div className="grid gap-3">
+          <h3 className="text-sm font-medium text-[var(--ft-text-primary)]">Issue invoice</h3>
+          <input
+            className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)] focus:ring-2 focus:ring-[var(--ft-accent)]"
+            inputMode="decimal"
+            onChange={(event) => setInvoiceAmount(event.target.value)}
+            placeholder={`NGN amount (defaults to campaign budget)`}
+            value={invoiceAmount}
+          />
+          <Button disabled={invoicing} onClick={() => void handleCreateInvoice()} type="button">
+            {invoicing ? "Issuing..." : "Issue invoice"}
+          </Button>
+          {invoiceSuccess ? (
+            <div className="rounded-[var(--radius-sm)] border border-[var(--ft-green)]/35 bg-[var(--ft-green-subtle)] p-3 text-sm text-[var(--ft-green)]">
+              {invoiceSuccess}
+            </div>
+          ) : null}
+          {invoiceError ? <ErrorNotice message={invoiceError} /> : null}
+        </div>
+
+        <div className="grid gap-3">
+          <h3 className="text-sm font-medium text-[var(--ft-text-primary)]">Create budget hold</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)] focus:ring-2 focus:ring-[var(--ft-accent)]"
+              inputMode="decimal"
+              onChange={(event) => setHoldAmount(event.target.value)}
+              placeholder="NGN amount"
+              value={holdAmount}
+            />
+            <input
+              className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)] focus:ring-2 focus:ring-[var(--ft-accent)]"
+              onChange={(event) => setHoldReason(event.target.value)}
+              placeholder="Reason (optional)"
+              value={holdReason}
+            />
+          </div>
+          <Button disabled={creatingHold} onClick={() => void handleCreateHold()} type="button" variant="secondary">
+            {creatingHold ? "Creating..." : "Create hold"}
+          </Button>
+
+          {holdIds.length > 0 ? (
+            <div className="mt-2 grid gap-2">
+              <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                Existing holds
+              </h4>
+              {holdIds.map((holdId) => {
+                const override = holdOverrides[holdId];
+                return (
+                  <div
+                    className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-2 text-xs"
+                    key={holdId}
+                  >
+                    <code className="truncate font-mono text-[var(--ft-text-secondary)]">{holdId}</code>
+                    <span className="shrink-0 text-[var(--ft-text-muted)]">
+                      {override ? override.status.toLowerCase() : ""}
+                    </span>
+                    <div className="flex shrink-0 gap-1.5">
+                      <Button
+                        className="h-7 px-2 text-[11px]"
+                        disabled={holdBusyId !== undefined}
+                        onClick={() => void handleHoldAction(holdId, "capture")}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {holdBusyId === holdId ? "..." : "Capture"}
+                      </Button>
+                      <Button
+                        className="h-7 px-2 text-[11px]"
+                        disabled={holdBusyId !== undefined}
+                        onClick={() => void handleHoldAction(holdId, "release")}
+                        type="button"
+                        variant="secondary"
+                      >
+                        {holdBusyId === holdId ? "..." : "Release"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+          {holdError ? <ErrorNotice message={holdError} /> : null}
+        </div>
+      </div>
+    </Panel>
+  );
 }
 
 function CampaignBudgetTransparency({
@@ -794,6 +1018,228 @@ function buildActivityEvents(campaign: Campaign): ActivityEvent[] {
   return events.reverse();
 }
 
+function CampaignNotesPanel({
+  campaignId,
+  loading,
+  notes,
+  onAdded
+}: {
+  campaignId: string;
+  loading: boolean;
+  notes: CampaignNote[];
+  onAdded: (note: CampaignNote) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string>();
+
+  async function handleSend() {
+    const body = draft.trim();
+    if (!body) return;
+
+    setSending(true);
+    setError(undefined);
+    try {
+      const note = await addCampaignNote(campaignId, body);
+      onAdded(note);
+      setDraft("");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not send this note.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="border-b border-[var(--ft-border)] p-5">
+        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          Notes
+        </div>
+        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Messages with your team</h2>
+        <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
+          Anything you add here is visible to the Fliptrybe ops team working on this campaign.
+        </p>
+      </div>
+
+      <div className="grid gap-3 p-5">
+        {loading ? (
+          <LoadingBlock label="Loading notes" />
+        ) : notes.length === 0 ? (
+          <p className="text-sm leading-6 text-[var(--ft-text-secondary)]">
+            No notes yet. Add one below if you have context for the team.
+          </p>
+        ) : (
+          notes.map((note) => (
+            <div
+              className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3"
+              key={note.id}
+            >
+              <p className="text-sm leading-6 text-[var(--ft-text-primary)]">{note.body}</p>
+              <div className="mt-2 text-xs text-[var(--ft-text-muted)]">{formatDateTime(note.createdAt)}</div>
+            </div>
+          ))
+        )}
+
+        <div className="mt-2 grid gap-2">
+          <textarea
+            className="min-h-20 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)] focus:ring-2 focus:ring-[var(--ft-accent)]"
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Add a note for the team"
+            value={draft}
+          />
+          <div className="flex items-center justify-between gap-3">
+            {error ? <ErrorNotice message={error} /> : <span />}
+            <Button
+              className="h-auto min-h-9 px-3 py-1.5 text-xs sm:text-sm"
+              disabled={sending || draft.trim().length === 0}
+              onClick={() => void handleSend()}
+              type="button"
+            >
+              <Send className="size-4" />
+              {sending ? "Sending..." : "Send note"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function CampaignReportsPanel({ loading, reports }: { loading: boolean; reports: CampaignPublishedReport[] }) {
+  if (!loading && reports.length === 0) {
+    return null;
+  }
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="border-b border-[var(--ft-border)] p-5">
+        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          Reports
+        </div>
+        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Published reports</h2>
+      </div>
+      <div className="grid gap-3 p-5">
+        {loading ? (
+          <LoadingBlock label="Loading reports" />
+        ) : (
+          reports.map((report) => (
+            <div
+              className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4"
+              key={report.id}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium text-[var(--ft-text-primary)]">
+                  {formatDateTime(report.periodStart)} - {formatDateTime(report.periodEnd)}
+                </span>
+                <Badge tone="neutral">Published {formatDateTime(report.publishedAt)}</Badge>
+              </div>
+              {report.summary ? (
+                <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">{report.summary}</p>
+              ) : null}
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: "Impressions", value: formatCompact(report.impressions) },
+                  { label: "Clicks", value: formatCompact(report.clicks) },
+                  { label: "Conversions", value: formatCompact(report.conversions) },
+                  {
+                    label: "Spend",
+                    value: formatCampaignMoney({ amountMinor: report.spendMinor, currency: report.currency })
+                  }
+                ].map((stat) => (
+                  <div key={stat.label}>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                      {stat.label}
+                    </div>
+                    <div className="mt-1 font-mono text-sm text-[var(--ft-text-primary)]">{stat.value}</div>
+                  </div>
+                ))}
+              </div>
+              {report.screenshots.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {report.screenshots.map((screenshot) => {
+                    const url = screenshot.mediaAsset?.secureUrl ?? screenshot.mediaAsset?.url ?? screenshot.sourceUrl;
+                    return url ? (
+                      <img
+                        alt="Campaign proof screenshot"
+                        className="h-16 w-16 rounded-[var(--radius-sm)] border border-[var(--ft-border)] object-cover"
+                        key={screenshot.id}
+                        src={url}
+                      />
+                    ) : null;
+                  })}
+                </div>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function CampaignOutcomePanel({ outcome }: { outcome: CampaignOutcome }) {
+  if (!outcome) {
+    return null;
+  }
+
+  const items = [
+    outcome.ordersCount !== null ? { label: "Orders", value: formatCompact(outcome.ordersCount) } : null,
+    outcome.messagesCount !== null ? { label: "Messages", value: formatCompact(outcome.messagesCount) } : null,
+    outcome.estRevenueMinor !== null
+      ? {
+          label: "Est. revenue",
+          value: formatCampaignMoney({ amountMinor: outcome.estRevenueMinor, currency: outcome.currency })
+        }
+      : null
+  ].filter((item): item is { label: string; value: string } => item !== null);
+
+  return (
+    <Panel className="overflow-hidden">
+      <div className="border-b border-[var(--ft-border)] p-5">
+        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          Outcome
+        </div>
+        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Reported results</h2>
+      </div>
+      <div className="grid gap-4 p-5">
+        {items.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {items.map((item) => (
+              <div key={item.label}>
+                <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  {item.label}
+                </div>
+                <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {outcome.rating !== null ? (
+          <div className="flex items-center gap-1">
+            {Array.from({ length: 5 }, (_, index) => (
+              <Star
+                className={
+                  index < (outcome.rating ?? 0)
+                    ? "size-4 fill-[var(--ft-accent)] text-[var(--ft-accent)]"
+                    : "size-4 text-[var(--ft-border-strong)]"
+                }
+                key={index}
+              />
+            ))}
+          </div>
+        ) : null}
+        {outcome.notes ? (
+          <p className="text-sm leading-6 text-[var(--ft-text-secondary)]">{outcome.notes}</p>
+        ) : null}
+        {outcome.capturedAt ? (
+          <div className="text-xs text-[var(--ft-text-muted)]">Captured {formatDateTime(outcome.capturedAt)}</div>
+        ) : null}
+      </div>
+    </Panel>
+  );
+}
+
 function ProcessTimeline({ campaign }: { campaign: Campaign }) {
   const current = processIndex(campaign.status);
 
@@ -881,6 +1327,39 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
   const campaign = campaigns.find((item) => item.id === campaignId);
   const [financial, setFinancial] = useState<CampaignFinancialState>(defaultFinancialState);
   const [financialRefreshKey, setFinancialRefreshKey] = useState(0);
+  const [extras, setExtras] = useState<CampaignDetailExtras>(defaultExtrasState);
+
+  useEffect(() => {
+    let active = true;
+    if (source !== "api") {
+      setExtras(defaultExtrasState);
+      return () => {
+        active = false;
+      };
+    }
+
+    setExtras((current) => ({ ...current, loading: true }));
+    void Promise.all([
+      loadCampaignNotes(campaignId),
+      loadCampaignReports(campaignId),
+      loadCampaignOutcome(campaignId),
+      loadCampaignAssets(campaignId)
+    ])
+      .then(([notes, reports, outcome, assets]) => {
+        if (!active) return;
+        setExtras({ assets, loading: false, notes, outcome, reports });
+      })
+      .catch(() => {
+        if (!active) return;
+        // Non-critical detail data — fail quietly rather than block the page
+        // the way a financial-load failure does.
+        setExtras((current) => ({ ...current, loading: false }));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [campaignId, source]);
 
   useEffect(() => {
     let active = true;
@@ -1129,6 +1608,19 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
             <CampaignBudgetTransparency campaign={campaign} financial={financial} />
 
+            <CampaignFinanceOpsPanel campaign={campaign} financial={financial} onChanged={refreshAfterControl} />
+
+            <CampaignOutcomePanel outcome={extras.outcome} />
+
+            <CampaignReportsPanel loading={extras.loading} reports={extras.reports} />
+
+            <CampaignNotesPanel
+              campaignId={campaign.id}
+              loading={extras.loading}
+              notes={extras.notes}
+              onAdded={(note) => setExtras((current) => ({ ...current, notes: [note, ...current.notes] }))}
+            />
+
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
               <Panel className="p-5">
                 <div className="flex items-center justify-between gap-3">
@@ -1142,21 +1634,62 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
                   </div>
                   <UploadCloud className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
                 </div>
-                <div className="mt-5 aspect-video rounded-[var(--radius-sm)] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] p-5">
-                  <div className="flex h-full items-center justify-center text-center">
-                    <div>
-                      <div className="mx-auto grid size-10 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
-                        <FileText className="size-5 stroke-[1.5] text-[var(--ft-text-muted)]" />
+                {extras.loading ? (
+                  <div className="mt-5">
+                    <LoadingBlock label="Loading creative" />
+                  </div>
+                ) : extras.assets.length === 0 ? (
+                  <div className="mt-5 aspect-video rounded-[var(--radius-sm)] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] p-5">
+                    <div className="flex h-full items-center justify-center text-center">
+                      <div>
+                        <div className="mx-auto grid size-10 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
+                          <FileText className="size-5 stroke-[1.5] text-[var(--ft-text-muted)]" />
+                        </div>
+                        <div className="mt-3 font-mono text-xs uppercase tracking-[0.04em] text-[var(--ft-text-secondary)]">
+                          {creativeFormatLabel(campaign)}
+                        </div>
+                        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--ft-text-muted)]">
+                          Assets and proof screenshots will appear here once the team attaches them.
+                        </p>
                       </div>
-                      <div className="mt-3 font-mono text-xs uppercase tracking-[0.04em] text-[var(--ft-text-secondary)]">
-                        {creativeFormatLabel(campaign)}
-                      </div>
-                      <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--ft-text-muted)]">
-                        Assets and proof screenshots will appear here once the team attaches them.
-                      </p>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {extras.assets.map((asset) => {
+                      const url = asset.mediaAsset?.secureUrl ?? asset.mediaAsset?.url;
+                      return (
+                        <div
+                          className="overflow-hidden rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]"
+                          key={asset.id}
+                        >
+                          <div className="flex aspect-video items-center justify-center bg-[var(--ft-bg-surface)]">
+                            {url ? (
+                              <img alt={asset.name} className="h-full w-full object-cover" src={url} />
+                            ) : (
+                              <ImageOff className="size-6 text-[var(--ft-text-muted)]" />
+                            )}
+                          </div>
+                          <div className="p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-sm font-medium text-[var(--ft-text-primary)]">
+                                {asset.name}
+                              </span>
+                              <Badge tone={asset.status === "APPROVED" ? "success" : "neutral"}>
+                                {asset.status.replaceAll("_", " ").toLowerCase()}
+                              </Badge>
+                            </div>
+                            {asset.headline ? (
+                              <p className="mt-1 truncate text-xs text-[var(--ft-text-secondary)]">
+                                {asset.headline}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div className="mt-4 grid gap-2">
                   <ProofItem
                     detail="Ops proof will open from the campaign report once uploaded"

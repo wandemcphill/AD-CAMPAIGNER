@@ -13,6 +13,20 @@ import {
 export type AdminAccessStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "failed";
 export type AdminServiceState = "active" | "draft" | "paused";
 
+// Mirrors assertDigitalAccessStatusTransition (services/digital-access/src/index.ts):
+// a request can't move back to "pending", and once it's fulfilled/cancelled/failed
+// it's terminal. Kept in sync by hand since the rule lives in a backend-only package.
+const terminalAccessStatuses = new Set<AdminAccessStatus>(["fulfilled", "cancelled", "failed"]);
+
+export function nextAllowedAccessStatuses(current: AdminAccessStatus): AdminAccessStatus[] {
+  if (terminalAccessStatuses.has(current)) {
+    return [];
+  }
+  return (["processing", "fulfilled", "cancelled", "failed"] as const).filter(
+    (status) => status !== current
+  );
+}
+
 export type AdminAccessService = {
   id: string;
   name: string;

@@ -10,6 +10,7 @@ import {
   statusTone,
   type AdminAccessRequest,
   type AdminAccessService,
+  type AdminAccessStatus,
   type AdminMetric,
   type AdminServiceState
 } from "./data";
@@ -71,6 +72,22 @@ type Paginated<T> = {
   items: T[];
   nextCursor?: string | null;
 };
+
+export type AdminDigitalAccessCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+// Approvals (failed/cancelled — refund-triggering) return { pending, approvalRequestId }
+// instead of the updated request: a SECOND admin must decide it via
+// approveAdminDigitalAccessRefund/rejectAdminDigitalAccessRefund before the
+// status actually changes. See digital-access.service.ts updateRequestStatus.
+export type AdminRequestStatusResult =
+  | { pending: true; approvalRequestId: string }
+  | { pending?: false; id: string; status: string };
 
 const defaultState: AdminDigitalAccessState = {
   loading: false,
@@ -204,6 +221,115 @@ export async function loadAdminDigitalAccessData() {
     services,
     source: "api" as const
   };
+}
+
+export function updateAdminDigitalAccessRequestStatus(id: string, status: AdminAccessStatus) {
+  return apiRequest<AdminRequestStatusResult>(`/admin/digital-access/requests/${encodeURIComponent(id)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status })
+  });
+}
+
+export function assignAdminDigitalAccessRequest(id: string, assignedTo: string | null) {
+  return apiRequest<ApiRequest>(`/admin/digital-access/requests/${encodeURIComponent(id)}/assign`, {
+    method: "PATCH",
+    body: JSON.stringify({ assignedTo })
+  });
+}
+
+// approvalRequestId, not the DigitalAccessRequest id — comes back from
+// updateAdminDigitalAccessRequestStatus when it resolves to { pending: true }.
+export function approveAdminDigitalAccessRefund(approvalRequestId: string, note?: string) {
+  return apiRequest<unknown>(`/admin/digital-access/approvals/${encodeURIComponent(approvalRequestId)}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ note })
+  });
+}
+
+export function rejectAdminDigitalAccessRefund(approvalRequestId: string, note?: string) {
+  return apiRequest<unknown>(`/admin/digital-access/approvals/${encodeURIComponent(approvalRequestId)}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ note })
+  });
+}
+
+export function loadAdminDigitalAccessCategories() {
+  return apiRequest<AdminDigitalAccessCategory[]>("/admin/digital-access/categories");
+}
+
+export function createAdminDigitalAccessCategory(input: { name: string }) {
+  return apiRequest<AdminDigitalAccessCategory>("/admin/digital-access/categories", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export type CreateAdminDigitalAccessServiceInput = {
+  name: string;
+  category: string;
+  deliveryEta: string;
+  startingPriceMinor: number;
+  description?: string;
+  thumbnail?: string;
+};
+
+export function createAdminDigitalAccessService(input: CreateAdminDigitalAccessServiceInput) {
+  return apiRequest<ApiService>("/admin/digital-access/services", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function setAdminDigitalAccessServiceActive(id: string, isActive: boolean) {
+  return apiRequest<ApiService>(`/admin/digital-access/services/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ isActive })
+  });
+}
+
+export type AdminDigitalAccessPlan = {
+  id: string;
+  serviceId: string;
+  planName: string;
+  duration: string;
+  priceMinor: number;
+  isActive: boolean;
+};
+
+export function loadAdminDigitalAccessPlans(serviceId?: string) {
+  const query = serviceId ? `?serviceId=${encodeURIComponent(serviceId)}` : "";
+  return apiRequest<AdminDigitalAccessPlan[]>(`/admin/digital-access/plans${query}`);
+}
+
+export type AdminDigitalAccessPlanInput = {
+  serviceId: string;
+  planName: string;
+  duration: string;
+  priceMinor: number;
+};
+
+export function createAdminDigitalAccessPlan(input: AdminDigitalAccessPlanInput) {
+  return apiRequest<AdminDigitalAccessPlan>("/admin/digital-access/plans", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function updateAdminDigitalAccessPlan(
+  id: string,
+  input: Partial<Omit<AdminDigitalAccessPlanInput, "serviceId">> & { isActive?: boolean }
+) {
+  return apiRequest<AdminDigitalAccessPlan>(`/admin/digital-access/plans/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export function renameAdminDigitalAccessCategory(id: string, input: { name: string }) {
+  return apiRequest<AdminDigitalAccessCategory>(`/admin/digital-access/categories/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
 }
 
 export { defaultState, subscribeToSessionChanges };

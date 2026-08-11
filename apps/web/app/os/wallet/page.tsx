@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -22,6 +22,10 @@ import {
   amountToMinor,
   createWalletFundingIntent,
   formatCampaignMoney,
+  loadInvoices,
+  payInvoiceFromWallet,
+  verifyPayment,
+  type CampaignInvoiceRecord,
   type CreatePaymentIntentInput
 } from "../../campaigns/api";
 import {
@@ -232,6 +236,11 @@ export default function BillingPage() {
   const [selectedActivity, setSelectedActivity] = useState<BillingActivity>();
   const [formError, setFormError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const [invoices, setInvoices] = useState<CampaignInvoiceRecord[]>();
+  const [invoicesError, setInvoicesError] = useState<string>();
+  const [payingInvoiceId, setPayingInvoiceId] = useState<string>();
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+  const [verifyError, setVerifyError] = useState<string>();
   const currency: CurrencyCode = wallet?.availableBalance.currency ?? "NGN";
   const available = wallet?.availableBalance ?? null;
   const held = wallet?.heldBalance ?? null;
@@ -262,6 +271,45 @@ export default function BillingPage() {
       : heldMinor > 0
         ? `${formatCampaignMoney(held)} is locked as managed campaign budget.`
         : "Invoices will appear here when the team approves a campaign plan.";
+
+  useEffect(() => {
+    if (activeTab !== "invoices" || invoices !== undefined) return;
+    void loadInvoices()
+      .then(setInvoices)
+      .catch((caught) =>
+        setInvoicesError(caught instanceof Error ? caught.message : "Could not load invoices.")
+      );
+  }, [activeTab, invoices]);
+
+  async function payInvoice(invoiceId: string) {
+    setPayingInvoiceId(invoiceId);
+    setInvoicesError(undefined);
+    try {
+      const updated = await payInvoiceFromWallet(invoiceId);
+      setInvoices((current) => current?.map((inv) => (inv.id === updated.id ? updated : inv)));
+      await refresh();
+    } catch (caught) {
+      setInvoicesError(caught instanceof Error ? caught.message : "Could not pay this invoice.");
+    } finally {
+      setPayingInvoiceId(undefined);
+    }
+  }
+
+  async function checkPaymentStatus() {
+    const reference = intent?.providerReference ?? intent?.id;
+    if (!reference) return;
+    setVerifyingPayment(true);
+    setVerifyError(undefined);
+    try {
+      const updated = await verifyPayment(reference);
+      setIntent(updated);
+      await refresh();
+    } catch (caught) {
+      setVerifyError(caught instanceof Error ? caught.message : "Could not verify this payment yet.");
+    } finally {
+      setVerifyingPayment(false);
+    }
+  }
 
   async function submitTopUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -613,6 +661,47 @@ export default function BillingPage() {
             </div>
           ) : activeTab === "invoices" ? (
             <div className="p-4">
+              {invoicesError ? (
+                <div className="mb-4 rounded-[var(--radius-md)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
+                  {invoicesError}
+                </div>
+              ) : null}
+
+              {invoices === undefined ? (
+                <LoadingBlock label="Loading invoices" />
+              ) : invoices.filter((inv) => inv.status !== "DRAFT" && inv.status !== "VOID").length > 0 ? (
+                <div className="mb-6 grid gap-4">
+                  {invoices
+                    .filter((inv) => inv.status !== "DRAFT" && inv.status !== "VOID")
+                    .map((inv) => {
+                      const dueMinor = inv.totalMinor - inv.amountPaidMinor;
+                      const canPay = inv.status === "ISSUED" || inv.status === "PARTIALLY_PAID" || inv.status === "OVERDUE";
+                      return (
+                        <div className="grid gap-2" key={inv.id}>
+                          <InvoiceCard
+                            amount={formatCampaignMoney({ amountMinor: dueMinor, currency: inv.currency })}
+                            campaign={inv.lineItems[0]?.description ?? `Campaign invoice ${inv.number}`}
+                            due={inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : "No due date"}
+                            invoiceNumber={inv.number}
+                            status={inv.status === "PAID" ? "paid" : inv.status === "OVERDUE" ? "overdue" : "pending"}
+                          />
+                          {canPay ? (
+                            <Button
+                              disabled={payingInvoiceId !== undefined}
+                              onClick={() => void payInvoice(inv.id)}
+                              type="button"
+                            >
+                              {payingInvoiceId === inv.id
+                                ? "Paying..."
+                                : `Pay ${formatCampaignMoney({ amountMinor: dueMinor, currency: inv.currency })} from wallet`}
+                            </Button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                </div>
+              ) : null}
+
               {pendingChargeMinor > 0 && intent ? (
                 <div className="grid gap-4">
                   <InvoiceCard
@@ -636,17 +725,30 @@ export default function BillingPage() {
                           </p>
                         </div>
                       </div>
-                      {intent.checkoutUrl ? (
-                        <a
-                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-transparent bg-[var(--ft-accent)] px-5 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
-                          href={intent.checkoutUrl}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {intent.checkoutUrl ? (
+                          <a
+                            className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-transparent bg-[var(--ft-accent)] px-5 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
+                            href={intent.checkoutUrl}
+                          >
+                            Pay Invoice
+                            <ExternalLink className="size-4 stroke-[1.5]" />
+                          </a>
+                        ) : null}
+                        <Button
+                          disabled={verifyingPayment}
+                          onClick={() => void checkPaymentStatus()}
+                          type="button"
+                          variant="secondary"
                         >
-                          Pay Invoice
-                          <ExternalLink className="size-4 stroke-[1.5]" />
-                        </a>
-                      ) : null}
+                          {verifyingPayment ? "Checking..." : "I've paid — check now"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
+                  {verifyError ? (
+                    <p className="text-sm text-[var(--ft-red)]">{verifyError}</p>
+                  ) : null}
                 </div>
               ) : (
                 <EmptyState

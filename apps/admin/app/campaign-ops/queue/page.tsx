@@ -24,8 +24,11 @@ import { Badge, Button, MobileAdminCard, OpsTaskChecklist, PlatformChip, cn } fr
 
 import {
   addAdminCampaignNote,
+  bulkAdminCampaignAction,
+  loadAdminCampaignLaunchSpec,
   updateAdminCampaignAssignment,
-  updateAdminCampaignStatus
+  updateAdminCampaignStatus,
+  type CampaignLaunchSpec
 } from "../api";
 import {
   AdminCampaignOpsHeader,
@@ -360,6 +363,12 @@ export default function AdminCampaignOpsQueuePage() {
   const [actionError, setActionError] = useState<string>();
   const [actionMessage, setActionMessage] = useState<string>();
   const [actionSaving, setActionSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState<string>();
+  const [launchSpec, setLaunchSpec] = useState<CampaignLaunchSpec>();
+  const [launchSpecLoading, setLaunchSpecLoading] = useState(false);
+  const [launchSpecError, setLaunchSpecError] = useState<string>();
 
   const channelOptions = useMemo(
     () => Array.from(new Set(items.map((campaign) => campaign.channel))).sort(),
@@ -472,10 +481,67 @@ export default function AdminCampaignOpsQueuePage() {
     setSelectedCampaignId(campaignId);
     setActionMode(null);
     setConfirmation(null);
+    setLaunchSpec(undefined);
+    setLaunchSpecError(undefined);
   }
 
   function openCampaign(campaignId: string) {
     router.push(`/campaign-ops/detail?campaignId=${encodeURIComponent(campaignId)}`);
+  }
+
+  function toggleSelected(campaignId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(campaignId)) {
+        next.delete(campaignId);
+      } else {
+        next.add(campaignId);
+      }
+      return next;
+    });
+  }
+
+  async function runBulkAction(
+    action: "approve" | "reject" | "assign_me",
+    reason?: string
+  ) {
+    if (selectedIds.size === 0) return;
+    setBulkSaving(true);
+    setBulkError(undefined);
+    try {
+      const ids = [...selectedIds];
+      if (action === "approve") {
+        await bulkAdminCampaignAction(ids, { action: "status", payload: { status: "APPROVED" } });
+      } else if (action === "reject") {
+        await bulkAdminCampaignAction(ids, {
+          action: "status",
+          payload: { status: "REJECTED", ...(reason ? { reason } : {}) }
+        });
+      } else {
+        await bulkAdminCampaignAction(ids, { action: "assign", payload: { role: "OPERATOR" } });
+      }
+      setSelectedIds(new Set());
+      await refresh();
+    } catch (caught) {
+      setBulkError(caught instanceof Error ? caught.message : "Could not apply this action to the selection.");
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  async function viewLaunchSpec() {
+    if (!selectedCampaign) return;
+    setLaunchSpecLoading(true);
+    setLaunchSpecError(undefined);
+    try {
+      setLaunchSpec(await loadAdminCampaignLaunchSpec(selectedCampaign.id));
+    } catch (caught) {
+      setLaunchSpecError(
+        caught instanceof Error ? caught.message : "Could not build a launch spec for this campaign."
+      );
+    } finally {
+      setLaunchSpecLoading(false);
+    }
   }
 
   async function requestChanges() {
@@ -762,6 +828,49 @@ export default function AdminCampaignOpsQueuePage() {
             </div>
           </div>
 
+          {selectedIds.size > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 border-b border-[var(--ft-border)] bg-[var(--ft-accent-subtle)] p-3">
+              <span className="text-xs font-medium text-[var(--ft-text-primary)]">
+                {selectedIds.size} selected
+              </span>
+              <Button
+                className="h-8 px-2 text-xs"
+                disabled={bulkSaving}
+                onClick={() => void runBulkAction("approve")}
+                type="button"
+                variant="secondary"
+              >
+                Approve
+              </Button>
+              <Button
+                className="h-8 px-2 text-xs"
+                disabled={bulkSaving}
+                onClick={() => void runBulkAction("reject", "Bulk rejected by operator")}
+                type="button"
+                variant="secondary"
+              >
+                Reject
+              </Button>
+              <Button
+                className="h-8 px-2 text-xs"
+                disabled={bulkSaving}
+                onClick={() => void runBulkAction("assign_me")}
+                type="button"
+                variant="secondary"
+              >
+                Assign to me
+              </Button>
+              <button
+                className="ml-auto text-xs text-[var(--ft-text-muted)] hover:text-[var(--ft-text-primary)]"
+                onClick={() => setSelectedIds(new Set())}
+                type="button"
+              >
+                Clear
+              </button>
+              {bulkError ? <div className="w-full text-xs text-[var(--ft-red)]">{bulkError}</div> : null}
+            </div>
+          ) : null}
+
           <div className="min-h-0 flex-1 overflow-y-auto">
             {loading ? (
               <LoadingRows count={6} />
@@ -823,19 +932,30 @@ export default function AdminCampaignOpsQueuePage() {
                         }
                         title={campaign.ownerName}
                       />
-                      <button
-                        className={cn(
-                          "hidden w-full gap-3 border-l-2 border-l-transparent px-4 py-4 text-left transition hover:bg-[var(--ft-bg-muted)] focus:bg-[var(--ft-bg-muted)] focus:ring-2 focus:ring-[var(--ft-accent)] focus:outline-none focus:ring-inset md:grid",
-                          selected ? "border-l-[var(--ft-accent)] bg-[var(--ft-bg-muted)]" : "",
-                          !selected && flagged ? "bg-[var(--ft-red-subtle)]/30" : "",
-                          !selected && !flagged && (overSla || unassigned)
-                            ? "bg-[var(--ft-accent-subtle)]/40"
-                            : ""
-                        )}
-                        key={campaign.id}
-                        onClick={() => selectCampaign(campaign.id)}
-                        type="button"
-                      >
+                      <div className="hidden items-stretch md:flex">
+                        <label
+                          className="flex w-10 shrink-0 items-center justify-center border-l-2 border-l-transparent"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            checked={selectedIds.has(campaign.id)}
+                            className="size-4 accent-[var(--ft-accent)]"
+                            onChange={() => toggleSelected(campaign.id)}
+                            type="checkbox"
+                          />
+                        </label>
+                        <button
+                          className={cn(
+                            "grid w-full gap-3 border-l-2 border-l-transparent px-4 py-4 text-left transition hover:bg-[var(--ft-bg-muted)] focus:bg-[var(--ft-bg-muted)] focus:ring-2 focus:ring-[var(--ft-accent)] focus:outline-none focus:ring-inset",
+                            selected ? "border-l-[var(--ft-accent)] bg-[var(--ft-bg-muted)]" : "",
+                            !selected && flagged ? "bg-[var(--ft-red-subtle)]/30" : "",
+                            !selected && !flagged && (overSla || unassigned)
+                              ? "bg-[var(--ft-accent-subtle)]/40"
+                              : ""
+                          )}
+                          onClick={() => selectCampaign(campaign.id)}
+                          type="button"
+                        >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <div className="truncate font-medium text-[var(--ft-text-primary)]">
@@ -859,7 +979,8 @@ export default function AdminCampaignOpsQueuePage() {
                           <PriorityBadge priority={campaign.priority} />
                           {unassigned ? <AssignmentChip assignee={campaign.assignee} /> : null}
                         </div>
-                      </button>
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -918,6 +1039,15 @@ export default function AdminCampaignOpsQueuePage() {
                     </div>
                     <Button
                       className="h-8 px-3 text-xs"
+                      disabled={launchSpecLoading}
+                      onClick={() => void viewLaunchSpec()}
+                      type="button"
+                      variant="ghost"
+                    >
+                      {launchSpecLoading ? "Building..." : "Launch spec"}
+                    </Button>
+                    <Button
+                      className="h-8 px-3 text-xs"
                       onClick={() => openCampaign(selectedCampaign.id)}
                       type="button"
                       variant="ghost"
@@ -932,6 +1062,48 @@ export default function AdminCampaignOpsQueuePage() {
               <div className="min-h-0 flex-1 overflow-y-auto p-5">
                 <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_360px]">
                   <div className="grid gap-5">
+                    {launchSpecError ? (
+                      <div className="rounded-[var(--radius-md)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-4 text-sm text-[var(--ft-red)]">
+                        {launchSpecError}
+                      </div>
+                    ) : null}
+
+                    {launchSpec ? (
+                      <section className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <h3 className="text-base font-medium text-[var(--ft-text-primary)]">
+                            {launchSpec.platform} launch spec — "{launchSpec.campaign.name}"
+                          </h3>
+                          <button
+                            className="text-xs text-[var(--ft-text-muted)] hover:text-[var(--ft-text-primary)]"
+                            onClick={() => setLaunchSpec(undefined)}
+                            type="button"
+                          >
+                            Close
+                          </button>
+                        </div>
+                        <p className="mt-1 text-xs text-[var(--ft-text-muted)]">
+                          There's no live platform integration yet — follow these steps by hand in
+                          Ads Manager, then mark this campaign launched once it's live.
+                        </p>
+                        {launchSpec.warnings.length > 0 ? (
+                          <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--ft-yellow)]/40 bg-[var(--ft-yellow-subtle)] p-3 text-xs text-[var(--ft-yellow)]">
+                            {launchSpec.warnings.join(" ")}
+                          </div>
+                        ) : null}
+                        <ol className="mt-4 grid gap-2 text-sm text-[var(--ft-text-secondary)]">
+                          {launchSpec.copyInstructions.map((step, index) => (
+                            <li className="flex gap-3" key={index}>
+                              <span className="shrink-0 font-mono text-xs text-[var(--ft-text-muted)]">
+                                {index + 1}.
+                              </span>
+                              <span>{step}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </section>
+                    ) : null}
+
                     <section className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-5">
                       <div className="flex items-center gap-2">
                         <Image className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />

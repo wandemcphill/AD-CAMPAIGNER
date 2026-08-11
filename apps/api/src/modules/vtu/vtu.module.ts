@@ -3,6 +3,7 @@ import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 import { PrismaModule } from "../prisma.module";
 import { QueueProducerService } from "../queue-producer.service";
 import { AuthSessionService } from "../auth-session.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { WorkspaceContextMiddleware } from "../workspace-context.middleware";
 import { ProvidersModule } from "../providers/providers.module";
 import { AdminVtuController, VtuController } from "./vtu.controller";
@@ -11,7 +12,7 @@ import { VtuRouterService } from "./vtu-router.service";
 import { VtuQuoteService } from "./vtu-quote.service";
 
 @Module({
-  imports: [PrismaModule, ProvidersModule],
+  imports: [PrismaModule, ProvidersModule, NotificationsModule],
   controllers: [VtuController, AdminVtuController],
   providers: [
     QueueProducerService,

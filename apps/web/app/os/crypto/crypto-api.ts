@@ -47,3 +47,15 @@ export async function createDepositAddress(input: { asset: string; idempotencyKe
 export async function loadTransactions() {
   return apiRequest<CryptoTransaction[]>("/crypto/transactions");
 }
+
+export interface CryptoRate {
+  ngnAmountMinor: number;
+  usdNgnRate: number;
+  feeNgnMinor: number;
+}
+
+export async function loadCryptoRate(asset: string, amount: number) {
+  return apiRequest<CryptoRate>(
+    `/crypto/assets/${encodeURIComponent(asset)}/rate?amount=${amount}`
+  );
+}

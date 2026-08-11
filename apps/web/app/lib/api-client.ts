@@ -25,6 +25,9 @@ export type ApiSession = {
   };
   role?: string;
   permissions?: string[];
+  // Sole source of admin:access. Never derived from `role` — every
+  // self-registered user is OWNER of their own workspace.
+  isPlatformAdmin?: boolean;
 };
 
 export type AuthCredentials = {
@@ -212,6 +215,9 @@ function normalizeAuthPayload(payload: AuthEnvelope): AuthResult {
   if (source.defaultWorkspaceId) {
     session.defaultWorkspaceId = source.defaultWorkspaceId;
   }
+  if (source.isPlatformAdmin !== undefined) {
+    session.isPlatformAdmin = source.isPlatformAdmin;
+  }
 
   const result: AuthResult = { session };
   const token = payload.token ?? source.token;
@@ -247,6 +253,23 @@ export function login(credentials: AuthCredentials) {
 
 export function register(credentials: AuthCredentials) {
   return authPost("/auth/register", credentials);
+}
+
+// Both are unauthenticated by necessity — the caller is locked out. The API
+// answers /auth/password/forgot identically whether or not the account exists,
+// so this must not branch on the response to say anything more specific.
+export function requestPasswordReset(identifier: string) {
+  return apiRequest<{ ok: true; message: string }>("/auth/password/forgot", {
+    method: "POST",
+    body: JSON.stringify({ identifier })
+  });
+}
+
+export function confirmPasswordReset(token: string, password: string) {
+  return apiRequest<{ ok: true }>("/auth/password/reset", {
+    method: "POST",
+    body: JSON.stringify({ token, password })
+  });
 }
 
 export async function logout() {

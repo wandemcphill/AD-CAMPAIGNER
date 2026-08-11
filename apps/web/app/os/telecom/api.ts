@@ -98,3 +98,11 @@ export async function loadTelecomOrders() {
   const res = await apiRequest<{ orders: TelecomOrder[]; total: number }>("/telecom/orders");
   return res.orders;
 }
+
+// Actively re-polls the provider for orders that aren't DELIVERED/FAILED yet —
+// not just a re-read of what's already stored. Can flip a stuck order to
+// DELIVERED or REVERSED (with the wallet charge reversed server-side) based on
+// what the provider now reports.
+export async function checkTelecomOrderStatus(orderId: string) {
+  return apiRequest<TelecomOrder>(`/telecom/orders/${encodeURIComponent(orderId)}`);
+}

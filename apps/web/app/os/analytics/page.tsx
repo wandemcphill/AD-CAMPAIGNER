@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { BarChart3, Eye, Lightbulb, RefreshCw, TrendingUp } from "lucide-react";
 
 import { Badge, Button, MetricStrip, Panel, PlatformChip } from "@fliptrybe/ui";
 
+import { apiRequest } from "../../lib/api-client";
 import { formatCampaignMoney, formatCompact, metricValue } from "../../campaigns/api";
 import {
   EmptyState,
@@ -19,9 +21,38 @@ import {
 import { destinationLabels, objectiveLabels } from "../../campaigns/data";
 import { useCampaignDashboardData } from "../../campaigns/use-campaign-dashboard-data";
 
+type PlatformAiInsights = {
+  summary?: { mode?: string; [key: string]: unknown };
+  items: Array<{ id: string; label: string; reasons?: string[] }>;
+};
+
+type PlatformAnalyticsOverview = {
+  metrics: Array<{ name: string; value: number; recordedAt?: string }>;
+};
+
+// Supplementary, additive to the "Managed insights" panel below (which is
+// computed client-side from published reports) — these hit the real
+// /analytics/* endpoints. Only rendered when they return something the
+// client-side view doesn't already show: genuine AI-generated insights (not
+// the local_fallback shape, which just echoes campaign snapshots and would be
+// a strictly worse duplicate of the panel below), and platform-recorded
+// metrics (entered by ops via addManualMetric, visible nowhere else).
+function usePlatformAnalytics() {
+  const [aiInsights, setAiInsights] = useState<PlatformAiInsights>();
+  const [overview, setOverview] = useState<PlatformAnalyticsOverview>();
+
+  useEffect(() => {
+    void apiRequest<PlatformAiInsights>("/analytics/ai-insights").then(setAiInsights).catch(() => undefined);
+    void apiRequest<PlatformAnalyticsOverview>("/analytics/overview").then(setOverview).catch(() => undefined);
+  }, []);
+
+  return { aiInsights, overview };
+}
+
 export default function CampaignAnalyticsPage() {
   const { aiInsights, analytics, campaigns, error, loading, refresh, source } =
     useCampaignDashboardData();
+  const platform = usePlatformAnalytics();
   const trend = analytics?.trend ?? [];
   const maxConversions = Math.max(1, ...trend.map((point) => point.conversions));
   const insights = aiInsights?.items ?? [];
@@ -254,6 +285,59 @@ export default function CampaignAnalyticsPage() {
           </div>
         </Panel>
       </section>
+
+      {platform.aiInsights && platform.aiInsights.summary?.mode !== "local_fallback" ? (
+        <section className="mt-6">
+          <Panel className="p-4">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+                AI-generated recommendations
+              </h2>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {platform.aiInsights.items.map((item) => (
+                <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] p-3" key={item.id}>
+                  <div className="font-medium text-[var(--ft-text-primary)]">{item.label}</div>
+                  {item.reasons ? (
+                    <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+                      {item.reasons.join(", ")}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </section>
+      ) : null}
+
+      {platform.overview && platform.overview.metrics.length > 0 ? (
+        <section className="mt-6">
+          <Panel className="p-4">
+            <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+              Platform-recorded metrics
+            </h2>
+            <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+              Entered by the ops team against real campaign delivery.
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {platform.overview.metrics.slice(0, 8).map((metric, index) => (
+                <div
+                  className="rounded-[var(--radius-md)] border border-[var(--ft-border)] p-3"
+                  key={`${metric.name}-${index}`}
+                >
+                  <div className="text-xs text-[var(--ft-text-muted)]">
+                    {metric.name.replaceAll("_", " ")}
+                  </div>
+                  <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">
+                    {formatCompact(metric.value)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
+        </section>
+      ) : null}
     </>
   );
 }
