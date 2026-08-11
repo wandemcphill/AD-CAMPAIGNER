@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { isForbiddenError } from "../lib/api-client";
 import {
   defaultBillingState,
   defaultCampaignBuilderState,
@@ -36,6 +37,7 @@ export function useCampaignDashboardData() {
       setState({
         ...defaultCampaignDashboardState,
         error: errorMessage(caught, "Campaign APIs are unavailable."),
+        forbidden: isForbiddenError(caught),
         loading: false
       });
     }
@@ -92,6 +94,7 @@ export function useBillingData() {
       setState({
         ...defaultBillingState,
         error: errorMessage(caught, "Billing APIs are unavailable."),
+        forbidden: isForbiddenError(caught),
         loading: false
       });
     }

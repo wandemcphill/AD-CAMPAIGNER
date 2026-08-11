@@ -20,6 +20,7 @@ import {
   FulfillmentStrip,
   MetricStrip,
   Panel,
+  PermissionDenied,
   PlatformChip,
   SummaryStatStrip,
   campaignStatusMeta,
@@ -128,11 +129,22 @@ function briefActionLabel(status: string) {
 }
 
 export default function CampaignsPage() {
-  const { aiInsights, analytics, campaigns, error, loading, refresh, source, wallet } =
+  const { aiInsights, analytics, campaigns, error, forbidden, loading, refresh, source, wallet } =
     useCampaignDashboardData();
+
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [platformFilter, setPlatformFilter] = useState("ALL");
   const [query, setQuery] = useState("");
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view campaigns for this workspace. Contact your workspace
+        owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
+
   const activeCampaigns = campaigns.filter(
     (campaign) => campaign.status === "ACTIVE" || campaign.status === "RUNNING"
   ).length;
