@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Bell } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { Bell, Mail, MessageCircle, MessageSquare, Smartphone } from "lucide-react";
 
 import { Divider, Toggle } from "@fliptrybe/ui/components";
 
@@ -12,37 +12,103 @@ import {
   type NotificationPreferenceRecord
 } from "../../../notifications/api";
 
+type Channel = "inApp" | "email" | "sms" | "whatsapp";
+
+const CHANNELS: Array<{ key: Channel; label: string; icon: typeof Bell }> = [
+  { key: "inApp", label: "In-app", icon: Smartphone },
+  { key: "email", label: "Email", icon: Mail },
+  { key: "sms", label: "SMS", icon: MessageSquare },
+  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle }
+];
+
 const NOTIFICATION_GROUPS = [
   {
     title: "Campaigns",
     items: [
-      { id: "campaign-launch", label: "Campaign launched", desc: "When a campaign goes live", default: true },
-      { id: "campaign-end", label: "Campaign ended", desc: "When a campaign completes or is paused", default: true },
-      { id: "campaign-budget", label: "Budget alerts", desc: "When spend reaches 80% or 100% of budget", default: true },
-    ],
+      {
+        id: "campaign-launch",
+        label: "Campaign launched",
+        desc: "When a campaign goes live",
+        defaults: { inApp: true, email: true, sms: false, whatsapp: false }
+      },
+      {
+        id: "campaign-end",
+        label: "Campaign ended",
+        desc: "When a campaign completes or is paused",
+        defaults: { inApp: true, email: true, sms: false, whatsapp: false }
+      },
+      {
+        id: "campaign-budget",
+        label: "Budget alerts",
+        desc: "When spend reaches 80% or 100% of budget",
+        defaults: { inApp: true, email: true, sms: false, whatsapp: false }
+      }
+    ]
   },
   {
-    title: "Wallet",
+    title: "Wallet & Finance",
     items: [
-      { id: "wallet-credit", label: "Funds added", desc: "When money is deposited to your wallet", default: true },
-      { id: "wallet-debit", label: "Funds deducted", desc: "Campaign holds and service purchases", default: false },
-      { id: "wallet-low", label: "Low balance", desc: "When balance drops below ₦5,000", default: true },
-    ],
+      {
+        id: "wallet-credit",
+        label: "Funds added",
+        desc: "When money is deposited to your wallet",
+        defaults: { inApp: true, email: true, sms: false, whatsapp: false }
+      },
+      {
+        id: "wallet-debit",
+        label: "Funds deducted",
+        desc: "Campaign holds and service purchases",
+        defaults: { inApp: true, email: false, sms: false, whatsapp: false }
+      },
+      {
+        id: "wallet-low",
+        label: "Low balance",
+        desc: "When balance drops below ₦5,000",
+        defaults: { inApp: true, email: true, sms: true, whatsapp: true }
+      }
+    ]
   },
   {
-    title: "Team",
+    title: "Approvals",
     items: [
-      { id: "team-invite", label: "New member joined", desc: "When someone accepts a team invitation", default: true },
-      { id: "team-role", label: "Role changes", desc: "When a member's role is updated", default: false },
-    ],
+      {
+        id: "approval-requested",
+        label: "Approval requested",
+        desc: "When something needs your sign-off",
+        defaults: { inApp: true, email: true, sms: false, whatsapp: false }
+      },
+      {
+        id: "approval-decided",
+        label: "Approval decided",
+        desc: "When your submission is approved or rejected",
+        defaults: { inApp: true, email: true, sms: false, whatsapp: false }
+      }
+    ]
   },
+  {
+    title: "Security & Team",
+    items: [
+      {
+        id: "security-login",
+        label: "New sign-in",
+        desc: "When your account is accessed from a new device",
+        defaults: { inApp: true, email: true, sms: true, whatsapp: true }
+      },
+      {
+        id: "team-role",
+        label: "Role changes",
+        desc: "When a team member's role is updated",
+        defaults: { inApp: true, email: false, sms: false, whatsapp: false }
+      }
+    ]
+  }
 ];
 
 export default function NotificationSettingsPage() {
   const [preferences, setPreferences] = useState<Record<string, NotificationPreferenceRecord>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [pendingId, setPendingId] = useState<string>();
+  const [pendingKey, setPendingKey] = useState<string>();
 
   useEffect(() => {
     loadNotificationPreferences()
@@ -55,21 +121,22 @@ export default function NotificationSettingsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  function isEnabled(itemId: string, fallback: boolean) {
-    return preferences[itemId]?.inApp ?? fallback;
+  function isEnabled(itemId: string, channel: Channel, fallback: boolean) {
+    return preferences[itemId]?.[channel] ?? fallback;
   }
 
-  async function toggle(itemId: string, fallback: boolean) {
-    const nextValue = !isEnabled(itemId, fallback);
-    setPendingId(itemId);
+  async function toggle(itemId: string, channel: Channel, fallback: boolean) {
+    const key = `${itemId}:${channel}`;
+    const nextValue = !isEnabled(itemId, channel, fallback);
+    setPendingKey(key);
     setError(undefined);
     try {
-      const updated = await updateNotificationPreference(itemId, { inApp: nextValue });
+      const updated = await updateNotificationPreference(itemId, { [channel]: nextValue });
       setPreferences((current) => ({ ...current, [itemId]: updated }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save that preference.");
     } finally {
-      setPendingId(undefined);
+      setPendingKey(undefined);
     }
   }
 
@@ -81,7 +148,7 @@ export default function NotificationSettingsPage() {
           <h2 className="font-semibold">Notifications</h2>
         </div>
         <p className="mt-2 text-sm text-[var(--ft-text-secondary)]">
-          Choose what you want to be notified about in-app. Changes save immediately.
+          Choose which channel each type of update reaches you on. Changes save immediately.
         </p>
 
         <ErrorNotice message={error} />
@@ -91,34 +158,71 @@ export default function NotificationSettingsPage() {
             <LoadingBlock label="Loading preferences" />
           </div>
         ) : (
-          NOTIFICATION_GROUPS.map((group, gi) => (
-            <div key={group.title}>
-              {gi > 0 && <Divider />}
-              <div className="mt-4 mb-3 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--ft-text-muted)]">
-                {group.title}
-              </div>
-              <div className="grid gap-3">
-                {group.items.map((item) => (
-                  <div
-                    className="flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 transition"
-                    key={item.id}
-                    style={pendingId === item.id ? { opacity: 0.6 } : undefined}
-                  >
-                    <div>
-                      <div className="text-sm font-medium">{item.label}</div>
-                      <div className="text-xs text-[var(--ft-text-muted)]">{item.desc}</div>
-                    </div>
-                    <Toggle
-                      checked={isEnabled(item.id, item.default)}
-                      onChange={() => void toggle(item.id, item.default)}
-                    />
-                  </div>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[640px] border-collapse">
+              <thead>
+                <tr>
+                  <th className="w-full" />
+                  {CHANNELS.map((channel) => (
+                    <th
+                      className="px-3 pb-2 text-center font-mono text-[10px] font-normal uppercase tracking-[0.08em] text-[var(--ft-text-muted)]"
+                      key={channel.key}
+                    >
+                      <span className="flex flex-col items-center gap-1">
+                        <channel.icon className="size-3.5" />
+                        {channel.label}
+                      </span>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {NOTIFICATION_GROUPS.map((group, gi) => (
+                  <Fragment key={group.title}>
+                    <tr key={`${group.title}-header`}>
+                      <td className="pt-4 pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--ft-text-muted)]" colSpan={CHANNELS.length + 1}>
+                        {gi > 0 && <Divider />}
+                        <div className={gi > 0 ? "mt-4" : ""}>{group.title}</div>
+                      </td>
+                    </tr>
+                    {group.items.map((item) => (
+                      <tr key={item.id}>
+                        <td className="rounded-l-[var(--radius-md)] border border-r-0 border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3">
+                          <div className="text-sm font-medium">{item.label}</div>
+                          <div className="text-xs text-[var(--ft-text-muted)]">{item.desc}</div>
+                        </td>
+                        {CHANNELS.map((channel, ci) => {
+                          const key = `${item.id}:${channel.key}`;
+                          return (
+                            <td
+                              className={cnCell(ci, CHANNELS.length)}
+                              key={key}
+                              style={pendingKey === key ? { opacity: 0.6 } : undefined}
+                            >
+                              <div className="flex justify-center">
+                                <Toggle
+                                  checked={isEnabled(item.id, channel.key, item.defaults[channel.key])}
+                                  onChange={() => void toggle(item.id, channel.key, item.defaults[channel.key])}
+                                />
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
-              </div>
-            </div>
-          ))
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
   );
+}
+
+function cnCell(index: number, total: number) {
+  const base = "border-t border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-3";
+  if (index === total - 1) return `${base} rounded-r-[var(--radius-md)] border-r`;
+  return base;
 }
