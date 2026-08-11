@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock, Signal, Smartphone, Sparkles, Wifi } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { isForbiddenError } from "../../lib/api-client";
 import {
   buyAirtime,
   buyAirtimeEpin,
@@ -61,6 +62,7 @@ export default function AirtimeDataPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [success, setSuccess] = useState<VtuOrder>();
 
   const [quote, setQuote] = useState<VtuQuote>();
@@ -80,10 +82,12 @@ export default function AirtimeDataPage() {
   const [dataEpinSubmitting, setDataEpinSubmitting] = useState(false);
 
   const refreshOrders = useCallback(async () => {
+    setForbidden(false);
     try {
       setOrders(await loadVtuOrders());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load order history.");
+      setForbidden(isForbiddenError(caught));
     }
   }, []);
 
@@ -286,6 +290,15 @@ export default function AirtimeDataPage() {
       </Button>
     </Panel>
   );
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view airtime and data for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">

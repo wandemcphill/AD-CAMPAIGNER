@@ -5,10 +5,11 @@ import { useParams } from "next/navigation";
 import { CheckCircle2, ChevronLeft, MessageSquare, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 import { ProvisionStep } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { isForbiddenError } from "../../../lib/api-client";
 import {
   formatNaira,
   loadProducts,
@@ -26,6 +27,7 @@ export default function NumbersProductListPage() {
   const [products, setProducts] = useState<VirtualNumberProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
 
   const [selectedProduct, setSelectedProduct] = useState<VirtualNumberProduct>();
   const [stage, setStage] = useState<PurchaseStage>("idle");
@@ -34,10 +36,12 @@ export default function NumbersProductListPage() {
 
   const refresh = useCallback(async () => {
     setError(undefined);
+    setForbidden(false);
     try {
       setProducts(await loadProducts(countryCode));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load numbers for this country.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
     }
@@ -74,6 +78,15 @@ export default function NumbersProductListPage() {
     setStage("idle");
     setResult(undefined);
     setPurchaseError(undefined);
+  }
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view virtual numbers for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
   }
 
   return (

@@ -120,6 +120,7 @@ export type CampaignDashboardState = {
 export type CampaignBuilderState = {
   destinations: DestinationKind[];
   error?: string;
+  forbidden?: boolean;
   loading: boolean;
   source: ClientDataSource;
 };
@@ -136,6 +137,7 @@ export type BillingState = {
 export type OnboardingState = {
   destinations: DestinationKind[];
   error?: string;
+  forbidden?: boolean;
   health: PlatformHealth | null;
   loading: boolean;
   source: ClientDataSource;

@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Bitcoin, Clock, Copy } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
 
 import { EmptyState, LoadingBlock } from "../../campaigns/components";
+import { isForbiddenError } from "../../lib/api-client";
 import {
   createDepositAddress,
   loadAssets,
@@ -31,6 +32,7 @@ export default function CryptoPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [copied, setCopied] = useState(false);
   const [rateAmount, setRateAmount] = useState("1");
   const [rate, setRate] = useState<CryptoRate>();
@@ -46,12 +48,16 @@ export default function CryptoPage() {
 
   useEffect(() => {
     setLoading(true);
+    setForbidden(false);
     Promise.all([loadAssets(), refreshTransactions()])
       .then(([assetList]) => {
         setAssets(assetList);
         setSelectedAsset((prev) => prev ?? assetList[0]?.symbol);
       })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "We could not load crypto assets."))
+      .catch((caught) => {
+        setError(caught instanceof Error ? caught.message : "We could not load crypto assets.");
+        setForbidden(isForbiddenError(caught));
+      })
       .finally(() => setLoading(false));
   }, [refreshTransactions]);
 
@@ -104,6 +110,15 @@ export default function CryptoPage() {
   }
 
   const selectedAssetInfo = assets.find((a) => a.symbol === selectedAsset);
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view crypto for this workspace. Contact your workspace
+        owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">

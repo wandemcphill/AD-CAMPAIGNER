@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ChevronLeft, MessageSquare, Settings } from "lucide-react";
 
-import { Badge, Panel } from "@fliptrybe/ui";
+import { Badge, Panel, PermissionDenied } from "@fliptrybe/ui";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../../campaigns/components";
+import { isForbiddenError } from "../../../../lib/api-client";
 import {
   loadMessages,
   loadNumberDetail,
@@ -30,9 +31,11 @@ export default function NumberInboxPage() {
   const [messages, setMessages] = useState<VirtualNumberMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
 
   const refresh = useCallback(async () => {
     setError(undefined);
+    setForbidden(false);
     try {
       const [detail, msgs] = await Promise.all([
         loadNumberDetail(numberId),
@@ -42,6 +45,7 @@ export default function NumberInboxPage() {
       setMessages(msgs);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load this number.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
     }
@@ -52,6 +56,15 @@ export default function NumberInboxPage() {
     const interval = setInterval(() => void refresh(), 15_000);
     return () => clearInterval(interval);
   }, [refresh]);
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view your virtual numbers for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">

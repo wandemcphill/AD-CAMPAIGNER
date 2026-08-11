@@ -7,6 +7,7 @@ import {
   CampaignCard,
   ContextualHelpCard,
   Panel,
+  PermissionDenied,
   ReportCard,
   SummaryStatStrip,
   TimelineEvent
@@ -190,7 +191,7 @@ function ReportLoadingState() {
 }
 
 export default function ReportsPage() {
-  const { analytics, campaigns, error, loading, source } = useCampaignDashboardData();
+  const { analytics, campaigns, error, forbidden, loading, source } = useCampaignDashboardData();
   const liveCampaigns = campaigns.filter(
     (campaign) => campaign.status === "ACTIVE" || campaign.status === "RUNNING"
   );
@@ -203,6 +204,15 @@ export default function ReportsPage() {
   const lockedReports = campaigns.filter(
     (campaign) => reportVariant(campaign.status) === "pending"
   ).length;
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view reports for this workspace. Contact your workspace
+        owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <>

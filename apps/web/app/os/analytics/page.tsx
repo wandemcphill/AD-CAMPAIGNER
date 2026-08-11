@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { BarChart3, Eye, Lightbulb, RefreshCw, TrendingUp } from "lucide-react";
 
-import { Badge, Button, MetricStrip, Panel, PlatformChip } from "@fliptrybe/ui";
+import { Badge, Button, MetricStrip, Panel, PermissionDenied, PlatformChip } from "@fliptrybe/ui";
 
 import { apiRequest } from "../../lib/api-client";
 import { formatCampaignMoney, formatCompact, metricValue } from "../../campaigns/api";
@@ -50,7 +50,7 @@ function usePlatformAnalytics() {
 }
 
 export default function CampaignAnalyticsPage() {
-  const { aiInsights, analytics, campaigns, error, loading, refresh, source } =
+  const { aiInsights, analytics, campaigns, error, forbidden, loading, refresh, source } =
     useCampaignDashboardData();
   const platform = usePlatformAnalytics();
   const trend = analytics?.trend ?? [];
@@ -59,6 +59,15 @@ export default function CampaignAnalyticsPage() {
   const impressions = metricValue(analytics, "impressions");
   const clicks = metricValue(analytics, "clicks");
   const roi = metricValue(analytics, "roi_bps") / 100;
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view performance analytics for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <>

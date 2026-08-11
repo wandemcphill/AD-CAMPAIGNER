@@ -13,10 +13,11 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { isForbiddenError } from "../../lib/api-client";
 import {
   buyBetFunding,
   buyCable,
@@ -96,13 +97,16 @@ export default function UtilitiesPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [success, setSuccess] = useState<BillsOrder>();
 
   const refreshOrders = useCallback(async () => {
+    setForbidden(false);
     try {
       setOrders(await loadBillsOrders());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load order history.");
+      setForbidden(isForbiddenError(caught));
     }
   }, []);
 
@@ -373,6 +377,15 @@ export default function UtilitiesPage() {
       </Button>
     </Panel>
   );
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view utility bill payments for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">

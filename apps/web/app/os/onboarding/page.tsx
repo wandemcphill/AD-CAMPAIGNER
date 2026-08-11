@@ -2,7 +2,16 @@
 
 import { ArrowRight, CheckCircle2, PlugZap, RefreshCw, Rocket, ShieldCheck } from "lucide-react";
 
-import { Badge, Button, MetricStrip, Panel, PlatformChip, SummaryStatStrip, cn } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  MetricStrip,
+  Panel,
+  PermissionDenied,
+  PlatformChip,
+  SummaryStatStrip,
+  cn
+} from "@fliptrybe/ui";
 
 import {
   EmptyState,
@@ -49,7 +58,7 @@ function destinationPlatform(destinationKind: string) {
 }
 
 export default function OnboardingPage() {
-  const { destinations, error, health, loading, refresh, source } = useOnboardingData();
+  const { destinations, error, forbidden, health, loading, refresh, source } = useOnboardingData();
   const { loading: sessionLoading, session } = useApiSession();
   const providers = health ? Object.entries(health.providers) : [];
 
@@ -72,6 +81,15 @@ export default function OnboardingPage() {
     ready: stepReady(step.label)
   }));
   const readySteps = stepStates.filter((step) => step.ready).length;
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view onboarding for this workspace. Contact your workspace
+        owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <>

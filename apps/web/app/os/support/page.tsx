@@ -4,9 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { LifeBuoy, Send } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { isForbiddenError } from "../../lib/api-client";
 import {
   createSupportTicket,
   listSupportTickets,
@@ -26,6 +27,7 @@ export default function SupportPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
 
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -37,10 +39,12 @@ export default function SupportPage() {
   const [replying, setReplying] = useState(false);
 
   const refresh = useCallback(async () => {
+    setForbidden(false);
     try {
       setTickets(await listSupportTickets());
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We could not load your support tickets.");
+      setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
     }
@@ -83,6 +87,15 @@ export default function SupportPage() {
   }
 
   const selected = tickets.find((t) => t.id === selectedId);
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view support for this workspace. Contact your workspace
+        owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">

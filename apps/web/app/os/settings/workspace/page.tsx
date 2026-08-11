@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { Briefcase, Building2, Save } from "lucide-react";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, PermissionDenied } from "@fliptrybe/ui";
 import { Input, Divider, AlertBanner } from "@fliptrybe/ui/components";
 
+import { isForbiddenError } from "../../../lib/api-client";
 import { useApiSession } from "../../../lib/use-session";
 import {
   createCompanyProfile,
@@ -26,11 +27,13 @@ function BusinessProfilePanel({ canEdit }: { canEdit: boolean }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
+    setForbidden(false);
     try {
       const [first] = await loadCompanyProfiles();
       setProfile(first);
@@ -51,6 +54,7 @@ function BusinessProfilePanel({ canEdit }: { canEdit: boolean }) {
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load the business profile.");
+      setForbidden(isForbiddenError(cause));
     } finally {
       setLoading(false);
     }
@@ -66,6 +70,15 @@ function BusinessProfilePanel({ canEdit }: { canEdit: boolean }) {
   }
 
   const valid = (form.name ?? "").trim().length >= 2;
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view workspace settings for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   async function handleSave() {
     if (!valid) return;
@@ -206,17 +219,20 @@ export default function WorkspaceSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>();
+  const [forbidden, setForbidden] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
+    setForbidden(false);
     try {
       const result = await loadWorkspace();
       setWorkspace(result);
       setName(result.name);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load workspace settings.");
+      setForbidden(isForbiddenError(cause));
     } finally {
       setLoading(false);
     }
@@ -229,6 +245,15 @@ export default function WorkspaceSettingsPage() {
   const trimmed = name.trim();
   const dirty = workspace !== undefined && trimmed !== workspace.name;
   const valid = trimmed.length >= 2 && trimmed.length <= 80;
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view workspace settings for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   async function handleSave() {
     if (!dirty || !valid) return;

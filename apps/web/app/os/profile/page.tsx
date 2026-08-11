@@ -17,6 +17,7 @@ import {
   Button,
   ContextualHelpCard,
   Panel,
+  PermissionDenied,
   PlatformChip,
   SummaryStatStrip,
   TimelineEvent
@@ -65,7 +66,7 @@ const profileSections = [
 ] as const;
 
 export default function ProfilePage() {
-  const { destinations, error, loading, refresh, source } = useOnboardingData();
+  const { destinations, error, forbidden, loading, refresh, source } = useOnboardingData();
   const { loading: sessionLoading, session } = useApiSession();
 
   const completionItems = [
@@ -113,6 +114,15 @@ export default function ProfilePage() {
   const completion = Math.round((readyCount / completionItems.length) * 100);
   const setupGapCount = completionItems.length - readyCount;
   const nextProfileAction = completionItems.find((item) => !item.ready);
+
+  if (forbidden) {
+    return (
+      <PermissionDenied>
+        You do not have permission to view this profile page for this workspace. Contact your
+        workspace owner if you believe this is a mistake.
+      </PermissionDenied>
+    );
+  }
 
   return (
     <>
