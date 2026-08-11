@@ -8,6 +8,7 @@ import type {
   FundVirtualCardDto,
   IssueVirtualCardDto,
   RemittanceQuoteDto,
+  RequestWalletWithdrawalDto,
   SendRemittanceDto
 } from "./financial-products.dtos";
 import { FinancialProductsService } from "./financial-products.service";
@@ -117,5 +118,21 @@ export class FinancialProductsController {
   @RequirePermissions("analytics:read")
   listRemittanceTransfers(@Req() request: WorkspaceContextRequest) {
     return this.financial.listRemittanceTransfers(workspaceContextFromRequest(request));
+  }
+
+  // ─── Wallet Withdrawal ──────────────────────────────────────────────────────
+
+  @Post("wallet-withdrawals")
+  @RequireFeature("walletWithdrawals")
+  @RequirePermissions("wallet:withdraw")
+  requestWithdrawal(@Body() body: RequestWalletWithdrawalDto, @Req() request: WorkspaceContextRequest) {
+    return this.financial.requestWithdrawal(workspaceContextFromRequest(request), body);
+  }
+
+  @Get("wallet-withdrawals")
+  @RequireFeature("walletWithdrawals")
+  @RequirePermissions("wallet:withdraw")
+  listWithdrawals(@Req() request: WorkspaceContextRequest) {
+    return this.financial.listWithdrawals(workspaceContextFromRequest(request));
   }
 }

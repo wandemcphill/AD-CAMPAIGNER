@@ -92,3 +92,32 @@ export class SendRemittanceDto {
   @IsNumber()
   rate?: number;
 }
+
+// ─── Wallet Withdrawal ────────────────────────────────────────────────────────────
+//
+// Bank-only, same-currency (NGN) payout of the workspace's own wallet balance
+// to its own bank account. Either a saved beneficiaryId is supplied, or all
+// three inline recipient fields are — the service enforces exactly one of
+// those two shapes (see FinancialProductsService.requestWithdrawal).
+
+export class RequestWalletWithdrawalDto {
+  @IsOptional()
+  @IsString()
+  beneficiaryId?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientName?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientAccountNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  recipientBankCode?: string;
+
+  @IsInt()
+  @Min(100)
+  amountMinor!: number;
+}

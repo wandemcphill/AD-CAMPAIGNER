@@ -33,6 +33,11 @@ export const featureFlags = {
   virtualAccounts: false,
   virtualCards: false,
   remittance: false,
+  // Wallet withdrawal (bank-only, NGN) reuses the same Swappr NGN payout
+  // adapter as `remittance` — same sandbox-verification gate applies. Keep
+  // this DISABLED until a live sandbox payout + reconciliation pass signs off,
+  // same governance rule as the other financial-products flags above.
+  walletWithdrawals: false,
   kycVerification: false,
   kybVerification: false,
   telecomGateway: true,

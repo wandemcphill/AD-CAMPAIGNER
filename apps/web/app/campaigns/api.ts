@@ -566,6 +566,59 @@ export function createWalletFundingIntent(input: CreatePaymentIntentInput) {
   });
 }
 
+// ─── Wallet withdrawal (bank payout) ───────────────────────────────────────────
+//
+// Bank-only, NGN, same-currency payout of the workspace's own wallet balance
+// to its own bank account. Mirrors the shape of
+// apps/api/src/modules/financial-products/financial-products.dtos.ts
+// (RequestWalletWithdrawalDto) and the WalletWithdrawal Prisma model.
+
+export type WalletWithdrawalStatus =
+  | "HOLD"
+  | "PROCESSING"
+  | "COMPLETED"
+  | "FAILED"
+  | "RECONCILIATION_REQUIRED";
+
+export type WalletWithdrawalRecord = {
+  id: string;
+  workspaceId: string;
+  userId: string | null;
+  walletId: string;
+  providerName: string;
+  providerReference: string | null;
+  beneficiaryId: string | null;
+  recipientName: string;
+  recipientAccountNumber: string;
+  recipientBankCode: string;
+  amountMinor: number;
+  currency: CurrencyCode;
+  feeMinor: number;
+  status: WalletWithdrawalStatus;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RequestWalletWithdrawalInput = {
+  amountMinor: number;
+  beneficiaryId?: string;
+  recipientName?: string;
+  recipientAccountNumber?: string;
+  recipientBankCode?: string;
+};
+
+export function requestWalletWithdrawal(input: RequestWalletWithdrawalInput) {
+  return apiRequest<WalletWithdrawalRecord>("/financial-products/wallet-withdrawals", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function listWalletWithdrawals() {
+  return apiRequest<WalletWithdrawalRecord[]>("/financial-products/wallet-withdrawals");
+}
+
 // Real campaign invoices (CampaignInvoice) — a distinct concept from the
 // PaymentIntent-based "Invoices" tab content above, which is really an
 // ahead-of-time wallet top-up prompt. These are invoices ops actually issued
