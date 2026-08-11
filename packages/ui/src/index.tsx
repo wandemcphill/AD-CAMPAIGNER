@@ -337,6 +337,36 @@ export function EmptyState({
   );
 }
 
+export function PermissionDenied({
+  action,
+  children,
+  title = "403 — Unauthorized Access"
+}: {
+  action?: ReactNode;
+  children?: ReactNode;
+  title?: string;
+}) {
+  return (
+    <div className="relative mx-auto grid min-h-56 max-w-md place-items-center overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] p-8 text-center">
+      <div className="relative">
+        <div className="mx-auto grid size-12 place-items-center rounded-full border border-[var(--ft-red)]/40 bg-[var(--ft-red-subtle)]">
+          <svg aria-hidden="true" className="size-6 text-[var(--ft-red)]" fill="none" viewBox="0 0 24 24">
+            <rect height="11" rx="2" stroke="currentColor" strokeWidth="1.6" width="16" x="4" y="10" />
+            <path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
+            <path d="m9.5 15 5 5m0-5-5 5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.6" />
+          </svg>
+        </div>
+        <div className="mt-4 text-base font-medium text-[var(--ft-text-primary)]">{title}</div>
+        <div className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+          {children ??
+            "Access denied. You do not have permission to view this page. Please contact your administrator."}
+        </div>
+      </div>
+      {action ? <div className="mt-5">{action}</div> : null}
+    </div>
+  );
+}
+
 export function SkeletonBlock({ className }: { className?: string }) {
   return <div className={cn("skeleton", className)} />;
 }
