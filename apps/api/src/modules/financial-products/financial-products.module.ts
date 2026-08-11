@@ -18,7 +18,10 @@ import { RemittanceCorridorService } from "./remittance-corridor.service";
 // reconciliation services must keep working so anything already in flight can
 // still be settled after a vertical is switched back off.
 const anyFinancialVerticalEnabled =
-  featureFlags.virtualAccounts || featureFlags.virtualCards || featureFlags.remittance;
+  featureFlags.virtualAccounts ||
+  featureFlags.virtualCards ||
+  featureFlags.remittance ||
+  featureFlags.walletWithdrawals;
 
 @Module({
   imports: [PrismaModule, ProvidersModule],

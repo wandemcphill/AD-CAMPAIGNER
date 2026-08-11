@@ -22,11 +22,15 @@ import {
   amountToMinor,
   createWalletFundingIntent,
   formatCampaignMoney,
+  listWalletWithdrawals,
   loadInvoices,
   payInvoiceFromWallet,
+  requestWalletWithdrawal,
   verifyPayment,
   type CampaignInvoiceRecord,
-  type CreatePaymentIntentInput
+  type CreatePaymentIntentInput,
+  type RequestWalletWithdrawalInput,
+  type WalletWithdrawalRecord
 } from "../../campaigns/api";
 import {
   EmptyState,
@@ -40,13 +44,38 @@ import type { BillingActivity } from "../../campaigns/data";
 import { useBillingData } from "../../campaigns/use-campaign-dashboard-data";
 import { useApiSession } from "../../lib/use-session";
 
-type BillingTab = "history" | "invoices" | "methods";
+type BillingTab = "history" | "invoices" | "methods" | "withdraw";
 
 const billingTabs: Array<{ label: string; value: BillingTab }> = [
   { label: "Spend History", value: "history" },
   { label: "Invoices", value: "invoices" },
-  { label: "Payment Methods", value: "methods" }
+  { label: "Payment Methods", value: "methods" },
+  { label: "Withdraw", value: "withdraw" }
 ];
+
+function withdrawalStatusTone(status: WalletWithdrawalRecord["status"]): "neutral" | "success" | "warning" | "danger" | "info" {
+  if (status === "COMPLETED") return "success";
+  if (status === "FAILED") return "danger";
+  if (status === "RECONCILIATION_REQUIRED") return "warning";
+  return "info";
+}
+
+function withdrawalStatusLabel(status: WalletWithdrawalRecord["status"]) {
+  switch (status) {
+    case "HOLD":
+      return "On hold";
+    case "PROCESSING":
+      return "Processing";
+    case "COMPLETED":
+      return "Completed";
+    case "FAILED":
+      return "Failed";
+    case "RECONCILIATION_REQUIRED":
+      return "Under review";
+    default:
+      return status;
+  }
+}
 
 const presetTopUps = ["10000", "25000", "50000", "100000"];
 
@@ -241,6 +270,15 @@ export default function BillingPage() {
   const [payingInvoiceId, setPayingInvoiceId] = useState<string>();
   const [verifyingPayment, setVerifyingPayment] = useState(false);
   const [verifyError, setVerifyError] = useState<string>();
+  const [withdrawMethod, setWithdrawMethod] = useState<"BANK" | "CRYPTO">("BANK");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawRecipientName, setWithdrawRecipientName] = useState("");
+  const [withdrawAccountNumber, setWithdrawAccountNumber] = useState("");
+  const [withdrawBankCode, setWithdrawBankCode] = useState("");
+  const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
+  const [withdrawFormError, setWithdrawFormError] = useState<string>();
+  const [withdrawals, setWithdrawals] = useState<WalletWithdrawalRecord[]>();
+  const [withdrawalsError, setWithdrawalsError] = useState<string>();
   const currency: CurrencyCode = wallet?.availableBalance.currency ?? "NGN";
   const available = wallet?.availableBalance ?? null;
   const held = wallet?.heldBalance ?? null;
@@ -280,6 +318,55 @@ export default function BillingPage() {
         setInvoicesError(caught instanceof Error ? caught.message : "Could not load invoices.")
       );
   }, [activeTab, invoices]);
+
+  useEffect(() => {
+    if (activeTab !== "withdraw" || withdrawals !== undefined) return;
+    void listWalletWithdrawals()
+      .then(setWithdrawals)
+      .catch((caught) =>
+        setWithdrawalsError(caught instanceof Error ? caught.message : "Could not load withdrawal history.")
+      );
+  }, [activeTab, withdrawals]);
+
+  async function submitWithdrawal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setWithdrawFormError(undefined);
+    setWithdrawSubmitting(true);
+    try {
+      const amountMinor = amountToMinor(withdrawAmount);
+      if (!amountMinor) {
+        throw new Error("Enter a withdrawal amount before continuing.");
+      }
+      if (!withdrawRecipientName.trim() || !withdrawAccountNumber.trim() || !withdrawBankCode.trim()) {
+        throw new Error("Enter the recipient name, account number, and bank code.");
+      }
+
+      const input: RequestWalletWithdrawalInput = {
+        amountMinor,
+        recipientName: withdrawRecipientName.trim(),
+        recipientAccountNumber: withdrawAccountNumber.trim(),
+        recipientBankCode: withdrawBankCode.trim()
+      };
+
+      const created = await requestWalletWithdrawal(input);
+      setWithdrawals((current) => [created, ...(current ?? [])]);
+      setWithdrawAmount("");
+      setWithdrawRecipientName("");
+      setWithdrawAccountNumber("");
+      setWithdrawBankCode("");
+      await refresh();
+    } catch (caught) {
+      setWithdrawFormError(
+        caught instanceof Error ? caught.message : "Could not submit this withdrawal. No funds were moved."
+      );
+    } finally {
+      setWithdrawSubmitting(false);
+    }
+  }
+
+  function handleWithdrawSubmit(event: FormEvent<HTMLFormElement>) {
+    void submitWithdrawal(event);
+  }
 
   async function payInvoice(invoiceId: string) {
     setPayingInvoiceId(invoiceId);
@@ -763,6 +850,149 @@ export default function BillingPage() {
                   title="No pending invoices"
                 />
               )}
+            </div>
+          ) : activeTab === "withdraw" ? (
+            <div className="grid gap-5 p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+              <div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    className={cn(
+                      "h-10 rounded-[var(--radius-sm)] border px-3 text-sm font-medium transition",
+                      withdrawMethod === "BANK"
+                        ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]"
+                        : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-text-secondary)] hover:border-[var(--ft-accent)]"
+                    )}
+                    onClick={() => setWithdrawMethod("BANK")}
+                    type="button"
+                  >
+                    Bank
+                  </button>
+                  <button
+                    aria-disabled
+                    className="h-10 cursor-not-allowed rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm font-medium text-[var(--ft-text-muted)]"
+                    disabled
+                    title="Crypto withdrawal is coming soon — no payout provider is connected yet."
+                    type="button"
+                  >
+                    Crypto
+                    <span className="ml-1 font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                      Soon
+                    </span>
+                  </button>
+                </div>
+
+                <form className="mt-5 grid gap-4" onSubmit={handleWithdrawSubmit}>
+                  <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
+                    Amount
+                    <input
+                      className={amountInputClass}
+                      inputMode="numeric"
+                      onChange={(event) => setWithdrawAmount(event.target.value)}
+                      placeholder="0"
+                      value={withdrawAmount}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
+                    Account name
+                    <input
+                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]"
+                      onChange={(event) => setWithdrawRecipientName(event.target.value)}
+                      placeholder="Name on the bank account"
+                      value={withdrawRecipientName}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
+                    Account number
+                    <input
+                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]"
+                      inputMode="numeric"
+                      onChange={(event) => setWithdrawAccountNumber(event.target.value)}
+                      placeholder="10-digit NUBAN"
+                      value={withdrawAccountNumber}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
+                    Bank code
+                    <input
+                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]"
+                      onChange={(event) => setWithdrawBankCode(event.target.value)}
+                      placeholder="e.g. 044"
+                      value={withdrawBankCode}
+                    />
+                  </label>
+
+                  {withdrawFormError ? (
+                    <p className="text-sm text-[var(--ft-red)]">{withdrawFormError}</p>
+                  ) : null}
+
+                  <Button disabled={withdrawSubmitting} type="submit">
+                    <WalletCards className="size-4 stroke-[1.5]" />
+                    {withdrawSubmitting ? "Submitting withdrawal" : "Withdraw to bank"}
+                  </Button>
+                  <div className="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm leading-5 text-[var(--ft-text-secondary)]">
+                    <ShieldCheck className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-[var(--ft-text-muted)]" />
+                    <span>
+                      Funds are held on your wallet the moment you submit and released back only if
+                      the transfer fails outright — never guessed or auto-retried.
+                    </span>
+                  </div>
+                </form>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--ft-text-primary)]">Withdrawal history</h3>
+                {withdrawalsError ? (
+                  <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
+                    {withdrawalsError}
+                  </div>
+                ) : null}
+                {withdrawals === undefined ? (
+                  <div className="mt-3">
+                    <LoadingBlock label="Loading withdrawal history" />
+                  </div>
+                ) : withdrawals.length === 0 ? (
+                  <div className="mt-3">
+                    <EmptyState
+                      copy="Bank withdrawals you submit will show up here with their status — on hold, processing, completed, failed, or under review."
+                      icon={WalletCards}
+                      title="No withdrawals yet"
+                    />
+                  </div>
+                ) : (
+                  <div className="mt-3 grid gap-2">
+                    {withdrawals.map((row) => (
+                      <div
+                        className="grid gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-3"
+                        key={row.id}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-medium text-[var(--ft-text-primary)]">
+                            {formatCampaignMoney({ amountMinor: row.amountMinor, currency: row.currency })}
+                          </div>
+                          <Badge tone={withdrawalStatusTone(row.status)}>
+                            {withdrawalStatusLabel(row.status)}
+                          </Badge>
+                        </div>
+                        <div className="text-sm text-[var(--ft-text-secondary)]">
+                          {row.recipientName} · {row.recipientAccountNumber}
+                        </div>
+                        <div className="font-mono text-[11px] text-[var(--ft-text-muted)]">
+                          {new Date(row.createdAt).toLocaleString()}
+                          {row.providerReference ? ` · Ref ${row.providerReference}` : ""}
+                        </div>
+                        {row.status === "RECONCILIATION_REQUIRED" ? (
+                          <p className="text-sm leading-6 text-[var(--ft-yellow)]">
+                            This withdrawal is under manual review — please do not resubmit it.
+                          </p>
+                        ) : null}
+                        {row.status === "FAILED" && row.failureReason ? (
+                          <p className="text-sm leading-6 text-[var(--ft-red)]">{row.failureReason}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="p-4">

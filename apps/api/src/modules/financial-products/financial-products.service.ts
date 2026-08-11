@@ -26,12 +26,14 @@ import {
 import { PrismaService } from "../prisma.service";
 import { ProviderRouterService } from "../providers/provider-router.service";
 import { FinancialReconciliationService } from "./financial-reconciliation.service";
+import { RemittanceBeneficiaryService } from "./remittance-beneficiary.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   CreateVirtualAccountDto,
   FundVirtualCardDto,
   IssueVirtualCardDto,
   RemittanceQuoteDto,
+  RequestWalletWithdrawalDto,
   SendRemittanceDto
 } from "./financial-products.dtos";
 
@@ -88,7 +90,8 @@ export class FinancialProductsService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly providerRouter: ProviderRouterService,
-    private readonly reconciliation: FinancialReconciliationService
+    private readonly reconciliation: FinancialReconciliationService,
+    private readonly beneficiaries?: RemittanceBeneficiaryService
   ) {}
 
   private get db(): DatabaseClient {
@@ -739,6 +742,322 @@ export class FinancialProductsService {
 
   async listRemittanceTransfers(ctx: AuthenticatedRequestContext) {
     return this.db.remittanceTransfer.findMany({
+      where: { workspaceId: ctx.workspaceId },
+      orderBy: { createdAt: "desc" }
+    });
+  }
+
+  // ─── Wallet Withdrawal ──────────────────────────────────────────────────────
+  //
+  // Payout of the workspace's own NGN wallet balance to its own bank account.
+  // Bank-only, same-currency (NGN) — reuses the Swappr NGN payout adapter via
+  // the same RemittanceProvider interface used by sendRemittance, but the
+  // ledger discipline is HOLD -> (RELEASE+DEBIT | RELEASE | left HOLD) rather
+  // than sendRemittance's straight DEBIT, because a withdrawal is our own
+  // money leaving, not a third-party recipient's, and getting the amount
+  // wrong here is a direct loss to FlipTrybe, not just a customer dispute.
+  //
+  // Outcome handling mirrors sendRemittance's ambiguous-failure discipline
+  // exactly (see the long FINANCIAL SAFETY comment on that method): a
+  // provider call that times out or errors without a definitive rejection
+  // leaves the HOLD in place and opens a reconciliation exception instead of
+  // guessing FAILED or COMPLETED.
+  async requestWithdrawal(ctx: AuthenticatedRequestContext, dto: RequestWalletWithdrawalDto) {
+    let recipientName: string;
+    let recipientAccountNumber: string;
+    let recipientBankCode: string;
+    let beneficiaryId: string | undefined;
+
+    if (dto.beneficiaryId) {
+      if (!this.beneficiaries) {
+        throw new ServiceUnavailableException("Beneficiary lookup is not available.");
+      }
+      const beneficiary = await this.beneficiaries.getById(dto.beneficiaryId, ctx.workspaceId);
+      if (beneficiary.currency !== "NGN" || beneficiary.payoutMethod !== "BANK_ACCOUNT") {
+        throw new BadRequestException(
+          "Only NGN bank-account beneficiaries are supported for wallet withdrawal in this pass."
+        );
+      }
+      if (!beneficiary.accountNumber || !beneficiary.bankCode) {
+        throw new BadRequestException("Beneficiary is missing account number or bank code.");
+      }
+      recipientName = beneficiary.recipientName;
+      recipientAccountNumber = beneficiary.accountNumber;
+      recipientBankCode = beneficiary.bankCode;
+      beneficiaryId = beneficiary.id;
+    } else if (dto.recipientName && dto.recipientAccountNumber && dto.recipientBankCode) {
+      recipientName = dto.recipientName;
+      recipientAccountNumber = dto.recipientAccountNumber;
+      recipientBankCode = dto.recipientBankCode;
+    } else {
+      throw new BadRequestException(
+        "Provide either beneficiaryId or all of recipientName/recipientAccountNumber/recipientBankCode."
+      );
+    }
+
+    const currency = "NGN";
+    const withdrawalId = uid("wd");
+    const idempotencyKey = `wallet_withdrawal_${withdrawalId}`;
+    const remittanceProvider = await this.selectRemittanceAdapter(withdrawalId);
+
+    if (!remittanceProvider.remittanceCapabilities.supportsPayouts) {
+      throw new ServiceUnavailableException(
+        `Provider "${remittanceProvider.name}" does not support payouts.`
+      );
+    }
+
+    const outcome = await runChargeSaga({
+      debit: async () => {
+        const withdrawal = await this.db.$transaction(async (tx) => {
+          const wallet = await this.getWallet(ctx.workspaceId, tx);
+          const entries = (await tx.ledgerEntry.findMany({
+            where: { walletId: wallet.id }
+          })) as DbLedgerEntryRow[];
+          const available = calculateAvailableBalance(entries.map(toTypedEntry));
+
+          if (available.amountMinor < dto.amountMinor) {
+            throw new ForbiddenException(
+              `Insufficient balance. Required ₦${(dto.amountMinor / 100).toFixed(2)}.`
+            );
+          }
+
+          const holdEntry = await tx.ledgerEntry.create({
+            data: {
+              walletId: wallet.id,
+              kind: "HOLD",
+              amountMinor: dto.amountMinor,
+              currency,
+              reference: idempotencyKey,
+              description: `Wallet withdrawal hold: ${recipientName}`,
+              idempotencyKey,
+              sourceType: "WalletWithdrawal",
+              sourceId: withdrawalId
+            }
+          });
+
+          return tx.walletWithdrawal.create({
+            data: {
+              id: withdrawalId,
+              workspaceId: ctx.workspaceId,
+              userId: ctx.userId,
+              walletId: wallet.id,
+              providerName: remittanceProvider.name,
+              beneficiaryId: beneficiaryId ?? null,
+              recipientName,
+              recipientAccountNumber,
+              recipientBankCode,
+              amountMinor: dto.amountMinor,
+              currency,
+              status: "HOLD",
+              idempotencyKey,
+              holdLedgerEntryId: holdEntry.id
+            }
+          });
+        });
+
+        return {
+          order: withdrawal,
+          charge: {
+            chargeId: withdrawal.id,
+            walletId: withdrawal.walletId,
+            amountMinor: withdrawal.amountMinor,
+            currency: withdrawal.currency as CurrencyCode,
+            debitLedgerEntryId: withdrawal.holdLedgerEntryId
+          }
+        };
+      },
+
+      execute: async (withdrawal) => {
+        const result = await remittanceProvider.sendTransfer({
+          reference: withdrawalId,
+          // Reuse the same idempotencyKey the HOLD step already committed — a
+          // saga retry of execute() must not be able to create a second
+          // provider-side payout for the same logical withdrawal.
+          idempotencyKey,
+          amountMinor: dto.amountMinor,
+          sourceCurrency: currency,
+          destinationCurrency: currency,
+          recipient: {
+            name: recipientName,
+            accountNumber: recipientAccountNumber,
+            bankCode: recipientBankCode,
+            country: "NG"
+          }
+        });
+
+        if (result.status === "COMPLETED") {
+          return this.db.$transaction(async (tx) => {
+            const releaseEntry = await tx.ledgerEntry.create({
+              data: {
+                walletId: withdrawal.walletId,
+                kind: "RELEASE",
+                amountMinor: dto.amountMinor,
+                currency,
+                reference: `${idempotencyKey}_release`,
+                description: `Wallet withdrawal hold release: ${recipientName}`,
+                idempotencyKey: `${idempotencyKey}_release`,
+                sourceType: "WalletWithdrawal",
+                sourceId: withdrawalId
+              }
+            });
+            const debitEntry = await tx.ledgerEntry.create({
+              data: {
+                walletId: withdrawal.walletId,
+                kind: "DEBIT",
+                amountMinor: dto.amountMinor,
+                currency,
+                reference: `${idempotencyKey}_debit`,
+                description: `Wallet withdrawal to ${recipientName}`,
+                idempotencyKey: `${idempotencyKey}_debit`,
+                sourceType: "WalletWithdrawal",
+                sourceId: withdrawalId
+              }
+            });
+            return tx.walletWithdrawal.update({
+              where: { id: withdrawal.id },
+              data: {
+                status: "COMPLETED",
+                providerReference: result.providerReference,
+                releaseLedgerEntryId: releaseEntry.id,
+                debitLedgerEntryId: debitEntry.id,
+                ...(result.executedFeeMinor !== undefined ? { feeMinor: result.executedFeeMinor } : {})
+              }
+            });
+          });
+        }
+
+        if (result.status === "FAILED") {
+          return this.db.$transaction(async (tx) => {
+            const releaseEntry = await tx.ledgerEntry.create({
+              data: {
+                walletId: withdrawal.walletId,
+                kind: "RELEASE",
+                amountMinor: dto.amountMinor,
+                currency,
+                reference: `${idempotencyKey}_release`,
+                description: `Wallet withdrawal hold release (provider failed): ${recipientName}`,
+                idempotencyKey: `${idempotencyKey}_release`,
+                sourceType: "WalletWithdrawal",
+                sourceId: withdrawalId
+              }
+            });
+            return tx.walletWithdrawal.update({
+              where: { id: withdrawal.id },
+              data: {
+                status: "FAILED",
+                providerReference: result.providerReference,
+                releaseLedgerEntryId: releaseEntry.id,
+                failureReason: "Provider reported payout failure"
+              }
+            });
+          });
+        }
+
+        // PROCESSING — provider accepted but hasn't confirmed. This is a
+        // genuine intermediate state (not an error): leave the HOLD in place
+        // and record PROCESSING; getTransferStatus/webhook/reconciliation
+        // must resolve it to COMPLETED or FAILED later. Never guessed here.
+        return this.db.walletWithdrawal.update({
+          where: { id: withdrawal.id },
+          data: { status: "PROCESSING", providerReference: result.providerReference }
+        });
+      },
+
+      compensate: async () => {}
+    });
+
+    if (outcome.status !== "completed") {
+      // FINANCIAL SAFETY: identical discipline to sendRemittance — a thrown
+      // error from execute() (as opposed to a returned FAILED/PROCESSING
+      // result, handled above) means the provider call itself didn't
+      // complete cleanly. We do not know whether Swappr executed the payout.
+      // Never mark FAILED, never auto-retry, never re-route to a fallback
+      // provider — leave the HOLD in place and open a reconciliation
+      // exception for manual resolution.
+      const err = outcome.error;
+      const httpStatus =
+        err instanceof Error && "status" in err && typeof (err as { status?: unknown }).status === "number"
+          ? (err as { status: number }).status
+          : undefined;
+      const noResponse =
+        err instanceof Error &&
+        /timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED|socket hang up|network/i.test(err.message);
+
+      const safety = classifyFallbackSafety({
+        mutatesMoney: true,
+        ...(httpStatus !== undefined ? { httpStatus } : {}),
+        ...(noResponse ? { noResponse: true } : {})
+      });
+
+      if (safety === "SAFE_TO_RETRY") {
+        // The provider definitively rejected the request before accepting
+        // it — no provider-side payout exists. Safe to release the hold.
+        await this.db.$transaction(async (tx) => {
+          const releaseEntry = await tx.ledgerEntry.create({
+            data: {
+              walletId: (await this.getWallet(ctx.workspaceId, tx)).id,
+              kind: "RELEASE",
+              amountMinor: dto.amountMinor,
+              currency,
+              reference: `${idempotencyKey}_release`,
+              description: `Wallet withdrawal hold release (rejected before acceptance): ${recipientName}`,
+              idempotencyKey: `${idempotencyKey}_release`,
+              sourceType: "WalletWithdrawal",
+              sourceId: withdrawalId
+            }
+          });
+          await tx.walletWithdrawal.update({
+            where: { id: withdrawalId },
+            data: {
+              status: "FAILED",
+              releaseLedgerEntryId: releaseEntry.id,
+              failureReason: String(err instanceof Error ? err.message : err)
+            }
+          });
+        });
+
+        this.logger.error(`Wallet withdrawal ${withdrawalId} FAILED (rejected before acceptance): ${String(err)}`);
+        throw new BadRequestException("Withdrawal could not be submitted to the provider and was not sent.");
+      }
+
+      // PROVIDER_TRANSACTION_MAY_EXIST — leave the HOLD in place, do NOT
+      // release, do NOT debit, do NOT retry.
+      await this.db.walletWithdrawal.update({
+        where: { id: withdrawalId },
+        data: { status: "RECONCILIATION_REQUIRED" }
+      });
+
+      await this.reconciliation.openException({
+        workspaceId: ctx.workspaceId,
+        resourceType: "WalletWithdrawal",
+        resourceId: withdrawalId,
+        domain: "REMITTANCE",
+        providerName: remittanceProvider.name,
+        kind: "AMBIGUOUS_PROVIDER_RESULT",
+        internalStatus: "RECONCILIATION_REQUIRED",
+        internalAmountMinor: dto.amountMinor,
+        internalCurrency: currency,
+        idempotencyKey,
+        detail:
+          `Provider call did not return a confirmed result. The payout MAY have been ` +
+          `executed. Wallet balance remains HELD (not released, not debited) until this is ` +
+          `reconciled against ${remittanceProvider.name}. Underlying error: ${String(outcome.error)}`
+      });
+
+      this.logger.error(
+        `Wallet withdrawal ${withdrawalId} ended RECONCILIATION_REQUIRED: ${String(outcome.error)}`
+      );
+
+      throw new BadRequestException(
+        "Withdrawal was placed on hold but could not be confirmed with the provider. It is under review — please do not retry."
+      );
+    }
+
+    return outcome.result;
+  }
+
+  async listWithdrawals(ctx: AuthenticatedRequestContext) {
+    return this.db.walletWithdrawal.findMany({
       where: { workspaceId: ctx.workspaceId },
       orderBy: { createdAt: "desc" }
     });

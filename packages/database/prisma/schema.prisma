@@ -2308,6 +2308,52 @@ model RemittanceWalletCharge {
   @@index([transferId])
 }
 
+// Wallet withdrawal (payout of the workspace's own NGN wallet balance to its
+// own bank account) — distinct from RemittanceTransfer, which sends money to a
+// third-party recipient. Same-currency NGN only in this pass (see
+// docs/providers/swappr.md — Swappr's NGN payout adapter is reused as-is).
+//
+// Lifecycle mirrors the HOLD -> DEBIT|RELEASE discipline: a HOLD ledger entry
+// is created before the provider call; on confirmed provider success the HOLD
+// is RELEASEd and a DEBIT is booked; on confirmed provider failure the HOLD is
+// simply RELEASEd; on an ambiguous/timed-out provider response the HOLD is
+// left in place and status moves to RECONCILIATION_REQUIRED — see
+// FinancialReconciliationException.
+model WalletWithdrawal {
+  id                     String                 @id @default(uuid())
+  workspaceId            String
+  userId                 String?
+  walletId               String
+  providerName           String
+  providerReference      String?
+  beneficiaryId          String?
+  recipientName          String
+  recipientAccountNumber String
+  recipientBankCode      String
+  amountMinor            Int
+  currency               String                 @default("NGN")
+  feeMinor               Int                    @default(0)
+  status                 WalletWithdrawalStatus @default(HOLD)
+  idempotencyKey         String                 @unique
+  holdLedgerEntryId      String?
+  debitLedgerEntryId     String?
+  releaseLedgerEntryId   String?
+  failureReason          String?
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([walletId])
+}
+
+enum WalletWithdrawalStatus {
+  HOLD
+  PROCESSING
+  COMPLETED
+  FAILED
+  RECONCILIATION_REQUIRED
+}
+
 // Saved payout recipients for customer-facing remittance (separate from
 // SettlementBeneficiary which is FlipTrybe's own settlement infra).
 model RemittanceBeneficiary {
