@@ -70,8 +70,11 @@ const NAV_GROUPS: NavGroup[] = [
       // Server-side enforcement (RequirePermissions("admin:access", "campaign:approve")
       // on ApprovalsController) is what actually protects /os/approvals — this
       // permission check just keeps the link out of the sidebar for users who'd get
-      // a 403 anyway. No other nav item in this file is gated today.
+      // a 403 anyway.
       { label: "Approvals", href: "/os/approvals", icon: ClipboardCheck, permission: "campaign:approve" },
+      // Mirrors TrustEngineController's @RequirePermissions("analytics:read") gate —
+      // server-side enforcement is what actually protects /os/trust-engine.
+      { label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck, permission: "analytics:read" },
     ],
   },
   {
@@ -89,18 +92,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: "Creative Library", href: "/os/library", icon: Folder },
       { label: "AI Personas", href: "/os/personas", icon: Bot },
-    ],
-  },
-  {
-    // Trust Engine review is staff-facing (7-stage asset validation pipeline —
-    // apps/api/src/modules/trust-engine). No client-side permission gate exists
-    // on NavItem in this shell yet (unlike a hypothetical Approvals-style queue),
-    // so this link is visible to everyone; the real gate is server-side
-    // (@RequirePermissions("analytics:read") + @RequireFeature("trustEngine") on
-    // TrustEngineController) — a user without access gets a 403 from the page.
-    title: "Governance",
-    items: [
-      { label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck },
     ],
   },
   {
