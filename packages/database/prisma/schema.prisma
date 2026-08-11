@@ -3749,6 +3749,25 @@ model ApiKey {
   @@index([workspaceId, revokedAt])
 }
 
+// ─── AI configuration ────────────────────────────────────────────────────────
+// Workspace-scoped settings for the AI Configuration panel at
+// apps/web/app/os/settings/ai/page.tsx. Plain scalar fields (no Prisma relation
+// back-refs), same pattern as FxRateCache above — avoids touching the Workspace/User
+// models just to store a config row per workspace.
+
+model AiConfig {
+  id                   String   @id @default(uuid())
+  workspaceId          String   @unique
+  modelProvider        String   @default("OpenAI")
+  apiEndpoint          String
+  systemPromptOverride String   @default("")
+  updatedByUserId      String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
 // ─── Outgoing webhooks ───────────────────────────────────────────────────────
 
 model OutgoingWebhookSubscription {

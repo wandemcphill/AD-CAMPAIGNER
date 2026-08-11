@@ -51,6 +51,32 @@ export async function revokeApiKey(id: string) {
   });
 }
 
+// AI configuration
+
+export type AiModelProvider = "OpenAI" | "Gemini";
+
+export type AiConfig = {
+  modelProvider: AiModelProvider;
+  apiEndpoint: string;
+  systemPromptOverride: string;
+  updatedAt: string | null;
+};
+
+export async function loadAiConfig() {
+  return apiRequest<AiConfig>("/ai-config");
+}
+
+export async function updateAiConfig(input: {
+  modelProvider: AiModelProvider;
+  apiEndpoint: string;
+  systemPromptOverride: string;
+}) {
+  return apiRequest<AiConfig>("/ai-config", {
+    method: "PUT",
+    body: JSON.stringify(input)
+  });
+}
+
 // Outgoing webhooks
 
 export type OutgoingWebhookSubscription = {
