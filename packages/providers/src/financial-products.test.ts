@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createFincraRemittanceProvider,
+  createInflowVirtualAccountProvider,
   createMockRemittanceProvider,
   createMockVirtualAccountProvider,
   createMockVirtualCardProvider,
   createPayscribeVirtualAccountProvider,
+  createSudoVirtualCardProvider,
   createSwapprRemittanceProvider,
   createSwapprVirtualAccountProvider,
   createYativoRemittanceProvider,
@@ -469,6 +471,137 @@ describe('Payscribe virtual account adapter — capability declaration', () => {
   });
 });
 
+describe('Inflow virtual account adapter — mapped against live-verified sandbox behavior', () => {
+  it('declares customer-scoped VA creation only, no merchant-level VA', () => {
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x' });
+    expect(provider.virtualAccountCapabilities).toEqual({
+      supportsMerchantAccountCreation: false,
+      supportsCustomerVirtualAccounts: true
+    });
+  });
+
+  it('creates a customer then assigns a virtual account when no providerCustomerId is given', async () => {
+    const fetcher = vi.fn().mockImplementation((url: string) => {
+      if (String(url).endsWith('/v1/customers')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ data: { id: 'cust_123', firstName: 'Ada', lastName: 'Verify' } }),
+            { status: 201 }
+          )
+        );
+      }
+      if (String(url).endsWith('/v1/customers/cust_123/virtual-account')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: {
+                id: 'va_456',
+                provider: 'monnify',
+                isActive: true,
+                accounts: [
+                  { bankCode: '232', bankName: 'Sterling bank', accountNumber: '2210260837', accountName: 'Ada' },
+                  { bankCode: '035', bankName: 'Wema bank', accountNumber: '0017869951', accountName: 'Ada' }
+                ]
+              }
+            }),
+            { status: 201 }
+          )
+        );
+      }
+      throw new Error(`Unexpected URL ${String(url)}`);
+    });
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x', fetcher });
+    const account = await provider.createAccount({
+      reference: 'ref1',
+      accountName: 'Ada Verify',
+      currency: 'NGN',
+      customerEmail: 'ada@example.com'
+    });
+    expect(account.providerAccountId).toBe('cust_123:va_456');
+    expect(account.accountNumber).toBe('2210260837');
+    expect(account.bankName).toBe('Sterling bank');
+    expect(account.currency).toBe('NGN');
+  });
+
+  it('reuses an existing providerCustomerId and skips customer creation', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: {
+            id: 'va_789',
+            provider: 'monnify',
+            accounts: [{ bankCode: '232', bankName: 'Sterling bank', accountNumber: '111', accountName: 'X' }]
+          }
+        }),
+        { status: 201 }
+      )
+    );
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x', fetcher });
+    const account = await provider.createAccount({
+      reference: 'ref2',
+      accountName: 'X Y',
+      currency: 'NGN',
+      providerCustomerId: 'cust_existing'
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(account.providerAccountId).toBe('cust_existing:va_789');
+  });
+
+  it('rejects createAccount when no providerCustomerId and no customerEmail are given', async () => {
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x' });
+    await expect(
+      provider.createAccount({ reference: 'ref3', accountName: 'No Email', currency: 'NGN' })
+    ).rejects.toThrow(/customerEmail|providerCustomerId/);
+  });
+
+  it('maps a real GET /v1/customers/{id}/virtual-accounts response, finding the matching vaId', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: 'adbdef7f-c19c-4292-878f-b2e5122ad922',
+              provider: 'monnify',
+              isActive: true,
+              accounts: [
+                { bankCode: '232', bankName: 'Sterling bank', accountName: 'Ada', accountNumber: '2210260837' },
+                { bankCode: '035', bankName: 'Wema bank', accountName: 'Ada', accountNumber: '0017869951' }
+              ]
+            }
+          ]
+        }),
+        { status: 200 }
+      )
+    );
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x', fetcher });
+    const account = await provider.getAccount('7474852b-ca34-4c2a-ac3b-5de029de9f22:adbdef7f-c19c-4292-878f-b2e5122ad922');
+    expect(account.accountNumber).toBe('2210260837');
+    expect(account.bankName).toBe('Sterling bank');
+    expect(account.balanceMinor).toBe(0);
+    expect(fetcher).toHaveBeenCalledWith(
+      'https://app.inflowpay.net/api/v1/customers/7474852b-ca34-4c2a-ac3b-5de029de9f22/virtual-accounts',
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer gtw_sk_test_x' }) })
+    );
+  });
+
+  it('rejects getAccount for a malformed providerAccountId', async () => {
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x' });
+    await expect(provider.getAccount('not-composite')).rejects.toThrow(/Malformed/);
+  });
+
+  it('rejects getAccount when no matching vaId is found for the customer', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x', fetcher });
+    await expect(provider.getAccount('cust_1:va_missing')).rejects.toThrow(/No virtual account found/);
+  });
+
+  it('refuses closeAccount() rather than guessing a nonexistent per-VA endpoint', async () => {
+    const provider = createInflowVirtualAccountProvider({ apiKey: 'gtw_sk_test_x' });
+    await expect(provider.closeAccount('cust_1:va_1')).rejects.toThrow(/UNSUPPORTED/);
+  });
+});
+
 describe('Fincra remittance adapter — mapped against live-verified sandbox behavior', () => {
   it('declares genuine locked quotes (live-confirmed, unlike Swappr)', () => {
     const provider = createFincraRemittanceProvider({ apiKey: 'sk_test_x', businessId: 'biz_1' });
@@ -639,5 +772,264 @@ describe('verifyFincraWebhook', () => {
 
   it('rejects a missing signature header', () => {
     expect(verifyFincraWebhook('{}', '', key)).toBe(false);
+  });
+});
+
+describe('Sudo virtual card adapter — mapped against official docs + live-verified sandbox behavior', () => {
+  it('rejects issueCard with no providerCustomerId', async () => {
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x' });
+    await expect(
+      provider.issueCard({
+        reference: 'ref1',
+        cardholderName: 'Test Cardholder',
+        currency: 'NGN',
+        fundingAmountMinor: 500
+      })
+    ).rejects.toThrow(/providerCustomerId/);
+  });
+
+  it('issues a card: auto-provisions a wallet account, then creates the card (live-shaped responses)', async () => {
+    const fetcher = vi
+      .fn()
+      // POST /accounts
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            statusCode: 200,
+            message: 'Account created successfully.',
+            data: { _id: 'acct_debit_1', type: 'wallet', currency: 'NGN' }
+          }),
+          { status: 200 }
+        )
+      )
+      // POST /cards
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            statusCode: 200,
+            message: 'Card mapped successfully.',
+            data: {
+              _id: '6a7b4006239d666d7ca2c9a4',
+              account: '6a7b4003239d666d7ca2c99c',
+              type: 'virtual',
+              brand: 'Visa',
+              currency: 'NGN',
+              maskedPan: '506321*********3765',
+              expiryMonth: '08',
+              expiryYear: '2029',
+              status: 'active'
+            }
+          }),
+          { status: 200 }
+        )
+      );
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x', fetcher });
+    const card = await provider.issueCard({
+      reference: 'ref1',
+      cardholderName: 'Test Cardholder',
+      currency: 'NGN',
+      fundingAmountMinor: 500,
+      providerCustomerId: 'cust_1',
+      brand: 'VISA'
+    });
+
+    expect(card.providerCardId).toBe('6a7b4006239d666d7ca2c9a4');
+    expect(card.last4).toBe('3765');
+    expect(card.expiryMonth).toBe(8);
+    expect(card.expiryYear).toBe(2029);
+    expect(card.brand).toBe('VISA');
+    expect(card.status).toBe('ACTIVE');
+
+    const [acctUrl, acctInit] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(acctUrl).toBe('https://api.sudo.africa/accounts');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const acctBody = JSON.parse(acctInit.body as string);
+    expect(acctBody).toMatchObject({ type: 'wallet', currency: 'NGN', customerId: 'cust_1' });
+
+    const [cardUrl, cardInit] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(cardUrl).toBe('https://api.sudo.africa/cards');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const cardBody = JSON.parse(cardInit.body as string);
+    expect(cardBody).toMatchObject({
+      customerId: 'cust_1',
+      type: 'virtual',
+      currency: 'NGN',
+      brand: 'Visa',
+      debitAccountId: 'acct_debit_1',
+      amount: 500
+    });
+  });
+
+  it('throws (does not silently coerce) when Sudo returns a non-VISA/MASTERCARD brand', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ statusCode: 200, message: 'ok', data: { _id: 'acct_debit_1' } }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            statusCode: 200,
+            message: 'ok',
+            data: {
+              _id: 'card_verve_1',
+              account: 'acct_card_1',
+              brand: 'Verve',
+              currency: 'NGN',
+              maskedPan: '506321*********3765',
+              expiryMonth: '08',
+              expiryYear: '2029',
+              status: 'active'
+            }
+          }),
+          { status: 200 }
+        )
+      );
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x', fetcher });
+    await expect(
+      provider.issueCard({
+        reference: 'ref1',
+        cardholderName: 'Test Cardholder',
+        currency: 'NGN',
+        fundingAmountMinor: 500,
+        providerCustomerId: 'cust_1'
+      })
+    ).rejects.toThrow(/Verve.*not supported/s);
+  });
+
+  it('surfaces a Sudo "brand not available" 400 as a ProviderApiError', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ statusCode: 200, message: 'ok', data: { _id: 'acct_debit_1' } }), {
+          status: 200
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ statusCode: 400, message: 'Visa Cards are not available at the moment.' }),
+          { status: 400 }
+        )
+      );
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x', fetcher });
+    await expect(
+      provider.issueCard({
+        reference: 'ref1',
+        cardholderName: 'Test Cardholder',
+        currency: 'NGN',
+        fundingAmountMinor: 500,
+        providerCustomerId: 'cust_1'
+      })
+    ).rejects.toThrow(/not available/);
+  });
+
+  it('rejects fundCard with no config.fundingAccountId', async () => {
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x' });
+    await expect(
+      provider.fundCard({ providerCardId: 'card_1', amountMinor: 500, reference: 'ref1' })
+    ).rejects.toThrow(/fundingAccountId/);
+  });
+
+  it('funds a card via /accounts/transfer using the card\'s own account as creditAccountId', async () => {
+    const fetcher = vi
+      .fn()
+      // GET /cards/{id}
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ statusCode: 200, message: 'ok', data: { _id: 'card_1', account: 'acct_card_1' } }),
+          { status: 200 }
+        )
+      )
+      // POST /accounts/transfer
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ statusCode: 200, responseCode: '00', message: 'ok', data: {} }), {
+          status: 200
+        })
+      )
+      // GET /cards/{id}/balance
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ statusCode: 200, message: 'ok', data: { currentBalance: 4500, availableBalance: 4500 } }),
+          { status: 200 }
+        )
+      );
+    const provider = createSudoVirtualCardProvider({
+      apiKey: 'sudo_test_x',
+      fundingAccountId: 'acct_funding_1',
+      fetcher
+    });
+    const result = await provider.fundCard({ providerCardId: 'card_1', amountMinor: 500, reference: 'ref1' });
+    expect(result.balanceMinor).toBe(4500);
+
+    const [transferUrl, transferInit] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(transferUrl).toBe('https://api.sudo.africa/accounts/transfer');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const body = JSON.parse(transferInit.body as string);
+    expect(body).toMatchObject({
+      debitAccountId: 'acct_funding_1',
+      creditAccountId: 'acct_card_1',
+      amount: 500, // minor units — live-confirmed via sandbox balance math
+      paymentReference: 'ref1'
+    });
+  });
+
+  it('freezes and unfreezes a card via PUT /cards/{id} status transitions', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ statusCode: 200, data: {} }), { status: 200 }));
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x', fetcher });
+
+    const frozen = await provider.freezeCard('card_1');
+    expect(frozen.status).toBe('FROZEN');
+    const [freezeUrl, freezeInit] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(freezeUrl).toBe('https://api.sudo.africa/cards/card_1');
+    expect(freezeInit.method).toBe('PUT');
+    expect(JSON.parse(freezeInit.body as string)).toEqual({ status: 'inactive' });
+
+    const active = await provider.unfreezeCard('card_1');
+    expect(active.status).toBe('ACTIVE');
+    const [, unfreezeInit] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(unfreezeInit.body as string)).toEqual({ status: 'active' });
+  });
+
+  it('throws (does not guess) on terminateCard', () => {
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x' });
+    expect(() => provider.terminateCard('card_1')).toThrow(/cancellationReason/);
+  });
+
+  it('getCard maps a live-shaped GET /cards/{id} + GET /cards/{id}/balance response', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            statusCode: 200,
+            message: 'ok',
+            data: {
+              _id: 'card_1',
+              brand: 'MasterCard',
+              currency: 'NGN',
+              maskedPan: '506321*********3765',
+              expiryMonth: '08',
+              expiryYear: '2029',
+              status: 'inactive'
+            }
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ statusCode: 200, message: 'ok', data: { currentBalance: 4000, availableBalance: 4000 } }),
+          { status: 200 }
+        )
+      );
+    const provider = createSudoVirtualCardProvider({ apiKey: 'sudo_test_x', fetcher });
+    const card = await provider.getCard('card_1');
+    expect(card.brand).toBe('MASTERCARD');
+    expect(card.status).toBe('FROZEN');
+    expect(card.last4).toBe('3765');
+    expect(card.balanceMinor).toBe(4000);
   });
 });

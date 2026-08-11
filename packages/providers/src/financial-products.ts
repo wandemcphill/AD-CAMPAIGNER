@@ -1556,6 +1556,331 @@ export function verifyPayscribeWebhook(input: PayscribeWebhookVerifyInput): bool
   return safeEqualHex(expected, given);
 }
 
+export interface SudoConfig {
+  // OAuth2 bearer token issued from the Sudo dashboard. Docs
+  // (docs.sudo.africa/docs/authentication) specify `Authorization: Bearer <token>`.
+  // Live-confirmed 2026-08-11 against the real sandbox: Sudo also accepts the
+  // raw token with NO "Bearer " prefix (both returned HTTP 200 on GET /cards),
+  // but this adapter sends the documented Bearer form since that is what the
+  // docs commit to.
+  apiKey: string;
+  // https://api.sandbox.sudo.cards (sandbox, live-confirmed) /
+  // https://api.sudo.africa (production, per docs.sudo.africa/docs/environments —
+  // NOT live-tested, only sandbox was verified).
+  baseUrl?: string;
+  // A funded Sudo account/wallet `_id` used as the debit source for
+  // fundCard()'s POST /accounts/transfer call. GENUINE INTERFACE GAP: Sudo's
+  // fund-transfer endpoint requires both a debitAccountId and creditAccountId,
+  // but VirtualCardProvider.fundCard(input) carries no source-account concept
+  // (only providerCardId/amountMinor/reference). Rather than guess, this is
+  // pushed to config — the caller must provision and fund a business-level
+  // account/wallet and pass its `_id` here. See docs/providers/sudo.md.
+  fundingAccountId?: string;
+  fetcher?: typeof fetch;
+}
+
+// Documented Sudo Africa HTTP client — mapped against the OFFICIAL Sudo API
+// documentation (docs.sudo.africa, checked 2026-08-11) and live-verified
+// against https://api.sandbox.sudo.cards with real sandbox credentials.
+//   - Auth: Authorization: Bearer <token>.
+//   - Response envelope: { statusCode, message, data }. Validation failures
+//     (400) return `message` as an ARRAY of class-validator error objects
+//     rather than a string — handled below by JSON-stringifying it.
+async function callSudoApi(
+  config: SudoConfig,
+  method: string,
+  path: string,
+  body?: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  if (!config.apiKey) throw new Error('Sudo adapter requires config.apiKey.');
+  const f = config.fetcher ?? fetch;
+  const base = config.baseUrl ?? 'https://api.sudo.africa';
+  const res = await f(`${base}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'content-type': 'application/json'
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+
+  const text = await res.text().catch(() => '');
+  let json: Record<string, unknown>;
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    json = { raw: text };
+  }
+  if (!res.ok) {
+    const rawMessage = json['message'];
+    const msg =
+      (typeof rawMessage === 'string' && rawMessage) ||
+      (Array.isArray(rawMessage) && rawMessage.length ? JSON.stringify(rawMessage) : '') ||
+      text ||
+      res.statusText;
+    throw new ProviderApiError('sudo', res.status, String(msg));
+  }
+  return json;
+}
+
+function sudoData(json: Record<string, unknown>): Record<string, unknown> {
+  return (json['data'] as Record<string, unknown>) ?? {};
+}
+
+// Sudo's maskedPan is documented/observed as e.g. "506321*********3765" — the
+// last 4 digits are the trailing 4 characters.
+function last4FromSudoMaskedPan(maskedPan: unknown): string {
+  const s = typeof maskedPan === 'string' ? maskedPan : '';
+  return s.slice(-4);
+}
+
+function mapSudoCardStatus(s: unknown): 'ACTIVE' | 'FROZEN' | 'TERMINATED' {
+  const v = (typeof s === 'string' ? s : '').toLowerCase();
+  if (v === 'inactive') return 'FROZEN';
+  if (v === 'canceled' || v === 'cancelled') return 'TERMINATED';
+  return 'ACTIVE';
+}
+
+// GENUINE INTERFACE GAP (live-confirmed 2026-08-11, not guessed): Sudo's card
+// `brand` enum is `Verve | AfriGo | MasterCard | Visa`, but
+// VirtualCardDetails.brand only allows `'VISA' | 'MASTERCARD'`. Live sandbox
+// testing against the real business account (FlipTrybe LTD, isApproved:false)
+// showed:
+//   - POST /cards with brand:"Visa"       -> 400 "Visa Cards are not available
+//     at the moment. Please use Verve or MasterCard."
+//   - POST /cards with brand:"MasterCard" -> 400 "MasterCard Virtual Cards are
+//     not available at the moment." (also true for NGN)
+//   - POST /cards with brand:"Verve", currency:"NGN" -> 200, card issued for
+//     real (id 6a7b4006239d666d7ca2c9a4, live-verified get/freeze/unfreeze).
+//   - POST /cards with brand:"AfriGo" -> 400 "not available" (USD) / reached
+//     the funds-check stage for NGN (brand itself accepted) but was not
+//     completed due to insufficient real settlement-account balance.
+// So in THIS sandbox, Visa/MasterCard virtual-card issuance is currently
+// disabled account-wide — there is no reliable way to force a VISA/MASTERCARD
+// card today. Per the governing instruction, we do NOT silently coerce a
+// Verve/AfriGo card into VISA/MASTERCARD (that would misrepresent the card to
+// callers). Instead: issueCard still sends the caller's requested brand
+// ('VISA'->'Visa', 'MASTERCARD'->'MasterCard' — never silently substitutes
+// Verve), and if Sudo ever returns a card whose brand is not Visa/MasterCard,
+// this throws a clear, non-fabricated error rather than lying about the brand.
+function normalizeSudoCardBrand(b: unknown): 'VISA' | 'MASTERCARD' {
+  const v = typeof b === 'string' ? b : '';
+  if (v === 'Visa') return 'VISA';
+  if (v === 'MasterCard') return 'MASTERCARD';
+  throw new ProviderApiError(
+    'sudo',
+    200,
+    `Sudo returned a "${v}" card, which VirtualCardDetails.brand (VISA|MASTERCARD only) cannot ` +
+      'represent — Verve and AfriGo cards are not supported by this adapter interface. ' +
+      'Live-confirmed 2026-08-11: Visa/MasterCard virtual-card issuance is currently disabled for ' +
+      'this Sudo sandbox business account; only Verve (NGN) succeeded. See docs/providers/sudo.md.'
+  );
+}
+
+// Sudo Africa virtual-card adapter — mapped against the OFFICIAL Sudo API
+// documentation (docs.sudo.africa, checked 2026-08-11) and LIVE-VERIFIED
+// against https://api.sandbox.sudo.cards with real sandbox credentials
+// (business "Flip Tryb LTD", isApproved:false — KYB not yet approved, but
+// sandbox access worked regardless). See docs/providers/sudo.md for the full
+// endpoint-by-endpoint mapping and live evidence.
+//
+// Documented + live-confirmed facts encoded below:
+//   - A card requires an existing Sudo customerId (POST /customers first) —
+//     this adapter refuses to fabricate one, matching the Payscribe pattern.
+//   - Card creation ALSO requires a debitAccountId (an existing account/wallet
+//     `_id`), which the VirtualCardProvider interface has no concept of. This
+//     adapter auto-provisions a wallet account for the customer inside
+//     issueCard() (POST /accounts, type:"wallet") — a low-risk creation step,
+//     not additional KYC, per the governing instruction.
+//   - Live-confirmed: creating a NGN wallet account directly returned 400
+//     "You are not allowed to use this route" for this (KYB-unapproved)
+//     business, while a USD wallet account created successfully. Card
+//     issuance itself is independently gated per brand/currency (see
+//     normalizeSudoCardBrand above) — so issueCard can fail at either step
+//     depending on account approval state and brand/currency availability.
+//     Both failure modes surface as ProviderApiError, not silently swallowed.
+//   - Amounts (fundingAmountMinor, card balances, transfer amounts) are
+//     MINOR units end-to-end — live-confirmed via
+//     /accounts/simulator/fund (amount:500 -> currentBalance:500) and
+//     /accounts/transfer (amount:1000 debited exactly 1000 from a 5000
+//     balance). No unit conversion is applied.
+//   - Freeze/unfreeze/terminate are NOT separate endpoints — they are status
+//     transitions via PUT /cards/{id}: status:"inactive" (freeze, live-
+//     verified), status:"active" (unfreeze, live-verified), status:"canceled"
+//     (terminate — NOT live-tested, see terminateCard below).
+//   - Card top-up (fundCard) uses POST /accounts/transfer with
+//     debitAccountId:config.fundingAccountId, creditAccountId:<card's own
+//     `account` id>. Live-verified: transferring 500 into a card's account
+//     moved its GET /cards/{id}/balance from 4000 to 4500.
+//
+// GAPS / NOT live-verified:
+//   - terminateCard(): PUT /cards/{id} status:"canceled" requires
+//     cancellationReason ("lost"|"stolen") and creditAccountId (refund
+//     destination). Neither documented value fits a routine business-
+//     initiated termination, and forcing "lost"/"stolen" would misrepresent
+//     the reason. NOT called live (irreversible + semantically wrong to
+//     guess) — see terminateCard() below, which throws rather than guesses.
+//   - Production base URL (https://api.sudo.africa) is per-docs only, not
+//     live-tested (only sandbox credentials were available).
+export function createSudoVirtualCardProvider(config: SudoConfig): VirtualCardProvider {
+  const name = 'sudo';
+
+  async function fetchCard(
+    providerCardId: string
+  ): Promise<VirtualCardDetails & { balanceMinor: number }> {
+    const cardJson = await callSudoApi(config, 'GET', `/cards/${encodeURIComponent(providerCardId)}`);
+    const card = sudoData(cardJson);
+    const balJson = await callSudoApi(
+      config,
+      'GET',
+      `/cards/${encodeURIComponent(providerCardId)}/balance`
+    );
+    const bal = sudoData(balJson);
+    return {
+      providerCardId: toStr(card['_id']) || providerCardId,
+      last4: last4FromSudoMaskedPan(card['maskedPan']),
+      expiryMonth: Number(card['expiryMonth']) || 0,
+      expiryYear: Number(card['expiryYear']) || 0,
+      brand: normalizeSudoCardBrand(card['brand']),
+      currency: toStr(card['currency']),
+      status: mapSudoCardStatus(card['status']),
+      balanceMinor: Number(bal['availableBalance'] ?? bal['currentBalance'] ?? 0)
+    };
+  }
+
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'VIRTUAL_CARD',
+    // Live-confirmed NGN Verve virtual-card issuance; Visa/MasterCard are
+    // currently unavailable account-wide in sandbox (see normalizeSudoCardBrand).
+    getCapabilities: () => liveCapabilities('VIRTUAL_CARD', ['NGN_CARD'], ['NG']),
+    checkHealth: () => liveHealth(name),
+
+    async issueCard(input) {
+      if (!input.providerCustomerId) {
+        throw new Error(
+          'Sudo card issuance requires a providerCustomerId — create a Sudo customer via ' +
+            'POST /customers first. See docs/providers/sudo.md.'
+        );
+      }
+      const brand = input.brand === 'MASTERCARD' ? 'MasterCard' : 'Visa';
+
+      // Sudo requires a debitAccountId (existing account/wallet) to fund card
+      // creation; auto-provision a wallet account for this customer. Low-risk
+      // creation step, not additional KYC — documented above.
+      const accountJson = await callSudoApi(config, 'POST', '/accounts', {
+        type: 'wallet',
+        currency: input.currency,
+        accountType: 'Savings',
+        customerId: input.providerCustomerId
+      });
+      const account = sudoData(accountJson);
+      const debitAccountId = toStr(account['_id']);
+      if (!debitAccountId) {
+        throw new ProviderApiError('sudo', 200, 'Wallet account create response missing _id');
+      }
+
+      const json = await callSudoApi(config, 'POST', '/cards', {
+        customerId: input.providerCustomerId,
+        type: 'virtual',
+        currency: input.currency,
+        status: 'active',
+        brand,
+        debitAccountId,
+        amount: input.fundingAmountMinor
+      });
+      const card = sudoData(json);
+      const providerCardId = toStr(card['_id']);
+      if (!providerCardId) {
+        throw new ProviderApiError('sudo', 200, 'Card create response missing _id');
+      }
+      return {
+        providerCardId,
+        last4: last4FromSudoMaskedPan(card['maskedPan']),
+        expiryMonth: Number(card['expiryMonth']) || 0,
+        expiryYear: Number(card['expiryYear']) || 0,
+        brand: normalizeSudoCardBrand(card['brand']),
+        currency: toStr(card['currency'], input.currency),
+        status: mapSudoCardStatus(card['status'])
+      };
+    },
+
+    async fundCard(input) {
+      if (!config.fundingAccountId) {
+        throw new Error(
+          'Sudo fundCard requires config.fundingAccountId — a funded Sudo account/wallet _id to ' +
+            'debit from. The VirtualCardProvider interface carries no source-account concept; ' +
+            'configure a default funding account. See docs/providers/sudo.md.'
+        );
+      }
+      const cardJson = await callSudoApi(
+        config,
+        'GET',
+        `/cards/${encodeURIComponent(input.providerCardId)}`
+      );
+      const card = sudoData(cardJson);
+      const accountField = card['account'];
+      const creditAccountId =
+        typeof accountField === 'string'
+          ? accountField
+          : toStr((accountField as Record<string, unknown> | undefined)?.['_id']);
+      if (!creditAccountId) {
+        throw new ProviderApiError('sudo', 200, "Could not resolve the card's account id for funding");
+      }
+
+      await callSudoApi(config, 'POST', '/accounts/transfer', {
+        debitAccountId: config.fundingAccountId,
+        creditAccountId,
+        amount: input.amountMinor,
+        paymentReference: input.reference
+      });
+
+      const balJson = await callSudoApi(
+        config,
+        'GET',
+        `/cards/${encodeURIComponent(input.providerCardId)}/balance`
+      );
+      const bal = sudoData(balJson);
+      return {
+        providerReference: input.reference,
+        balanceMinor: Number(bal['availableBalance'] ?? bal['currentBalance'] ?? 0)
+      };
+    },
+
+    async freezeCard(providerCardId) {
+      await callSudoApi(config, 'PUT', `/cards/${encodeURIComponent(providerCardId)}`, {
+        status: 'inactive'
+      });
+      return { status: 'FROZEN' };
+    },
+
+    async unfreezeCard(providerCardId) {
+      await callSudoApi(config, 'PUT', `/cards/${encodeURIComponent(providerCardId)}`, {
+        status: 'active'
+      });
+      return { status: 'ACTIVE' };
+    },
+
+    terminateCard() {
+      // NOT IMPLEMENTED — genuinely ambiguous, not guessed. Sudo's only
+      // termination path (PUT /cards/{id} status:"canceled") requires
+      // cancellationReason:"lost"|"stolen" and a creditAccountId to receive
+      // the remaining balance. Neither documented reason value fits a routine
+      // business-initiated termination, and this was deliberately NOT called
+      // live (irreversible per the docs). Resolve with Sudo support/docs
+      // before implementing — see docs/providers/sudo.md.
+      throw new Error(
+        'Sudo terminateCard is not implemented: PUT /cards/{id} status:"canceled" requires a ' +
+          'cancellationReason of "lost"|"stolen" and a refund creditAccountId, neither of which ' +
+          'fits a routine termination and neither was live-verified. See docs/providers/sudo.md.'
+      );
+    },
+
+    getCard: (providerCardId) => fetchCard(providerCardId)
+  };
+}
+
 // Confirmed against real Yativo docs at docs.yativo.com (checked 2026-08-07):
 //   - Base URL: https://api.yativo.com/api/v1 (not bare https://api.yativo.com)
 //   - Auth: bearer token from account_id + app_secret via POST /auth/login,
@@ -1679,6 +2004,243 @@ export function createYativoRemittanceProvider(config: YativoConfig): Remittance
             ? 'FAILED'
             : 'PROCESSING';
       return { status: normalized };
+    }
+  };
+}
+
+// Inflow Africa virtual-account adapter — mapped against the OFFICIAL Inflow
+// docs (docs.inflowafrica.com, checked 2026-08-11) AND a live sandbox
+// verification sprint the same day using real credentials
+// (Authorization: Bearer gtw_sk_...). See docs/providers/inflow.md for the
+// full mapping and the live request/response log. Facts below are
+// LIVE-CONFIRMED unless marked "per docs only":
+//   - POST /v1/customers (firstName, lastName, email required) → 201, real
+//     customer id confirmed live.
+//   - POST /v1/customers/{id}/virtual-account (body {} — provider defaults to
+//     "monnify") → 201, returns an object with `id` (the VA-assignment id,
+//     NOT the customer id) and `accounts[]` — live sandbox returned TWO bank
+//     accounts (Sterling + Wema) for a single assignment, both under the same
+//     `id`. There is no `currency` field anywhere in the response; the
+//     monnify provider is NGN-only, so currency is inferred as "NGN" rather
+//     than read off the payload.
+//   - GET /v1/customers/{id}/virtual-accounts → 200, confirmed to return the
+//     same `id`/`accounts[]` shape as the assign call, wrapped in `data: []`.
+//   - GET /v1/wallets → 200, confirmed shape { data: [{id,currency,balance,
+//     isActive,accountNumber,accountName,bankName,createdAt}] } — one row per
+//     currency (EUR/USD/GBP/NGN all present, all balance 0 in this sandbox
+//     org). Not otherwise used by this adapter (no VA balance is derivable
+//     from it — VAs settle to the NGN wallet, but the docs do not document a
+//     link between a specific VA and a wallet credit).
+//
+// STRUCTURAL GAP (interface vs. real API): VirtualAccountProvider.getAccount
+// takes a single providerAccountId, but Inflow's only GET
+// (/v1/customers/{id}/virtual-accounts) is keyed by CUSTOMER id, not VA id —
+// there is no documented "get one VA by its own id" endpoint. This adapter
+// resolves that by having createAccount() return a composite
+// providerAccountId of the form "{customerId}:{vaAssignmentId}"; getAccount()
+// splits it, calls the customer-scoped list endpoint, and finds the matching
+// assignment by vaAssignmentId. This is a deliberate encoding choice (not a
+// guessed endpoint) so the interface's single-id contract can still be
+// fulfilled with only documented, live-verified calls.
+//
+// closeAccount(): NO virtual-account-specific deactivate/close endpoint is
+// documented anywhere in the Inflow API reference (Customers, Virtual
+// Accounts, or Payouts sections). The only deactivate endpoint found is
+// DELETE /v1/customers/{id}, which deactivates the ENTIRE customer (and,
+// presumably, every product attached to them) — a materially different and
+// more destructive operation than closing one virtual account. Per the
+// "return UNSUPPORTED, not a fake implementation" rule, closeAccount() below
+// throws explicitly rather than silently deactivating the whole customer.
+//
+// REMITTANCE DETERMINATION: Inflow's Payouts API (POST /v1/payouts) DOES
+// support genuine cross-currency/cross-country transfers — the docs
+// explicitly describe "USD/EUR/GBP bank payouts and all cross-currency (USD
+// source, local destination) payouts" (created as PENDING for manual admin
+// approval, vs. same-currency NGN/mobile-money payouts which auto-execute).
+// However, there is NO quote-then-execute flow for payouts: the only
+// exchange-rate endpoint in the docs (GET .../payments/get-exchange-rate-for-
+// payment) is scoped to the Payments/collection product, not Payouts, and
+// POST /v1/payouts itself takes a single already-decided `amount` with no
+// rate-lock or quoteId concept. Payouts also require a beneficiary to be
+// pre-registered via POST /v1/payout-accounts (returning a payoutAccountId)
+// rather than accepting inline recipient bank details, which does not fit
+// RemittanceProvider.sendTransfer's per-call `recipient` field without an
+// additional beneficiary-resolution step. Per the task's explicit bar
+// ("only implement RemittanceProvider ... with a real quote-then-execute
+// flow"), that bar is not met — RemittanceProvider is intentionally NOT
+// implemented for Inflow. See docs/providers/inflow.md §Remittance
+// determination for the full evidence trail.
+export interface InflowConfig {
+  // API key: gtw_sk_... (works for both sandbox and production; environment
+  // is selected entirely by baseUrl, not the key prefix).
+  apiKey: string;
+  // Confirmed base URLs (checked 2026-08-11):
+  //   sandbox:    https://sandbox.inflowafrica.com/api
+  //   production:  https://app.inflowpay.net/api
+  // Defaults to production; pass the sandbox base for testing. Every path
+  // below already carries its own /v1/... segment.
+  baseUrl?: string;
+  fetcher?: typeof fetch;
+}
+
+async function callInflowApi(
+  config: InflowConfig,
+  method: string,
+  path: string,
+  body?: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  if (!config.apiKey) throw new Error('Inflow adapter requires config.apiKey.');
+  const f = config.fetcher ?? fetch;
+  const base = config.baseUrl ?? 'https://app.inflowpay.net/api';
+  const res = await f(`${base}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'content-type': 'application/json'
+    },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+
+  const text = await res.text().catch(() => '');
+  let json: Record<string, unknown>;
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    json = { raw: text };
+  }
+  if (!res.ok) {
+    // Confirmed live shape: { "message": "..." } — no `status`/`error` field.
+    const msg = (typeof json['message'] === 'string' && json['message']) || text || res.statusText;
+    throw new ProviderApiError('inflow', res.status, String(msg));
+  }
+  return json;
+}
+
+interface InflowVirtualAccountEntry {
+  bankCode?: string;
+  bankName?: string;
+  accountNumber?: string;
+  accountName?: string;
+}
+
+interface InflowVirtualAccountAssignment {
+  id?: string;
+  provider?: string;
+  isActive?: boolean;
+  accounts?: InflowVirtualAccountEntry[];
+}
+
+// Maps a live Inflow VA-assignment object (from both the assign and list
+// endpoints — confirmed identical shape live) to VirtualAccountDetails. The
+// assignment can carry multiple bank accounts (live sandbox returned two —
+// Sterling and Wema); the first is used as the canonical account, matching
+// the single-account VirtualAccountDetails contract.
+function mapInflowVirtualAccount(
+  customerId: string,
+  assignment: InflowVirtualAccountAssignment,
+  currency: string
+): VirtualAccountDetails {
+  const entry = assignment.accounts?.[0] ?? {};
+  const vaId = toStr(assignment.id);
+  return {
+    // Composite id — see the STRUCTURAL GAP note above.
+    providerAccountId: vaId ? `${customerId}:${vaId}` : customerId,
+    accountNumber: toStr(entry.accountNumber),
+    bankName: toStr(entry.bankName),
+    bankCode: toStr(entry.bankCode),
+    accountName: toStr(entry.accountName),
+    // Live sandbox response carries no currency field anywhere; monnify
+    // (the only provider exercised) is NGN-only, so this is inferred rather
+    // than read off the payload — see header note.
+    currency
+  };
+}
+
+export function createInflowVirtualAccountProvider(config: InflowConfig): VirtualAccountProvider {
+  const name = 'inflow';
+
+  return {
+    name,
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'VIRTUAL_ACCOUNT',
+    virtualAccountCapabilities: {
+      // No merchant/organization-level VA creation endpoint is documented —
+      // every virtual-account endpoint is scoped under /v1/customers/{id}/...
+      supportsMerchantAccountCreation: false,
+      // Confirmed live: POST /v1/customers/{id}/virtual-account creates
+      // (or returns the existing) per-customer virtual account.
+      supportsCustomerVirtualAccounts: true
+    },
+    getCapabilities: () => liveCapabilities('VIRTUAL_ACCOUNT', ['NGN_ACCOUNT'], ['NG']),
+    checkHealth: () => liveHealth(name),
+
+    async createAccount(input) {
+      let customerId = input.providerCustomerId;
+      if (!customerId) {
+        // No providerCustomerId supplied — resolve one by creating an Inflow
+        // customer from the fields this interface does carry. Inflow has no
+        // documented "find by email" lookup, so this always creates; callers
+        // that want to reuse an existing customer must pass providerCustomerId.
+        const [firstName = input.accountName, ...rest] = input.accountName.split(' ');
+        const lastName = rest.join(' ') || firstName;
+        if (!input.customerEmail) {
+          throw new Error(
+            'Inflow virtual account creation requires either providerCustomerId or ' +
+              'customerEmail (to create a new Inflow customer) — email is a required field on ' +
+              'POST /v1/customers. See docs/providers/inflow.md.'
+          );
+        }
+        const created = await callInflowApi(config, 'POST', '/v1/customers', {
+          firstName,
+          lastName,
+          email: input.customerEmail,
+          ...(input.customerPhone ? { phone: input.customerPhone } : {})
+        });
+        const data = created['data'] as Record<string, unknown>;
+        customerId = toStr(data['id']);
+        if (!customerId) {
+          throw new ProviderApiError('inflow', 201, 'Customer create response missing data.id');
+        }
+      }
+
+      const json = await callInflowApi(config, 'POST', `/v1/customers/${customerId}/virtual-account`, {});
+      const assignment = json['data'] as InflowVirtualAccountAssignment;
+      return mapInflowVirtualAccount(customerId, assignment, input.currency || 'NGN');
+    },
+
+    async getAccount(providerAccountId) {
+      const [customerId, vaId] = providerAccountId.split(':');
+      if (!customerId || !vaId) {
+        throw new Error(
+          `Malformed Inflow providerAccountId "${providerAccountId}" — expected "{customerId}:{vaId}".`
+        );
+      }
+      const json = await callInflowApi(config, 'GET', `/v1/customers/${customerId}/virtual-accounts`);
+      const rows = (json['data'] as InflowVirtualAccountAssignment[]) ?? [];
+      const assignment = vaId ? rows.find((r) => r.id === vaId) : rows[0];
+      if (!assignment) {
+        throw new ProviderApiError(
+          'inflow',
+          404,
+          `No virtual account found for customer ${customerId}${vaId ? ` (vaId ${vaId})` : ''}`
+        );
+      }
+      const details = mapInflowVirtualAccount(customerId, assignment, 'NGN');
+      // No documented per-VA balance field — VAs settle to the NGN org wallet
+      // (GET /v1/wallets), and no documented link ties a specific VA to that
+      // wallet balance. Reporting 0, matching the Swappr/Payscribe convention
+      // of "no balance on the VA object itself" rather than guessing.
+      return { ...details, balanceMinor: 0 };
+    },
+
+    closeAccount() {
+      return Promise.reject(
+        new Error(
+          'UNSUPPORTED: Inflow has no documented endpoint to close/deactivate a single virtual ' +
+            'account — only DELETE /v1/customers/{id}, which deactivates the entire customer (a ' +
+            'materially different, more destructive operation). See docs/providers/inflow.md.'
+        )
+      );
     }
   };
 }
