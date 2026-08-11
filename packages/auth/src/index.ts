@@ -16,7 +16,8 @@ export const rolePermissions: Record<Role, Permission[]> = {
     "analytics:read",
     "team:manage",
     "support:manage",
-    "audit:read"
+    "audit:read",
+    "trust_engine:moderate"
   ],
   ADMIN: [
     "campaign:create",
@@ -26,7 +27,8 @@ export const rolePermissions: Record<Role, Permission[]> = {
     "analytics:read",
     "team:manage",
     "support:manage",
-    "audit:read"
+    "audit:read",
+    "trust_engine:moderate"
   ],
   MANAGER: ["campaign:create", "campaign:manage", "analytics:read", "support:manage"],
   MARKETER: ["campaign:create", "campaign:manage", "analytics:read"],
