@@ -11,6 +11,7 @@ import {
   Bot,
   Briefcase,
   Building2,
+  ClipboardCheck,
   CreditCard,
   FileText,
   Folder,
@@ -50,7 +51,7 @@ import {
 import { ThemeToggle, cn } from "@fliptrybe/ui";
 import { useApiSession } from "../lib/use-session";
 
-type NavItem = { label: string; href: string; icon: LucideIcon };
+type NavItem = { label: string; href: string; icon: LucideIcon; permission?: string };
 type NavGroup = { title: string; items: NavItem[] };
 
 const NAV_GROUPS: NavGroup[] = [
@@ -60,6 +61,16 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Dashboard", href: "/os", icon: LayoutDashboard },
       { label: "AI Studio", href: "/os/studio", icon: Sparkles },
       { label: "Search", href: "/os/search", icon: Search },
+    ],
+  },
+  {
+    title: "Governance",
+    items: [
+      // Server-side enforcement (RequirePermissions("admin:access", "campaign:approve")
+      // on ApprovalsController) is what actually protects /os/approvals — this
+      // permission check just keeps the link out of the sidebar for users who'd get
+      // a 403 anyway. No other nav item in this file is gated today.
+      { label: "Approvals", href: "/os/approvals", icon: ClipboardCheck, permission: "campaign:approve" },
     ],
   },
   {
@@ -184,6 +195,21 @@ export function OsShell({ children }: { children: ReactNode }) {
     return pathname.startsWith(href);
   }
 
+  const currentSession = session;
+
+  function canSeeNavItem(item: NavItem) {
+    if (!item.permission) return true;
+    return (
+      currentSession.isPlatformAdmin ||
+      Boolean(currentSession.permissions?.includes(item.permission))
+    );
+  }
+
+  const visibleNavGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(canSeeNavItem)
+  })).filter((group) => group.items.length > 0);
+
   async function handleSignOut() {
     setSigningOut(true);
     await signOut();
@@ -216,7 +242,7 @@ export function OsShell({ children }: { children: ReactNode }) {
         </button>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {NAV_GROUPS.map((group) => (
+          {visibleNavGroups.map((group) => (
             <div className="mb-4" key={group.title}>
               <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                 {group.title}
@@ -272,7 +298,7 @@ export function OsShell({ children }: { children: ReactNode }) {
               <span className="text-sm font-bold">FlipTrybe</span>
               <button onClick={() => setSidebarOpen(false)} type="button"><X className="size-5" /></button>
             </div>
-            {NAV_GROUPS.map((group) => (
+            {visibleNavGroups.map((group) => (
               <div className="mb-4" key={group.title}>
                 <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">{group.title}</p>
                 {group.items.map((item) => (

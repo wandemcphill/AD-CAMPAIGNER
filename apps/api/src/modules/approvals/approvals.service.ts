@@ -68,6 +68,45 @@ export class ApprovalsService {
     });
   }
 
+  /**
+   * Powers the unified Approvals Queue UI. `status` maps to the DB status column
+   * directly except "flagged", which isn't a real ApprovalStatus value — it's a
+   * PENDING request that's been sitting long enough (or is otherwise notable) to
+   * call out; we treat any PENDING request older than `flaggedAfterMs` as flagged.
+   * `type` filters on `entityType`, which is a free-form string set by whichever
+   * domain called `request()` — there's no DB-level enum for it.
+   */
+  async list(params: {
+    workspaceId?: string;
+    status?: "pending" | "flagged" | "all";
+    type?: string;
+    flaggedAfterMs?: number;
+  }) {
+    const status = params.status ?? "all";
+    const flaggedAfterMs = params.flaggedAfterMs ?? 24 * 60 * 60 * 1000;
+
+    const where: Prisma.ApprovalRequestWhereInput = {
+      ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+      ...(params.type && params.type !== "all" ? { entityType: params.type } : {})
+    };
+
+    if (status === "pending" || status === "flagged") {
+      where.status = "PENDING";
+    }
+
+    const requests = await this.db.approvalRequest.findMany({
+      where,
+      orderBy: { createdAt: "asc" }
+    });
+
+    if (status !== "flagged") {
+      return requests;
+    }
+
+    const cutoff = Date.now() - flaggedAfterMs;
+    return requests.filter((request) => request.createdAt.getTime() <= cutoff);
+  }
+
   async get(id: string) {
     const approval = await this.db.approvalRequest.findUnique({ where: { id } });
     if (!approval) throw new NotFoundException("Approval request not found.");
