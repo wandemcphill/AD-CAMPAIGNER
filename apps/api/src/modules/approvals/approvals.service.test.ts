@@ -19,6 +19,7 @@ function buildDb(overrides: Record<string, unknown> = {}) {
           payload: {}
         })
       ),
+      findMany: vi.fn(() => Promise.resolve([])),
       update: vi.fn((args: { data: Record<string, unknown> }) =>
         Promise.resolve({ id: "appr_1", requestedByUserId: "user_requester", ...args.data })
       ),
@@ -88,5 +89,55 @@ describe("ApprovalsService", () => {
     const failedCall = update.mock.calls[1]?.[0] as { data: Record<string, unknown> };
     expect(failedCall.data["status"]).toBe("EXECUTION_FAILED");
     expect(failedCall.data["executionError"]).toBe("provider down");
+  });
+});
+
+describe("ApprovalsService.list", () => {
+  function record(overrides: Partial<{ id: string; status: string; entityType: string; createdAt: Date }>) {
+    return {
+      id: "appr_default",
+      status: "PENDING",
+      entityType: "digital_access_refund",
+      workspaceId: "workspace_test",
+      createdAt: new Date(),
+      ...overrides
+    };
+  }
+
+  it("filters by entityType when a type other than 'all' is requested", async () => {
+    const findMany = vi.fn((_args: { where: Record<string, unknown> }) =>
+      Promise.resolve([record({ id: "appr_kyc", entityType: "kyc" })])
+    );
+    const db = buildDb({ findMany });
+    const service = new ApprovalsService({ client: db } as unknown as PrismaService);
+
+    await service.list({ type: "kyc" });
+
+    expect(findMany.mock.calls[0]?.[0]).toMatchObject({ where: { entityType: "kyc" } });
+  });
+
+  it("only returns PENDING requests older than the flagged threshold when status is 'flagged'", async () => {
+    const stale = record({ id: "appr_stale", createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000) });
+    const fresh = record({ id: "appr_fresh", createdAt: new Date() });
+    const findMany = vi.fn((_args: { where: Record<string, unknown> }) =>
+      Promise.resolve([stale, fresh])
+    );
+    const db = buildDb({ findMany });
+    const service = new ApprovalsService({ client: db } as unknown as PrismaService);
+
+    const result = await service.list({ status: "flagged" });
+
+    expect(findMany.mock.calls[0]?.[0]).toMatchObject({ where: { status: "PENDING" } });
+    expect(result.map((r) => r.id)).toEqual(["appr_stale"]);
+  });
+
+  it("does not filter by status at all when 'all' is requested", async () => {
+    const findMany = vi.fn((_args: { where: Record<string, unknown> }) => Promise.resolve([]));
+    const db = buildDb({ findMany });
+    const service = new ApprovalsService({ client: db } as unknown as PrismaService);
+
+    await service.list({ status: "all" });
+
+    expect(findMany.mock.calls[0]?.[0]).toMatchObject({ where: {} });
   });
 });
