@@ -7,7 +7,7 @@ import {
 import { RequirePermissions } from '../authorization.decorators';
 import { RequireFeature } from '../feature-flag.decorators';
 import { QueueProducerService } from '../queue-producer.service';
-import { CreateSubmissionDto, ListSubmissionsQueryDto } from './dtos';
+import { CreateSubmissionDto, ListSubmissionsQueryDto, ModerateSubmissionDto } from './dtos';
 import { TrustEngineRepositories } from './repositories';
 
 // trustEngine is off in packages/feature-flags (7-stage validation pipeline,
@@ -25,9 +25,8 @@ export class TrustEngineController {
     private readonly repositories: TrustEngineRepositories,
   ) {}
 
-  // Staff review queue (list). Not part of the original Phase 1 controller —
-  // added so the frontend review UI has something to list against; scoped to
-  // the caller's workspace, same as every other route on this controller.
+  // Staff review queue (list). Scoped to the caller's workspace, same as every other
+  // route on this controller.
   @Get('submissions')
   async listSubmissions(
     @Query() query: ListSubmissionsQueryDto,
@@ -77,5 +76,31 @@ export class TrustEngineController {
   @Get('submissions/:submissionId')
   async getSubmissionStatus(@Param('submissionId') submissionId: string) {
     return this.trustEngine.getSubmissionStatus(submissionId);
+  }
+
+  // Human-decision layer on top of the staff review queue. This is a standalone
+  // decide endpoint rather than routing through the unified ApprovalsService/
+  // ApprovalRequest engine (see apps/api/src/modules/approvals/approvals.service.ts):
+  // ModerationQueue is a 1:1 domain table keyed off AssetSubmission with its own
+  // reviewer/decision/reason columns already in the schema, so there is nothing
+  // generic to gain by shadowing it with an ApprovalRequest row — that engine exists
+  // for actions that don't already own their state (Digital Access refunds today;
+  // campaign/KYC approvals are explicitly NOT unified into it either, per
+  // approvals.controller.ts's scope note). Gated behind a dedicated write permission
+  // since the class-level default (`analytics:read`) is read-only.
+  @Post('submissions/:submissionId/moderate')
+  @RequirePermissions('trust_engine:moderate')
+  async moderateSubmission(
+    @Param('submissionId') submissionId: string,
+    @Body() body: ModerateSubmissionDto,
+    @Req() request: WorkspaceContextRequest,
+  ) {
+    const { userId } = workspaceContextFromRequest(request);
+    return this.repositories.decideModeration({
+      submissionId,
+      decision: body.decision,
+      reviewerUserId: userId,
+      ...(body.reason ? { decisionReason: body.reason } : {}),
+    });
   }
 }

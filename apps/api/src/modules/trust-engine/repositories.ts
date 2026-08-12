@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Prisma } from '@fliptrybe/database';
 import { PrismaService } from '../prisma.service';
 import type {
@@ -198,7 +198,7 @@ export class TrustEngineRepositories {
         const results = await db.stageResult.findMany({
           where: { validationRunId: runId },
         });
-        return results.map((r: (typeof results)[number]) => ({
+        return results.map((r) => ({
           id: r.id,
           validationRunId: r.validationRunId,
           stageKey: r.stageKey as StageKey,
@@ -215,10 +215,10 @@ export class TrustEngineRepositories {
     };
   }
 
-  // Below: plain query helpers for the staff review queue (list + stage detail).
-  // These are NOT part of the SubmissionRepository/ValidationRunRepository/
+  // Below: plain query helpers for the staff review queue (list + stage detail +
+  // decide). These are NOT part of the SubmissionRepository/ValidationRunRepository/
   // StageResultRepository interfaces consumed by TrustEngineService — they're
-  // read-only projections used directly by the controller, so adding them here
+  // read/write projections used directly by the controller, so adding them here
   // doesn't touch the shared @fliptrybe/service-trust-engine package or its
   // pipeline/arbiter logic.
 
@@ -242,10 +242,11 @@ export class TrustEngineRepositories {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
+        moderationQueue: true,
       },
     });
 
-    return submissions.map((submission: (typeof submissions)[number]) => {
+    return submissions.map((submission) => {
       const latestRun = submission.validationRuns[0];
       return {
         id: submission.id,
@@ -257,6 +258,15 @@ export class TrustEngineRepositories {
         updatedAt: submission.updatedAt,
         latestVerdict: latestRun?.verdict ?? null,
         latestVerdictReasons: latestRun?.verdictReasons ?? [],
+        moderation: submission.moderationQueue
+          ? {
+              status: submission.moderationQueue.status,
+              decision: submission.moderationQueue.decision,
+              decisionReason: submission.moderationQueue.decisionReason,
+              reviewerUserId: submission.moderationQueue.reviewerUserId,
+              reviewedAt: submission.moderationQueue.reviewedAt,
+            }
+          : null,
       };
     });
   }
@@ -289,7 +299,7 @@ export class TrustEngineRepositories {
         finalScore: latestRun.finalScore ?? 0,
         createdAt: latestRun.createdAt,
       },
-      stages: stageResults.map((stage: (typeof stageResults)[number]) => ({
+      stages: stageResults.map((stage) => ({
         stageKey: stage.stageKey,
         status: stage.status,
         reasonCodes: stage.reasonCodes ?? [],
@@ -298,6 +308,92 @@ export class TrustEngineRepositories {
         ...(stage.failureMessage ? { failureMessage: stage.failureMessage } : {}),
         createdAt: stage.createdAt,
       })),
+    };
+  }
+
+  // Human-decision layer on top of the read-only staff review queue. Nothing else in
+  // this codebase writes to ModerationQueue today — this method is both the write
+  // path for a staff decision AND the thing that first populates a ModerationQueue
+  // row for a submission (via upsert), since no queue consumer exists yet to
+  // pre-create rows when a submission lands in REVIEW status. Deliberately does NOT
+  // touch pipeline/stage/arbiter logic in services/trust-engine — it only flips
+  // AssetSubmission.status and records the decision, using exactly the existing
+  // SubmissionStatus enum values (ACCEPTED / REJECTED).
+  async decideModeration(params: {
+    submissionId: string;
+    decision: 'APPROVE' | 'REJECT';
+    reviewerUserId: string;
+    decisionReason?: string;
+  }) {
+    const db = this.prismaService.client;
+
+    const submission = await db.assetSubmission.findUnique({
+      where: { id: params.submissionId },
+    });
+    if (!submission) {
+      throw new NotFoundException('Submission not found.');
+    }
+    if (submission.status !== 'REVIEW') {
+      throw new BadRequestException(
+        `Submission is not awaiting moderation (current status: ${submission.status}).`,
+      );
+    }
+
+    const existingQueueRow = await db.moderationQueue.findUnique({
+      where: { submissionId: params.submissionId },
+    });
+    if (existingQueueRow?.decision) {
+      throw new BadRequestException(
+        `Moderation decision already recorded (${existingQueueRow.decision}).`,
+      );
+    }
+
+    const latestRun = await db.validationRun.findFirst({
+      where: { submissionId: params.submissionId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const newSubmissionStatus = params.decision === 'APPROVE' ? 'ACCEPTED' : 'REJECTED';
+    const newQueueStatus = params.decision === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    const reviewedAt = new Date();
+
+    const [queueRow] = await db.$transaction([
+      db.moderationQueue.upsert({
+        where: { submissionId: params.submissionId },
+        create: {
+          submissionId: params.submissionId,
+          validationRunId: latestRun?.id ?? null,
+          reason: 'VERDICT_REVIEW',
+          status: newQueueStatus,
+          decision: params.decision,
+          decisionReason: params.decisionReason ?? null,
+          reviewerUserId: params.reviewerUserId,
+          reviewedAt,
+        },
+        update: {
+          status: newQueueStatus,
+          decision: params.decision,
+          decisionReason: params.decisionReason ?? null,
+          reviewerUserId: params.reviewerUserId,
+          reviewedAt,
+        },
+      }),
+      db.assetSubmission.update({
+        where: { id: params.submissionId },
+        data: { status: newSubmissionStatus },
+      }),
+    ]);
+
+    return {
+      submissionId: params.submissionId,
+      status: newSubmissionStatus,
+      moderation: {
+        status: queueRow.status,
+        decision: queueRow.decision,
+        decisionReason: queueRow.decisionReason,
+        reviewerUserId: queueRow.reviewerUserId,
+        reviewedAt: queueRow.reviewedAt,
+      },
     };
   }
 }

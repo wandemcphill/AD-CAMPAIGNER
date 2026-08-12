@@ -35,9 +35,7 @@ export class SubmissionStatusDto {
   submissionId!: string;
 }
 
-// List query for the staff review queue (GET /trust-engine/submissions). There is
-// no dedicated moderation-decision endpoint yet — ModerationQueue rows exist in the
-// schema but nothing in this module writes to them, so the queue below is read-only.
+// List query for the staff review queue (GET /trust-engine/submissions).
 export class ListSubmissionsQueryDto {
   @IsOptional()
   @IsEnum(['PENDING', 'PROCESSING', 'ACCEPTED', 'REVIEW', 'REJECTED', 'DISPUTED', 'COMPLETED'])
@@ -48,39 +46,17 @@ export class ListSubmissionsQueryDto {
   assetClass?: AssetClass;
 }
 
-export interface SubmissionListItemDto {
-  id: string;
-  workspaceId: string;
-  userId: string;
-  assetClass: string;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  latestVerdict: string | null;
-  latestVerdictReasons: string[];
-}
+// Body for POST /trust-engine/submissions/:submissionId/moderate — the human-decision
+// layer on top of the read-only staff review queue. 'decision' intentionally mirrors
+// the ModerationQueue.decision column (a free-form string in the schema) but is
+// constrained to these two values at the API boundary.
+export class ModerateSubmissionDto {
+  @IsEnum(['APPROVE', 'REJECT'])
+  decision!: 'APPROVE' | 'REJECT';
 
-export interface SubmissionStagesResponseDto {
-  submissionId: string;
-  validationRun: {
-    id: string;
-    verdict: string;
-    verdictReasons: string[];
-    verdictExplained: string;
-    fraudScore: number;
-    trustScore: number;
-    finalScore: number;
-    createdAt: string;
-  } | null;
-  stages: Array<{
-    stageKey: string;
-    status: string;
-    reasonCodes: string[];
-    durationMs: number;
-    retryCount: number;
-    failureMessage?: string;
-    createdAt: string;
-  }>;
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }
 
 export class CreateSubmissionResponseDto {

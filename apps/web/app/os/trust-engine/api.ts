@@ -2,17 +2,8 @@
 
 import { apiRequest } from "../../lib/api-client";
 
-// Mirrors AssetSubmission / ValidationRun / StageResult (packages/database/prisma/schema.prisma)
-// as returned by GET /trust-engine/submissions and GET /trust-engine/submissions/:id/stages
-// (apps/api/src/modules/trust-engine/trust-engine.controller.ts). This is the review side of
-// the Trust Engine's 7-stage asset validation pipeline (intake -> duplicate -> quality ->
-// classification -> ocr -> brand_validation -> fraud_scoring). It is READ-ONLY: there is no
-// moderation-decision endpoint yet — ModerationQueue exists in the schema but nothing writes
-// to it, so unlike /os/approvals there are no Approve/Reject actions here, only visibility.
-// Gated behind the `trustEngine` feature flag server-side (@RequireFeature on the controller);
-// a disabled flag surfaces as a 403 from the API, which this page renders via ErrorNotice.
-
-export type AssetClass = "GIFT_CARD" | "AIRTIME_PIN" | "RECHARGE_VOUCHER" | "DIGITAL_COUPON";
+// Mirrors the shape returned by GET/POST routes on
+// apps/api/src/modules/trust-engine/trust-engine.controller.ts.
 
 export type SubmissionStatus =
   | "PENDING"
@@ -23,6 +14,16 @@ export type SubmissionStatus =
   | "DISPUTED"
   | "COMPLETED";
 
+export type AssetClass = "GIFT_CARD" | "AIRTIME_PIN" | "RECHARGE_VOUCHER" | "DIGITAL_COUPON";
+
+export interface ModerationSummary {
+  status: string;
+  decision: string | null;
+  decisionReason: string | null;
+  reviewerUserId: string | null;
+  reviewedAt: string | null;
+}
+
 export interface SubmissionListItem {
   id: string;
   workspaceId: string;
@@ -31,29 +32,14 @@ export interface SubmissionListItem {
   status: SubmissionStatus;
   createdAt: string;
   updatedAt: string;
-  latestVerdict: "ACCEPT" | "REVIEW" | "REJECT" | null;
+  latestVerdict: string | null;
   latestVerdictReasons: string[];
+  moderation: ModerationSummary | null;
 }
 
-// The 7 stages as actually declared in apps/api/src/modules/trust-engine/stages.ts,
-// in pipeline order. `ecode_format` is a StageKey the shared types package defines
-// but no stage class implements it (see services/trust-engine/src/stages) — omitted
-// here since it never appears in a real StageResult row.
-export const TRUST_ENGINE_STAGE_ORDER = [
-  "intake",
-  "quality",
-  "classification",
-  "ocr",
-  "brand_validation",
-  "duplicate",
-  "fraud_scoring"
-] as const;
-
-export type StageKey = (typeof TRUST_ENGINE_STAGE_ORDER)[number];
-
-export interface StageResultItem {
+export interface SubmissionStageResult {
   stageKey: string;
-  status: "PASS" | "FAIL" | "INCONCLUSIVE";
+  status: string;
   reasonCodes: string[];
   durationMs: number;
   retryCount: number;
@@ -65,7 +51,7 @@ export interface SubmissionStagesResponse {
   submissionId: string;
   validationRun: {
     id: string;
-    verdict: "ACCEPT" | "REVIEW" | "REJECT";
+    verdict: string;
     verdictReasons: string[];
     verdictExplained: string;
     fraudScore: number;
@@ -73,16 +59,16 @@ export interface SubmissionStagesResponse {
     finalScore: number;
     createdAt: string;
   } | null;
-  stages: StageResultItem[];
+  stages: SubmissionStageResult[];
 }
 
-export type SubmissionStatusFilter = SubmissionStatus | "all";
-export type SubmissionAssetClassFilter = AssetClass | "all";
+export interface ModerationDecisionResult {
+  submissionId: string;
+  status: SubmissionStatus;
+  moderation: ModerationSummary;
+}
 
-export function loadSubmissions(filters: {
-  status?: SubmissionStatusFilter;
-  assetClass?: SubmissionAssetClassFilter;
-} = {}) {
+export function loadSubmissions(filters: { status?: SubmissionStatus | "all"; assetClass?: AssetClass | "all" } = {}) {
   const params = new URLSearchParams();
   if (filters.status && filters.status !== "all") params.set("status", filters.status);
   if (filters.assetClass && filters.assetClass !== "all") params.set("assetClass", filters.assetClass);
@@ -92,7 +78,15 @@ export function loadSubmissions(filters: {
 }
 
 export function loadSubmissionStages(submissionId: string) {
-  return apiRequest<SubmissionStagesResponse>(
-    `/trust-engine/submissions/${encodeURIComponent(submissionId)}/stages`
+  return apiRequest<SubmissionStagesResponse>(`/trust-engine/submissions/${encodeURIComponent(submissionId)}/stages`);
+}
+
+export function moderateSubmission(submissionId: string, decision: "APPROVE" | "REJECT", reason?: string) {
+  return apiRequest<ModerationDecisionResult>(
+    `/trust-engine/submissions/${encodeURIComponent(submissionId)}/moderate`,
+    {
+      method: "POST",
+      body: JSON.stringify({ decision, ...(reason ? { reason } : {}) })
+    }
   );
 }
