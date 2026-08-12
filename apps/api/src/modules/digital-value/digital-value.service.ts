@@ -14,6 +14,7 @@ import {
   createReloadlyGiftCardAdapter,
   createSogoGiftCardAdapter,
   createAirtimeToCashAdapter,
+  createIACafeAirtimeCashoutAdapter,
   createMockAirtimeCashoutAdapter,
   type GiftCardSellProvider,
   type GiftCardPurchaseProvider,
@@ -105,12 +106,36 @@ export class DigitalValueService {
     this.giftCardBuyProvider = this.buildReloadlyAdapter();
 
     if (featureFlags.airtimeCashout) {
-      this.airtimeCashoutProvider = process.env['AIRTIMETOCASH_API_KEY']
-        ? this.buildAirtimeToCashAdapter()
-        : createMockAirtimeCashoutAdapter('airtimetocash-mock');
+      this.airtimeCashoutProvider = this.buildAirtimeCashoutProvider();
     } else {
       this.airtimeCashoutProvider = createMockAirtimeCashoutAdapter();
     }
+  }
+
+  // Single-provider slot (one active airtime-cashout provider at a time), matching
+  // the existing pattern in this module — not the multi-provider router the VTU
+  // module uses, which this domain doesn't need yet. Selection:
+  //   1. AIRTIME_CASHOUT_PROVIDER=iacafe|airtimetocash - explicit override
+  //   2. else IACAFE_API_KEY set - default to IACafe A2C (newer integration)
+  //   3. else AIRTIMETOCASH_API_KEY set - legacy airtimetocash.com adapter
+  //   4. else - mock
+  private buildAirtimeCashoutProvider(): AirtimeCashoutProvider {
+    const explicit = process.env['AIRTIME_CASHOUT_PROVIDER']?.toLowerCase();
+
+    if (explicit === 'iacafe') return this.buildIACafeAirtimeCashoutAdapter();
+    if (explicit === 'airtimetocash') return this.buildAirtimeToCashAdapter();
+
+    if (process.env['IACAFE_API_KEY']) return this.buildIACafeAirtimeCashoutAdapter();
+    if (process.env['AIRTIMETOCASH_API_KEY']) return this.buildAirtimeToCashAdapter();
+
+    return createMockAirtimeCashoutAdapter('airtimecashout-mock');
+  }
+
+  private buildIACafeAirtimeCashoutAdapter(): AirtimeCashoutProvider {
+    return createIACafeAirtimeCashoutAdapter({
+      apiKey: process.env['IACAFE_API_KEY'] || '',
+      ...(process.env['IACAFE_BASE_URL'] ? { baseUrl: process.env['IACAFE_BASE_URL'] } : {})
+    });
   }
 
   private buildSogoAdapter(): GiftCardSellProvider {

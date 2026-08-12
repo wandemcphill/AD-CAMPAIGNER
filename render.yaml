@@ -313,7 +313,7 @@ services:
       - key: CLUBKONNECT_CALLBACK_URL
         sync: false
       - key: EBILLS_BASE_URL
-        value: https://ebills.africa/wp-json/api/v2
+        value: https://ebill.com.ng/api
       - key: EBILLS_API_KEY
         sync: false
       - key: INLOMAX_BASE_URL
@@ -327,6 +327,14 @@ services:
       - key: SWIFTLINK_BASE_URL
         sync: false
       - key: SWIFTLINK_API_KEY
+        sync: false
+      - key: SIRPDATA_BASE_URL
+        sync: false
+      - key: SIRPDATA_API_KEY
+        sync: false
+      - key: IACAFE_BASE_URL
+        sync: false
+      - key: IACAFE_API_KEY
         sync: false
       - key: TOPUPWIZARD_BASE_URL
         sync: false
@@ -670,8 +678,16 @@ services:
       - key: CLUBKONNECT_API_KEY
         sync: false
       - key: EBILLS_BASE_URL
-        value: https://ebills.africa/wp-json/api/v2
+        value: https://ebill.com.ng/api
       - key: EBILLS_API_KEY
+        sync: false
+      - key: SIRPDATA_BASE_URL
+        sync: false
+      - key: SIRPDATA_API_KEY
+        sync: false
+      - key: IACAFE_BASE_URL
+        sync: false
+      - key: IACAFE_API_KEY
         sync: false
       - key: RELOADLY_AUTH_URL
         value: https://auth.reloadly.com/oauth/token

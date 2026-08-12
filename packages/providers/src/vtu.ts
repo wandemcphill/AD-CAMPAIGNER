@@ -2224,41 +2224,77 @@ export function createMockVtuAdapter(
 }
 
 // ─── Swiftlink adapter ────────────────────────────────────────────────────────
-// Status: BLOCKED_PENDING_CREDENTIALS
-// Swiftlink (swiftlinkvtu.com) offers airtime, data, cable, electricity and
-// broadband. Their reseller API requires account creation and KYB before API
-// credentials are issued. API documentation is not publicly accessible without
-// an account — all endpoint shapes below are PLACEHOLDER only and MUST NOT be
-// used in production until official API docs are obtained and verified.
+// Status: DISCOVERED (docs verified, no credential provisioned yet)
+// Implementation now matches Swiftlink's official API docs (swiftlinkng.com/api).
+// Auth: Authorization: Bearer <token> (a token provisioned once via the
+// swiftlinkng.com dashboard — the docs also show POST /login, but every other
+// endpoint uses a static bearer token, so we treat this like the other
+// static-API-key adapters rather than performing a login flow per call).
+//
+// Verified endpoints:
+//   GET  /get/plans                                — data plan catalog
+//   POST /purchase/airtime  { amount, phonenumber, subcategory_id, ported?, customer_reference? }
+//   POST /purchase/data     { plan_id, phonenumber, subcategory_id, ported?, customer_reference? }
+//   GET  /fetch/bouquet?plan=gotv|dstv|startimes    — cable plans
+//   GET  /fetch/bouquet?plan={disco title}          — electricity plans
+//   GET  /fetch/ringobouquet?serviceID=ELECT        — alt electricity catalog
+//   POST /verify/card       { plan, cardno[, type] } — cable card / meter / exam number verify
+//   POST /purchase/cable    { plan, phonenumber, amount, cardno, variation_code, customer_reference? }
+//   POST /purchase/electricity { plan, phonenumber, amount, cardno, variation_code, serviceID }
+//   GET  /requery/{ref}     — order status
+//
+// Webhook/response status codes: 1 = success, 0 = pending, 4 = failed, 2 = manually reversed.
+//
+// JUDGMENT CALL: the docs never document how `subcategory_id` (required on both
+// purchase/airtime and purchase/data) maps to network/product — there is no
+// discovery endpoint for it, only a bare example ("subcategory_id 10" for
+// airtime, "subcategory_id 1" for data). Rather than guess IDs, this adapter
+// requires them to be supplied via `config.airtimeSubcategoryId` /
+// `config.dataSubcategoryId` (network → id), which should be populated from
+// values obtained directly from the Swiftlink dashboard once a credential exists.
 //
 // Required env vars: SWIFTLINK_API_KEY, SWIFTLINK_BASE_URL
-// Researched pricing benchmarks (RESEARCHED_PUBLIC_PRICE, not live):
-//   Airtime: MTN 3.8%, Airtel 3.3%, Glo 8%, 9mobile 7%
-//   Cable: DStv 1.2%, GOtv 1.2%, StarTimes 2%, Showmax 1%
 
 export interface SwiftlinkConfig {
   apiKey: string;
   baseUrl?: string;
+  /** Network → Swiftlink subcategory_id for airtime. Not documented/discoverable via API — obtain from dashboard. */
+  airtimeSubcategoryId?: Partial<Record<VtuNetwork, string>>;
+  /** Network → Swiftlink subcategory_id for data. Not documented/discoverable via API — obtain from dashboard. */
+  dataSubcategoryId?: Partial<Record<VtuNetwork, string>>;
   fetcher?: typeof fetch;
 }
 
+function mapSwiftlinkStatus(status: unknown): VtuSubmitStatus {
+  const code = typeof status === "string" ? parseInt(status, 10) : status;
+  if (code === 1) return "DELIVERED";
+  if (code === 0) return "SUBMITTED";
+  if (code === 4) return "FAILED";
+  if (code === 2) return "FAILED"; // manually reversed — funds already returned, terminal.
+  return "AMBIGUOUS";
+}
+
 export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdapter {
-  const base = config.baseUrl ?? "https://api.swiftlinkvtu.com/v1";
+  const base = (config.baseUrl ?? "https://swiftlinkng.com/api").replace(/\/$/, "");
   const f = config.fetcher ?? fetch;
+  const authHeaders = {
+    Authorization: `Bearer ${config.apiKey}`,
+    Accept: "application/json"
+  };
 
   async function swiftGet(path: string): Promise<unknown> {
-    const res = await f(`${base}${path}`, {
-      headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" }
-    });
+    const res = await f(`${base}${path}`, { headers: authHeaders });
     if (!res.ok) throw new Error(`Swiftlink GET ${path} → HTTP ${res.status}`);
     return res.json();
   }
 
-  async function swiftPost(path: string, body: Record<string, unknown>): Promise<unknown> {
+  // Swiftlink's docs specify "Body formdata" for POST requests, not JSON.
+  async function swiftPost(path: string, body: Record<string, string>): Promise<unknown> {
+    const form = new URLSearchParams(body);
     const res = await f(`${base}${path}`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify(body)
+      headers: authHeaders,
+      body: form
     });
     if (!res.ok) throw new Error(`Swiftlink POST ${path} → HTTP ${res.status}`);
     return res.json();
@@ -2288,73 +2324,99 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
     },
 
     async listDataPlans(_network) {
-      // PLACEHOLDER — endpoint path unverified. Replace once official docs obtained.
-      const res = (await swiftGet("/data-plans")) as { data?: Array<{
-        id?: string; network?: string; size?: string; validity?: string; price?: number;
-      }> };
-      return (res.data ?? []).map((p) => ({
-        providerPlanId: String(p.id ?? ""),
-        network: (p.network?.toUpperCase() ?? "MTN") as VtuNetwork,
-        planType: "SME",
-        displayName: `${p.network} ${p.size} ${p.validity}`,
-        sizeMb: 0,
-        validityDays: 30,
-        costMinor: Math.round((p.price ?? 0) * 100),
-        currency: "NGN"
-      }));
+      // GET /get/plans — matches the official docs. Response shape isn't shown in
+      // the docs beyond the endpoint existing, so parse defensively.
+      const res = (await swiftGet("/get/plans")) as
+        | { data?: Array<Record<string, unknown>> }
+        | Array<Record<string, unknown>>;
+      const rows = Array.isArray(res) ? res : (res.data ?? []);
+      return rows.map((p) => {
+        const network = String(p["network"] ?? "MTN").toUpperCase() as VtuNetwork;
+        const size = String(p["size"] ?? p["data"] ?? "");
+        const validity = String(p["validity"] ?? "");
+        const name = String(p["plan"] ?? p["name"] ?? `${network} ${size} ${validity}`);
+        return {
+          providerPlanId: String(p["plan_id"] ?? p["id"] ?? ""),
+          network,
+          planType: "SME" as const,
+          displayName: name,
+          sizeMb: 0,
+          validityDays: 30,
+          costMinor: Math.round(parseFloat(String(p["price"] ?? p["amount"] ?? 0)) * 100),
+          currency: "NGN"
+        };
+      });
     },
 
     async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
-      // PLACEHOLDER — endpoint path and body schema unverified.
-      const res = (await swiftPost("/airtime", {
-        network: network.toLowerCase(),
-        phone: msisdn,
-        amount: faceValueMinor / 100,
-        request_id: reference
-      })) as { status?: string; message?: string };
-      const s = (res.status ?? "").toLowerCase();
-      if (s === "success" || s === "delivered") return { providerReference: reference, status: "DELIVERED" };
-      if (s === "pending" || s === "processing") return { providerReference: reference, status: "SUBMITTED" };
-      return { providerReference: reference, status: "FAILED", failureReason: res.message ?? "Swiftlink airtime failed" };
+      const subcategoryId = config.airtimeSubcategoryId?.[network];
+      if (!subcategoryId) {
+        return {
+          providerReference: reference,
+          status: "FAILED",
+          failureReason: `Swiftlink airtime subcategory_id not configured for ${network}`
+        };
+      }
+      const res = (await swiftPost("/purchase/airtime", {
+        amount: (faceValueMinor / 100).toFixed(2),
+        phonenumber: msisdn,
+        subcategory_id: subcategoryId,
+        customer_reference: reference
+      })) as { status?: number | string; response?: string };
+      const status = mapSwiftlinkStatus(res.status);
+      return {
+        providerReference: reference,
+        status,
+        ...(status === "FAILED" ? { failureReason: res.response ?? "Swiftlink airtime failed" } : {})
+      };
     },
 
     async purchaseData({ network, msisdn, providerPlanId, reference }) {
-      // PLACEHOLDER — endpoint path and body schema unverified.
-      const res = (await swiftPost("/data", {
-        network: network.toLowerCase(),
-        phone: msisdn,
+      const subcategoryId = config.dataSubcategoryId?.[network];
+      if (!subcategoryId) {
+        return {
+          providerReference: reference,
+          status: "FAILED",
+          failureReason: `Swiftlink data subcategory_id not configured for ${network}`
+        };
+      }
+      const res = (await swiftPost("/purchase/data", {
         plan_id: providerPlanId,
-        request_id: reference
-      })) as { status?: string; message?: string };
-      const s = (res.status ?? "").toLowerCase();
-      if (s === "success" || s === "delivered") return { providerReference: reference, status: "DELIVERED" };
-      if (s === "pending" || s === "processing") return { providerReference: reference, status: "SUBMITTED" };
-      return { providerReference: reference, status: "FAILED", failureReason: res.message ?? "Swiftlink data failed" };
+        phonenumber: msisdn,
+        subcategory_id: subcategoryId,
+        customer_reference: reference
+      })) as { status?: number | string; response?: string };
+      const status = mapSwiftlinkStatus(res.status);
+      return {
+        providerReference: reference,
+        status,
+        ...(status === "FAILED" ? { failureReason: res.response ?? "Swiftlink data failed" } : {})
+      };
     },
 
     async getOrderStatus(reference) {
-      // PLACEHOLDER — endpoint path unverified.
-      const res = (await swiftGet(`/status?request_id=${reference}`)) as { status?: string };
-      const s = (res.status ?? "").toLowerCase();
-      if (s === "success" || s === "delivered") return { providerReference: reference, status: "DELIVERED" };
-      if (s === "pending" || s === "processing") return { providerReference: reference, status: "SUBMITTED" };
-      return { providerReference: reference, status: "FAILED" };
+      const res = (await swiftGet(`/requery/${encodeURIComponent(reference)}`)) as {
+        status?: number | string;
+        response?: string;
+      };
+      const status = mapSwiftlinkStatus(res.status);
+      return {
+        providerReference: reference,
+        status,
+        ...(res.response ? { failureReason: res.response } : {})
+      };
     },
 
     async getBalance() {
-      // PLACEHOLDER — endpoint path unverified.
-      const res = (await swiftGet("/balance")) as { balance?: number };
-      return {
-        providerName: "swiftlink",
-        balanceMinor: Math.round((res.balance ?? 0) * 100),
-        currency: "NGN"
-      };
+      // No dedicated balance endpoint is documented for Swiftlink. /get/plans is used
+      // as a lightweight authenticated probe for checkHealth; getBalance is unsupported.
+      return { providerName: "swiftlink", balanceMinor: 0, currency: "NGN" };
     },
 
     async checkHealth() {
       const start = Date.now();
       try {
-        await swiftGet("/balance");
+        await swiftGet("/get/plans");
         return { providerName: "swiftlink", status: "HEALTHY", latencyMs: Date.now() - start };
       } catch (err) {
         return {
@@ -2364,22 +2426,143 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
           reason: err instanceof Error ? err.message : "Swiftlink health check failed"
         };
       }
+    },
+
+    async validateMeter(input): Promise<VtuMeterValidation> {
+      try {
+        const res = (await swiftPost("/verify/card", {
+          plan: input.disco,
+          cardno: input.meterNumber,
+          type: input.meterType === "PREPAID" ? "Prepaid" : "Postpaid"
+        })) as { customer_name?: string; name?: string; address?: string };
+        const name = res.customer_name ?? res.name;
+        if (!name) return { valid: false };
+        return { valid: true, customerName: name, ...(res.address ? { address: res.address } : {}) };
+      } catch {
+        return { valid: false };
+      }
+    },
+
+    async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
+      try {
+        const res = (await swiftPost("/purchase/electricity", {
+          plan: input.disco,
+          phonenumber: input.phoneNumber,
+          amount: (input.amountMinor / 100).toFixed(2),
+          cardno: input.meterNumber,
+          variation_code: input.meterType === "PREPAID" ? "Prepaid" : "Postpaid",
+          serviceID: input.disco
+        })) as { status?: number | string; response?: string; token?: string; units?: string };
+        const status = mapSwiftlinkStatus(res.status);
+        return {
+          providerReference: input.reference,
+          status,
+          ...(res.token ? { token: res.token } : {}),
+          ...(res.units ? { units: res.units } : {}),
+          ...(status === "FAILED" ? { failureReason: res.response ?? "Swiftlink electricity failed" } : {})
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Swiftlink electricity error"
+        };
+      }
+    },
+
+    async verifyCableCustomer(input): Promise<VtuMeterValidation> {
+      try {
+        const res = (await swiftPost("/verify/card", {
+          plan: input.provider,
+          cardno: input.smartCardNumber
+        })) as { customer_name?: string; name?: string };
+        const name = res.customer_name ?? res.name;
+        if (!name) return { valid: false };
+        return { valid: true, customerName: name };
+      } catch {
+        return { valid: false };
+      }
+    },
+
+    async listCablePackages(): Promise<VtuCablePackageOffer[]> {
+      const providers = ["gotv", "dstv", "startimes"] as const;
+      const offers: VtuCablePackageOffer[] = [];
+      for (const provider of providers) {
+        try {
+          const res = (await swiftGet(`/fetch/bouquet?plan=${provider}`)) as
+            | { data?: Array<Record<string, unknown>> }
+            | Array<Record<string, unknown>>;
+          const rows = Array.isArray(res) ? res : (res.data ?? []);
+          for (const p of rows) {
+            offers.push({
+              cableProvider: provider,
+              packageCode: String(p["variation_code"] ?? p["code"] ?? ""),
+              displayName: String(p["name"] ?? p["package"] ?? ""),
+              costMinor: Math.round(parseFloat(String(p["price"] ?? p["amount"] ?? 0)) * 100),
+              currency: "NGN"
+            });
+          }
+        } catch {
+          // Skip providers whose bouquet fetch fails.
+        }
+      }
+      return offers;
+    },
+
+    async purchaseCable(input): Promise<VtuSubmitResult> {
+      try {
+        const res = (await swiftPost("/purchase/cable", {
+          plan: input.provider,
+          phonenumber: input.phoneNumber,
+          amount: "0", // Cable amount is derived from variation_code by Swiftlink; caller-priced.
+          cardno: input.smartCardNumber,
+          variation_code: input.packageCode,
+          customer_reference: input.reference
+        })) as { status?: number | string; response?: string };
+        const status = mapSwiftlinkStatus(res.status);
+        return {
+          providerReference: input.reference,
+          status,
+          ...(status === "FAILED" ? { failureReason: res.response ?? "Swiftlink cable failed" } : {})
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Swiftlink cable error"
+        };
+      }
     }
   };
 }
 
-// ─── eBills full adapter (electricity + betting extension) ────────────────────
-// Status: BLOCKED_PENDING_CREDENTIALS (electricity/betting endpoints)
-// The existing eBillsAdapter in this file handles airtime and data only.
-// This extended version adds electricity and betting — both from the same
-// eBills (ebills.ng) account. Endpoint shapes below are PLACEHOLDER until
-// confirmed via the eBills developer portal.
+// ─── eBills full adapter (ebill.com.ng — airtime, data, electricity, cable, education) ──
+// Status: CONFIGURED (docs verified against ebill.com.ng's official API documentation)
+// NOTE: the real host is ebill.com.ng — NOT api.ebills.ng, which was the previous
+// (wrong) placeholder base URL. Auth header is `Authorization: Token <token>`
+// (not Bearer).
 //
-// Researched pricing benchmarks (RESEARCHED_PUBLIC_PRICE):
-//   Electricity: 1.5% service charge
-//   Betting wallet funding: 0.20% charge
+// Verified endpoints:
+//   GET  /wallet_balance/     — wallet balance
+//   POST /query_transaction/  { reference_no }
+//   POST /data_topup/         { network, plan_id, mobileno, api_client_reference }
+//   POST /airtime_topup/      { network, amount, mobile_number, api_client_reference }
+//   POST /verifyelectricity/  { bill_prdt, metertype, meterno, amount }
+//   POST /payelectricity/     { bill_prdt, metertype, meterno, amount }
+//   POST /verifytv/           { company, iucno }
+//   POST /paytv/              { company, iucno, package }
+//   POST /waec/ /neco/ /nabteb/ { api_client_reference }  (quantity implicitly 1)
 //
-// Required env vars: EBILLS_API_KEY, EBILLS_BASE_URL (reuse existing eBills creds)
+// Response envelope uses `"status": "successful"` (note: "successful", not "success").
+//
+// FOOTGUN, called out explicitly: eBills uses TWO DIFFERENT network-ID numbering
+// schemes depending on the endpoint —
+//   data_topup:    1=MTN, 2=AIRTEL, 3=GLO, 4=9MOBILE
+//   airtime_topup: 2=MTN, 3=GLO,    4=AIRTEL, 5=9MOBILE
+// These are intentionally kept as two separate maps below (EB_DATA_NETWORK /
+// EB_AIRTIME_NETWORK) rather than one shared map — do not consolidate them.
+//
+// Required env vars: EBILLS_API_KEY, EBILLS_BASE_URL
 
 export interface EBillsFullConfig {
   apiKey: string;
@@ -2387,17 +2570,40 @@ export interface EBillsFullConfig {
   fetcher?: typeof fetch;
 }
 
+// data_topup/ network IDs.
+const EB_DATA_NETWORK: Record<VtuNetwork, string> = {
+  MTN: "1",
+  AIRTEL: "2",
+  GLO: "3",
+  NINE_MOBILE: "4"
+};
+
+// airtime_topup/ network IDs — deliberately DIFFERENT from EB_DATA_NETWORK above.
+const EB_AIRTIME_NETWORK: Record<VtuNetwork, string> = {
+  MTN: "2",
+  GLO: "3",
+  AIRTEL: "4",
+  NINE_MOBILE: "5"
+};
+
+const EB_TV_COMPANY: Record<string, string> = {
+  dstv: "1",
+  gotv: "2",
+  startimes: "3"
+};
+
 export function createEBillsFullAdapter(config: EBillsFullConfig): VtuProviderAdapter {
-  const base = config.baseUrl ?? "https://api.ebills.ng/v1";
+  const base = (config.baseUrl ?? "https://ebill.com.ng/api").replace(/\/$/, "");
   const f = config.fetcher ?? fetch;
+  const headers = {
+    Authorization: `Token ${config.apiKey}`,
+    "Content-Type": "application/json"
+  };
 
   async function ebPost(path: string, body: Record<string, unknown>): Promise<unknown> {
     const res = await f(`${base}${path}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json"
-      },
+      headers,
       body: JSON.stringify(body)
     });
     if (!res.ok) throw new Error(`eBills POST ${path} → HTTP ${res.status}`);
@@ -2405,18 +2611,18 @@ export function createEBillsFullAdapter(config: EBillsFullConfig): VtuProviderAd
   }
 
   async function ebGet(path: string): Promise<unknown> {
-    const res = await f(`${base}${path}`, {
-      headers: { Authorization: `Bearer ${config.apiKey}` }
-    });
+    const res = await f(`${base}${path}`, { headers });
     if (!res.ok) throw new Error(`eBills GET ${path} → HTTP ${res.status}`);
     return res.json();
   }
 
   function mapEbStatus(status?: string): VtuSubmitStatus {
+    // eBills reports "successful" — NOT "success" — on the happy path.
     const s = (status ?? "").toLowerCase();
-    if (s === "success" || s === "successful" || s === "delivered") return "DELIVERED";
+    if (s === "successful" || s === "success" || s === "delivered") return "DELIVERED";
     if (s === "pending" || s === "processing") return "SUBMITTED";
-    return "FAILED";
+    if (s === "failed" || s === "error") return "FAILED";
+    return "AMBIGUOUS";
   }
 
   return {
@@ -2424,62 +2630,71 @@ export function createEBillsFullAdapter(config: EBillsFullConfig): VtuProviderAd
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: "VTU" as const,
     getCapabilities: () =>
-      vtuCapabilities("weak", ["AIRTIME", "DATA", "ELECTRICITY", "BETTING"]),
+      vtuCapabilities("weak", ["AIRTIME", "DATA", "ELECTRICITY", "CABLE", "EDUCATION"]),
 
     buildReference(order) {
       return `EBL${order.id.replace(/[^a-z0-9]/gi, "").slice(0, 16).toUpperCase()}`;
     },
 
     getAirtimeDiscountBps(_network) {
-      // eBills ePIN: MTN 0.5%, Glo/Airtel 1%, 9mobile 4% (researched benchmark).
+      // eBills doesn't publish per-network discount rates in the docs — 0.5% conservative default.
       return Promise.resolve(50);
     },
 
     listDataPlans(_network) {
-      // PLACEHOLDER — eBills data plan endpoint unverified.
+      // eBills' docs don't document a data-plan-catalog endpoint (only GET /get-services?service=data,
+      // whose response shape isn't shown) — plan IDs must come from VtuProviderSkuMapping.
       return Promise.resolve([]);
     },
 
     async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
-      // PLACEHOLDER — eBills airtime endpoint unverified.
-      const res = (await ebPost("/airtime", {
-        network: network.toLowerCase(),
-        phone: msisdn,
-        amount: faceValueMinor / 100,
-        reference
+      const res = (await ebPost("/airtime_topup/", {
+        network: EB_AIRTIME_NETWORK[network],
+        amount: String(faceValueMinor / 100),
+        mobile_number: msisdn,
+        api_client_reference: reference
       })) as { status?: string; message?: string };
+      const status = mapEbStatus(res.status);
       return {
         providerReference: reference,
-        status: mapEbStatus(res.status),
-        ...(mapEbStatus(res.status) === "FAILED" ? { failureReason: res.message } : {})
+        status,
+        ...(status === "FAILED" ? { failureReason: res.message ?? "eBills airtime failed" } : {})
       };
     },
 
     async purchaseData({ network, msisdn, providerPlanId, reference }) {
-      // PLACEHOLDER.
-      const res = (await ebPost("/data", {
-        network: network.toLowerCase(),
-        phone: msisdn,
-        plan: providerPlanId,
-        reference
+      const res = (await ebPost("/data_topup/", {
+        network: EB_DATA_NETWORK[network],
+        plan_id: providerPlanId,
+        mobileno: msisdn,
+        api_client_reference: reference
       })) as { status?: string; message?: string };
+      const status = mapEbStatus(res.status);
       return {
         providerReference: reference,
-        status: mapEbStatus(res.status),
-        ...(mapEbStatus(res.status) === "FAILED" ? { failureReason: res.message } : {})
+        status,
+        ...(status === "FAILED" ? { failureReason: res.message ?? "eBills data failed" } : {})
       };
     },
 
     async getOrderStatus(reference) {
-      const res = (await ebGet(`/transaction/${reference}`)) as { status?: string };
-      return { providerReference: reference, status: mapEbStatus(res.status) };
+      const res = (await ebPost("/query_transaction/", { reference_no: reference })) as {
+        status?: string;
+        message?: string;
+      };
+      const status = mapEbStatus(res.status);
+      return {
+        providerReference: reference,
+        status,
+        ...(res.message ? { failureReason: res.message } : {})
+      };
     },
 
     async getBalance() {
-      const res = (await ebGet("/balance")) as { balance?: number };
+      const res = (await ebGet("/wallet_balance/")) as { balance?: number | string };
       return {
         providerName: "ebills",
-        balanceMinor: Math.round((res.balance ?? 0) * 100),
+        balanceMinor: Math.round(parseFloat(String(res.balance ?? 0)) * 100),
         currency: "NGN"
       };
     },
@@ -2487,7 +2702,7 @@ export function createEBillsFullAdapter(config: EBillsFullConfig): VtuProviderAd
     async checkHealth() {
       const start = Date.now();
       try {
-        await ebGet("/balance");
+        await ebGet("/wallet_balance/");
         return { providerName: "ebills", status: "HEALTHY", latencyMs: Date.now() - start };
       } catch (err) {
         return {
@@ -2499,67 +2714,137 @@ export function createEBillsFullAdapter(config: EBillsFullConfig): VtuProviderAd
       }
     },
 
-    // Electricity — PLACEHOLDER endpoints, sourced from eBills developer portal once available.
+    // POST /verifyelectricity/ — { bill_prdt, metertype, meterno, amount }
     async validateMeter(input): Promise<VtuMeterValidation> {
       try {
-        const res = (await ebPost("/electricity/validate", {
-          disco: input.disco,
-          meter_number: input.meterNumber,
-          meter_type: input.meterType
-        })) as { valid?: boolean; customer_name?: string; address?: string };
+        const res = (await ebPost("/verifyelectricity/", {
+          bill_prdt: input.disco,
+          metertype: input.meterType.toLowerCase(),
+          meterno: input.meterNumber,
+          amount: "1000" // eBills requires a minimum-1000 amount even for verify-only calls per docs.
+        })) as {
+          success?: string | boolean;
+          message?: string | { Customer_Name?: string; Address?: string; Min_Purchase_Amount?: number };
+        };
+        const ok = res.success === "true" || res.success === true;
+        if (!ok || typeof res.message === "string") return { valid: false };
+        const msg = res.message ?? {};
         return {
-          valid: res.valid ?? false,
-          ...(res.customer_name ? { customerName: res.customer_name } : {}),
-          ...(res.address ? { address: res.address } : {})
+          valid: true,
+          ...(msg.Customer_Name ? { customerName: msg.Customer_Name } : {}),
+          ...(msg.Address ? { address: msg.Address } : {}),
+          ...(msg.Min_Purchase_Amount ? { minAmountMinor: Math.round(msg.Min_Purchase_Amount * 100) } : {})
         };
       } catch {
         return { valid: false };
       }
     },
 
+    // POST /payelectricity/ — { bill_prdt, metertype, meterno, amount }
     async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
-      const res = (await ebPost("/electricity/purchase", {
-        disco: input.disco,
-        meter_number: input.meterNumber,
-        meter_type: input.meterType,
-        amount: input.amountMinor / 100,
-        phone: input.phoneNumber,
-        reference: input.reference
-      })) as { status?: string; token?: string; units?: string; message?: string };
-      return {
-        providerReference: input.reference,
-        status: mapEbStatus(res.status),
-        ...(res.token ? { token: res.token } : {}),
-        ...(res.units ? { units: res.units } : {}),
-        ...(mapEbStatus(res.status) === "FAILED" ? { failureReason: res.message } : {})
-      };
+      try {
+        const res = (await ebPost("/payelectricity/", {
+          bill_prdt: input.disco,
+          metertype: input.meterType.toLowerCase(),
+          meterno: input.meterNumber,
+          amount: String(input.amountMinor / 100)
+        })) as { status?: string; message?: string };
+        const status = mapEbStatus(res.status);
+        return {
+          providerReference: input.reference,
+          status,
+          ...(status === "FAILED" ? { failureReason: res.message ?? "eBills electricity failed" } : {})
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "eBills electricity error"
+        };
+      }
     },
 
-    // Betting wallet funding — PLACEHOLDER.
-    async verifyBettingCustomer(input): Promise<VtuMeterValidation> {
+    // POST /verifytv/ — { company, iucno }
+    async verifyCableCustomer(input): Promise<VtuMeterValidation> {
       try {
-        const res = (await ebPost("/betting/verify", {
-          bookmaker: input.bettingCompany,
-          customer_id: input.customerId
-        })) as { valid?: boolean; name?: string };
-        return { valid: res.valid ?? false, ...(res.name ? { customerName: res.name } : {}) };
+        const company = EB_TV_COMPANY[input.provider.toLowerCase()];
+        if (!company) return { valid: false };
+        const res = (await ebPost("/verifytv/", { company, iucno: input.smartCardNumber })) as {
+          success?: string | boolean;
+          message?: string | { Customer_Name?: string };
+        };
+        const ok = res.success === "true" || res.success === true;
+        if (!ok || typeof res.message === "string") return { valid: false };
+        const msg = res.message ?? {};
+        return { valid: true, ...(msg.Customer_Name ? { customerName: msg.Customer_Name } : {}) };
       } catch {
         return { valid: false };
       }
     },
 
-    async purchaseBetFunding(input): Promise<VtuSubmitResult> {
-      const res = (await ebPost("/betting/fund", {
-        bookmaker: input.bettingCompany,
-        customer_id: input.customerId,
-        amount: input.amountMinor / 100,
-        reference: input.reference
-      })) as { status?: string; message?: string };
-      return {
-        providerReference: input.reference,
-        status: mapEbStatus(res.status),
-        ...(mapEbStatus(res.status) === "FAILED" ? { failureReason: res.message } : {})
-      };
+    // POST /paytv/ — { company, iucno, package }
+    async purchaseCable(input): Promise<VtuSubmitResult> {
+      try {
+        const company = EB_TV_COMPANY[input.provider.toLowerCase()];
+        if (!company) {
+          return {
+            providerReference: input.reference,
+            status: "FAILED" as const,
+            failureReason: `Unknown eBills cable provider: ${input.provider}`
+          };
+        }
+        const res = (await ebPost("/paytv/", {
+          company,
+          iucno: input.smartCardNumber,
+          package: input.packageCode
+        })) as { status?: string; message?: string };
+        const status = mapEbStatus(res.status);
+        return {
+          providerReference: input.reference,
+          status,
+          ...(status === "FAILED" ? { failureReason: res.message ?? "eBills cable failed" } : {})
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "eBills cable error"
+        };
+      }
+    },
+
+    // POST /waec/ /neco/ /nabteb/ — { api_client_reference }, quantity implicitly 1.
+    async purchaseEducation(input): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }> {
+      const examMap: Record<string, string> = { waec: "waec", neco: "neco", nabteb: "nabteb" };
+      const path = examMap[input.examType.toLowerCase()];
+      if (!path) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: `Unsupported eBills exam type: ${input.examType}`
+        };
+      }
+      try {
+        const res = (await ebPost(`/${path}/`, {
+          api_client_reference: input.reference
+        })) as { status?: string; message?: string; pin?: string; reference_no?: string };
+        const status = mapEbStatus(res.status);
+        // pin format is "PIN<=>SERIAL" per docs example.
+        const [pin, serial] = (res.pin ?? "").split("<=>");
+        return {
+          providerReference: input.reference,
+          status,
+          ...(pin ? { pin } : {}),
+          ...(serial ? { serialNumber: serial } : {}),
+          ...(status === "FAILED" ? { failureReason: res.message ?? "eBills education pin failed" } : {})
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "eBills education pin error"
+        };
+      }
     }
   };
 }
@@ -2757,13 +3042,13 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
       }
     },
 
-    // POST /validateutility — serviceID (DISCO code), meterNum, meterType (prepaid/postpaid)
+    // POST /validateutility — serviceID (DISCO code), meterNum, meterType (01=prepaid, 02=postpaid)
     async validateMeter(input): Promise<VtuMeterValidation> {
       try {
         const res = (await twPost("/validateutility", {
           serviceID: input.disco,
           meterNum: input.meterNumber,
-          meterType: input.meterType.toLowerCase()
+          meterType: input.meterType === "PREPAID" ? "01" : "02"
         })) as {
           status?: string;
           data?: { customerName?: string; address?: string; minAmount?: number };
@@ -2778,13 +3063,13 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
       } catch { return { valid: false }; }
     },
 
-    // POST /payelectric — serviceID, amount, meterNum, meterType, clientReference
+    // POST /payelectric — serviceID, amount, meterNum, meterType (01=prepaid, 02=postpaid), clientReference
     async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
       const res = (await twPost("/payelectric", {
         serviceID: input.disco,
         amount: input.amountMinor / 100,
         meterNum: input.meterNumber,
-        meterType: input.meterType.toLowerCase(),
+        meterType: input.meterType === "PREPAID" ? "01" : "02",
         clientReference: input.reference
       })) as {
         status?: string;
@@ -2800,12 +3085,12 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
       };
     },
 
-    // POST /validatecable — serviceID, iucNum
+    // POST /validatecable — serviceID, cableNum (docs field name — NOT iucNum)
     async verifyCableCustomer(input): Promise<VtuMeterValidation> {
       try {
         const res = (await twPost("/validatecable", {
           serviceID: input.provider,
-          iucNum: input.smartCardNumber
+          cableNum: input.smartCardNumber
         })) as { status?: string; data?: { customerName?: string } };
         return {
           valid: res.status === "success",
@@ -2814,11 +3099,11 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
       } catch { return { valid: false }; }
     },
 
-    // POST /subcable — serviceID (package code), iucNum, clientReference
+    // POST /subcable — serviceID (package code), cableNum (docs field name — NOT iucNum), clientReference
     async purchaseCable(input): Promise<VtuSubmitResult> {
       const res = (await twPost("/subcable", {
         serviceID: input.packageCode,
-        iucNum: input.smartCardNumber,
+        cableNum: input.smartCardNumber,
         clientReference: input.reference
       })) as { status?: string; message?: string; data?: { status?: string } };
       return {
@@ -2850,18 +3135,13 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
     },
 
     // POST /education — serviceID, quantity, clientReference
+    // TODO: serviceID is a provider-specific numeric catalog id fetched via POST /pricing
+    // (type: "education"). It must come from VtuProviderSkuMapping, not be fabricated here.
+    // input.examType is passed through as-is until the SKU-mapping table is populated for
+    // TopupWizard's education product catalog.
     async purchaseEducation(input): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }> {
-      const examServiceMap: Record<string, string> = {
-        waecdirect: "WAEC",
-        "waec-registraion": "WAEC-REG",
-        neco: "NECO",
-        nabteb: "NABTEB",
-        de: "JAMB-DE",
-        "utme-mock": "JAMB-MOCK",
-        "utme-no-mock": "JAMB-UTME"
-      };
       const res = (await twPost("/education", {
-        serviceID: examServiceMap[input.examType] ?? input.examType.toUpperCase(),
+        serviceID: input.examType,
         quantity: 1,
         clientReference: input.reference
       })) as {
@@ -2875,6 +3155,362 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
         ...(res.data?.pin ? { pin: res.data.pin } : {}),
         ...(res.data?.serialNumber ? { serialNumber: res.data.serialNumber } : {}),
         ...(mapTwStatus(res) === "FAILED" ? { failureReason: res.message } : {})
+      };
+    }
+  };
+}
+
+// ─── SIRP Data adapter ────────────────────────────────────────────────────────
+// Status: CONFIGURED (docs verified against SIRP Data's official Native API docs)
+// NOTE: the docs are hosted at sirpdata.com, but the actual API host is
+// sirpdata.com.ng — a different domain. Every endpoint URL below uses .com.ng.
+// Auth header is `Authentication: Token <token>` (not `Authorization`).
+//
+// Verified endpoints:
+//   GET  /balance
+//   POST /airtime                        { networkId, type: "VTU", phone, amount, ref? }
+//   GET  /fetch_direct_gifting_bundles?networkId=...
+//   POST /data                           { networkId, datatypeId, planId, phone, ref? }
+//   GET  /fetch_cable_tv_bouquets?cableType=...
+//   POST /verify_cable_tv_customer       { cableType, smartcardNo }
+//   POST /cabletv                        { cableType, bouquetId, smartcardNo, amount?, ref? }
+//   POST /verify_electricity_meterno     { discoId, meterNo }
+//   POST /electricity                    { discoId, meterNo, amount, ref? }
+//   POST /educational-pins               { examType, quantity, phone, ref? }
+//
+// Response envelope: { code, description, time }. HTTP status codes are
+// authoritative per SIRP's own docs: 200/201 = success, 400 = missing params,
+// 401 = auth failed, 402 = unprocessable, 403 = forbidden, 409 = duplicate,
+// 424 = transaction failed, 500+ = AMBIGUOUS ("mark requests outside 2xx/4xx
+// clearly defined above as pending"). This adapter surfaces 500+ as AMBIGUOUS
+// (never FAILED) so the service layer routes it to the existing
+// financial-safety AMBIGUOUS path rather than treating it as a hard failure.
+//
+// Required env vars: SIRPDATA_API_KEY, SIRPDATA_BASE_URL
+
+export interface SirpDataConfig {
+  apiKey: string;
+  baseUrl?: string; // default https://sirpdata.com.ng/api
+  fetcher?: typeof fetch;
+}
+
+const SIRP_NETWORK: Record<VtuNetwork, string> = {
+  MTN: "1",
+  AIRTEL: "2",
+  GLO: "3",
+  NINE_MOBILE: "4"
+};
+
+const SIRP_TV_TYPE: Record<string, string> = {
+  dstv: "DSTV",
+  gotv: "GOTV",
+  startimes: "STARTIMES"
+};
+
+interface SirpEnvelope {
+  code?: string | number;
+  description?: Record<string, unknown> | string;
+  time?: string;
+}
+
+function mapSirpOutcome(httpStatus: number, body: SirpEnvelope): VtuSubmitStatus {
+  // HTTP status is authoritative per SIRP's docs, not the `code` field in the body.
+  if (httpStatus === 200 || httpStatus === 201) return "DELIVERED";
+  if (httpStatus === 424) return "FAILED";
+  if (httpStatus >= 400 && httpStatus < 500) return "FAILED";
+  if (httpStatus >= 500) return "AMBIGUOUS"; // "possibly delivered or it could still deliver"
+  return "AMBIGUOUS";
+}
+
+function sirpErrorMessage(body: SirpEnvelope): string | undefined {
+  if (typeof body.description === "string") return body.description;
+  const desc = body.description as { errorResponse?: string; trueResponse?: string } | undefined;
+  return desc?.errorResponse ?? desc?.trueResponse;
+}
+
+export function createSirpDataAdapter(config: SirpDataConfig): VtuProviderAdapter {
+  const base = (config.baseUrl ?? "https://sirpdata.com.ng/api").replace(/\/$/, "");
+  const f = config.fetcher ?? fetch;
+  const headers = {
+    Authentication: `Token ${config.apiKey}`,
+    "Content-Type": "application/json",
+    Accept: "application/json"
+  };
+
+  async function sirpRequest(
+    method: "GET" | "POST",
+    path: string,
+    body?: Record<string, unknown>
+  ): Promise<{ httpStatus: number; body: SirpEnvelope }> {
+    const res = await f(`${base}${path}`, {
+      method,
+      headers,
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    let parsed: SirpEnvelope = {};
+    try {
+      parsed = (await res.json()) as SirpEnvelope;
+    } catch {
+      // Non-JSON body (e.g. gateway 5xx) — fall through with empty envelope;
+      // the HTTP status alone still drives mapSirpOutcome.
+    }
+    return { httpStatus: res.status, body: parsed };
+  }
+
+  return {
+    name: "sirpdata",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () =>
+      vtuCapabilities("weak", ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"]),
+
+    buildReference(order) {
+      return `SIRP${order.id.replace(/[^a-z0-9]/gi, "").slice(0, 16).toUpperCase()}`;
+    },
+
+    getAirtimeDiscountBps(_network) {
+      // Not published in SIRP's docs — conservative default until a live rate is observed.
+      return Promise.resolve(200);
+    },
+
+    async listDataPlans(network) {
+      const networks: VtuNetwork[] = network ? [network] : ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
+      const results: VtuPlanOffer[] = [];
+      for (const net of networks) {
+        try {
+          const { httpStatus, body } = await sirpRequest(
+            "GET",
+            `/fetch_direct_gifting_bundles?networkId=${SIRP_NETWORK[net]}`
+          );
+          if (httpStatus !== 200) continue;
+          const desc = body.description as
+            | { bundles?: Array<{ planName?: string; planId?: string; networkPrice?: string }> }
+            | undefined;
+          for (const b of desc?.bundles ?? []) {
+            if (!b.planId) continue;
+            const name = b.planName ?? b.planId;
+            const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
+            const mbMatch = name.match(/(\d+)\s*MB/i);
+            const dayMatch = name.match(/(\d+)\s*DAYS?/i);
+            results.push({
+              providerPlanId: b.planId,
+              network: net,
+              planType: "GIFTING",
+              displayName: name,
+              sizeMb: gbMatch ? Math.round(parseFloat(gbMatch[1]!) * 1024) : mbMatch ? parseInt(mbMatch[1]!) : 0,
+              validityDays: dayMatch ? parseInt(dayMatch[1]!) : 30,
+              costMinor: Math.round(parseFloat(String(b.networkPrice ?? 0)) * 100),
+              currency: "NGN"
+            });
+          }
+        } catch {
+          // Skip networks that error.
+        }
+      }
+      return results;
+    },
+
+    async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
+      const { httpStatus, body } = await sirpRequest("POST", "/airtime", {
+        networkId: SIRP_NETWORK[network],
+        type: "VTU",
+        phone: msisdn,
+        amount: (faceValueMinor / 100).toFixed(2),
+        ref: reference
+      });
+      const status = mapSirpOutcome(httpStatus, body);
+      return {
+        providerReference: reference,
+        status,
+        ...(status === "FAILED" ? { failureReason: sirpErrorMessage(body) ?? "SIRP Data airtime failed" } : {})
+      };
+    },
+
+    // datatypeId (SME|SME2|DATA-SHARE|CG|DIRECT-GIFTING) is a per-plan attribute that must
+    // come from VtuProviderSkuMapping alongside providerPlanId — this adapter defaults to
+    // "SME" when the caller doesn't route a specific datatypeId through providerPlanId.
+    async purchaseData({ network, msisdn, providerPlanId, reference }) {
+      const { httpStatus, body } = await sirpRequest("POST", "/data", {
+        networkId: SIRP_NETWORK[network],
+        datatypeId: "SME",
+        planId: providerPlanId,
+        phone: msisdn,
+        ref: reference
+      });
+      const status = mapSirpOutcome(httpStatus, body);
+      return {
+        providerReference: reference,
+        status,
+        ...(status === "FAILED" ? { failureReason: sirpErrorMessage(body) ?? "SIRP Data data failed" } : {})
+      };
+    },
+
+    async getOrderStatus(_reference) {
+      // SIRP's docs don't document a requery/transaction-status endpoint — status must
+      // be tracked from the original purchase response (and any webhook, if configured).
+      return {
+        providerReference: _reference,
+        status: "AMBIGUOUS" as const,
+        failureReason: "SIRP Data has no documented order-status endpoint"
+      };
+    },
+
+    async getBalance() {
+      const { httpStatus, body } = await sirpRequest("GET", "/balance");
+      if (httpStatus !== 200) {
+        return { providerName: "sirpdata", balanceMinor: 0, currency: "NGN" };
+      }
+      const desc = body.description as { balance?: string } | undefined;
+      return {
+        providerName: "sirpdata",
+        balanceMinor: Math.round(parseFloat(String(desc?.balance ?? 0)) * 100),
+        currency: "NGN"
+      };
+    },
+
+    async checkHealth() {
+      const start = Date.now();
+      try {
+        const { httpStatus } = await sirpRequest("GET", "/balance");
+        return {
+          providerName: "sirpdata",
+          status: httpStatus === 200 ? ("HEALTHY" as const) : ("DEGRADED" as const),
+          latencyMs: Date.now() - start
+        };
+      } catch (err) {
+        return {
+          providerName: "sirpdata",
+          status: "DEGRADED",
+          latencyMs: Date.now() - start,
+          reason: err instanceof Error ? err.message : "SIRP Data health check failed"
+        };
+      }
+    },
+
+    async validateMeter(input): Promise<VtuMeterValidation> {
+      try {
+        const { httpStatus, body } = await sirpRequest("POST", "/verify_electricity_meterno", {
+          discoId: input.disco,
+          meterNo: input.meterNumber
+        });
+        if (httpStatus !== 200) return { valid: false };
+        const desc = body.description as { customerName?: string; customerAddress?: string } | undefined;
+        return {
+          valid: true,
+          ...(desc?.customerName ? { customerName: desc.customerName } : {}),
+          ...(desc?.customerAddress ? { address: desc.customerAddress } : {})
+        };
+      } catch {
+        return { valid: false };
+      }
+    },
+
+    async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
+      const { httpStatus, body } = await sirpRequest("POST", "/electricity", {
+        discoId: input.disco,
+        meterNo: input.meterNumber,
+        amount: (input.amountMinor / 100).toFixed(2),
+        ref: input.reference
+      });
+      const status = mapSirpOutcome(httpStatus, body);
+      const desc = body.description as { trueResponse?: { Token?: string } } | undefined;
+      return {
+        providerReference: input.reference,
+        status,
+        ...(desc?.trueResponse?.Token ? { token: desc.trueResponse.Token } : {}),
+        ...(status === "FAILED" ? { failureReason: sirpErrorMessage(body) ?? "SIRP Data electricity failed" } : {})
+      };
+    },
+
+    async verifyCableCustomer(input): Promise<VtuMeterValidation> {
+      try {
+        const cableType = SIRP_TV_TYPE[input.provider.toLowerCase()];
+        if (!cableType) return { valid: false };
+        const { httpStatus, body } = await sirpRequest("POST", "/verify_cable_tv_customer", {
+          cableType,
+          smartcardNo: input.smartCardNumber
+        });
+        if (httpStatus !== 200) return { valid: false };
+        const desc = body.description as { customerName?: string } | undefined;
+        return { valid: true, ...(desc?.customerName ? { customerName: desc.customerName } : {}) };
+      } catch {
+        return { valid: false };
+      }
+    },
+
+    async listCablePackages(): Promise<VtuCablePackageOffer[]> {
+      const offers: VtuCablePackageOffer[] = [];
+      for (const [cableProvider, cableType] of Object.entries(SIRP_TV_TYPE)) {
+        try {
+          const { httpStatus, body } = await sirpRequest("GET", `/fetch_cable_tv_bouquets?cableType=${cableType}`);
+          if (httpStatus !== 200) continue;
+          const desc = body.description as
+            | { bouquets?: Array<{ planName?: string; planId?: string; providerPrice?: string }> }
+            | undefined;
+          for (const bq of desc?.bouquets ?? []) {
+            if (!bq.planId) continue;
+            offers.push({
+              cableProvider,
+              packageCode: bq.planId,
+              displayName: bq.planName ?? bq.planId,
+              costMinor: Math.round(parseFloat(String(bq.providerPrice ?? 0)) * 100),
+              currency: "NGN"
+            });
+          }
+        } catch {
+          // Skip providers whose bouquet fetch fails.
+        }
+      }
+      return offers;
+    },
+
+    async purchaseCable(input): Promise<VtuSubmitResult> {
+      const cableType = SIRP_TV_TYPE[input.provider.toLowerCase()];
+      if (!cableType) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: `Unknown SIRP Data cable type: ${input.provider}`
+        };
+      }
+      const { httpStatus, body } = await sirpRequest("POST", "/cabletv", {
+        cableType,
+        bouquetId: input.packageCode,
+        smartcardNo: input.smartCardNumber,
+        ref: input.reference
+      });
+      const status = mapSirpOutcome(httpStatus, body);
+      return {
+        providerReference: input.reference,
+        status,
+        ...(status === "FAILED" ? { failureReason: sirpErrorMessage(body) ?? "SIRP Data cable failed" } : {})
+      };
+    },
+
+    // POST /educational-pins — { examType, quantity, phone, ref? }
+    async purchaseEducation(input): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }> {
+      const examMap: Record<string, string> = {
+        waec: "waec_pin",
+        neco: "neco_pin",
+        utme: "utme_pin",
+        jamb: "utme_pin",
+        nabteb: "nabteb_pin"
+      };
+      const examType = examMap[input.examType.toLowerCase()] ?? input.examType;
+      const { httpStatus, body } = await sirpRequest("POST", "/educational-pins", {
+        examType,
+        quantity: 1,
+        phone: input.phoneNumber,
+        ref: input.reference
+      });
+      const status = mapSirpOutcome(httpStatus, body);
+      const desc = body.description as { trueResponse?: Record<string, string> } | undefined;
+      const firstPin = desc?.trueResponse ? Object.values(desc.trueResponse)[0] : undefined;
+      return {
+        providerReference: input.reference,
+        status,
+        ...(firstPin ? { pin: firstPin } : {}),
+        ...(status === "FAILED" ? { failureReason: sirpErrorMessage(body) ?? "SIRP Data education pin failed" } : {})
       };
     }
   };
@@ -3553,6 +4189,578 @@ export function createVTUGateAdapter(config: VTUGateConfig): VtuProviderAdapter 
         ...(res.data?.pin ? { pin: res.data.pin } : {}),
         ...(res.data?.serial_number ? { serialNumber: res.data.serial_number } : {}),
         ...(mapVtgStatus(res) === "FAILED" ? { failureReason: res.message } : {})
+      };
+    }
+  };
+}
+
+// ─── IACafe adapter ───────────────────────────────────────────────────────────
+// Status: CONFIGURED (docs verified against IA-Café's official developer docs,
+// iacafe.com.ng/docs/*). Base URL: https://iacafe.com.ng/devapi/v1.
+// Auth: Authorization: Bearer <api-key>  (an X-API-Key alt header also works per
+// the overview page; Bearer is used here for consistency with other adapters).
+//
+// Verified endpoints:
+//   GET  /whoami
+//   GET  /wallet
+//   POST /airtime                    { request_id, phone, service_id, amount }
+//   GET  /variations?product=data&service_id=<net>
+//   POST /data                       { request_id, phone, service_id, variation_id }
+//   GET  /budget-data/plans?network_id=<1-4>
+//   POST /budget-data                { request_id, phone, data_plan, network_id? }
+//   POST /verify-customer            { customer_id, service_id, variation_id? }
+//   POST /electricity                { request_id, customer_id, service_id, variation_id, amount }
+//   GET  /variations?product=cable&service_id=<provider>
+//   POST /cable                      { request_id, customer_id, service_id, variation_id }
+//   POST /betting                    { request_id, customer_id, service_id, amount, skip_verify? }
+//   POST /epins                      { request_id, service_id, value, quantity }
+//   GET  /orders/:request_id
+//   POST /requery                    { request_id }
+//
+// Response envelopes are NOT uniform:
+//   - Airtime/Data/BudgetData/Cable/Electricity/ePINs purchase: { code: "success", message,
+//     data: { status: "completed-api"|"processing-api"|"refunded-api", ... } } on success;
+//     { success: false, error: { code, message } } on outright rejection (400/402/409).
+//   - Verify-customer: { success: true, code: "success", ..., data: {...} } on success,
+//     { success: false, error: {...} } on failure — a different envelope shape entirely.
+//   - Betting fund: { success: true, status: "completed"|"processing", message, data } on
+//     success (note: top-level `status`, distinct from data.status used elsewhere), or
+//     { success: false, error: {...}, order_id, request_id, refunded } on failure.
+//
+// Status semantics: "completed-api" = DELIVERED. "processing-api" = genuinely uncertain,
+// in-flight — mapped to SUBMITTED per this codebase's convention (do not assume failure;
+// poll getOrderStatus/requery or wait for a webhook once one exists). "refunded-api" means
+// the provider itself already reversed its own wallet — this adapter surfaces that as
+// FAILED, but IMPORTANT: vtu.service.ts's reversal logic (see reverseCharge / REVERSAL
+// ledger entries around line ~950) does NOT currently know about provider-side
+// self-refunds, so a "refunded-api" FAILED result will still trigger our own REVERSAL
+// entry on top of IACafe's already-restored wallet. This is a correctness risk for
+// double-crediting if IACafe's refund and our reversal both restore the same money on
+// our books — the interface has no field to convey "already refunded upstream", so this
+// is flagged here rather than invented. Do not enable real traffic on this provider until
+// vtu.service.ts's reversal path is checked against this specific behavior.
+//
+// No documented rate-limit-aware method on VtuProviderAdapter — 60 req/min noted only
+// as a comment; no special handling implemented (consistent with other adapters).
+//
+// Budget Data: modeled as additional data-plan SKUs surfaced through listDataPlans/
+// purchaseData (product="budget-data" is just IACafe's cheaper SME/gifting data family —
+// not a distinct product type on VtuProviderAdapter). providerPlanId is prefixed
+// "budget:<data_plan>" so purchaseData can tell budget-data plans apart from regular
+// data plans and route to the correct endpoint.
+//
+// Required env vars: IACAFE_API_KEY, IACAFE_BASE_URL
+//
+// LIVE CREDENTIAL WARNING: the IACAFE_API_KEY configured for this integration is a
+// LIVE production key (ak_live_...), not a sandbox key. Any call made against it moves
+// real money. Do not exercise this adapter against the real API from tests, scripts, or
+// ad-hoc debugging — verify against the docs/mocks only until this provider is
+// deliberately promoted to ACTIVE in VtuProviderConfig.
+
+export interface IACafeConfig {
+  apiKey: string;
+  baseUrl?: string; // default https://iacafe.com.ng/devapi/v1
+  fetcher?: typeof fetch;
+}
+
+const IACAFE_NETWORK: Record<VtuNetwork, string> = {
+  MTN: "mtn",
+  AIRTEL: "airtel",
+  GLO: "glo",
+  NINE_MOBILE: "9mobile"
+};
+
+const IACAFE_BUDGET_NETWORK_ID: Record<VtuNetwork, number> = {
+  MTN: 1,
+  GLO: 2,
+  NINE_MOBILE: 3,
+  AIRTEL: 4
+};
+
+// Canonical service_id casing per IACafe's betting platform table — lookups are
+// case-insensitive per the docs ("Bet9ja, bet9ja and BET9JA are treated the same"),
+// but requests should still send the canonical casing shown here.
+const IACAFE_BETTING_PLATFORMS: Record<string, string> = {
+  "1xbet": "1xBet",
+  bangbet: "BangBet",
+  bet9ja: "Bet9ja",
+  betking: "BetKing",
+  betland: "BetLand",
+  betlion: "BetLion",
+  betway: "BetWay",
+  cloudbet: "CloudBet",
+  livescorebet: "LiveScoreBet",
+  merrybet: "MerryBet",
+  naijabet: "NaijaBet",
+  nairabet: "NairaBet",
+  supabet: "SupaBet"
+};
+
+function iacBettingServiceId(company: string): string | undefined {
+  return IACAFE_BETTING_PLATFORMS[company.toLowerCase()];
+}
+
+interface IacPurchaseData {
+  status?: string;
+  token?: string;
+  units?: string;
+  band?: string;
+  pins?: Array<{ pin?: string; serial?: string }>;
+}
+interface IacPurchaseEnvelope {
+  code?: string;
+  message?: string;
+  data?: IacPurchaseData;
+}
+interface IacErrorEnvelope {
+  success?: false;
+  error?: { code?: string; message?: string };
+  refunded?: boolean;
+}
+type IacResponse = IacPurchaseEnvelope & IacErrorEnvelope;
+
+function mapIacDataStatus(s?: string): VtuSubmitStatus {
+  if (s === "completed-api") return "DELIVERED";
+  if (s === "processing-api") return "SUBMITTED";
+  // refunded-api: provider-side failure, IACafe has already restored its own wallet.
+  // Surfaced as FAILED — see the double-reversal risk noted in the header comment above.
+  if (s === "refunded-api") return "FAILED";
+  return "AMBIGUOUS";
+}
+
+export function createIACafeAdapter(config: IACafeConfig): VtuProviderAdapter {
+  const base = (config.baseUrl ?? "https://iacafe.com.ng/devapi/v1").replace(/\/$/, "");
+  const f = config.fetcher ?? fetch;
+  const headers = {
+    Authorization: `Bearer ${config.apiKey}`,
+    "Content-Type": "application/json",
+    Accept: "application/json"
+  };
+
+  async function iacRequest(
+    method: "GET" | "POST",
+    path: string,
+    body?: Record<string, unknown>
+  ): Promise<{ httpStatus: number; body: IacResponse }> {
+    const res = await f(`${base}${path}`, {
+      method,
+      headers,
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    let parsed: IacResponse = {};
+    try {
+      parsed = (await res.json()) as IacResponse;
+    } catch {
+      // Non-JSON body (e.g. gateway error) — HTTP status alone drives outcome below.
+    }
+    return { httpStatus: res.status, body: parsed };
+  }
+
+  function purchaseResult(
+    reference: string,
+    httpStatus: number,
+    body: IacResponse
+  ): VtuSubmitResult & { token?: string; units?: string } {
+    if (body.success === false) {
+      return {
+        providerReference: reference,
+        status: "FAILED" as const,
+        failureReason: body.error?.message ?? `IACafe request failed (HTTP ${httpStatus})`
+      };
+    }
+    const status = mapIacDataStatus(body.data?.status);
+    return {
+      providerReference: reference,
+      status,
+      ...(body.data?.token ? { token: body.data.token } : {}),
+      ...(body.data?.units ? { units: body.data.units } : {}),
+      ...(status === "FAILED"
+        ? { failureReason: body.message ?? "IACafe order was refunded (refunded-api)" }
+        : {})
+    };
+  }
+
+  // Shared verify-customer call for betting — used both by the public
+  // verifyBettingCustomer method and internally by purchaseBetFunding's mandatory
+  // verify-then-fund sequence (pulled out to a plain function since the adapter is
+  // returned as an object literal, not a class, so `this` isn't usable inside it).
+  async function verifyBetting(customerId: string, serviceId: string): Promise<VtuMeterValidation> {
+    try {
+      const { httpStatus, body } = await iacRequest("POST", "/verify-customer", {
+        customer_id: customerId,
+        service_id: serviceId
+      });
+      if (httpStatus !== 200 || body.success === false) return { valid: false };
+      const data = (body as unknown as { data?: { customer_name?: string } }).data;
+      return { valid: true, ...(data?.customer_name ? { customerName: data.customer_name } : {}) };
+    } catch {
+      return { valid: false };
+    }
+  }
+
+  return {
+    name: "iacafe",
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: "VTU" as const,
+    getCapabilities: () =>
+      vtuCapabilities("strong", ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "BETTING"]),
+
+    buildReference(order) {
+      // Max 50 chars, must never be reused, per IACafe's request_id contract.
+      return `IAC${order.id.replace(/[^a-z0-9]/gi, "").slice(0, 16).toUpperCase()}`;
+    },
+
+    getAirtimeDiscountBps(_network) {
+      // 2.2% default discount per the airtime docs; not configurable per-network here.
+      return Promise.resolve(220);
+    },
+
+    async listDataPlans(network) {
+      const networks: VtuNetwork[] = network ? [network] : ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
+      const results: VtuPlanOffer[] = [];
+      for (const net of networks) {
+        try {
+          const { httpStatus, body } = await iacRequest(
+            "GET",
+            `/variations?product=data&service_id=${IACAFE_NETWORK[net]}`
+          );
+          if (httpStatus !== 200 || body.success === false) continue;
+          const plans = (body as unknown as {
+            data?: Array<{ variation_id?: string; name?: string; price?: string }>;
+          }).data;
+          for (const p of plans ?? []) {
+            if (!p.variation_id) continue;
+            const name = p.name ?? p.variation_id;
+            const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
+            const mbMatch = name.match(/(\d+)\s*MB/i);
+            const dayMatch = name.match(/(\d+)\s*Days?/i);
+            results.push({
+              providerPlanId: p.variation_id,
+              network: net,
+              planType: "SME",
+              displayName: name,
+              sizeMb: gbMatch ? Math.round(parseFloat(gbMatch[1]!) * 1024) : mbMatch ? parseInt(mbMatch[1]!) : 0,
+              validityDays: dayMatch ? parseInt(dayMatch[1]!) : 30,
+              costMinor: Math.round(parseFloat(String(p.price ?? 0)) * 100),
+              currency: "NGN"
+            });
+          }
+        } catch {
+          // Skip networks whose variations lookup errors.
+        }
+        // Budget Data plans, prefixed so purchaseData can route them to /budget-data.
+        try {
+          const { httpStatus, body } = await iacRequest(
+            "GET",
+            `/budget-data/plans?network_id=${IACAFE_BUDGET_NETWORK_ID[net]}`
+          );
+          if (httpStatus !== 200 || body.success === false) continue;
+          const plans = (body as unknown as {
+            data?: { plans?: Array<{ data_plan?: number; name?: string; price?: string; validity?: string }> };
+          }).data?.plans;
+          for (const p of plans ?? []) {
+            if (p.data_plan === undefined) continue;
+            const name = p.name ?? String(p.data_plan);
+            const gbMatch = name.match(/(\d+(?:\.\d+)?)\s*GB/i);
+            const mbMatch = name.match(/(\d+)\s*MB/i);
+            const dayMatch = (p.validity ?? "").match(/(\d+)/);
+            results.push({
+              providerPlanId: `budget:${p.data_plan}`,
+              network: net,
+              planType: "GIFTING",
+              displayName: `${name} (Budget)`,
+              sizeMb: gbMatch ? Math.round(parseFloat(gbMatch[1]!) * 1024) : mbMatch ? parseInt(mbMatch[1]!) : 0,
+              validityDays: dayMatch ? parseInt(dayMatch[1]!) : 30,
+              costMinor: Math.round(parseFloat(String(p.price ?? 0)) * 100),
+              currency: "NGN"
+            });
+          }
+        } catch {
+          // Skip networks whose budget-data plans lookup errors.
+        }
+      }
+      return results;
+    },
+
+    async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
+      const { httpStatus, body } = await iacRequest("POST", "/airtime", {
+        request_id: reference,
+        phone: msisdn,
+        service_id: IACAFE_NETWORK[network],
+        amount: faceValueMinor / 100
+      });
+      return purchaseResult(reference, httpStatus, body);
+    },
+
+    async purchaseData({ network, msisdn, providerPlanId, reference }) {
+      if (providerPlanId.startsWith("budget:")) {
+        const dataPlan = Number(providerPlanId.slice("budget:".length));
+        const { httpStatus, body } = await iacRequest("POST", "/budget-data", {
+          request_id: reference,
+          phone: msisdn,
+          data_plan: dataPlan,
+          network_id: IACAFE_BUDGET_NETWORK_ID[network]
+        });
+        return purchaseResult(reference, httpStatus, body);
+      }
+      const { httpStatus, body } = await iacRequest("POST", "/data", {
+        request_id: reference,
+        phone: msisdn,
+        service_id: IACAFE_NETWORK[network],
+        variation_id: providerPlanId
+      });
+      return purchaseResult(reference, httpStatus, body);
+    },
+
+    // GET /orders/:request_id — our `reference` IS IACafe's request_id, so this is a
+    // direct lookup (falls back to POST /requery on any non-2xx, per the docs' guidance
+    // to requery when a webhook doesn't fire).
+    async getOrderStatus(reference) {
+      try {
+        const { httpStatus, body } = await iacRequest("GET", `/orders/${encodeURIComponent(reference)}`);
+        if (httpStatus === 200 && body.success !== false) {
+          return {
+            providerReference: reference,
+            status: mapIacDataStatus((body as unknown as { data?: { status?: string } }).data?.status)
+          };
+        }
+      } catch {
+        // Fall through to requery below.
+      }
+      try {
+        const { httpStatus, body } = await iacRequest("POST", "/requery", { request_id: reference });
+        if (httpStatus === 200 && body.success !== false) {
+          return {
+            providerReference: reference,
+            status: mapIacDataStatus((body as unknown as { data?: { status?: string } }).data?.status)
+          };
+        }
+        return {
+          providerReference: reference,
+          status: "AMBIGUOUS" as const,
+          failureReason: body.error?.message ?? "IACafe requery returned an unexpected response"
+        };
+      } catch (err) {
+        return {
+          providerReference: reference,
+          status: "AMBIGUOUS" as const,
+          failureReason: err instanceof Error ? err.message : "IACafe requery failed"
+        };
+      }
+    },
+
+    async getBalance() {
+      try {
+        const { httpStatus, body } = await iacRequest("GET", "/wallet");
+        if (httpStatus !== 200 || body.success === false) {
+          return { providerName: "iacafe", balanceMinor: 0, currency: "NGN" };
+        }
+        const data = (body as unknown as { data?: { balance?: number } }).data;
+        return {
+          providerName: "iacafe",
+          balanceMinor: Math.round((data?.balance ?? 0) * 100),
+          currency: "NGN"
+        };
+      } catch {
+        return { providerName: "iacafe", balanceMinor: 0, currency: "NGN" };
+      }
+    },
+
+    async checkHealth() {
+      const start = Date.now();
+      try {
+        const { httpStatus } = await iacRequest("GET", "/whoami");
+        return {
+          providerName: "iacafe",
+          status: httpStatus === 200 ? ("HEALTHY" as const) : ("DEGRADED" as const),
+          latencyMs: Date.now() - start
+        };
+      } catch (err) {
+        return {
+          providerName: "iacafe",
+          status: "DEGRADED",
+          latencyMs: Date.now() - start,
+          reason: err instanceof Error ? err.message : "IACafe health check failed"
+        };
+      }
+    },
+
+    // Shared /verify-customer endpoint. variation_id = "prepaid"/"postpaid" for
+    // electricity only; omitted for cable smartcard verification.
+    async validateMeter(input): Promise<VtuMeterValidation> {
+      try {
+        const { httpStatus, body } = await iacRequest("POST", "/verify-customer", {
+          customer_id: input.meterNumber,
+          service_id: input.disco,
+          variation_id: input.meterType === "PREPAID" ? "prepaid" : "postpaid"
+        });
+        if (httpStatus !== 200 || body.success === false) return { valid: false };
+        const data = (body as unknown as {
+          data?: { customer_name?: string; customer_address?: string };
+        }).data;
+        return {
+          valid: true,
+          ...(data?.customer_name ? { customerName: data.customer_name } : {}),
+          ...(data?.customer_address ? { address: data.customer_address } : {})
+        };
+      } catch {
+        return { valid: false };
+      }
+    },
+
+    async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
+      const { httpStatus, body } = await iacRequest("POST", "/electricity", {
+        request_id: input.reference,
+        customer_id: input.meterNumber,
+        service_id: input.disco,
+        variation_id: input.meterType === "PREPAID" ? "prepaid" : "postpaid",
+        amount: input.amountMinor / 100
+      });
+      return purchaseResult(input.reference, httpStatus, body);
+    },
+
+    async verifyCableCustomer(input): Promise<VtuMeterValidation> {
+      try {
+        const { httpStatus, body } = await iacRequest("POST", "/verify-customer", {
+          customer_id: input.smartCardNumber,
+          service_id: input.provider.toLowerCase()
+        });
+        if (httpStatus !== 200 || body.success === false) return { valid: false };
+        const data = (body as unknown as { data?: { customer_name?: string } }).data;
+        return { valid: true, ...(data?.customer_name ? { customerName: data.customer_name } : {}) };
+      } catch {
+        return { valid: false };
+      }
+    },
+
+    async listCablePackages(): Promise<VtuCablePackageOffer[]> {
+      const providers = ["dstv", "gotv", "startimes", "showmax"];
+      const offers: VtuCablePackageOffer[] = [];
+      for (const provider of providers) {
+        try {
+          const { httpStatus, body } = await iacRequest(
+            "GET",
+            `/variations?product=cable&service_id=${provider}`
+          );
+          if (httpStatus !== 200 || body.success === false) continue;
+          const plans = (body as unknown as {
+            data?: Array<{ variation_id?: string; name?: string; price?: string }>;
+          }).data;
+          for (const p of plans ?? []) {
+            if (!p.variation_id) continue;
+            offers.push({
+              cableProvider: provider,
+              packageCode: p.variation_id,
+              displayName: p.name ?? p.variation_id,
+              costMinor: Math.round(parseFloat(String(p.price ?? 0)) * 100),
+              currency: "NGN"
+            });
+          }
+        } catch {
+          // Skip providers whose bouquet lookup errors.
+        }
+      }
+      return offers;
+    },
+
+    async purchaseCable(input): Promise<VtuSubmitResult> {
+      const { httpStatus, body } = await iacRequest("POST", "/cable", {
+        request_id: input.reference,
+        customer_id: input.smartCardNumber,
+        service_id: input.provider.toLowerCase(),
+        variation_id: input.packageCode
+      });
+      return purchaseResult(input.reference, httpStatus, body);
+    },
+
+    // Mandatory verify-then-fund sequence per IACafe's own documented best practice:
+    // never call /betting without a prior successful /verify-customer for the account.
+    async verifyBettingCustomer(input): Promise<VtuMeterValidation> {
+      const serviceId = iacBettingServiceId(input.bettingCompany);
+      if (!serviceId) return { valid: false };
+      return verifyBetting(input.customerId, serviceId);
+    },
+
+    listBettingCompanies(): Promise<VtuBettingCompanyOffer[]> {
+      return Promise.resolve(
+        Object.values(IACAFE_BETTING_PLATFORMS).map((displayName) => ({
+          productCode: displayName,
+          displayName
+        }))
+      );
+    },
+
+    async purchaseBetFunding(input): Promise<VtuSubmitResult> {
+      const serviceId = iacBettingServiceId(input.bettingCompany);
+      if (!serviceId) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: `Unknown IACafe betting platform: ${input.bettingCompany}`
+        };
+      }
+      // Verify first — required per IACafe's docs ("Never go straight to the funding
+      // endpoint unless you already verified the customer account"). skip_verify is
+      // deliberately never set; this adapter always performs the verify step itself.
+      const verified = await verifyBetting(input.customerId, serviceId);
+      if (!verified.valid) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: "IACafe betting account verification failed — account not found"
+        };
+      }
+      const { httpStatus, body } = await iacRequest("POST", "/betting", {
+        request_id: input.reference,
+        customer_id: input.customerId,
+        service_id: serviceId,
+        amount: input.amountMinor / 100
+      });
+      if (body.success === false) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: body.error?.message ?? `IACafe betting funding failed (HTTP ${httpStatus})`
+        };
+      }
+      // Betting fund responses carry status at the TOP level ("completed"/"processing"),
+      // distinct from the data.status ("completed-api"/etc.) shape used elsewhere.
+      const topStatus = (body as unknown as { status?: string }).status;
+      const status: VtuSubmitStatus =
+        topStatus === "completed" ? "DELIVERED" : topStatus === "processing" ? "SUBMITTED" : "AMBIGUOUS";
+      return {
+        providerReference: input.reference,
+        status,
+        ...(status === "AMBIGUOUS" ? { failureReason: body.message ?? "Unexpected IACafe betting response" } : {})
+      };
+    },
+
+    // POST /epins — up to 200 PINs per request; quantity/value validated upstream.
+    async purchaseAirtimeEpin(input): Promise<VtuSubmitResult & { epins?: VtuEpin[] }> {
+      const { httpStatus, body } = await iacRequest("POST", "/epins", {
+        request_id: input.reference,
+        service_id: IACAFE_NETWORK[input.network],
+        value: input.valueMinor / 100,
+        quantity: input.quantity
+      });
+      if (body.success === false) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: body.error?.message ?? `IACafe ePIN generation failed (HTTP ${httpStatus})`
+        };
+      }
+      const status = mapIacDataStatus(body.data?.status);
+      const pins: VtuEpin[] | undefined = body.data?.pins
+        ?.filter((p) => p.pin)
+        .map((p) => ({ pin: p.pin!, serialNumber: p.serial ?? "" }));
+      return {
+        providerReference: input.reference,
+        status,
+        ...(pins && pins.length > 0 ? { epins: pins } : {}),
+        ...(status === "FAILED"
+          ? { failureReason: body.message ?? "IACafe order was refunded (refunded-api)" }
+          : {})
       };
     }
   };

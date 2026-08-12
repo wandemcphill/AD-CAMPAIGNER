@@ -16,9 +16,11 @@ import {
   createSwiftlinkAdapter,
   createEBillsFullAdapter,
   createTopupWizardAdapter,
+  createSirpDataAdapter,
   createISquareDataAdapter,
   createInlomaxAdapter,
   createVTUGateAdapter,
+  createIACafeAdapter,
   type VtuProviderAdapter,
   type VtuNetwork
 } from "@fliptrybe/providers";
@@ -219,6 +221,11 @@ export class VtuService {
           apiKey: process.env["TOPUPWIZARD_API_KEY"] ?? "",
           ...(process.env["TOPUPWIZARD_BASE_URL"] ? { baseUrl: process.env["TOPUPWIZARD_BASE_URL"] } : {})
         });
+      case "sirpdata":
+        return createSirpDataAdapter({
+          apiKey: process.env["SIRPDATA_API_KEY"] ?? "",
+          ...(process.env["SIRPDATA_BASE_URL"] ? { baseUrl: process.env["SIRPDATA_BASE_URL"] } : {})
+        });
       case "isquaredata":
         return createISquareDataAdapter({
           apiKey: process.env["ISQUAREDATA_API_KEY"] ?? "",
@@ -233,6 +240,13 @@ export class VtuService {
         return createVTUGateAdapter({
           apiKey: process.env["VTUGATE_API_KEY"] ?? "",
           ...(process.env["VTUGATE_BASE_URL"] ? { baseUrl: process.env["VTUGATE_BASE_URL"] } : {})
+        });
+      case "iacafe":
+        // LIVE credential — see the LIVE CREDENTIAL WARNING comment on
+        // createIACafeAdapter in @fliptrybe/providers before enabling real traffic.
+        return createIACafeAdapter({
+          apiKey: process.env["IACAFE_API_KEY"] ?? "",
+          ...(process.env["IACAFE_BASE_URL"] ? { baseUrl: process.env["IACAFE_BASE_URL"] } : {})
         });
       default:
         return createMockVtuAdapter(providerName);
@@ -786,7 +800,7 @@ export class VtuService {
       }
 
       // Failed or no PINs — reverse the charge, this purchase did not deliver.
-      await this.reverseVtuCharge(order.id, ctx);
+      await this.reverseVtuCharge(order.id, ctx.userId);
       await this.db.vtuOrder.update({
         where: { id: order.id },
         data: { status: "REVERSED", failureReason: result.failureReason ?? "No EPINs returned." }
@@ -912,7 +926,7 @@ export class VtuService {
         );
       }
 
-      await this.reverseVtuCharge(order.id, ctx);
+      await this.reverseVtuCharge(order.id, ctx.userId);
       await this.db.vtuOrder.update({
         where: { id: order.id },
         data: { status: "REVERSED", failureReason: result.failureReason ?? "No EPINs returned." }
@@ -930,7 +944,14 @@ export class VtuService {
     }
   }
 
-  private async reverseVtuCharge(orderId: string, ctx: AuthenticatedRequestContext) {
+  // `actorUserId` is null for system-initiated reversals (e.g. the IACafe webhook
+  // handler, which has no authenticated user in the request). This method is
+  // idempotent by construction: it only acts when a CHARGED VtuWalletCharge still
+  // exists for the order, so calling it twice for the same order (poll-based
+  // resolution racing a webhook, or a retried webhook delivery) is a safe no-op
+  // on the second call — the `findFirst({ status: "CHARGED" })` lookup returns
+  // nothing once the charge has already moved to REFUNDED.
+  private async reverseVtuCharge(orderId: string, actorUserId: string | null) {
     const charge = await this.db.vtuWalletCharge.findFirst({
       where: { orderId, status: "CHARGED" }
     });
@@ -963,12 +984,155 @@ export class VtuService {
       data: {
         id: uid("aud"),
         action: "VTU_EPIN_REVERSED",
-        actorUserId: ctx.userId,
+        actorUserId,
         entityType: "VtuOrder",
         entityId: orderId,
         metadata: {}
       }
     });
+  }
+
+  // ─── IACafe inbound webhook ──────────────────────────────────────────────────
+  // IACafe's dashboard is configured to POST both `transaction.created` and
+  // `transaction.status_changed` events to /webhooks/vtu (see VtuWebhookController).
+  // This is additive to — not a replacement for — the existing poll/requery path:
+  // whichever of (webhook, poll) resolves an order first wins, and the other is a
+  // safe no-op because every state transition here is guarded to be idempotent.
+  //
+  // `request_id` in the payload is IACafe's own request_id, which is exactly the
+  // `providerReference` we generated via IACafeAdapter.buildReference() and sent
+  // on the outbound purchase call — so we look the order up by providerReference,
+  // not by re-deriving the `vtu_order_<id>` idempotencyKey.
+  async handleIACafeWebhook(payload: Record<string, unknown>): Promise<{
+    received: true;
+    matched: boolean;
+    processed: boolean;
+  }> {
+    const event = typeof payload["event"] === "string" ? payload["event"] : "unknown";
+    const requestId = typeof payload["request_id"] === "string" ? payload["request_id"] : undefined;
+    const status = typeof payload["status"] === "string" ? payload["status"] : undefined;
+    const orderIdRaw = payload["order_id"];
+    const providerOrderId =
+      typeof orderIdRaw === "string" || typeof orderIdRaw === "number" ? String(orderIdRaw) : "unknown";
+
+    // ProviderWebhookEvent is unique on (provider, domain, providerEventId).
+    // IACafe retries deliveries, and `transaction.status_changed` can legitimately
+    // fire more than once for the same order_id with different `status` values, so
+    // the dedup key includes both the order id and the status/event so a genuine
+    // status transition is still recorded, while an exact retry upserts in place.
+    const providerEventId = `${providerOrderId}_${event}${status ? `_${status}` : ""}`;
+
+    const webhookEvent = await this.db.providerWebhookEvent.upsert({
+      where: {
+        provider_domain_providerEventId: {
+          provider: "iacafe",
+          domain: "VTU",
+          providerEventId
+        }
+      },
+      create: {
+        provider: "iacafe",
+        domain: "VTU",
+        providerEventId,
+        eventType: event,
+        // Signature verification for this endpoint is an interim shared-secret
+        // check at the controller layer (see VtuWebhookController), not a
+        // per-payload signature from IACafe — there is nothing to record here
+        // that corresponds to `signature`/`signatureValid` on other providers'
+        // rows, so this is left at its default (no signature, signatureValid=false)
+        // and authenticity for this row is really vouched for by the fact the
+        // request reached this code at all (i.e. cleared the shared-secret gate).
+        rawPayload: payload as never
+      },
+      update: {
+        eventType: event,
+        rawPayload: payload as never
+      }
+    });
+
+    if (webhookEvent.processed) {
+      this.logger.log(`IACafe webhook ${providerEventId} already processed — acknowledging.`);
+      return { received: true, matched: true, processed: true };
+    }
+
+    if (!requestId) {
+      this.logger.warn(`IACafe webhook ${providerEventId} had no request_id — cannot match an order.`);
+      await this.db.providerWebhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { processed: true, processedAt: new Date(), processError: "Missing request_id" }
+      });
+      return { received: true, matched: false, processed: true };
+    }
+
+    const order = await this.db.vtuOrder.findFirst({ where: { providerReference: requestId } });
+    if (!order) {
+      this.logger.warn(`IACafe webhook ${providerEventId}: no VtuOrder for providerReference=${requestId}.`);
+      await this.db.providerWebhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { processed: true, processedAt: new Date(), processError: "No matching VtuOrder" }
+      });
+      return { received: true, matched: false, processed: true };
+    }
+
+    try {
+      if (event === "transaction.created") {
+        // The order already exists — it was created by the initiating purchase
+        // request. Nothing to mutate; this event is audit-only.
+        this.logger.log(`IACafe transaction.created for order ${order.id} (request_id=${requestId}).`);
+      } else if (event === "transaction.status_changed") {
+        if (status === "completed-api") {
+          if (order.status !== "DELIVERED") {
+            await this.db.vtuOrder.update({
+              where: { id: order.id },
+              data: { status: "DELIVERED", providerName: order.providerName ?? "iacafe" }
+            });
+          }
+        } else if (status === "refunded-api") {
+          // Double-refund risk: IACafe auto-refunds on ITS side when a transaction
+          // fails, and our own poll/requery path may already have reversed this
+          // order's charge (see reverseVtuCharge / adminResolveOrder). Reuse the
+          // exact same reversal method the poll path uses rather than a second
+          // parallel reversal — it is idempotent because it only acts on a charge
+          // still in status CHARGED, so if the poll path already reversed it, this
+          // call is a no-op.
+          await this.reverseVtuCharge(order.id, null);
+          if (order.status !== "REVERSED" && order.status !== "REFUNDED") {
+            await this.db.vtuOrder.update({
+              where: { id: order.id },
+              data: {
+                status: "REVERSED",
+                failureReason:
+                  typeof payload["refund_reason"] === "string"
+                    ? payload["refund_reason"]
+                    : (order.failureReason ?? "IACafe reported refunded-api via webhook.")
+              }
+            });
+          }
+        } else if (status === "processing-api") {
+          this.logger.log(`IACafe order ${order.id} still processing-api.`);
+        } else {
+          this.logger.warn(`IACafe webhook: unrecognized status "${String(status)}" for order ${order.id}.`);
+        }
+      } else {
+        this.logger.warn(`IACafe webhook: unrecognized event "${event}" for order ${order.id}.`);
+      }
+
+      await this.db.providerWebhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { processed: true, processedAt: new Date(), relatedOrderId: order.id }
+      });
+      return { received: true, matched: true, processed: true };
+    } catch (err) {
+      this.logger.error(`IACafe webhook ${providerEventId} processing failed: ${String(err)}`);
+      await this.db.providerWebhookEvent.update({
+        where: { id: webhookEvent.id },
+        data: { processError: err instanceof Error ? err.message : String(err), relatedOrderId: order.id }
+      });
+      // Acknowledge with 200 regardless — IACafe may add products/event shapes we
+      // don't recognize yet, and this must never 500 into a retry storm. Genuine
+      // failures are captured in ProviderWebhookEvent.processError for ops review.
+      return { received: true, matched: true, processed: false };
+    }
   }
 
   // ─── Data plan catalog ───────────────────────────────────────────────────────

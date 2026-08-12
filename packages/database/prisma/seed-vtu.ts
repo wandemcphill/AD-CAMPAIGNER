@@ -555,8 +555,9 @@ const PROVIDER_CONFIGS: Array<{
   {
     providerName: "topupwizard",
     displayName: "TopupWizard",
-    // API docs verified (topupwizard.com/apidocs); endpoints implemented.
-    // Status: CONFIGURED — awaiting credential provisioning before first test call.
+    // API docs verified (topupwizard.com/apidocs); endpoints implemented against the
+    // real docs. Status: CONFIGURED — a real credential has been supplied, but no
+    // live sandbox call has been made yet.
     status: "CONFIGURED",
     enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"],
     priority: 30
@@ -582,18 +583,32 @@ const PROVIDER_CONFIGS: Array<{
   {
     providerName: "swiftlink",
     displayName: "Swiftlink Nigeria",
-    // Postman collection present; base URL confirmed; full endpoint list pending auth.
+    // Full official API docs (swiftlinkng.com/api) now verified and endpoints implemented
+    // against them. Status remains DISCOVERED — no Swiftlink credential has been supplied yet.
     status: "DISCOVERED",
     enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY"],
     priority: 60
   },
   {
     providerName: "ebills",
-    displayName: "eBills.ng",
-    // Electricity/betting endpoints require credentials; airtime/data docs partially accessible.
-    status: "BLOCKED_PENDING_CREDENTIALS",
-    enabledServices: ["AIRTIME", "DATA", "ELECTRICITY", "BETTING"],
+    displayName: "eBills (ebill.com.ng)",
+    // Full official API docs (ebill.com.ng) now verified and endpoints implemented against
+    // them — airtime, data, electricity, cable, and WAEC/NECO/NABTEB education pins.
+    // Status: CONFIGURED — a real credential has been supplied, but no live sandbox call
+    // has been made yet.
+    status: "CONFIGURED",
+    enabledServices: ["AIRTIME", "DATA", "ELECTRICITY", "CABLE", "EDUCATION"],
     priority: 70
+  },
+  {
+    providerName: "sirpdata",
+    displayName: "SIRP Data",
+    // Full official API docs (sirpdata.com.ng) verified and endpoints implemented against
+    // them — airtime, data, cable, electricity, and educational PINs. Status: CONFIGURED —
+    // a real credential has been supplied, but no live sandbox call has been made yet.
+    status: "CONFIGURED",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"],
+    priority: 75
   },
   {
     providerName: "isquaredata",
@@ -602,6 +617,23 @@ const PROVIDER_CONFIGS: Array<{
     status: "DISCOVERED",
     enabledServices: ["DATA", "EDUCATION"],
     priority: 80
+  },
+  {
+    providerName: "iacafe",
+    displayName: "IA-Café",
+    // Full official API docs (iacafe.com.ng/docs) verified and endpoints implemented
+    // against them — airtime, data (incl. Budget Data as extra SKUs), cable, electricity
+    // (token/units/band captured), and betting (mandatory verify-then-fund). Education
+    // and epins are also implemented against verified docs. Status: CONFIGURED — a real
+    // credential has been supplied, but no live sandbox call has been made yet.
+    //
+    // ⚠️ WARNING: the supplied IACAFE_API_KEY credential is a LIVE production key, not a
+    // sandbox/test key. Any real call against it moves real money. Keep this provider's
+    // status at CONFIGURED (never ACTIVE/PRODUCTION_READY) until it has been deliberately
+    // reviewed and test-purchased with a small real amount by someone authorized to do so.
+    status: "CONFIGURED",
+    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "BETTING"],
+    priority: 90
   }
 ];
 

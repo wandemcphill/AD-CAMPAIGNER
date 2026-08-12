@@ -41,7 +41,8 @@ async function bootstrap() {
     exclude: [
       { path: "", method: RequestMethod.GET },
       { path: "api/webhooks/korapay", method: RequestMethod.POST },
-      { path: "api/webhooks/korapay-guest", method: RequestMethod.POST }
+      { path: "api/webhooks/korapay-guest", method: RequestMethod.POST },
+      { path: "webhooks/vtu", method: RequestMethod.POST }
     ]
   });
   app.useGlobalPipes(

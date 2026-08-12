@@ -234,6 +234,371 @@ export function createAirtimeToCashAdapter(
   };
 }
 
+// ─── IACafe A2C Adapter ─────────────────────────────────────────────────────
+//
+// Real, verified API surface (docs at https://iacafe.com.ng/docs/a2c):
+//   GET  /a2c/config         - no auth; pricing/limits/networks, always read live
+//   POST /a2c/check-session  - optional pre-check for a cached session
+//   POST /a2c/request-otp    - step 1 (may short-circuit straight to step 3)
+//   POST /a2c/verify-otp     - step 2
+//   POST /a2c/transfer       - step 3; requires the SIM's Share & Sell PIN
+//   GET  /a2c/recent         - recent transactions; no single-lookup endpoint exists
+//
+// Uses the same IACAFE_API_KEY/IACAFE_BASE_URL env vars as the VTU-side IACafe
+// adapter (packages/providers/src/vtu.ts createIACafeAdapter) since it's the same
+// account, but this file intentionally does NOT share code with that adapter —
+// different endpoint family (/a2c/* vs /airtime, /data, ...), different response
+// shapes, different domain (cash-out vs purchase). Keeping them separate avoids
+// entangling two unrelated products for a marginal amount of shared fetch boilerplate.
+
+export interface IACafeA2CConfig {
+  apiKey: string;
+  baseUrl?: string;
+  fetcher?: typeof fetch;
+}
+
+interface IACafeA2CSuccess<T> {
+  success: true;
+  step?: number;
+  has_session?: boolean;
+  message?: string;
+  data: T;
+}
+
+interface IACafeA2CError {
+  success: false;
+  error: { code: string; message: string };
+  request_id?: string;
+}
+
+type IACafeA2CResponse<T> = IACafeA2CSuccess<T> | IACafeA2CError;
+
+interface IACafeA2CConfigData {
+  charge_percent: number;
+  flat_fee: number;
+  flat_fee_threshold: number;
+  min_amount: number;
+  max_amount: number;
+  session_hours: number;
+  note?: string;
+  networks: Array<{ key: string; id: string; name: string }>;
+}
+
+interface IACafeA2CSessionData {
+  session_id: number;
+  client_id: string;
+  phone: string;
+  network: string;
+  network_name: string;
+  network_id?: string;
+  otp_verified: boolean;
+  current_step?: number;
+  expires_at: string;
+  cached?: boolean;
+}
+
+interface IACafeA2CTransferData {
+  request_id: string;
+  phone: string;
+  network: string;
+  network_name: string;
+  airtime_amount: number;
+  charge_percent: number;
+  flat_fee: number;
+  total_charge: number;
+  payout: number;
+  balance_before: string;
+  balance_after: string;
+  status: string;
+  provider: string;
+}
+
+interface IACafeA2CRecentEntry {
+  id: number;
+  request_id: string;
+  phone_number: string;
+  network_name: string;
+  amount: string;
+  charge_percent: number;
+  flat_fee: string;
+  total_charge: string;
+  payout_amount: string;
+  balance_before: string;
+  balance_after: string;
+  status: string;
+  message: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+// Client errors: the caller's request was wrong (bad phone/network/amount/pin
+// format, unverified OTP, expired session, duplicate request_id). These are
+// deterministic — surfaced as thrown errors so DigitalValueService's catch
+// block marks the transaction FAILED rather than leaving it ambiguous.
+const IACAFE_A2C_CLIENT_ERROR_CODES = new Set([
+  'missing_fields',
+  'invalid_phone',
+  'invalid_network',
+  'invalid_amount',
+  'invalid_pin',
+  'otp_not_verified',
+  'amount_too_small',
+  'session_expired',
+  'duplicate_request',
+  'unauthorized'
+]);
+
+export function createIACafeAirtimeCashoutAdapter(
+  config: IACafeA2CConfig
+): AirtimeCashoutProvider {
+  const baseUrl = config.baseUrl || 'https://iacafe.com.ng/devapi/v1';
+  const f = config.fetcher ?? fetch;
+
+  async function post<T>(path: string, body: unknown): Promise<IACafeA2CResponse<T>> {
+    const response = await f(`${baseUrl}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        Authorization: `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+    return (await response.json()) as IACafeA2CResponse<T>;
+  }
+
+  async function getConfig(): Promise<IACafeA2CConfigData | null> {
+    try {
+      const response = await f(`${baseUrl}/a2c/config`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' }
+      });
+      const data = (await response.json()) as IACafeA2CResponse<IACafeA2CConfigData>;
+      return data.success ? data.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function normalizeNetwork(network: string): string {
+    const key = network.trim().toLowerCase();
+    const aliases: Record<string, string> = {
+      'mtn-ng': 'mtn',
+      '1': 'mtn',
+      'airtel-ng': 'airtel',
+      '2': 'airtel',
+      'glo-ng': 'glo',
+      '3': 'glo',
+      etisalat: '9mobile',
+      '9mobile-ng': '9mobile',
+      '4': '9mobile'
+    };
+    return aliases[key] || key;
+  }
+
+  return {
+    name: 'iacafe-a2c',
+    interfaceVersion: CURRENT_INTERFACE_VERSION,
+    domain: 'AIRTIME_CASHOUT' as const,
+    getCapabilities: () => airtimeCashoutCapabilities('strong'),
+
+    async getSupportedNetworks(): Promise<string[]> {
+      const cfg = await getConfig();
+      if (cfg) return cfg.networks.map((n) => n.name.toUpperCase());
+      return ['MTN', 'AIRTEL', 'GLO', '9MOBILE'];
+    },
+
+    async requestOtp(phone, network) {
+      const data = await post<IACafeA2CSessionData>('/a2c/request-otp', {
+        phone,
+        network: normalizeNetwork(network)
+      });
+
+      if (!data.success) {
+        return { message: data.error.message };
+      }
+
+      // data.message already documents the fast path, e.g. "Active session.
+      // Skip to step 3 (transfer)." when data.step === 3 (cached session, no
+      // new OTP sent) vs "OTP sent. Verify with step 2." — pass it through
+      // verbatim so callers can branch on it without us re-inventing a field
+      // the fixed AirtimeCashoutProvider interface doesn't have room for.
+      return {
+        sessionId: String(data.data.session_id),
+        message: data.message ?? (data.step === 3 ? 'Active session — skip to transfer.' : 'OTP sent.')
+      };
+    },
+
+    async verifyOtp(input) {
+      if (!input.sessionId) {
+        return { verified: false };
+      }
+
+      const data = await post<IACafeA2CSessionData>('/a2c/verify-otp', {
+        session_id: Number(input.sessionId),
+        otp: input.otp
+      });
+
+      if (!data.success) {
+        return { verified: false };
+      }
+
+      return {
+        verified: data.data.otp_verified,
+        sessionId: String(data.data.session_id)
+      };
+    },
+
+    async getBalance(_phone, _network) {
+      // IACafe's A2C API has no standalone "check airtime balance" endpoint —
+      // balance/eligibility is only surfaced indirectly through the OTP
+      // request/verify flow and the final transfer response's
+      // balance_before/balance_after (that's the caller's IACafe wallet
+      // balance, not the SIM's airtime balance). There is nothing to query
+      // here, so this intentionally returns a zeroed placeholder rather than
+      // guessing — same limitation the legacy airtimetocash adapter has.
+      return { balanceMinor: 0, currency: 'NGN' };
+    },
+
+    async getQuote(input) {
+      const cfg = await getConfig();
+      const amountNgn = Math.round(input.amountMinor / 100);
+
+      if (!cfg) {
+        // Fallback only if /a2c/config is unreachable; docs say never
+        // hardcode rates, so this is a last-resort estimate, not the source
+        // of truth.
+        const feeMinor = Math.round(input.amountMinor * 0.08);
+        return {
+          amountMinor: input.amountMinor,
+          feeMinor,
+          payoutMinor: input.amountMinor - feeMinor,
+          currency: 'NGN'
+        };
+      }
+
+      const flatFeeNgn = amountNgn < cfg.flat_fee_threshold ? cfg.flat_fee : 0;
+      const feeNgn = Math.round((amountNgn * cfg.charge_percent) / 100) + flatFeeNgn;
+      const payoutNgn = Math.max(0, amountNgn - feeNgn);
+
+      return {
+        amountMinor: input.amountMinor,
+        feeMinor: feeNgn * 100,
+        payoutMinor: payoutNgn * 100,
+        currency: 'NGN'
+      };
+    },
+
+    async initiateCashout(input) {
+      if (!input.sessionId) {
+        throw new Error('sessionId is required to initiate an IACafe A2C transfer.');
+      }
+      if (!input.pin) {
+        // Do NOT default this to a placeholder PIN — it is the SIM's real
+        // Share & Sell PIN (set by the SIM owner via USSD on their network),
+        // not an IA-Café account credential. Silently defaulting it (as the
+        // legacy airtimetocash adapter does with `input.pin || '1234'`) would
+        // send a guaranteed-wrong PIN to a live provider on a real transfer.
+        throw new Error('pin (SIM Share & Sell PIN) is required to initiate an IACafe A2C transfer.');
+      }
+
+      const requestId = `a2c_${input.reference}`;
+      const data = await post<IACafeA2CTransferData>('/a2c/transfer', {
+        session_id: Number(input.sessionId),
+        amount: Math.round(input.amountMinor / 100),
+        pin: input.pin,
+        request_id: requestId
+      });
+
+      if (data.success) {
+        return { providerReference: data.data.request_id, status: 'PROCESSING' as const };
+      }
+
+      const code = data.error.code;
+      if (IACAFE_A2C_CLIENT_ERROR_CODES.has(code)) {
+        // Deterministically our/the caller's fault — throw so the caller's
+        // catch block marks the transaction FAILED instead of leaving it
+        // ambiguous.
+        throw new Error(data.error.message);
+      }
+
+      // Provider/network-side errors (otp_invalid, otp_request_failed,
+      // transfer_failed — wrong PIN / insufficient airtime / Share & Sell not
+      // activated / daily limit, all folded into one code per IACafe's docs —
+      // plus provider_error/provider_unavailable/rate_limited/server_error):
+      // genuinely uncertain whether money moved, so surface as AMBIGUOUS for
+      // manual reconciliation rather than guessing.
+      return {
+        providerReference: requestId,
+        status: 'AMBIGUOUS' as const,
+        failureReason: data.error.message
+      };
+    },
+
+    async getTransactionStatus(reference) {
+      // IACafe's A2C API has no single-transaction requery endpoint — only
+      // /a2c/recent (max 50 records). We scan recent transactions for a
+      // matching request_id. If the transaction has aged out of the recent
+      // list (e.g. very slow processing plus high transaction volume), this
+      // will report PROCESSING even though the true state is unknown; that's
+      // an accepted limitation of the underlying API, not a bug here.
+      const response = await f(`${baseUrl}/a2c/recent?limit=50`, {
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${config.apiKey}` }
+      });
+      const data = (await response.json()) as
+        | { success: true; count: number; data: IACafeA2CRecentEntry[] }
+        | IACafeA2CError;
+
+      if (!data.success) {
+        return { status: 'PROCESSING' as const };
+      }
+
+      // reference passed to initiateCashout is used to derive request_id as
+      // `a2c_${reference}`; match against either form defensively.
+      const match = data.data.find(
+        (entry) => entry.request_id === reference || entry.request_id === `a2c_${reference}`
+      );
+
+      if (!match) {
+        return { status: 'PROCESSING' as const };
+      }
+
+      if (match.status === 'success') {
+        return {
+          status: 'COMPLETED' as const,
+          payout: Math.round(parseFloat(match.payout_amount) * 100),
+          payoutCurrency: 'NGN'
+        };
+      }
+
+      if (match.status === 'failed' || match.status === 'error') {
+        return { status: 'FAILED' as const };
+      }
+
+      return { status: 'PROCESSING' as const };
+    },
+
+    async checkHealth(): Promise<ProviderHealthSnapshot> {
+      const start = Date.now();
+      try {
+        const cfg = await getConfig();
+        return {
+          providerName: 'iacafe-a2c',
+          status: cfg ? ('HEALTHY' as const) : ('DEGRADED' as const),
+          latencyMs: Date.now() - start
+        };
+      } catch {
+        return {
+          providerName: 'iacafe-a2c',
+          status: 'DOWN' as const,
+          latencyMs: Date.now() - start
+        };
+      }
+    }
+  };
+}
+
 // ─── Mock Airtime Cashout Provider (CI / tests) ─────────────────────────────
 
 export function createMockAirtimeCashoutAdapter(
