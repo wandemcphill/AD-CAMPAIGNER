@@ -6,6 +6,7 @@ import { PrismaModule } from "../prisma.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { FinancialProductsController } from "./financial-products.controller";
 import { FinancialProductsService } from "./financial-products.service";
+import { FinancialProductsWebhookController } from "./financial-products-webhook.controller";
 import { FinancialProductsWebhookService } from "./financial-products-webhook.service";
 import { FinancialReconciliationService } from "./financial-reconciliation.service";
 import { KycService } from "./kyc.service";
@@ -25,7 +26,11 @@ const anyFinancialVerticalEnabled =
 
 @Module({
   imports: [PrismaModule, ProvidersModule],
-  controllers: anyFinancialVerticalEnabled ? [FinancialProductsController] : [],
+  // The webhook controller is registered unconditionally — see its own header
+  // comment. Only the customer-facing controller is gated.
+  controllers: anyFinancialVerticalEnabled
+    ? [FinancialProductsController, FinancialProductsWebhookController]
+    : [FinancialProductsWebhookController],
   providers: [
     FinancialProductsService,
     FinancialProductsWebhookService,

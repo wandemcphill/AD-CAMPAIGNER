@@ -2,12 +2,31 @@ import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
-import { AI_MODEL_PROVIDERS, type AiConfigDto, type UpdateAiConfigDto } from "./ai-config.dtos";
+import {
+  AI_MODEL_PROVIDERS,
+  type AiConfigDto,
+  type AiModelProvider,
+  type UpdateAiConfigDto
+} from "./ai-config.dtos";
 
 const DEFAULT_ENDPOINTS: Record<string, string> = {
   OpenAI: "https://api.openai.com/v1",
   Gemini: "https://generativelanguage.googleapis.com/v1beta"
 };
+
+function isAiModelProvider(value: string): value is AiModelProvider {
+  return (AI_MODEL_PROVIDERS as readonly string[]).includes(value);
+}
+
+/**
+ * `AiConfig.modelProvider` is a plain string column, so a row can hold a value
+ * this build no longer recognises (a provider removed from AI_MODEL_PROVIDERS,
+ * or a row written by an older deploy). Narrow at the read boundary and fall
+ * back to the default rather than asserting the column into the union.
+ */
+function toAiModelProvider(value: string): AiModelProvider {
+  return isAiModelProvider(value) ? value : "OpenAI";
+}
 
 function requireScope(context?: AuthenticatedRequestContext) {
   if (!context?.workspaceId || !context.userId) {
@@ -20,7 +39,7 @@ function requireScope(context?: AuthenticatedRequestContext) {
 function defaults(): AiConfigDto {
   return {
     modelProvider: "OpenAI",
-    apiEndpoint: DEFAULT_ENDPOINTS.OpenAI,
+    apiEndpoint: DEFAULT_ENDPOINTS["OpenAI"] ?? "https://api.openai.com/v1",
     systemPromptOverride:
       "You are an expert ad copywriter. Generate engaging, high-converting ad copy for ...",
     updatedAt: null
@@ -47,7 +66,7 @@ export class AiConfigService {
     }
 
     return {
-      modelProvider: record.modelProvider,
+      modelProvider: toAiModelProvider(record.modelProvider),
       apiEndpoint: record.apiEndpoint,
       systemPromptOverride: record.systemPromptOverride,
       updatedAt: record.updatedAt.toISOString()
@@ -58,7 +77,7 @@ export class AiConfigService {
     const scope = requireScope(context);
 
     const provider = input.modelProvider?.trim();
-    if (!provider || !AI_MODEL_PROVIDERS.includes(provider as (typeof AI_MODEL_PROVIDERS)[number])) {
+    if (!provider || !isAiModelProvider(provider)) {
       throw new BadRequestException("A valid model provider is required.");
     }
 
@@ -93,7 +112,7 @@ export class AiConfigService {
     });
 
     return {
-      modelProvider: record.modelProvider,
+      modelProvider: toAiModelProvider(record.modelProvider),
       apiEndpoint: record.apiEndpoint,
       systemPromptOverride: record.systemPromptOverride,
       updatedAt: record.updatedAt.toISOString()

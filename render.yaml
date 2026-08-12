@@ -343,6 +343,12 @@ services:
         sync: false
 
       # ── Virtual accounts / cards / remittance providers ──────────────────
+      # Register these callback URLs in each provider's dashboard — they are the
+      # only path by which a virtual-account deposit credits a wallet, or a
+      # remittance transfer leaves PROCESSING.
+      #   Swappr:   https://ft-campaigner-api-fra.onrender.com/v1/webhooks/financial/swappr
+      #   Payscribe:https://ft-campaigner-api-fra.onrender.com/v1/webhooks/financial/payscribe
+      #   Fincra:   https://ft-campaigner-api-fra.onrender.com/v1/webhooks/financial/fincra
       - key: SWAPPR_BASE_URL
         sync: false
       - key: SWAPPR_API_KEY

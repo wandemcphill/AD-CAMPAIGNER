@@ -9,7 +9,7 @@ import { Divider, Input } from "@fliptrybe/ui/components";
 
 import { useApiSession } from "../../../lib/use-session";
 import { ApiKeysPanel } from "../../../developer/api-keys-panel";
-import { loadAiConfig, updateAiConfig, type AiConfig, type AiModelProvider } from "../../../developer/api";
+import { loadAiConfig, updateAiConfig, type AiConfig } from "../../../developer/api";
 
 const MODEL_PROVIDERS = ["OpenAI", "Gemini"] as const;
 const DEFAULT_ENDPOINTS: Record<(typeof MODEL_PROVIDERS)[number], string> = {
@@ -72,7 +72,7 @@ export default function AiConfigurationPage() {
     setError(undefined);
     try {
       const result = await updateAiConfig({
-        modelProvider: provider as AiModelProvider,
+        modelProvider: provider,
         apiEndpoint: endpoint,
         systemPromptOverride: systemPrompt
       });

@@ -12,7 +12,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // eslint-disable-next-line no-console -- surfaced for local/dev debugging only
+    // Surfaced for local/dev debugging only.
     console.error(error);
   }, [error]);
 

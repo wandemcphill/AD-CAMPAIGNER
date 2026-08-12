@@ -1,4 +1,3 @@
-import { createHmac } from "node:crypto";
 import type { ProviderAdapterBase } from "./contract.js";
 import type {
   Campaign,
@@ -2756,14 +2755,11 @@ export function createFincraSettlementProvider(
   };
 }
 
-export function verifyFincraWebhook(
-  body: string,
-  signature: string,
-  webhookEncryptionKey: string
-): boolean {
-  const hash = createHmac("SHA512", webhookEncryptionKey).update(body).digest("hex");
-  return hash === signature;
-}
+// `verifyFincraWebhook` lives in ./financial-products.ts and reaches consumers
+// through the `export *` at the bottom of this file. A second copy used to be
+// declared here; because a local declaration outranks a star re-export, that
+// copy is what every importer actually resolved — and it compared digests with
+// `===` instead of a constant-time compare. Do not reintroduce it.
 
 // ─── Gift Card Sell Provider ────────────────────────────────────────────────────
 

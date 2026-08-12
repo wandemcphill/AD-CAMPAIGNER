@@ -28,12 +28,22 @@ interface ResponseBody {
 const userAgent = "fliptrybe-deployed-smoke/1.0";
 
 const webRoutes = [
+  { name: "Web landing page", path: "/" },
   { name: "Web campaigns route", path: "/campaigns" },
   { name: "Web campaign intake route", path: "/campaigns/new" },
   { name: "Web billing route", path: "/billing" },
   { name: "Web reports route", path: "/reports" },
   { name: "Web profile route", path: "/profile" },
-  { name: "Web notifications route", path: "/notifications" }
+  { name: "Web notifications route", path: "/notifications" },
+  // Public, no-account bills flow — the one purchase path an anonymous visitor
+  // can complete, so a break here is silent revenue loss.
+  { name: "Web guest checkout route", path: "/guest" },
+  // Canonical /os screens for the verticals that move money.
+  { name: "Web airtime/data route", path: "/os/airtime" },
+  { name: "Web utilities route", path: "/os/utilities" },
+  { name: "Web growth services route", path: "/os/growth" },
+  { name: "Web financial products route", path: "/os/financial-products" },
+  { name: "Web wallet route", path: "/os/wallet" }
 ];
 
 const adminRoutes = [
@@ -103,6 +113,16 @@ const p1ProtectedAdminRoutes = [
   { name: "P1 admin overview rejects unauthenticated", path: "/v1/admin/overview" },
   { name: "P1 admin SMM health rejects unauthenticated", path: "/v1/admin/smm/health" },
   { name: "P1 admin AI suggestions reject unauthenticated", path: "/v1/admin/ai/suggestions" }
+];
+
+const protectedVerticalRoutes = [
+  { name: "VTU orders reject unauthenticated", path: "/v1/vtu/orders" },
+  { name: "VTU data plans reject unauthenticated", path: "/v1/vtu/data-plans" },
+  { name: "Bills orders reject unauthenticated", path: "/v1/vtu/bills/orders" },
+  { name: "Virtual accounts reject unauthenticated", path: "/v1/financial-products/accounts" },
+  { name: "Virtual cards reject unauthenticated", path: "/v1/financial-products/cards" },
+  { name: "Remittance transfers reject unauthenticated", path: "/v1/financial-products/remittance" },
+  { name: "Telecom orders reject unauthenticated", path: "/v1/telecom/orders" }
 ];
 
 const p1PublicGrowthRoutes = [
@@ -1327,6 +1347,11 @@ async function main() {
   for (const route of adminRoutes) {
     results.push(await checkStaticRoute(route.name, config.adminUrl, route.path, config));
   }
+  // The web app reads this to decide which verticals to show; if it stops
+  // answering, the whole sidebar silently empties out.
+  results.push(
+    await checkJsonRecordRoute(config, "Platform feature flags", "/v1/platform/feature-flags")
+  );
   results.push(await checkJsonArrayRoute(config, "Destination catalog", "/v1/destinations/catalog"));
   results.push(await checkJsonArrayRoute(config, "SMM services catalog", "/v1/smm/services"));
   for (const route of p1PublicGrowthRoutes) {
@@ -1357,6 +1382,12 @@ async function main() {
     );
   }
   for (const route of p1ProtectedAdminRoutes) {
+    results.push(await checkProtectedRouteRejects(config, route.name, route.path));
+  }
+  // Money-moving verticals. AuthorizationGuard runs before FeatureFlagGuard, so
+  // these answer 401 whether or not the vertical's flag is on — which is what
+  // makes them a valid check on a deployment with financial products disabled.
+  for (const route of protectedVerticalRoutes) {
     results.push(await checkProtectedRouteRejects(config, route.name, route.path));
   }
 

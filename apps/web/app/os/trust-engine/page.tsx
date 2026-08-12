@@ -71,8 +71,8 @@ export default function TrustEnginePage() {
   }
 
   useEffect(() => {
+    // Refetch on filter change only; `refresh` is recreated every render.
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, assetClass]);
 
   const selected = useMemo(
