@@ -306,8 +306,12 @@ services:
         sync: false
       - key: CLUBKONNECT_API_KEY
         sync: false
+      # Sent to ClubKonnect as the address to POST order updates to. Left unset
+      # because no such route exists yet — the VTU flow polls order status
+      # instead. Set this only once a receiving endpoint is actually built,
+      # otherwise ClubKonnect retries against a 404.
       - key: CLUBKONNECT_CALLBACK_URL
-        value: https://ft-campaigner-api-fra.onrender.com/v1/api/webhooks/clubkonnect
+        sync: false
       - key: EBILLS_BASE_URL
         value: https://ebills.africa/wp-json/api/v2
       - key: EBILLS_API_KEY

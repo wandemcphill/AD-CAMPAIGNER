@@ -1,3 +1,6 @@
+/* Test doubles (hand-rolled Prisma clients, vi.fn() spies) are untyped by
+   design — same disable block platform.service.test.ts uses. */
+/* eslint-disable @typescript-eslint/unbound-method */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { GuestTransaction } from "@fliptrybe/database";

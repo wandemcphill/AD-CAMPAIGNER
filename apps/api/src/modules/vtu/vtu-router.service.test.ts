@@ -1,12 +1,15 @@
+/* Test doubles (hand-rolled Prisma clients, vi.fn() spies) are untyped by
+   design — same disable block platform.service.test.ts uses. */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 // Unit tests for the VTU multi-provider routing engine.
 // These tests exercise the scoring function and the route/routeExcluding methods
 // using an in-memory Prisma mock — no database or adapters are invoked.
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Test } from "@nestjs/testing";
 import { BadRequestException } from "@nestjs/common";
 import { PrismaService } from "../prisma.service";
-import { VtuRouterService, type RoutingRequest } from "./vtu-router.service";
+import { VtuRouterService } from "./vtu-router.service";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

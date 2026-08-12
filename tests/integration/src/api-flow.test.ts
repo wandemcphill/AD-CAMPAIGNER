@@ -1,3 +1,8 @@
+/* Hand-rolled Prisma stand-in below is untyped by design — mirroring the same
+   disable block apps/api/src/modules/platform.service.test.ts uses for its fake
+   client. Typing it against the real DatabaseClient would mean implementing
+   every model on the interface. */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await */
 import { describe, expect, it } from "vitest";
 
 import { PlatformService } from "../../../apps/api/src/modules/platform.service";
@@ -26,7 +31,6 @@ function createInMemoryClient() {
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}_${++seq}`;
 
-  /* eslint-disable @typescript-eslint/no-explicit-any */
   const db: Record<string, any> = {
     wallet: {
       upsert: async ({ where, create }: any) => {
@@ -106,7 +110,6 @@ function createInMemoryClient() {
     $transaction: async (fn: (tx: Record<string, any>) => Promise<unknown>) => fn(db),
     $disconnect: async () => {}
   };
-  /* eslint-enable @typescript-eslint/no-explicit-any */
 
   return db;
 }

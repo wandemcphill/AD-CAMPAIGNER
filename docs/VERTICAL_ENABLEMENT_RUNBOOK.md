@@ -86,7 +86,7 @@ deposit never becomes wallet balance and a remittance transfer never leaves
 https://<api-host>/v1/webhooks/financial/swappr
 https://<api-host>/v1/webhooks/financial/payscribe
 https://<api-host>/v1/webhooks/financial/fincra
-https://<api-host>/v1/api/webhooks/korapay
+https://<api-host>/api/webhooks/korapay        # note: no /v1 — excluded from the global prefix
 https://<api-host>/v1/webhooks/sogo
 https://<api-host>/v1/webhooks/reloadly
 ```

@@ -86,7 +86,7 @@ export class AiConfigService {
       throw new BadRequestException("An API endpoint is required.");
     }
     try {
-      // eslint-disable-next-line no-new
+      // Constructed purely for its validation side effect.
       new URL(endpoint);
     } catch {
       throw new BadRequestException("The API endpoint must be a valid URL.");

@@ -31,8 +31,9 @@ export interface RoutingRequest {
 
 // Stale pricing threshold: reject provider cost data older than this.
 const PRICING_STALE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-// Low balance threshold: warn but don't block unless below minBalance in VtuProviderConfig.
-const LOW_BALANCE_FACTOR = 0.1; // treat balance < 10% of max transaction as LOW
+// A low-balance factor (warn below ~10% of max transaction) was declared here but
+// never applied — routing uses each provider's own minBalance from VtuProviderConfig
+// instead. Removed rather than left dangling as an unenforced-looking threshold.
 
 @Injectable()
 export class VtuRouterService {

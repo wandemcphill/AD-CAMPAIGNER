@@ -1,3 +1,6 @@
+/* Test doubles (hand-rolled Prisma clients, vi.fn() spies) are untyped by
+   design — same disable block platform.service.test.ts uses. */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unnecessary-type-assertion */
 import { BadRequestException } from "@nestjs/common";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 

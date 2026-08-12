@@ -1,3 +1,6 @@
+/* Test doubles (hand-rolled Prisma clients, vi.fn() spies) are untyped by
+   design — same disable block platform.service.test.ts uses. */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
 import { describe, expect, it, vi } from "vitest";
 import { createHash, createHmac } from "node:crypto";
 
