@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { Route } from "next";
 
 import { getAdminUrl } from "../admin-url";
 
@@ -6,5 +7,5 @@ import { getAdminUrl } from "../admin-url";
 // redirects to the real console's dashboard rather than keeping a mock,
 // weakly-gated duplicate alive here.
 export default function AdminUsersRedirect() {
-  redirect(getAdminUrl("/"));
+  redirect(getAdminUrl("/") as unknown as Route);
 }

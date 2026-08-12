@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { Route } from "next";
 
 import { getAdminUrl } from "./admin-url";
 
@@ -6,5 +7,5 @@ import { getAdminUrl } from "./admin-url";
 // apps/admin (the real, isPlatformAdmin-gated governance console). Redirect
 // to the real console instead.
 export default function AdminDashboardRedirect() {
-  redirect(getAdminUrl("/"));
+  redirect(getAdminUrl("/") as unknown as Route);
 }
