@@ -18,6 +18,14 @@ const TABS = [
   { id: "history", label: "History" }
 ];
 
+const TAB_ROUTES = {
+  electricity: "/os/utilities/electricity",
+  cable: "/os/utilities/cable",
+  betting: "/os/utilities/betting",
+  education: "/os/utilities/education",
+  history: "/os/utilities/history"
+} as const satisfies Record<(typeof TABS)[number]["id"], string>;
+
 export default function UtilitiesLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -26,7 +34,10 @@ export default function UtilitiesLayout({ children }: { children: ReactNode }) {
 
   const onChange = useCallback(
     (id: string) => {
-      router.push(`/os/utilities/${id}`);
+      const target = TAB_ROUTES[id as keyof typeof TAB_ROUTES];
+      if (target) {
+        router.push(target);
+      }
     },
     [router]
   );

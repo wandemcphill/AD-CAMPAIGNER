@@ -18,6 +18,12 @@ const TABS = [
   { id: "remittance", label: "Remittance", flag: "remittance" }
 ];
 
+const TAB_ROUTES = {
+  accounts: "/os/financial-products/accounts",
+  cards: "/os/financial-products/cards",
+  remittance: "/os/financial-products/remittance"
+} as const satisfies Record<(typeof TABS)[number]["id"], string>;
+
 export default function FinancialProductsLayout({ children }: { children: ReactNode }) {
   const { flags, ready: flagsReady } = useFeatureFlags();
   const availableTabs = TABS.filter((t) => flags[t.flag] === true);
@@ -28,7 +34,10 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
 
   const onChange = useCallback(
     (id: string) => {
-      router.push(`/os/financial-products/${id}`);
+      const target = TAB_ROUTES[id as keyof typeof TAB_ROUTES];
+      if (target) {
+        router.push(target);
+      }
     },
     [router]
   );
