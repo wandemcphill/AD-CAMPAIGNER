@@ -398,6 +398,8 @@ services:
         value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_API_BASE_URL
         value: https://ft-campaigner-api-fra.onrender.com
+      - key: NEXT_PUBLIC_ADMIN_URL
+        value: https://fliptrybe-ads-campaigner-admin-umys.onrender.com
       - key: NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS
         value: "true"
       - key: NEXT_PUBLIC_ENABLE_GROWTH_SERVICES
