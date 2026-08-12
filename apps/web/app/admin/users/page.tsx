@@ -6,10 +6,14 @@ import { getAdminUrl } from "../admin-url";
 // redirects to the real console's dashboard rather than keeping a mock,
 // weakly-gated duplicate alive here.
 //
-// Passed as a URL object, not a string: with typedRoutes on, redirect()'s
-// string overload requires a Route<string> literal matching a known internal
-// route, which an external cross-app URL never will. A URL object uses a
-// separate overload that isn't subject to that check.
+// Cast through `never` rather than a URL object or `as Route`: local
+// typedRoutes-augmented builds type redirect() as Route<string> | URL, but a
+// checkout with no .next/types generated yet (as in CI, which typechecks
+// before any `next build`/`dev` has run) sees the un-augmented string-only
+// signature -- a URL object satisfies the former but fails the latter. This
+// external cross-app URL will never match Route<string>'s internal-route
+// literal check either way, and `never` is assignable to every possible
+// signature, so it works under both.
 export default function AdminUsersRedirect() {
-  redirect(new URL(getAdminUrl("/")));
+  redirect(getAdminUrl("/") as never);
 }
