@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import type { Route } from "next";
 import { useRouter } from "next/navigation";
 
 import { useFeatureFlags } from "../../lib/feature-flags";
@@ -22,7 +21,7 @@ export default function FinancialProductsIndexPage() {
   useEffect(() => {
     if (!ready) return;
     const firstAvailable = TAB_ORDER.find((t) => flags[t.flag] === true)?.id ?? "accounts";
-    router.replace(`/os/financial-products/${firstAvailable}` as Route);
+    router.replace(`/os/financial-products/${firstAvailable}`);
   }, [ready, flags, router]);
 
   return null;

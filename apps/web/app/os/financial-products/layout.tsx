@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useCallback } from "react";
-import type { Route } from "next";
 import { useRouter, usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 
@@ -29,7 +28,7 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
 
   const onChange = useCallback(
     (id: string) => {
-      router.push(`/os/financial-products/${id}` as Route);
+      router.push(`/os/financial-products/${id}`);
     },
     [router]
   );

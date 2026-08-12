@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { Route } from "next";
 import { useRouter, usePathname } from "next/navigation";
 import { Lightbulb } from "lucide-react";
 
@@ -27,7 +26,7 @@ export default function UtilitiesLayout({ children }: { children: ReactNode }) {
 
   const onChange = useCallback(
     (id: string) => {
-      router.push(`/os/utilities/${id}` as Route);
+      router.push(`/os/utilities/${id}`);
     },
     [router]
   );

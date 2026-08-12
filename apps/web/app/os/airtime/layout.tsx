@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import type { Route } from "next";
 import { useRouter, usePathname } from "next/navigation";
 import { Smartphone } from "lucide-react";
 
@@ -25,7 +24,7 @@ export default function AirtimeLayout({ children }: { children: ReactNode }) {
 
   const onChange = useCallback(
     (id: string) => {
-      router.push(`/os/airtime/${id}` as Route);
+      router.push(`/os/airtime/${id}`);
     },
     [router]
   );
