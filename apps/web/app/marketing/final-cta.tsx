@@ -77,6 +77,23 @@ export function FinalCta({ onGenerate, reducedMotion }: FinalCtaProps) {
           </div>
         </div>
 
+        {/* "Start growing" replays the hero demo, which leaves the page with no
+            way out. These are the actual conversion destinations. */}
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <a
+            className="flex h-11 items-center rounded-md bg-white px-5 text-sm font-bold text-[#050507] transition hover:bg-white/85"
+            href="/register"
+          >
+            Create your account
+          </a>
+          <a
+            className="flex h-11 items-center rounded-md border border-white/16 px-5 text-sm font-semibold text-white/76 transition hover:border-white/32 hover:text-white"
+            href="/guest"
+          >
+            Buy airtime, data &amp; bills
+          </a>
+        </div>
+
         <p className="mx-auto mt-5 flex max-w-xl items-center justify-center gap-2 text-sm leading-6 text-white/50">
           <Sparkles className="size-4 text-[var(--flip-amber)]" />
           The hero engine receives the final prompt and assembles a new campaign packet.

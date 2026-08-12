@@ -90,7 +90,10 @@ export const navItems = [
   { href: "#engine", label: "Landing" },
   { href: "#phase-one", label: "Dashboard" },
   { href: "#agency-os", label: "AI Studio" },
-  { href: "#marketplace", label: "Marketplace" }
+  { href: "#marketplace", label: "Marketplace" },
+  // The only public, no-account flow on the platform (airtime, data, bills).
+  // It shipped without an entry point anywhere on the marketing site.
+  { href: "/guest", label: "Pay bills" }
 ];
 
 export const footerSignals = [

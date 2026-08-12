@@ -2125,7 +2125,7 @@ export function createMapleradVirtualCardProvider(config: MapleradConfig): Virtu
           (c) => !beforeIds.has(toStr(c['id'])) && toStr(c['issuer']).toUpperCase() === brand
         );
         if (created) {
-          return mapMapleradCard(created) as VirtualCardDetails;
+          return mapMapleradCard(created);
         }
       }
       throw new ProviderApiError(

@@ -32,13 +32,16 @@ describe("Maplerad FX adapter — mapped against official docs + live-verified s
     const provider = createMapleradFxProvider({ apiKey: "mpr_sandbox_sk_x" }, fetcher);
     const rate = await provider.getRate("USD", "NGN");
 
-    expect(fetcher).toHaveBeenCalledWith(
-      "https://api.maplerad.com/v1/fx/quote",
-      expect.objectContaining({
-        method: "POST",
-        headers: expect.objectContaining({ Authorization: "Bearer mpr_sandbox_sk_x" }),
-        body: JSON.stringify({ source_currency: "USD", target_currency: "NGN", amount: 10000 })
-      })
+    // Asserted off the recorded call rather than expect.objectContaining, whose
+    // asymmetric matchers are typed `any` and defeat the lint rules here.
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.maplerad.com/v1/fx/quote");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer mpr_sandbox_sk_x"
+    );
+    expect(init.body).toBe(
+      JSON.stringify({ source_currency: "USD", target_currency: "NGN", amount: 10000 })
     );
     expect(rate.baseCurrency).toBe("USD");
     expect(rate.quoteCurrency).toBe("NGN");

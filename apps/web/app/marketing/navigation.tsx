@@ -30,14 +30,26 @@ export function MarketingNavigation() {
           ))}
         </div>
 
-        <a
-          className="group flex h-10 items-center gap-2 rounded-[12px] bg-[var(--flip-primary)] px-3 text-sm font-semibold text-white transition hover:bg-[var(--flip-accent)]"
-          href="/campaigns/new"
-        >
-          <Command className="size-4" />
-          <span className="hidden sm:inline">Open engine</span>
-          <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
-        </a>
+        {/* An anonymous visitor sent straight to the builder just bounces off the
+            /login redirect in OsShell, so sign-in and sign-up are their own
+            destinations. "Open engine" points at the canonical /os route rather
+            than the legacy /campaigns/new redirect. */}
+        <div className="flex items-center gap-2">
+          <a
+            className="hidden h-10 items-center rounded-[12px] border border-white/12 px-3 text-sm font-medium text-white/72 transition hover:border-white/28 hover:text-white sm:flex"
+            href="/login"
+          >
+            Sign in
+          </a>
+          <a
+            className="group flex h-10 items-center gap-2 rounded-[12px] bg-[var(--flip-primary)] px-3 text-sm font-semibold text-white transition hover:bg-[var(--flip-accent)]"
+            href="/register"
+          >
+            <Command className="size-4" />
+            <span className="hidden sm:inline">Get started</span>
+            <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
+          </a>
+        </div>
       </nav>
     </header>
   );
