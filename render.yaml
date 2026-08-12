@@ -637,6 +637,8 @@ services:
         value: "true"
       - key: FEATURE_TELECOM_GATEWAY
         value: "true"
+      - key: FEATURE_GUEST_CHECKOUT
+        value: "true"
       - key: FEATURE_VIRTUAL_ACCOUNTS
         sync: false
       - key: FEATURE_VIRTUAL_CARDS
@@ -646,6 +648,8 @@ services:
       - key: FEATURE_WALLET_WITHDRAWALS
         sync: false
       - key: FEATURE_KYC_VERIFICATION
+        sync: false
+      - key: FEATURE_KYB_VERIFICATION
         sync: false
       - key: FEATURE_LIVE_PROVIDER_INTEGRATIONS
         sync: false
