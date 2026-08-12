@@ -1,4 +1,6 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+"use client";
+
+import { useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -9,40 +11,53 @@ export type FliptrybeTheme = "studio" | "clay";
 export const THEME_STORAGE_KEY = "ft-theme";
 export const DEFAULT_THEME: FliptrybeTheme = "studio";
 export const fliptrybeThemes: FliptrybeTheme[] = ["studio", "clay"];
+
+/** Fires on `window` (same tab) whenever the live theme changes, so every mounted ThemeToggle stays in sync. */
+const THEME_CHANGE_EVENT = "ft-theme-change";
+
+function isFliptrybeTheme(value: unknown): value is FliptrybeTheme {
+  return value === "studio" || value === "clay";
+}
+
+/** Reads the live theme on the client: localStorage first, falling back to whatever `themeInitScript` already applied to `<html>`. */
+function readLiveTheme(): FliptrybeTheme {
+  if (typeof window === "undefined") return DEFAULT_THEME;
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (isFliptrybeTheme(stored)) return stored;
+  } catch {
+    // localStorage may be unavailable (private browsing, disabled storage) — fall through.
+  }
+  const domTheme = document.documentElement.dataset.theme;
+  return isFliptrybeTheme(domTheme) ? domTheme : DEFAULT_THEME;
+}
+
+/** Single source of truth for changing the live theme: updates the DOM, persists it, and notifies every mounted ThemeToggle. */
+export function applyFliptrybeTheme(theme: FliptrybeTheme) {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.theme = theme;
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // ignore — theme still applies for this page view even if it can't persist.
+  }
+  window.dispatchEvent(new CustomEvent<FliptrybeTheme>(THEME_CHANGE_EVENT, { detail: theme }));
+}
+
+/**
+ * Inline script injected into `<head>` so the correct theme paints before first render
+ * (no flash of the default theme). It only ever writes `data-theme` on `<html>` — it does
+ * NOT own click handling or toggle attributes anymore: `ThemeToggle` is a client component
+ * that tracks live theme state itself via React and re-renders its own aria/label text,
+ * so nothing here can go stale or get clobbered by a React re-render.
+ */
 export const themeInitScript = `(() => {
   try {
     const key = "${THEME_STORAGE_KEY}";
     const fallback = "${DEFAULT_THEME}";
     const isTheme = (value) => value === "clay" || value === "studio";
-    const nextThemeLabel = (theme) => theme === "clay" ? "Studio" : "Clay";
-    const syncToggles = (theme) => {
-      const nextLabel = nextThemeLabel(theme);
-      document.querySelectorAll("[data-ft-theme-toggle]").forEach((toggle) => {
-        toggle.setAttribute("aria-pressed", theme === "clay" ? "true" : "false");
-        toggle.setAttribute("aria-label", "Switch to " + nextLabel + " theme");
-        toggle.setAttribute("title", "Switch to " + nextLabel + " theme");
-      });
-    };
-    const applyTheme = (theme) => {
-      document.documentElement.dataset.theme = theme;
-      syncToggles(theme);
-    };
     const stored = window.localStorage.getItem(key);
-    const theme = isTheme(stored) ? stored : fallback;
-    applyTheme(theme);
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => syncToggles(document.documentElement.dataset.theme === "clay" ? "clay" : "studio"));
-    } else {
-      syncToggles(theme);
-    }
-    document.addEventListener("click", function(event) {
-      const target = event.target instanceof Element ? event.target.closest("[data-ft-theme-toggle]") : null;
-      if (!target) return;
-      const current = document.documentElement.dataset.theme === "clay" ? "clay" : "studio";
-      const next = current === "studio" ? "clay" : "studio";
-      applyTheme(next);
-      window.localStorage.setItem(key, next);
-    });
+    document.documentElement.dataset.theme = isTheme(stored) ? stored : fallback;
   } catch (error) {
     document.documentElement.dataset.theme = "${DEFAULT_THEME}";
   }
@@ -476,17 +491,46 @@ export const notificationToneTokens = {
 } as const;
 
 export function ThemeToggle({ className }: { className?: string }) {
+  // Initial render must match SSR output (always DEFAULT_THEME) to avoid a hydration
+  // mismatch; the effect below immediately syncs to the real live theme after mount,
+  // same pattern as useFeatureFlags' ready-flag: render the safe default, then correct it.
+  const [theme, setTheme] = useState<FliptrybeTheme>(DEFAULT_THEME);
+
+  useEffect(() => {
+    setTheme(readLiveTheme());
+
+    const handleThemeChange = (event: Event) => {
+      const detail = (event as CustomEvent<FliptrybeTheme>).detail;
+      if (isFliptrybeTheme(detail)) setTheme(detail);
+    };
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY && isFliptrybeTheme(event.newValue)) {
+        setTheme(event.newValue);
+      }
+    };
+
+    window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+    window.addEventListener("storage", handleStorage);
+    return () => {
+      window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
+  const isClay = theme === "clay";
+  const nextLabel = isClay ? "Studio" : "Clay";
+
   return (
     <button
-      aria-label="Switch to Clay theme"
-      aria-pressed={DEFAULT_THEME === "clay"}
+      aria-label={`Switch to ${nextLabel} theme`}
+      aria-pressed={isClay}
       className={cn(
         "inline-flex h-9 items-center gap-2 rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-xs font-semibold text-[var(--ft-text-secondary)] shadow-[var(--shadow-xs)] transition hover:border-[var(--ft-border-emphasis)] hover:text-[var(--ft-text-primary)]",
         focusRingClass,
         className
       )}
-      data-ft-theme-toggle
-      title="Switch to Clay theme"
+      onClick={() => applyFliptrybeTheme(isClay ? "studio" : "clay")}
+      title={`Switch to ${nextLabel} theme`}
       type="button"
     >
       <span className="grid size-4 place-items-center rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
