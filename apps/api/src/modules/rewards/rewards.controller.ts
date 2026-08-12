@@ -5,6 +5,7 @@ import {
   type WorkspaceContextRequest
 } from "../request-context";
 import { Public, RequirePermissions } from "../authorization.decorators";
+import { RequireFeature } from "../feature-flag.decorators";
 import type {
   AddRewardTaskDto,
   AdminResolveCompletionDto,
@@ -19,6 +20,7 @@ import type {
 import { RewardsService } from "./rewards.service";
 
 @Controller("rewards")
+@RequireFeature("rewards")
 @RequirePermissions("analytics:read")
 export class RewardsController {
   constructor(@Inject(RewardsService) private readonly rewards: RewardsService) {}
@@ -105,6 +107,7 @@ export class RewardsController {
 }
 
 @Controller("admin/rewards")
+@RequireFeature("rewards", "rewardsAdmin")
 @RequirePermissions("admin:access")
 export class AdminRewardsController {
   constructor(@Inject(RewardsService) private readonly rewards: RewardsService) {}

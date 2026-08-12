@@ -14,6 +14,7 @@
   "dependencies": {
     "@fliptrybe/database": "workspace:*",
     "@fliptrybe/events": "workspace:*",
+    "@fliptrybe/feature-flags": "workspace:*",
     "@fliptrybe/providers": "workspace:*",
     "@fliptrybe/service-smm": "workspace:*",
     "@fliptrybe/types": "workspace:*",

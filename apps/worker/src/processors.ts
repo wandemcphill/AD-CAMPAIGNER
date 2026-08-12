@@ -1,5 +1,6 @@
 import type { Job } from "bullmq";
 import { calculateSmmRetryDelayMs } from "@fliptrybe/service-smm";
+import { featureFlags } from "@fliptrybe/feature-flags";
 
 import { queueRiskPolicies } from "./queues";
 import type { QueueName, QueuePayloads } from "./queues";
@@ -81,6 +82,10 @@ export function shouldStartQueueWorker(queue: QueueName, options?: ProcessorOpti
 
   if (isManagedAdsQueueName(queue)) {
     return isManagedAdsQueueEnabled(queue, flags);
+  }
+
+  if (queue === "reward-engine") {
+    return featureFlags.rewards;
   }
 
   return true;
