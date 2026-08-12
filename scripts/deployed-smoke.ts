@@ -39,10 +39,18 @@ const webRoutes = [
   // can complete, so a break here is silent revenue loss.
   { name: "Web guest checkout route", path: "/guest" },
   // Canonical /os screens for the verticals that move money.
-  { name: "Web airtime/data route", path: "/os/airtime" },
-  { name: "Web utilities route", path: "/os/utilities" },
+  { name: "Web airtime route", path: "/os/airtime/airtime" },
+  { name: "Web data route", path: "/os/airtime/data" },
+  { name: "Web VTU history route", path: "/os/airtime/history" },
+  { name: "Web electricity route", path: "/os/utilities/electricity" },
+  { name: "Web cable TV route", path: "/os/utilities/cable" },
+  { name: "Web betting route", path: "/os/utilities/betting" },
+  { name: "Web education route", path: "/os/utilities/education" },
   { name: "Web growth services route", path: "/os/growth" },
   { name: "Web financial products route", path: "/os/financial-products" },
+  { name: "Web virtual accounts route", path: "/os/financial-products/accounts" },
+  { name: "Web virtual cards route", path: "/os/financial-products/cards" },
+  { name: "Web remittance route", path: "/os/financial-products/remittance" },
   { name: "Web wallet route", path: "/os/wallet" }
 ];
 

@@ -8,7 +8,7 @@ import { Lightbulb } from "lucide-react";
 import { PermissionDenied } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
-import { isForbiddenError } from "../../../lib/api-client";
+import { isForbiddenError } from "../../lib/api-client";
 import { loadBillsOrders } from "./vtu-api";
 
 const TABS = [
