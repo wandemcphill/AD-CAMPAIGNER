@@ -7,6 +7,7 @@ import { CheckCircle, Copy, QrCode, RefreshCw, ShieldCheck, Trophy, XCircle } fr
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
+import { AdminShell } from "../../admin-shell";
 import { apiRequest } from "../../lib/api-client";
 
 interface TaskCompletion {
@@ -175,12 +176,31 @@ function AdminCampaignDetailContent() {
     }
   }
 
-  if (loading) return <div className="p-6 text-sm text-muted-foreground animate-pulse">Loading…</div>;
-  if (error) return <div className="p-6 text-sm text-destructive">{error}</div>;
-  if (!campaign) return <div className="p-6 text-sm text-muted-foreground">Campaign not found.</div>;
+  if (loading) {
+    return (
+      <AdminShell active="/rewards/">
+        <div className="text-sm text-muted-foreground animate-pulse">Loading…</div>
+      </AdminShell>
+    );
+  }
+  if (error) {
+    return (
+      <AdminShell active="/rewards/">
+        <div className="text-sm text-destructive">{error}</div>
+      </AdminShell>
+    );
+  }
+  if (!campaign) {
+    return (
+      <AdminShell active="/rewards/">
+        <div className="text-sm text-muted-foreground">Campaign not found.</div>
+      </AdminShell>
+    );
+  }
 
   return (
-    <div className="space-y-6 p-6">
+    <AdminShell active="/rewards/">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Trophy className="h-6 w-6" />
@@ -369,5 +389,6 @@ function AdminCampaignDetailContent() {
         <Link href="/rewards" className="underline">Back to campaigns</Link>
       </div>
     </div>
+    </AdminShell>
   );
 }

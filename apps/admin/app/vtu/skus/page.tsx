@@ -5,6 +5,7 @@ import { CheckCircle, ChevronDown, ChevronRight, RefreshCcw, XCircle } from "luc
 
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 
+import { AdminShell } from "../../admin-shell";
 import { apiRequest } from "../../lib/api-client";
 import { useApiSession } from "../../lib/use-session";
 import { AdminAuthState } from "../../ui/admin-auth-state";
@@ -251,8 +252,8 @@ export default function AdminVtuSkusPage() {
   const totalMappings = skus.reduce((sum, s) => sum + s.providerMappings.length, 0);
 
   return (
-    <main className="ft-shell min-h-screen">
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
+    <AdminShell active="/vtu/skus/">
+      <div className="mx-auto max-w-4xl">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold">Canonical SKU Management</h1>
@@ -322,6 +323,6 @@ export default function AdminVtuSkusPage() {
           )}
         </div>
       </div>
-    </main>
+    </AdminShell>
   );
 }

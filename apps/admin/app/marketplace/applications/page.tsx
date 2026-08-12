@@ -6,6 +6,7 @@ import { Briefcase, CheckCircle2, Globe, RefreshCcw, XCircle } from "lucide-reac
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
+import { AdminShell } from "../../admin-shell";
 import { apiRequest } from "../../lib/api-client";
 import { useApiSession } from "../../lib/use-session";
 import { AdminAuthState } from "../../ui/admin-auth-state";
@@ -127,8 +128,8 @@ export default function AdminMarketplaceApplicationsPage() {
   ].sort((a, b) => new Date(b.application.createdAt).getTime() - new Date(a.application.createdAt).getTime());
 
   return (
-    <main className="ft-shell min-h-screen">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+    <AdminShell active="/marketplace/applications/">
+      <div className="mx-auto max-w-5xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Briefcase className="size-5 text-[var(--ft-accent)]" />
@@ -260,6 +261,6 @@ export default function AdminMarketplaceApplicationsPage() {
           )}
         </div>
       </div>
-    </main>
+    </AdminShell>
   );
 }
