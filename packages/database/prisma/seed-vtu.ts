@@ -470,30 +470,36 @@ async function seedCanonicalSkus(db: ReturnType<typeof createPrismaClient>) {
     }
 
     for (const m of sku.mappings) {
-      const existingMapping = await db.vtuProviderSkuMapping.findFirst({
-        where: { canonicalSkuId: sku.id, providerName: m.providerName }
+      // The DB's real uniqueness constraint is (providerName, providerSku) -- a prior
+      // findFirst({ canonicalSkuId, providerName }) check missed rows created under a
+      // different canonicalSkuId with the same (providerName, providerSku) pair, so a
+      // reseed could try to create() a row that collides on the actual unique index.
+      // upsert() on that same compound key is what Prisma auto-names
+      // providerName_providerSku for an unnamed @@unique([providerName, providerSku]).
+      const result = await db.vtuProviderSkuMapping.upsert({
+        where: { providerName_providerSku: { providerName: m.providerName, providerSku: m.providerSku } },
+        create: {
+          id: mappingUid(),
+          canonicalSkuId: sku.id,
+          providerName: m.providerName,
+          providerSku: m.providerSku,
+          costMinor: m.costMinor,
+          adminApproved: m.adminApproved,
+          active: true,
+          pricingSourceType: m.pricingSourceType,
+          lastSyncedAt: new Date(),
+          metadata: {}
+        },
+        update: {
+          canonicalSkuId: sku.id,
+          costMinor: m.costMinor,
+          active: true,
+          lastSyncedAt: new Date()
+        }
       });
-      if (!existingMapping) {
-        await db.vtuProviderSkuMapping.create({
-          data: {
-            id: mappingUid(),
-            canonicalSkuId: sku.id,
-            providerName: m.providerName,
-            providerSku: m.providerSku,
-            costMinor: m.costMinor,
-            adminApproved: m.adminApproved,
-            active: true,
-            pricingSourceType: m.pricingSourceType,
-            lastSyncedAt: new Date(),
-            metadata: {}
-          }
-        });
+      if (result.createdAt.getTime() === result.updatedAt.getTime()) {
         mappingCreated++;
       } else {
-        await db.vtuProviderSkuMapping.update({
-          where: { id: existingMapping.id },
-          data: { costMinor: m.costMinor, active: true, lastSyncedAt: new Date() }
-        });
         mappingSkipped++;
       }
     }
