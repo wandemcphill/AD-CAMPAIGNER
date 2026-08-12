@@ -6,6 +6,7 @@ import { ArrowUpDown, Network, Plus, RefreshCcw, ShieldOff, Tags } from "lucide-
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
+import { AdminShell } from "../admin-shell";
 import { apiRequest } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
 import { AdminAuthState } from "../ui/admin-auth-state";
@@ -291,8 +292,8 @@ export default function AdminProvidersPage() {
   }
 
   return (
-    <main className="ft-shell min-h-screen">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+    <AdminShell active="/providers/">
+      <div className="mx-auto max-w-5xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Network className="size-5 text-[var(--ft-accent)]" />
@@ -576,6 +577,6 @@ export default function AdminProvidersPage() {
           </div>
         )}
       </div>
-    </main>
+    </AdminShell>
   );
 }

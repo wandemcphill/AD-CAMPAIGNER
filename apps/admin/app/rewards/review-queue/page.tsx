@@ -6,6 +6,7 @@ import { CheckCircle, RefreshCw, XCircle } from "lucide-react";
 
 import { Button, Panel } from "@fliptrybe/ui";
 
+import { AdminShell } from "../../admin-shell";
 import { apiRequest } from "../../lib/api-client";
 
 interface TaskCompletion {
@@ -60,7 +61,8 @@ export default function AdminRewardsReviewQueuePage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <AdminShell active="/rewards/">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold">Reward Review Queue</h1>
@@ -130,5 +132,6 @@ export default function AdminRewardsReviewQueuePage() {
         </Panel>
       )}
     </div>
+    </AdminShell>
   );
 }

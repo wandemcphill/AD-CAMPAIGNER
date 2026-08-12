@@ -6,6 +6,7 @@ import { RefreshCw, Trophy } from "lucide-react";
 
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
+import { AdminShell } from "../admin-shell";
 import { apiRequest } from "../lib/api-client";
 
 interface RewardCampaign {
@@ -67,7 +68,8 @@ export default function AdminRewardsPage() {
   const totalFulfilled = campaigns.reduce((s, c) => s + c._count.entitlements, 0);
 
   return (
-    <div className="space-y-6 p-6">
+    <AdminShell active="/rewards/">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Trophy className="h-6 w-6" />
@@ -154,5 +156,6 @@ export default function AdminRewardsPage() {
         </div>
       )}
     </div>
+    </AdminShell>
   );
 }

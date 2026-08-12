@@ -13,6 +13,8 @@ import {
 
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 
+import { AdminShell } from "../../admin-shell";
+
 import { apiRequest } from "../../lib/api-client";
 import { useApiSession } from "../../lib/use-session";
 import { AdminAuthState } from "../../ui/admin-auth-state";
@@ -180,7 +182,7 @@ export default function AdminVtuProvidersPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--ft-bg-primary)", color: "var(--ft-text-primary)" }}>
+    <AdminShell active="/vtu/providers/">
       {/* Header */}
       <header
         style={{ borderBottom: "1px solid var(--ft-border)" }}
@@ -205,7 +207,7 @@ export default function AdminVtuProvidersPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+      <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         {error && (
           <div
             style={{
@@ -525,7 +527,7 @@ export default function AdminVtuProvidersPage() {
             </table>
           </Panel>
         )}
-      </main>
-    </div>
+      </div>
+    </AdminShell>
   );
 }

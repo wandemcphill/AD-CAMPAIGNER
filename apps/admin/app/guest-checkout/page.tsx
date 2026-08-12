@@ -6,6 +6,7 @@ import { RefreshCcw, RotateCcw, ShoppingCart, Download } from "lucide-react";
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
+import { AdminShell } from "../admin-shell";
 import { apiRequest, getApiBaseUrl, getStoredToken, ApiClientError } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
 import { AdminAuthState } from "../ui/admin-auth-state";
@@ -172,8 +173,8 @@ export default function AdminGuestCheckoutPage() {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <main className="ft-shell min-h-screen">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+    <AdminShell active="/guest-checkout/">
+      <div className="mx-auto max-w-5xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShoppingCart className="size-5 text-[var(--ft-accent)]" />
@@ -272,6 +273,6 @@ export default function AdminGuestCheckoutPage() {
           </div>
         </div>
       </div>
-    </main>
+    </AdminShell>
   );
 }

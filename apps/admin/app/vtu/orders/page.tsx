@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, RefreshCcw, Undo2 } from "lucide-react";
 
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 
+import { AdminShell } from "../../admin-shell";
 import { apiRequest } from "../../lib/api-client";
 import { useApiSession } from "../../lib/use-session";
 import { AdminAuthState } from "../../ui/admin-auth-state";
@@ -98,8 +99,8 @@ export default function AdminVtuBillsOrdersPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+    <AdminShell active="/vtu/orders/">
+      <div className="mx-auto max-w-5xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="size-5 text-[var(--ft-accent)]" />
@@ -192,6 +193,6 @@ export default function AdminVtuBillsOrdersPage() {
           )}
         </div>
       </div>
-    </main>
+    </AdminShell>
   );
 }

@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { BadgeCheck, ShieldAlert, XCircle } from "lucide-react";
 
-import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
+import { Badge, Button, Panel } from "@fliptrybe/ui";
 
+import { AdminShell } from "../admin-shell";
 import { apiRequest } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
 import { AdminAuthState } from "../ui/admin-auth-state";
@@ -83,14 +84,11 @@ export default function AdminAdAccountsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
-      <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldAlert className="size-5 text-[var(--ft-accent)]" />
-            <h1 className="text-xl font-bold">Ad account KYC review</h1>
-          </div>
-          <ThemeToggle />
+    <AdminShell active="/ad-accounts/">
+      <div className="mx-auto max-w-2xl">
+        <div className="flex items-center gap-2">
+          <ShieldAlert className="size-5 text-[var(--ft-accent)]" />
+          <h1 className="text-xl font-bold">Ad account KYC review</h1>
         </div>
 
         <p className="mt-2 text-sm text-[var(--ft-text-secondary)]">
@@ -169,6 +167,6 @@ export default function AdminAdAccountsPage() {
           </Panel>
         ) : null}
       </div>
-    </main>
+    </AdminShell>
   );
 }
