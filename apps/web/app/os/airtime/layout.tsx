@@ -16,6 +16,12 @@ const TABS = [
   { id: "history", label: "History" }
 ];
 
+const TAB_ROUTES = {
+  airtime: "/os/airtime/airtime",
+  data: "/os/airtime/data",
+  history: "/os/airtime/history"
+} as const satisfies Record<(typeof TABS)[number]["id"], string>;
+
 export default function AirtimeLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -24,7 +30,10 @@ export default function AirtimeLayout({ children }: { children: ReactNode }) {
 
   const onChange = useCallback(
     (id: string) => {
-      router.push(`/os/airtime/${id}`);
+      const target = TAB_ROUTES[id as keyof typeof TAB_ROUTES];
+      if (target) {
+        router.push(target);
+      }
     },
     [router]
   );
