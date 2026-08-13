@@ -27,6 +27,8 @@ export default function PublicPaymentLinkPage({ params }: { params: Promise<{ re
   const [link, setLink] = useState<PublicPaymentLink>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string>();
 
   useEffect(() => {
     apiRequest<PublicPaymentLink>(`/public/payment-links/${encodeURIComponent(reference)}`)
@@ -34,6 +36,26 @@ export default function PublicPaymentLinkPage({ params }: { params: Promise<{ re
       .catch((caught) => setError(caught instanceof Error ? caught.message : "This payment link is not available."))
       .finally(() => setLoading(false));
   }, [reference]);
+
+  async function handlePay() {
+    setPayError(undefined);
+    setPaying(true);
+    try {
+      const result = await apiRequest<{ checkoutUrl: string }>(`/public/payment-links/${encodeURIComponent(reference)}/pay`, {
+        method: "POST",
+        body: JSON.stringify({ redirectUrl: window.location.href })
+      });
+      if (result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+      } else {
+        setPayError("Could not start checkout. Please try again.");
+      }
+    } catch (caught) {
+      setPayError(caught instanceof Error ? caught.message : "Could not start checkout. Please try again.");
+    } finally {
+      setPaying(false);
+    }
+  }
 
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--ft-bg-base)] p-4 text-[var(--ft-text-primary)]">
@@ -69,19 +91,21 @@ export default function PublicPaymentLinkPage({ params }: { params: Promise<{ re
               </div>
             </div>
 
-            {/* Honest state: the link resolves and shows what is owed, but live
-                payment collection is not wired to a gateway yet. Do not present a
-                pay button that would imply a completed payment. */}
             <button
-              className="mt-5 h-11 w-full cursor-not-allowed rounded-[var(--radius-md)] bg-[var(--ft-bg-muted)] text-sm font-medium text-[var(--ft-text-muted)]"
-              disabled
+              className="mt-5 h-11 w-full rounded-[var(--radius-md)] bg-[var(--ft-accent)] text-sm font-semibold text-[var(--ft-on-accent)] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={paying}
+              onClick={() => void handlePay()}
               type="button"
             >
-              Secure checkout coming soon
+              {paying ? "Starting checkout..." : "Pay now"}
             </button>
-            <p className="mt-2 text-center text-[11px] text-[var(--ft-text-muted)]">
-              Online payment for this link is being set up.
-            </p>
+            {payError ? (
+              <p className="mt-2 text-center text-[11px] text-[var(--ft-danger,#dc2626)]">{payError}</p>
+            ) : (
+              <p className="mt-2 text-center text-[11px] text-[var(--ft-text-muted)]">
+                You'll be redirected to a secure checkout page to complete payment.
+              </p>
+            )}
           </>
         )}
       </div>

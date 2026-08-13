@@ -6,3 +6,10 @@ export type CreatePaymentLinkDto = {
   collectCustomerInfo?: boolean;
   expiresAt?: string;
 };
+
+export type PayPaymentLinkDto = {
+  amountMinor?: number;
+  payerEmail?: string;
+  payerName?: string;
+  redirectUrl?: string;
+};

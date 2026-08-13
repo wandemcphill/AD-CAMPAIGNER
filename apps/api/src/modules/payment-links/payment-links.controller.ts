@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Req } from "@nestjs/common";
 
 import { Public, RequirePermissions } from "../authorization.decorators";
 import { RequireFeature } from "../feature-flag.decorators";
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
-import type { CreatePaymentLinkDto } from "./payment-links.dtos";
+import type { CreatePaymentLinkDto, PayPaymentLinkDto } from "./payment-links.dtos";
 import { PaymentLinksService } from "./payment-links.service";
 
 // Public resolver for a shared link's payer-facing page. Unauthenticated, and
@@ -17,6 +17,23 @@ export class PublicPaymentLinksController {
   @Public()
   resolve(@Param("reference") reference: string) {
     return this.paymentLinks.resolvePublic(reference);
+  }
+
+  @Post(":reference/pay")
+  @Public()
+  pay(@Param("reference") reference: string, @Body() body: PayPaymentLinkDto) {
+    return this.paymentLinks.initiatePayment(reference, body, body.redirectUrl);
+  }
+}
+
+@Controller("api/webhooks")
+@Public()
+export class PaymentLinksWebhookController {
+  constructor(@Inject(PaymentLinksService) private readonly paymentLinks: PaymentLinksService) {}
+
+  @Post("korapay-payment-link")
+  korapay(@Body() body: unknown, @Headers("x-korapay-signature") signature?: string) {
+    return this.paymentLinks.handleKorapayWebhook(body, signature);
   }
 }
 
