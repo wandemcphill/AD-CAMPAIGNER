@@ -1,45 +1,29 @@
 "use client";
 
 import { type FormEvent, useEffect, useState } from "react";
-import { ArrowRight, Eye, EyeOff, Sparkles, UserPlus } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
-import { Badge, Button, ThemeToggle } from "@fliptrybe/ui";
-import { Input, Divider } from "@fliptrybe/ui/components";
+import { Button, ThemeToggle } from "@fliptrybe/ui";
+import { Input } from "@fliptrybe/ui/components";
 
 import { useApiSession } from "../lib/use-session";
 import { migrateGuestPurchases } from "../guest/guest-checkout-api";
 
-const RECOVERY_QUESTIONS = [
-  "What was the name of your first pet?",
-  "What city were you born in?",
-  "What is your mother's maiden name?",
-  "What was the name of your first school?",
-  "What is your favorite food?",
-];
+// Mirrors normalizeUsername/normalizePassword in the API's auth-session service.
+// Kept in sync deliberately so the form fails fast instead of round-tripping a 400.
+const USERNAME_PATTERN = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/;
+const USERNAME_MIN = 3;
+const USERNAME_MAX = 32;
+const PASSWORD_MIN = 8;
 
-function FloatingParticles() {
-  return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden">
-      {Array.from({ length: 18 }).map((_, i) => (
-        <motion.div
-          animate={{ y: [0, -20, 0], opacity: [0.1, 0.35, 0.1] }}
-          className="absolute rounded-full bg-[var(--ft-accent)]"
-          initial={{ opacity: 0 }}
-          key={i}
-          style={{
-            width: `${2 + (i % 3) * 2}px`,
-            height: `${2 + (i % 3) * 2}px`,
-            left: `${8 + (i * 5.2) % 85}%`,
-            top: `${15 + (i * 6.1) % 70}%`,
-          }}
-          transition={{ duration: 3 + (i % 3), repeat: Infinity, delay: i * 0.15, ease: "easeInOut" }}
-        />
-      ))}
-    </div>
-  );
-}
+const BENEFITS = [
+  "Buy airtime, data and pay bills in seconds",
+  "Send invoices and payment links",
+  "Run campaigns that reach real customers",
+  "Every transaction receipted and searchable"
+];
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -49,10 +33,6 @@ export default function RegisterPage() {
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [recoveryPin, setRecoveryPin] = useState("");
-  const [recoveryQuestion, setRecoveryQuestion] = useState(RECOVERY_QUESTIONS[0]);
-  const [recoveryAnswer, setRecoveryAnswer] = useState("");
-  const [workspaceName, setWorkspaceName] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
@@ -69,30 +49,45 @@ export default function RegisterPage() {
     setMigrateContact(new URLSearchParams(window.location.search).get("migrateContact"));
   }, []);
 
-  const passwordsMatch = confirmPassword.length === 0 || password === confirmPassword;
-  const pinValid = recoveryPin.length === 0 || /^\d{4,6}$/.test(recoveryPin);
+  const normalizedUsername = username.trim().toLowerCase();
+  const usernameError =
+    normalizedUsername.length === 0
+      ? undefined
+      : normalizedUsername.length < USERNAME_MIN || normalizedUsername.length > USERNAME_MAX
+        ? `Must be ${USERNAME_MIN}–${USERNAME_MAX} characters`
+        : USERNAME_PATTERN.test(normalizedUsername)
+          ? undefined
+          : "Letters, numbers, periods, underscores and hyphens only";
+
+  const passwordError =
+    password.length === 0 || password.length >= PASSWORD_MIN
+      ? undefined
+      : `At least ${PASSWORD_MIN} characters`;
+
+  const confirmError =
+    confirmPassword.length === 0 || password === confirmPassword
+      ? undefined
+      : "Passwords do not match";
+
+  const canSubmit =
+    normalizedUsername.length > 0 &&
+    password.length > 0 &&
+    confirmPassword.length > 0 &&
+    !usernameError &&
+    !passwordError &&
+    !confirmError;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(undefined);
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (recoveryPin && !/^\d{4,6}$/.test(recoveryPin)) {
-      setError("Recovery PIN must be 4-6 digits.");
-      return;
-    }
-
     setSubmitting(true);
 
     try {
       await signUp({
-        username,
+        username: normalizedUsername,
         password,
         confirmPassword,
-        ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+        ...(displayName.trim() ? { displayName: displayName.trim() } : {})
       });
 
       if (migrateContact) {
@@ -113,45 +108,37 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
-      <FloatingParticles />
-
-      <div className="relative z-10 grid min-h-screen lg:grid-cols-[1fr_1fr]">
-        {/* Left — branding */}
-        <div className="hidden lg:flex lg:flex-col lg:items-center lg:justify-center lg:px-12">
+    <main className="relative min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
+      <div className="grid min-h-screen lg:grid-cols-[1fr_1fr]">
+        {/* Left — value proposition */}
+        <div className="hidden lg:flex lg:flex-col lg:justify-center lg:gap-8 lg:px-16">
           <motion.div
             animate={{ opacity: 1, y: 0 }}
-            className="grid max-w-md gap-8 text-center"
+            className="max-w-md"
             initial={{ opacity: 0, y: 20 }}
-            transition={{ duration: 0.6 }}
+            transition={{ duration: 0.5 }}
           >
-            <div className="mx-auto grid size-20 place-items-center rounded-[var(--radius-xl)] border border-[var(--ft-accent)]/30 bg-[var(--ft-accent)]/10 shadow-[0_0_60px_var(--ft-accent-glow)]">
-              <Sparkles className="size-8 text-[var(--ft-accent)]" />
-            </div>
+            <img alt="FlipTrybe" className="h-8 w-auto" src="/brand/logo-horizontal-light.svg" />
 
-            <div>
-              <h2 className="text-4xl font-bold tracking-tight">Start growing</h2>
-              <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                Your AI workspace is one step away
-              </p>
-            </div>
+            <h2 className="mt-10 text-4xl font-black tracking-tight">
+              One account for money, services and growth.
+            </h2>
 
-            <p className="text-sm leading-7 text-[var(--ft-text-secondary)]">
-              After signup, FlipTrybe AI automatically provisions your workspace,
-              wallet, campaign space, AI studio, and default settings.
-            </p>
-
-            <div className="grid gap-2 text-left">
-              {[
-                "AI-powered campaign creation",
-                "Automated wallet & billing",
-                "Growth services marketplace",
-                "Creative production studio",
-              ].map((item) => (
-                <div className="flex items-center gap-3 text-sm text-[var(--ft-text-secondary)]" key={item}>
-                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-[var(--ft-accent)] text-[var(--ft-text-inverse)]">
+            <div className="mt-8 grid gap-3">
+              {BENEFITS.map((item) => (
+                <div
+                  className="flex items-start gap-3 text-sm text-[var(--ft-text-secondary)]"
+                  key={item}
+                >
+                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-[var(--ft-accent)] text-white">
                     <svg className="size-3" fill="none" viewBox="0 0 12 12">
-                      <path d="M2.5 6L5 8.5L9.5 3.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+                      <path
+                        d="M2.5 6L5 8.5L9.5 3.5"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                      />
                     </svg>
                   </span>
                   {item}
@@ -165,52 +152,52 @@ export default function RegisterPage() {
         <div className="flex flex-col items-center justify-center px-4 py-10 sm:px-8">
           <motion.div
             animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-[440px]"
+            className="w-full max-w-[420px]"
             initial={{ opacity: 0, y: 12 }}
-            transition={{ duration: 0.4, delay: 0.1 }}
+            transition={{ duration: 0.35, delay: 0.05 }}
           >
-            {/* Mobile logo */}
             <div className="mb-8 flex items-center justify-between lg:hidden">
-              <div className="flex items-center gap-3">
-                <img alt="FlipTrybe" className="size-9" src="/brand/icon-mark.svg" />
-                <span className="text-lg font-bold">FlipTrybe</span>
-              </div>
+              <img alt="FlipTrybe" className="h-7 w-auto" src="/brand/logo-horizontal-light.svg" />
               <ThemeToggle />
             </div>
 
             <div className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-8 shadow-[var(--shadow-lg)]">
-              <Badge tone="info">Create workspace</Badge>
-
-              <h1 className="mt-5 text-2xl font-bold tracking-tight">Create your account</h1>
+              <h1 className="text-2xl font-bold tracking-tight">Create your account</h1>
               <p className="mt-2 text-sm text-[var(--ft-text-secondary)]">
-                Set up your identity and workspace in one step
+                Takes less than a minute. You can add your business details later.
               </p>
 
-              <form className="mt-8 grid gap-4" onSubmit={(event) => void handleSubmit(event)}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    autoComplete="username"
-                    id="username"
-                    label="Username"
-                    onChange={(e) => setUsername(e.currentTarget.value)}
-                    placeholder="tunde"
-                    required
-                    type="text"
-                    value={username}
-                  />
-                  <Input
-                    autoComplete="name"
-                    id="display-name"
-                    label="Display name"
-                    onChange={(e) => setDisplayName(e.currentTarget.value)}
-                    placeholder="Tunde Okoro"
-                    type="text"
-                    value={displayName}
-                  />
-                </div>
+              <form className="mt-8 grid gap-5" onSubmit={(event) => void handleSubmit(event)}>
+                <Input
+                  autoComplete="username"
+                  autoFocus
+                  error={usernameError}
+                  hint="This is how you'll sign in"
+                  id="username"
+                  label="Username"
+                  onChange={(e) => setUsername(e.currentTarget.value)}
+                  placeholder="tunde"
+                  required
+                  type="text"
+                  value={username}
+                />
+
+                <Input
+                  autoComplete="name"
+                  hint="Optional — shown to your team and on invoices"
+                  id="display-name"
+                  label="Full name"
+                  onChange={(e) => setDisplayName(e.currentTarget.value)}
+                  placeholder="Tunde Okoro"
+                  type="text"
+                  value={displayName}
+                />
 
                 <div className="grid gap-1.5">
-                  <label className="text-sm font-medium text-[var(--ft-text-primary)]" htmlFor="new-password">
+                  <label
+                    className="text-sm font-medium text-[var(--ft-text-primary)]"
+                    htmlFor="new-password"
+                  >
                     Password
                   </label>
                   <div className="relative">
@@ -218,14 +205,16 @@ export default function RegisterPage() {
                       autoComplete="new-password"
                       className="h-11 w-full rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 pr-11 text-sm outline-none transition placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)] focus:ring-2 focus:ring-[var(--ft-accent-glow)]"
                       id="new-password"
+                      minLength={PASSWORD_MIN}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Create a strong password"
+                      placeholder={`At least ${PASSWORD_MIN} characters`}
                       required
                       type={showPassword ? "text" : "password"}
                       value={password}
                     />
                     <button
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ft-text-muted)] hover:text-[var(--ft-text-primary)]"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--ft-text-muted)] transition hover:text-[var(--ft-text-primary)]"
                       onClick={() => setShowPassword(!showPassword)}
                       tabIndex={-1}
                       type="button"
@@ -233,11 +222,14 @@ export default function RegisterPage() {
                       {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
+                  {passwordError ? (
+                    <span className="text-xs text-[var(--ft-red)]">{passwordError}</span>
+                  ) : null}
                 </div>
 
                 <Input
                   autoComplete="new-password"
-                  error={!passwordsMatch ? "Passwords do not match" : undefined}
+                  error={confirmError}
                   id="confirm-password"
                   label="Confirm password"
                   onChange={(e) => setConfirmPassword(e.currentTarget.value)}
@@ -245,55 +237,6 @@ export default function RegisterPage() {
                   required
                   type="password"
                   value={confirmPassword}
-                />
-
-                <Divider label="recovery" />
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <Input
-                    error={!pinValid ? "Must be 4-6 digits" : undefined}
-                    hint="Used for password recovery"
-                    id="recovery-pin"
-                    label="Recovery PIN"
-                    onChange={(e) => setRecoveryPin(e.currentTarget.value)}
-                    placeholder="4-6 digits"
-                    type="password"
-                    value={recoveryPin}
-                  />
-                  <Input
-                    id="workspace-name"
-                    label="Workspace name"
-                    hint="Your team sees this"
-                    onChange={(e) => setWorkspaceName(e.currentTarget.value)}
-                    placeholder="My Business"
-                    type="text"
-                    value={workspaceName}
-                  />
-                </div>
-
-                <div className="grid gap-1.5">
-                  <label className="text-sm font-medium text-[var(--ft-text-primary)]" htmlFor="recovery-q">
-                    Recovery question
-                  </label>
-                  <select
-                    className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm text-[var(--ft-text-primary)] outline-none focus:border-[var(--ft-accent)] focus:ring-2 focus:ring-[var(--ft-accent-glow)]"
-                    id="recovery-q"
-                    onChange={(e) => setRecoveryQuestion(e.target.value)}
-                    value={recoveryQuestion}
-                  >
-                    {RECOVERY_QUESTIONS.map((q) => (
-                      <option key={q} value={q}>{q}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <Input
-                  id="recovery-answer"
-                  label="Recovery answer"
-                  onChange={(e) => setRecoveryAnswer(e.currentTarget.value)}
-                  placeholder="Your answer"
-                  type="text"
-                  value={recoveryAnswer}
                 />
 
                 {error ? (
@@ -306,7 +249,11 @@ export default function RegisterPage() {
                   </motion.div>
                 ) : null}
 
-                <Button className="h-11 w-full justify-center" disabled={submitting || !passwordsMatch} type="submit">
+                <Button
+                  className="h-11 w-full justify-center"
+                  disabled={submitting || !canSubmit}
+                  type="submit"
+                >
                   {submitting ? (
                     <>
                       <motion.div
@@ -314,23 +261,21 @@ export default function RegisterPage() {
                         className="size-4 rounded-full border-2 border-[var(--ft-text-inverse)]/30 border-t-[var(--ft-text-inverse)]"
                         transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
                       />
-                      Creating workspace...
+                      Creating account...
                     </>
                   ) : (
                     <>
                       <UserPlus className="size-4" />
-                      Create workspace
+                      Create account
                     </>
                   )}
                 </Button>
               </form>
 
-              <Divider label="or" />
-
-              <div className="mt-5 flex items-center justify-center gap-2 text-sm">
+              <div className="mt-6 flex items-center justify-center gap-2 text-sm">
                 <span className="text-[var(--ft-text-secondary)]">Already have an account?</span>
                 <a
-                  className="inline-flex items-center gap-1.5 font-medium text-[var(--ft-accent)] hover:text-[var(--ft-accent-dim)]"
+                  className="inline-flex items-center gap-1.5 font-medium text-[var(--ft-accent)] transition hover:text-[var(--ft-accent-dim)]"
                   href="/login"
                 >
                   Sign in
@@ -339,13 +284,17 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-between px-2 text-xs text-[var(--ft-text-muted)]">
-              <div className="flex gap-4">
-                <span>Privacy</span>
-                <span>Terms</span>
-              </div>
-              <span className="font-mono text-[10px]">v2.0</span>
-            </div>
+            <p className="mt-6 px-2 text-center text-xs text-[var(--ft-text-muted)]">
+              By creating an account you agree to our{" "}
+              <a className="underline transition hover:text-[var(--ft-text-secondary)]" href="/terms">
+                Terms
+              </a>{" "}
+              and{" "}
+              <a className="underline transition hover:text-[var(--ft-text-secondary)]" href="/privacy">
+                Privacy Policy
+              </a>
+              .
+            </p>
           </motion.div>
         </div>
       </div>
