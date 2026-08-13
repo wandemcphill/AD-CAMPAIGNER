@@ -79,10 +79,9 @@ export default function GuestBillsPage() {
     <main className="min-h-screen bg-[var(--ft-bg-base)] px-4 py-10 text-[var(--ft-text-primary)] sm:px-8">
       <div className="mx-auto max-w-2xl">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img alt="FlipTrybe" className="size-9" src="/brand/icon-mark.svg" />
-            <span className="text-lg font-bold">FlipTrybe Bills</span>
-          </div>
+          <a className="flex items-center gap-3" href="/">
+            <img alt="FlipTrybe" className="h-7 w-auto" src="/brand/logo-horizontal-light.svg" />
+          </a>
           <ThemeToggle />
         </div>
 
@@ -220,7 +219,11 @@ export default function GuestBillsPage() {
         </Panel>
 
         <p className="mt-6 text-center text-xs text-[var(--ft-text-muted)]">
-          Already have an account? <a className="text-[var(--ft-accent)]" href="/login">Sign in</a> for saved beneficiaries and cashback.
+          Already have an account?{" "}
+          <a className="text-[var(--ft-accent)]" href="/login">
+            Sign in
+          </a>{" "}
+          to keep every receipt in one place.
         </p>
       </div>
     </main>

@@ -16,6 +16,7 @@ import {
   ClientProfileController,
   CompanyProfilesController,
   DestinationsController,
+  MeController,
   GrowthController,
   HealthController,
   InvoicesController,
@@ -37,11 +38,14 @@ import {
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { AuthSessionService } from "./auth-session.service";
+import { AgeGuard } from "./age.guard";
 import { AuthorizationGuard } from "./authorization.guard";
 import { FeatureFlagGuard } from "./feature-flag.guard";
 import { RealtimeGateway } from "./realtime.gateway";
 import { PrismaModule } from "./prisma.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
+import { InvoicesModule } from "./invoices/invoices.module";
+import { PaymentLinksModule } from "./payment-links/payment-links.module";
 import { ApprovalsModule } from "./approvals/approvals.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 import { VtuModule } from "./vtu/vtu.module";
@@ -85,6 +89,8 @@ import { NotificationsModule } from "./notifications/notifications.module";
     PrismaModule,
     ApprovalsModule,
     DigitalAccessModule,
+    InvoicesModule,
+    PaymentLinksModule,
     VouchersModule,
     VtuModule,
     TelecomGatewayModule,
@@ -122,6 +128,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     CompanyProfilesController,
     AdAccountsController,
     CampaignsController,
+    MeController,
     DestinationsController,
     LiveController,
     SmmController,
@@ -152,6 +159,12 @@ import { NotificationsModule } from "./notifications/notifications.module";
     {
       provide: APP_GUARD,
       useClass: AuthorizationGuard
+    },
+    // Runs after AuthorizationGuard so request.workspaceContext.userId is set and
+    // an unauthenticated caller gets 401/403 first. Enforces @RequireAdult().
+    {
+      provide: APP_GUARD,
+      useClass: AgeGuard
     },
     // Runs after AuthorizationGuard on purpose: an unauthorized caller gets
     // 401/403, not a 503 that would disclose which verticals exist.

@@ -4,15 +4,15 @@ import {
   ArrowRight,
   BarChart3,
   Bell,
-  CreditCard,
-  Film,
-  Globe,
-  Image,
+  Gift,
   Megaphone,
-  Palette,
+  Phone,
+  Plus,
+  Send,
   Sparkles,
   TrendingUp,
-  Wallet
+  Wallet,
+  type LucideIcon
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -28,23 +28,36 @@ import {
 } from "../campaigns/api";
 import { EmptyState, LoadingBlock } from "../campaigns/components";
 import { useCampaignDashboardData } from "../campaigns/use-campaign-dashboard-data";
+import { useFeatureFlags } from "../lib/feature-flags";
 import { formatNotificationTime } from "../notifications/api";
 import { useNotificationsData } from "../notifications/use-notifications-data";
 
-const QUICK_ACTIONS = [
-  { icon: Megaphone, label: "Create Campaign", href: "/os/campaigns/new", color: "var(--ft-accent)" },
-  { icon: Film, label: "Generate Video", href: "/os/studio", color: "var(--ft-blue)" },
-  { icon: Image, label: "Create Flyer", href: "/os/studio", color: "var(--ft-green)" },
-  { icon: CreditCard, label: "Recharge Wallet", href: "/os/wallet", color: "var(--ft-yellow)" },
-  { icon: Globe, label: "Launch SEO", href: "/os/growth", color: "var(--ft-purple)" },
-  { icon: Palette, label: "Motion Graphic", href: "/os/studio", color: "var(--ft-red)" },
+type QuickAction = { icon: LucideIcon; label: string; href: string; color: string; flag?: string };
+
+// Cross-domain quick actions — not campaign-only. Flag-gated entries only appear
+// when the vertical is switched on for this workspace, so we never link to a
+// service that answers 503 (matches the shell sidebar gating).
+const QUICK_ACTIONS: QuickAction[] = [
+  { icon: Megaphone, label: "New Campaign", href: "/os/campaigns/new", color: "var(--ft-accent)" },
+  { icon: Plus, label: "Fund Wallet", href: "/os/wallet", color: "var(--ft-yellow)" },
+  { icon: Phone, label: "Buy Airtime", href: "/os/airtime/airtime", color: "var(--ft-green)", flag: "vtu" },
+  { icon: Gift, label: "Gift Cards", href: "/os/digital-value", color: "var(--ft-purple)", flag: "giftCardSell" },
+  { icon: Send, label: "Send Money", href: "/os/financial-products/remittance", color: "var(--ft-blue)", flag: "remittance" },
+  { icon: Sparkles, label: "AI Studio", href: "/os/studio", color: "var(--ft-red)" },
 ];
 
 export default function DashboardPage() {
   const { aiInsights, analytics, campaigns, loading, wallet } = useCampaignDashboardData();
   const { loading: notifLoading, notifications } = useNotificationsData();
+  const { flags, ready: flagsReady } = useFeatureFlags();
+
+  const visibleQuickActions = QUICK_ACTIONS.filter(
+    (action) => !action.flag || (flagsReady && flags[action.flag] === true)
+  );
 
   const budgetCurrency = fallbackCurrency(campaigns, wallet);
+  const availableBalance = wallet?.availableBalance ?? null;
+  const heldBalance = wallet?.heldBalance ?? null;
   const spend = formatCampaignMoney({ amountMinor: totalBudgetMinor(campaigns), currency: budgetCurrency });
   const activeCampaigns = campaigns.filter((c) => c.status === "ACTIVE" || c.status === "RUNNING");
   const pendingReview = campaigns.filter((c) => c.status === "PENDING_REVIEW").length;
@@ -58,51 +71,74 @@ export default function DashboardPage() {
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
-      {/* Hero */}
-      <motion.section
-        animate={{ opacity: 1, y: 0 }}
-        className="relative overflow-hidden rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-gradient-to-br from-[var(--ft-bg-raised)] to-[var(--ft-bg-surface)] p-8 shadow-[var(--shadow-lg)]"
-        initial={{ opacity: 0, y: 12 }}
-      >
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 text-sm text-[var(--ft-text-muted)]">
-            <Sparkles className="size-4 text-[var(--ft-accent)]" />
-            <span>Your growth desk</span>
-          </div>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-            {loading ? "Loading your workspace..." : `${activeCampaigns.length} campaigns live right now`}
-          </h1>
-          <p className="mt-2 max-w-xl text-sm text-[var(--ft-text-secondary)]">
-            One view for briefs, launch prep, live spend, and reports across your workspace.
-          </p>
-        </div>
-        <div className="pointer-events-none absolute -right-20 -top-20 size-60 rounded-full bg-[var(--ft-accent)]/5 blur-3xl" />
-      </motion.section>
-
-      {/* Quick Actions */}
-      <section className="mt-6">
-        <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Quick actions</h2>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          {QUICK_ACTIONS.map((action, i) => (
-            <motion.a
+      {/* Wallet summary + quick actions — the command-centre band */}
+      <div className="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
+        {/* Wallet Summary */}
+        <section>
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Wallet summary</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <motion.div
               animate={{ opacity: 1, y: 0 }}
-              className="group flex flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 transition hover:border-[var(--ft-accent)]/30 hover:shadow-[var(--shadow-md)]"
-              href={action.href}
+              className="relative overflow-hidden rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-gradient-to-br from-[var(--ft-bg-raised)] to-[var(--ft-bg-surface)] p-5 shadow-[var(--shadow-md)]"
               initial={{ opacity: 0, y: 8 }}
-              key={action.label}
-              transition={{ delay: i * 0.03 }}
             >
-              <div
-                className="grid size-10 place-items-center rounded-[var(--radius-md)] transition group-hover:scale-110"
-                style={{ backgroundColor: `color-mix(in srgb, ${action.color} 12%, transparent)` }}
-              >
-                <action.icon className="size-5" style={{ color: action.color }} />
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[var(--ft-text-muted)]">Available balance</span>
+                <Wallet className="size-4 text-[var(--ft-accent)]" />
               </div>
-              <span className="text-center text-xs font-medium">{action.label}</span>
-            </motion.a>
-          ))}
-        </div>
-      </section>
+              <div className="mt-2 font-mono text-2xl font-bold">
+                {loading ? "..." : availableBalance ? formatCampaignMoney(availableBalance) : "—"}
+              </div>
+              <a className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--ft-accent)]" href="/os/wallet">
+                Manage wallet <ArrowRight className="size-3" />
+              </a>
+              <div className="pointer-events-none absolute -right-16 -top-16 size-40 rounded-full bg-[var(--ft-accent)]/5 blur-3xl" />
+            </motion.div>
+            <motion.div
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5"
+              initial={{ opacity: 0, y: 8 }}
+              transition={{ delay: 0.04 }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-[var(--ft-text-muted)]">Held for campaigns</span>
+                <TrendingUp className="size-4 text-[var(--ft-text-muted)]" />
+              </div>
+              <div className="mt-2 font-mono text-2xl font-bold">
+                {loading
+                  ? "..."
+                  : formatCampaignMoney(heldBalance ?? { amountMinor: 0, currency: budgetCurrency })}
+              </div>
+              <div className="mt-3 text-xs text-[var(--ft-text-muted)]">Reserved budget across active campaigns</div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Quick Actions */}
+        <section>
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Quick actions</h2>
+          <div className="grid grid-cols-3 gap-2">
+            {visibleQuickActions.map((action, i) => (
+              <motion.a
+                animate={{ opacity: 1, y: 0 }}
+                className="group flex flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 transition hover:border-[var(--ft-accent)]/30 hover:shadow-[var(--shadow-md)]"
+                href={action.href}
+                initial={{ opacity: 0, y: 8 }}
+                key={action.label}
+                transition={{ delay: i * 0.03 }}
+              >
+                <div
+                  className="grid size-10 place-items-center rounded-[var(--radius-md)] transition group-hover:scale-110"
+                  style={{ backgroundColor: `color-mix(in srgb, ${action.color} 12%, transparent)` }}
+                >
+                  <action.icon className="size-5" style={{ color: action.color }} />
+                </div>
+                <span className="text-center text-xs font-medium">{action.label}</span>
+              </motion.a>
+            ))}
+          </div>
+        </section>
+      </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
         {/* Left column */}
@@ -239,25 +275,6 @@ export default function DashboardPage() {
                   </div>
                 ))
               )}
-            </div>
-          </section>
-
-          {/* Wallet */}
-          <section className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold">Wallet</h2>
-              <a className="text-xs font-medium text-[var(--ft-accent)]" href="/os/wallet">View all</a>
-            </div>
-            <div className="mt-3">
-              <div className="text-xs text-[var(--ft-text-muted)]">Available balance</div>
-              <div className="mt-1 font-mono text-2xl">
-                {loading ? "..." : wallet ? formatCampaignMoney(wallet.availableBalance) : "—"}
-              </div>
-              {wallet && wallet.heldBalance.amountMinor > 0 ? (
-                <div className="mt-2 text-xs text-[var(--ft-text-muted)]">
-                  {formatCampaignMoney(wallet.heldBalance)} held for active campaigns
-                </div>
-              ) : null}
             </div>
           </section>
         </div>

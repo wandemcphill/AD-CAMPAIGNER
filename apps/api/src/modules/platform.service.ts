@@ -409,6 +409,44 @@ export class PlatformService {
     return this.prisma.client as unknown as DbClient;
   }
 
+  /**
+   * Records the signed-in user's date of birth. This is what unlocks the 18+
+   * age gate (see AgeGuard): the value is validated as a real past date and
+   * rejected if it implies an age under 18, so an under-age user cannot self-set
+   * a passing DOB. Returns the stored ISO date (no other user fields).
+   */
+  async updateMyDateOfBirth(context: AuthenticatedRequestContext, rawDateOfBirth: string) {
+    const userId = context.userId;
+    if (!userId) {
+      throw new BadRequestException("You must be signed in to update your profile.");
+    }
+
+    const parsed = new Date(rawDateOfBirth);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException("A valid date of birth is required.");
+    }
+    if (parsed.getTime() > Date.now()) {
+      throw new BadRequestException("Date of birth cannot be in the future.");
+    }
+
+    const eighteenthBirthday = new Date(
+      parsed.getFullYear() + 18,
+      parsed.getMonth(),
+      parsed.getDate()
+    );
+    if (eighteenthBirthday.getTime() > Date.now()) {
+      throw new BadRequestException("You must be at least 18 years old.");
+    }
+
+    const updated = await this.db.user.update({
+      where: { id: userId },
+      data: { dateOfBirth: parsed },
+      select: { dateOfBirth: true }
+    });
+
+    return { dateOfBirth: updated.dateOfBirth?.toISOString().slice(0, 10) ?? null };
+  }
+
   getHealth() {
     return {
       status: "ok",

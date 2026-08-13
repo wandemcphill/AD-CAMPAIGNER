@@ -3,6 +3,9 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Banknote,
+  Bitcoin,
+  Building2,
   CheckCircle2,
   CreditCard,
   Download,
@@ -11,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Ticket,
   WalletCards,
   X
 } from "lucide-react";
@@ -53,6 +57,9 @@ import type { BillingActivity } from "../../campaigns/data";
 import { useBillingData } from "../../campaigns/use-campaign-dashboard-data";
 import { useFeatureFlags } from "../../lib/feature-flags";
 import { useApiSession } from "../../lib/use-session";
+import { SectionTabs, type SectionTab } from "../section-tabs";
+
+const MONEY_TABS_BASE: SectionTab[] = [{ label: "Wallet", href: "/os/wallet", icon: WalletCards }];
 
 type BillingTab = "history" | "invoices" | "methods" | "withdraw";
 
@@ -94,19 +101,19 @@ const presetTopUps = ["10000", "25000", "50000", "100000"];
 
 const fundingTrustItems = [
   {
-    copy: "Campaign budgets move into a locked reserve only when the team is preparing an approved launch.",
+    copy: "Funds move into a locked reserve only when a payment or order is being prepared.",
     icon: WalletCards,
-    label: "Budget lock",
-    value: "Reserved before launch"
+    label: "Held balance",
+    value: "Reserved on demand"
   },
   {
-    copy: "Invoices explain the campaign service, funding reserve, gateway reference, and next action.",
+    copy: "Every invoice explains the service, amount, gateway reference, and next action.",
     icon: FileText,
     label: "Invoice clarity",
-    value: "Campaign-linked"
+    value: "Fully itemised"
   },
   {
-    copy: "Unspent campaign budget can return to available balance after reconciliation.",
+    copy: "Reserved funds return to your available balance after reconciliation.",
     icon: ShieldCheck,
     label: "Spend protection",
     value: "Auditable wallet trail"
@@ -240,10 +247,10 @@ function ActionRequiredPanel({
       ? "Budget lock active"
       : "No invoice action due";
   const body = hasPendingIntent
-    ? `${formatCampaignMoney(intent.amount)} is waiting for checkout. Complete payment to fund campaign launches.`
+    ? `${formatCampaignMoney(intent.amount)} is waiting for checkout. Complete payment to add it to your balance.`
     : heldMinor > 0
-      ? `${heldLabel} is locked for active campaigns. Funds return to available balance if a campaign ends under budget.`
-      : "When the team sends an invoice to activate a campaign, it will appear here above spend history.";
+      ? `${heldLabel} is reserved for pending orders. Funds return to available balance once they settle.`
+      : "When an invoice is issued, it will appear here above your transaction history.";
 
   return (
     <section className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-accent)]/40 bg-[var(--ft-accent-subtle)] p-4">
@@ -294,6 +301,15 @@ export default function BillingPage() {
   const [withdrawalsError, setWithdrawalsError] = useState<string>();
   const { flags } = useFeatureFlags();
   const visibleBillingTabs = billingTabs.filter((tab) => !tab.flag || flags[tab.flag] === true);
+  const moneyTabs: SectionTab[] = [
+    ...MONEY_TABS_BASE,
+    { label: "Vouchers", href: "/os/vouchers", icon: Ticket },
+    ...(flags["virtualAccounts"] === true || flags["virtualCards"] === true || flags["remittance"] === true
+      ? [{ label: "Financial Products", href: "/os/financial-products", icon: Building2 }]
+      : []),
+    ...(flags["cryptoSell"] === true ? [{ label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin }] : []),
+    ...(flags["rmbBuy"] === true ? [{ label: "Buy RMB", href: "/os/rmb", icon: Banknote }] : []),
+  ];
   const currency: CurrencyCode = wallet?.availableBalance.currency ?? "NGN";
   const available = wallet?.availableBalance ?? null;
   const held = wallet?.heldBalance ?? null;
@@ -481,6 +497,10 @@ export default function BillingPage() {
         }
         title="Wallet & Billing"
       />
+
+      <div className="mt-4">
+        <SectionTabs items={moneyTabs} />
+      </div>
 
       <ErrorNotice message={error ?? formError} />
 
@@ -713,7 +733,7 @@ export default function BillingPage() {
                         Add funds
                       </Button>
                     }
-                    copy="Add funds to your wallet to activate your first campaign."
+                    copy="Add funds to your wallet to pay for campaigns, services, and more."
                     icon={CreditCard}
                     title="No transactions yet"
                   />

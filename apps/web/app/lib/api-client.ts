@@ -133,6 +133,16 @@ export function isForbiddenError(error: unknown): boolean {
   return error instanceof ApiClientError && error.status === 403;
 }
 
+// True when a 403 is specifically the 18+ age gate (AgeGuard on the API), so the UI
+// can prompt the user to add their date of birth instead of showing a raw error.
+export function isAgeRestrictedError(error: unknown): boolean {
+  return (
+    error instanceof ApiClientError &&
+    error.status === 403 &&
+    /\b(18|date of birth)\b/i.test(error.message)
+  );
+}
+
 function endpoint(path: string) {
   return `${getApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
 }

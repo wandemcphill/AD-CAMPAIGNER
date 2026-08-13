@@ -4,14 +4,21 @@ import { useState } from "react";
 import {
   ArrowRight,
   BarChart3,
+  Bot,
   CalendarDays,
+  ClipboardCheck,
   Eye,
+  FileText,
   Filter,
+  Folder,
   Megaphone,
   Plus,
   RefreshCw,
   Search,
-  Sparkles
+  ShieldCheck,
+  Sparkles,
+  Wand2,
+  Workflow
 } from "lucide-react";
 
 import {
@@ -52,6 +59,19 @@ import {
 } from "../../campaigns/components";
 import { destinationLabels, objectiveLabels } from "../../campaigns/data";
 import { useCampaignDashboardData } from "../../campaigns/use-campaign-dashboard-data";
+import { useFeatureFlags } from "../../lib/feature-flags";
+import { useApiSession } from "../../lib/use-session";
+import { SectionTabs, type SectionTab } from "../section-tabs";
+
+const GROWTH_TABS_BASE: SectionTab[] = [
+  { label: "Campaigns", href: "/os/campaigns", icon: Megaphone },
+  { label: "Campaign Builder", href: "/os/campaigns/new", icon: Wand2 },
+  { label: "Analytics", href: "/os/analytics", icon: BarChart3 },
+  { label: "Reports", href: "/os/reports", icon: FileText },
+  { label: "Creative Library", href: "/os/library", icon: Folder },
+  { label: "AI Personas", href: "/os/personas", icon: Bot },
+  { label: "AI Studio", href: "/os/studio", icon: Sparkles },
+];
 
 const filterControlClass =
   "h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]";
@@ -131,6 +151,23 @@ function briefActionLabel(status: string) {
 export default function CampaignsPage() {
   const { aiInsights, analytics, campaigns, error, forbidden, loading, refresh, source, wallet } =
     useCampaignDashboardData();
+  const { flags, ready: flagsReady } = useFeatureFlags();
+  const { session } = useApiSession();
+
+  const growthTabs: SectionTab[] = [
+    ...GROWTH_TABS_BASE,
+    ...(flagsReady && flags["workflowAutomation"] === true
+      ? [{ label: "Automation", href: "/os/automation", icon: Workflow }]
+      : []),
+    ...(session?.isPlatformAdmin || session?.permissions?.includes("campaign:approve")
+      ? [{ label: "Approvals", href: "/os/approvals", icon: ClipboardCheck }]
+      : []),
+    ...(flagsReady &&
+    flags["trustEngine"] === true &&
+    (session?.isPlatformAdmin || session?.permissions?.includes("analytics:read"))
+      ? [{ label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck }]
+      : []),
+  ];
 
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [platformFilter, setPlatformFilter] = useState("ALL");
@@ -210,6 +247,10 @@ export default function CampaignsPage() {
         }
         title="Your Campaigns"
       />
+
+      <div className="mt-4">
+        <SectionTabs items={growthTabs} />
+      </div>
 
       <ErrorNotice message={error} />
 

@@ -29,7 +29,7 @@ export default function GrowthOrdersPage() {
         eyebrow={
           <>
             <Badge tone="info">Delivery transparency</Badge>
-            <Badge tone="warning">Supplier status mapped</Badge>
+            <Badge tone="warning">Live status</Badge>
           </>
         }
         title="Order tracking"

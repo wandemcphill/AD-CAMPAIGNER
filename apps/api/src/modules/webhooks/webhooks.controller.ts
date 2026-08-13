@@ -7,8 +7,11 @@ import { IncomingWebhooksService } from "./incoming-webhooks.service";
 import { ProviderWebhooksService } from "./provider-webhooks.service";
 import { OutgoingWebhooksService, SUPPORTED_WEBHOOK_EVENTS } from "./outgoing-webhooks.service";
 
+// Outgoing webhook config is internal platform infrastructure — platform-admin only,
+// not the workspace-wide "analytics:read". admin:access resolves solely from
+// isPlatformAdmin, so no workspace role (OWNER included) can list or mutate.
 @Controller("developer/webhooks")
-@RequirePermissions("analytics:read")
+@RequirePermissions("admin:access")
 export class OutgoingWebhooksController {
   constructor(@Inject(OutgoingWebhooksService) private readonly webhooks: OutgoingWebhooksService) {}
 
