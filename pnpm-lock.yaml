@@ -278,6 +278,9 @@ importers:
       '@fliptrybe/events':
         specifier: workspace:*
         version: link:../../packages/events
+      '@fliptrybe/feature-flags':
+        specifier: workspace:*
+        version: link:../../packages/feature-flags
       '@fliptrybe/providers':
         specifier: workspace:*
         version: link:../../packages/providers
