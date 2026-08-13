@@ -271,7 +271,6 @@ export function OsShell({ children }: { children: ReactNode }) {
     return unique.filter((item) => item.label.toLowerCase().includes(query));
     // canSeeNavItem closes over flags/session; recompute when the query or flag
     // readiness changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commandQuery, flagsReady, flags, session]);
 
   function runCommand(href: string) {

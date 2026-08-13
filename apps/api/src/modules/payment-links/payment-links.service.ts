@@ -1,11 +1,12 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { randomBytes } from "node:crypto";
+import { Prisma } from "@fliptrybe/database";
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type { CreatePaymentLinkDto } from "./payment-links.dtos";
 
-type DbClient = Record<string, any>;
+type PaymentLink = Prisma.PaymentLinkGetPayload<Record<string, never>>;
 
 function requireWorkspaceId(context: AuthenticatedRequestContext) {
   const workspaceId = context.workspaceId;
@@ -19,8 +20,8 @@ function requireWorkspaceId(context: AuthenticatedRequestContext) {
 export class PaymentLinksService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  private get db(): DbClient {
-    return this.prisma.client as unknown as DbClient;
+  private get db() {
+    return this.prisma.client;
   }
 
   async list(context: AuthenticatedRequestContext) {
@@ -119,7 +120,7 @@ export class PaymentLinksService {
   }
 }
 
-function serializePaymentLink(link: any) {
+function serializePaymentLink(link: PaymentLink) {
   return {
     id: link.id,
     reference: link.reference,

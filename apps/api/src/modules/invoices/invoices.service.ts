@@ -1,10 +1,11 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@fliptrybe/database";
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type { CreateInvoiceDto, InvoiceLineItemInput } from "./invoices.dtos";
 
-type DbClient = Record<string, any>;
+type InvoiceWithLineItems = Prisma.InvoiceGetPayload<{ include: { lineItems: true } }>;
 
 function requireWorkspaceId(context: AuthenticatedRequestContext) {
   const workspaceId = context.workspaceId;
@@ -44,8 +45,8 @@ function sanitizeLineItems(items: InvoiceLineItemInput[] | undefined) {
 export class InvoicesService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  private get db(): DbClient {
-    return this.prisma.client as unknown as DbClient;
+  private get db() {
+    return this.prisma.client;
   }
 
   async list(context: AuthenticatedRequestContext) {
@@ -138,7 +139,11 @@ export class InvoicesService {
       throw new NotFoundException("Invoice not found.");
     }
     if (invoice.status === "PAID") {
-      return serializeInvoice(await this.db.invoice.findFirst({ where: { id }, include: { lineItems: true } }));
+      const alreadyPaid = await this.db.invoice.findFirst({ where: { id }, include: { lineItems: true } });
+      if (!alreadyPaid) {
+        throw new NotFoundException("Invoice not found.");
+      }
+      return serializeInvoice(alreadyPaid);
     }
     if (invoice.status === "VOID") {
       throw new BadRequestException("A void invoice cannot be marked paid.");
@@ -169,7 +174,7 @@ export class InvoicesService {
   }
 }
 
-function serializeInvoice(invoice: any) {
+function serializeInvoice(invoice: InvoiceWithLineItems) {
   return {
     id: invoice.id,
     number: invoice.number,
@@ -185,7 +190,7 @@ function serializeInvoice(invoice: any) {
     dueAt: invoice.dueAt?.toISOString() ?? null,
     paidAt: invoice.paidAt?.toISOString() ?? null,
     createdAt: invoice.createdAt?.toISOString() ?? null,
-    lineItems: (invoice.lineItems ?? []).map((item: any) => ({
+    lineItems: invoice.lineItems.map((item) => ({
       id: item.id,
       description: item.description,
       quantity: item.quantity,

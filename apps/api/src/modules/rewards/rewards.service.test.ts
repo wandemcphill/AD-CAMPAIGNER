@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/unbound-method -- expect(mock.method) is the vitest pattern; see guest-checkout.integration.test.ts */
 import { BadRequestException, ConflictException } from "@nestjs/common";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { PrismaService } from "../prisma.service";
 import type { QueueProducerService } from "../queue-producer.service";
@@ -9,7 +10,7 @@ import { RewardsService } from "./rewards.service";
 
 const ctx = { userId: "user_1", workspaceId: "workspace_1" };
 
-function buildService(db: Record<string, any>, queueOverrides: Record<string, any> = {}) {
+function buildService(db: Record<string, unknown>, queueOverrides: Record<string, unknown> = {}) {
   const prisma = { client: db } as unknown as PrismaService;
   const queue = {
     enqueueRewardFulfillment: vi.fn(),
@@ -96,7 +97,7 @@ describe("RewardsService.submitTaskCompletion", () => {
   it("reserves exactly one slot when the last required task is verified, and is idempotent on re-check", async () => {
     let claimedSlots = 9;
     const totalSlots = 10;
-    let entitlementCreated: any = null;
+    let entitlementCreated: Record<string, unknown> | null = null;
 
     const db = {
       rewardTask: {
@@ -137,7 +138,7 @@ describe("RewardsService.submitTaskCompletion", () => {
       },
       rewardEntitlement: {
         findUnique: vi.fn(() => Promise.resolve(null)),
-        create: vi.fn((args: any) => {
+        create: vi.fn((args: { data: Record<string, unknown> }) => {
           entitlementCreated = args.data;
           return Promise.resolve(args.data);
         })
@@ -238,8 +239,8 @@ describe("RewardsService.submitTaskCompletion", () => {
 
 describe("RewardFulfillmentService.fulfillEntitlement", () => {
   it("credits the wallet with a stable idempotency key derived from the entitlement id", async () => {
-    let ledgerEntryCreated: any = null;
-    let fulfillmentCreated: any = null;
+    let ledgerEntryCreated: Record<string, unknown> | null = null;
+    let fulfillmentCreated: Record<string, unknown> | null = null;
 
     const db = {
       rewardEntitlement: {
@@ -255,17 +256,17 @@ describe("RewardFulfillmentService.fulfillEntitlement", () => {
         ),
         update: vi.fn(() => Promise.resolve({}))
       },
-      $transaction: vi.fn(async (fn: any) =>
+      $transaction: vi.fn((fn: (tx: Record<string, unknown>) => Promise<unknown>) =>
         fn({
           wallet: { findFirst: vi.fn(() => Promise.resolve({ id: "wallet_1" })) },
           ledgerEntry: {
-            create: vi.fn((args: any) => {
+            create: vi.fn((args: { data: Record<string, unknown> }) => {
               ledgerEntryCreated = args.data;
               return Promise.resolve(args.data);
             })
           },
           rewardFulfillment: {
-            create: vi.fn((args: any) => {
+            create: vi.fn((args: { data: Record<string, unknown> }) => {
               fulfillmentCreated = args.data;
               return Promise.resolve(args.data);
             })
@@ -308,7 +309,7 @@ describe("RewardFulfillmentService.fulfillEntitlement", () => {
         ),
         update: vi.fn(() => Promise.resolve({}))
       },
-      $transaction: vi.fn(async (fn: any) =>
+      $transaction: vi.fn((fn: (tx: Record<string, unknown>) => Promise<unknown>) =>
         fn({
           wallet: { findFirst: vi.fn(() => Promise.resolve(null)) },
           ledgerEntry: { create: vi.fn() },
@@ -329,6 +330,7 @@ describe("RewardFulfillmentService.fulfillEntitlement", () => {
 
     expect(db.rewardFulfillment.create).toHaveBeenCalledWith(
       expect.objectContaining({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         data: expect.objectContaining({ status: "AMBIGUOUS", entitlementId: "rent_2" })
       })
     );

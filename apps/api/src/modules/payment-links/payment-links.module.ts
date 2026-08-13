@@ -2,12 +2,13 @@ import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 
 import { PrismaModule } from "../prisma.module";
 import { AuthSessionService } from "../auth-session.service";
+import { NotificationsModule } from "../notifications/notifications.module";
 import { WorkspaceContextMiddleware } from "../workspace-context.middleware";
 import { PaymentLinksController, PublicPaymentLinksController } from "./payment-links.controller";
 import { PaymentLinksService } from "./payment-links.service";
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, NotificationsModule],
   controllers: [PaymentLinksController, PublicPaymentLinksController],
   providers: [AuthSessionService, WorkspaceContextMiddleware, PaymentLinksService],
   exports: [PaymentLinksService]
