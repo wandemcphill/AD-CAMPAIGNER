@@ -1,7 +1,7 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Banknote,
@@ -189,12 +189,13 @@ const MOBILE_NAV: NavItem[] = [
 
 export function OsShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { loading, session, signOut } = useApiSession();
   const { flags, ready: flagsReady } = useFeatureFlags();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
   const [assistantOpen, setAssistantOpen] = useState(false);
-  const [assistantMsg, setAssistantMsg] = useState("");
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -207,7 +208,11 @@ export function OsShell({ children }: { children: ReactNode }) {
     function handleKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
+        setCommandQuery("");
         setCommandOpen((prev) => !prev);
+      }
+      if (e.key === "Escape") {
+        setCommandOpen(false);
       }
     }
     window.addEventListener("keydown", handleKey);
@@ -248,6 +253,31 @@ export function OsShell({ children }: { children: ReactNode }) {
   function sectionIsActive(section: { href: string; children?: NavItem[] }) {
     if (isActive(section.href)) return true;
     return (section.children ?? []).some((child) => isActive(child.href));
+  }
+
+  // Command palette: search across every destination the user can actually reach
+  // (flag- and permission-filtered), so results never link to a 403/503 vertical.
+  const commandResults = useMemo(() => {
+    const query = commandQuery.trim().toLowerCase();
+    const reachable = ALL_NAV_ITEMS.filter(canSeeNavItem);
+    // De-duplicate by href (Money/Overview and a few labels share routes).
+    const seen = new Set<string>();
+    const unique = reachable.filter((item) => {
+      if (seen.has(item.href)) return false;
+      seen.add(item.href);
+      return true;
+    });
+    if (!query) return unique;
+    return unique.filter((item) => item.label.toLowerCase().includes(query));
+    // canSeeNavItem closes over flags/session; recompute when the query or flag
+    // readiness changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [commandQuery, flagsReady, flags, session]);
+
+  function runCommand(href: string) {
+    setCommandOpen(false);
+    setCommandQuery("");
+    router.push(href as Parameters<typeof router.push>[0]);
   }
 
   async function handleSignOut() {
@@ -534,8 +564,8 @@ export function OsShell({ children }: { children: ReactNode }) {
                     <Bot className="size-4 text-[var(--ft-accent)]" />
                   </div>
                   <div>
-                    <div className="text-sm font-semibold">AI Assistant</div>
-                    <div className="text-[10px] text-[var(--ft-green)]">Online</div>
+                    <div className="text-sm font-semibold">Quick Navigator</div>
+                    <div className="text-[10px] text-[var(--ft-text-muted)]">Jump to any tool</div>
                   </div>
                 </div>
                 <button onClick={() => setAssistantOpen(false)} type="button">
@@ -549,45 +579,44 @@ export function OsShell({ children }: { children: ReactNode }) {
                     <Bot className="size-3.5 text-[var(--ft-accent)]" />
                   </div>
                   <div className="rounded-[var(--radius-lg)] rounded-tl-sm bg-[var(--ft-bg-surface)] p-3 text-xs text-[var(--ft-text-secondary)]">
-                    Hi! I&apos;m your AI growth assistant. Ask me anything about your campaigns, analytics, creatives, or growth strategy.
+                    Jump straight to what you need. Conversational AI is on the way — for now, pick a shortcut below.
                   </div>
                 </div>
 
                 <div className="mt-3 grid gap-1.5">
                   {[
-                    "How are my campaigns performing?",
-                    "Suggest a new ad strategy",
-                    "Optimize my budget allocation",
-                    "Generate a performance report",
-                  ].map((suggestion) => (
+                    { label: "View campaign performance", href: "/os/analytics" },
+                    { label: "Open AI Studio", href: "/os/studio" },
+                    { label: "Check my wallet", href: "/os/wallet" },
+                    { label: "Generate a report", href: "/os/reports" },
+                  ].map((shortcut) => (
                     <button
                       className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-1.5 text-left text-xs text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)]/30"
-                      key={suggestion}
-                      onClick={() => setAssistantMsg(suggestion)}
+                      key={shortcut.href}
+                      onClick={() => {
+                        setAssistantOpen(false);
+                        runCommand(shortcut.href);
+                      }}
                       type="button"
                     >
-                      {suggestion}
+                      {shortcut.label}
                     </button>
                   ))}
                 </div>
               </div>
 
               <div className="border-t border-[var(--ft-border)] p-3">
-                <div className="flex gap-2">
-                  <input
-                    className="h-9 flex-1 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
-                    onChange={(e) => setAssistantMsg(e.target.value)}
-                    placeholder="Ask anything..."
-                    value={assistantMsg}
-                  />
-                  <button
-                    className="grid size-9 place-items-center rounded-[var(--radius-md)] bg-[var(--ft-accent)] text-[var(--ft-text-inverse)] transition hover:opacity-90 disabled:opacity-40"
-                    disabled={!assistantMsg.trim()}
-                    type="button"
-                  >
-                    <Send className="size-4" />
-                  </button>
-                </div>
+                <button
+                  className="flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-xs font-medium text-[var(--ft-text-secondary)] transition hover:text-[var(--ft-text-primary)]"
+                  onClick={() => {
+                    setAssistantOpen(false);
+                    setCommandQuery("");
+                    setCommandOpen(true);
+                  }}
+                  type="button"
+                >
+                  <Search className="size-3.5" /> Search all pages
+                </button>
               </div>
             </motion.div>
           )}
@@ -612,37 +641,45 @@ export function OsShell({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-[70] flex items-start justify-center pt-[15vh]">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setCommandOpen(false)} />
           <div className="relative w-full max-w-lg rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] shadow-[var(--shadow-xl)]">
-            <div className="flex items-center gap-3 border-b border-[var(--ft-border)] px-4">
+            <form
+              className="flex items-center gap-3 border-b border-[var(--ft-border)] px-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (commandResults[0]) runCommand(commandResults[0].href);
+              }}
+            >
               <Search className="size-4 text-[var(--ft-text-muted)]" />
               <input
                 autoFocus
                 className="h-12 flex-1 bg-transparent text-sm outline-none placeholder:text-[var(--ft-text-muted)]"
-                placeholder="Search campaigns, assets, people, or type a command..."
+                onChange={(e) => setCommandQuery(e.target.value)}
+                placeholder="Search for a page — campaigns, invoices, wallet, services..."
+                value={commandQuery}
               />
               <kbd className="rounded border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ft-text-muted)]">ESC</kbd>
-            </div>
+            </form>
             <div className="max-h-[360px] overflow-y-auto p-2">
-              <p className="px-3 py-2 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Quick actions</p>
-              {[
-                { icon: Wand2, label: "Create Campaign", desc: "AI-guided campaign builder" },
-                { icon: Sparkles, label: "Generate Creative", desc: "Open AI Studio" },
-                { icon: CreditCard, label: "Recharge Wallet", desc: "Add funds" },
-                { icon: BarChart3, label: "View Analytics", desc: "Campaign performance" },
-                { icon: Bot, label: "Ask AI Assistant", desc: "Get help with anything" },
-              ].map((action) => (
-                <button
-                  className="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left transition hover:bg-[var(--ft-bg-muted)]"
-                  key={action.label}
-                  onClick={() => setCommandOpen(false)}
-                  type="button"
-                >
-                  <action.icon className="size-4 text-[var(--ft-accent)]" />
-                  <div>
-                    <div className="text-sm font-medium">{action.label}</div>
-                    <div className="text-xs text-[var(--ft-text-muted)]">{action.desc}</div>
-                  </div>
-                </button>
-              ))}
+              <p className="px-3 py-2 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+                {commandQuery.trim() ? "Results" : "Go to"}
+              </p>
+              {commandResults.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-[var(--ft-text-muted)]">No matching pages.</p>
+              ) : (
+                commandResults.map((item) => (
+                  <button
+                    className="flex w-full items-center gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-left transition hover:bg-[var(--ft-bg-muted)]"
+                    key={item.href}
+                    onClick={() => runCommand(item.href)}
+                    type="button"
+                  >
+                    <item.icon className="size-4 text-[var(--ft-accent)]" />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">{item.label}</div>
+                      <div className="truncate text-xs text-[var(--ft-text-muted)]">{item.href}</div>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
