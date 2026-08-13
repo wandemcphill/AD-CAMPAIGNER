@@ -7,11 +7,10 @@ import {
   Download,
   Mail,
   Wallet,
-  Users,
+  Receipt,
   Gift,
-  Percent,
-  CreditCard,
-  Send,
+  Megaphone,
+  FileText,
   Loader2
 } from "lucide-react";
 
@@ -19,13 +18,17 @@ import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 
 import { getGuestReceipt, type GuestTransactionSummary } from "../../guest-checkout-api";
 
+// Every perk here must be something an account can actually do today. Cashback,
+// saved beneficiaries and "exclusive discounts" were previously listed and exist
+// nowhere in the codebase; virtual cards and send-money sit behind feature flags
+// that default off (see packages/feature-flags). Do not add a perk without
+// checking it ships.
 const PERKS = [
-  { icon: Users, label: "Save beneficiaries" },
-  { icon: Wallet, label: "View purchase history" },
-  { icon: Gift, label: "Earn cashback" },
-  { icon: Percent, label: "Access exclusive discounts" },
-  { icon: CreditCard, label: "Create virtual cards" },
-  { icon: Send, label: "Receive & send money" }
+  { icon: Receipt, label: "All your receipts in one place" },
+  { icon: Wallet, label: "Fund a wallet for faster checkout" },
+  { icon: Gift, label: "Rewards and vouchers" },
+  { icon: FileText, label: "Send invoices and payment links" },
+  { icon: Megaphone, label: "Run campaigns for your business" }
 ];
 
 function formatNaira(amountMinor: number, currency: string) {
