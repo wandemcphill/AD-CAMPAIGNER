@@ -9,6 +9,7 @@ import {
   Building2,
   CreditCard,
   FileText,
+  Link2,
   Send,
   Ticket,
   Wallet,
@@ -35,6 +36,7 @@ type MoneyEntry = {
 const ENTRIES: MoneyEntry[] = [
   { label: "Wallet", description: "Balance, funding & payouts", href: "/os/wallet", icon: Wallet },
   { label: "Invoices", description: "Bill customers and track payments", href: "/os/money/invoices" as Route, icon: FileText, flag: "invoicing" },
+  { label: "Payment Links", description: "Collect payments with a shareable link", href: "/os/money/payment-links" as Route, icon: Link2, flag: "paymentLinks" },
   { label: "Virtual Accounts", description: "Collect payments to dedicated accounts", href: "/os/financial-products/accounts", icon: Building2, flag: "virtualAccounts" },
   { label: "Virtual Cards", description: "Issue and manage spending cards", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" },
   { label: "Transfers", description: "Send money locally and abroad", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },

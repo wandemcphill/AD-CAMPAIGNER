@@ -45,6 +45,7 @@ import { RealtimeGateway } from "./realtime.gateway";
 import { PrismaModule } from "./prisma.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
 import { InvoicesModule } from "./invoices/invoices.module";
+import { PaymentLinksModule } from "./payment-links/payment-links.module";
 import { ApprovalsModule } from "./approvals/approvals.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 import { VtuModule } from "./vtu/vtu.module";
@@ -89,6 +90,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     ApprovalsModule,
     DigitalAccessModule,
     InvoicesModule,
+    PaymentLinksModule,
     VouchersModule,
     VtuModule,
     TelecomGatewayModule,

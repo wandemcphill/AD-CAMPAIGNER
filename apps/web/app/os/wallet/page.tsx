@@ -101,19 +101,19 @@ const presetTopUps = ["10000", "25000", "50000", "100000"];
 
 const fundingTrustItems = [
   {
-    copy: "Campaign budgets move into a locked reserve only when the team is preparing an approved launch.",
+    copy: "Funds move into a locked reserve only when a payment or order is being prepared.",
     icon: WalletCards,
-    label: "Budget lock",
-    value: "Reserved before launch"
+    label: "Held balance",
+    value: "Reserved on demand"
   },
   {
-    copy: "Invoices explain the campaign service, funding reserve, gateway reference, and next action.",
+    copy: "Every invoice explains the service, amount, gateway reference, and next action.",
     icon: FileText,
     label: "Invoice clarity",
-    value: "Campaign-linked"
+    value: "Fully itemised"
   },
   {
-    copy: "Unspent campaign budget can return to available balance after reconciliation.",
+    copy: "Reserved funds return to your available balance after reconciliation.",
     icon: ShieldCheck,
     label: "Spend protection",
     value: "Auditable wallet trail"
@@ -247,10 +247,10 @@ function ActionRequiredPanel({
       ? "Budget lock active"
       : "No invoice action due";
   const body = hasPendingIntent
-    ? `${formatCampaignMoney(intent.amount)} is waiting for checkout. Complete payment to fund campaign launches.`
+    ? `${formatCampaignMoney(intent.amount)} is waiting for checkout. Complete payment to add it to your balance.`
     : heldMinor > 0
-      ? `${heldLabel} is locked for active campaigns. Funds return to available balance if a campaign ends under budget.`
-      : "When the team sends an invoice to activate a campaign, it will appear here above spend history.";
+      ? `${heldLabel} is reserved for pending orders. Funds return to available balance once they settle.`
+      : "When an invoice is issued, it will appear here above your transaction history.";
 
   return (
     <section className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-accent)]/40 bg-[var(--ft-accent-subtle)] p-4">
@@ -733,7 +733,7 @@ export default function BillingPage() {
                         Add funds
                       </Button>
                     }
-                    copy="Add funds to your wallet to activate your first campaign."
+                    copy="Add funds to your wallet to pay for campaigns, services, and more."
                     icon={CreditCard}
                     title="No transactions yet"
                   />

@@ -692,6 +692,7 @@ model Workspace {
   vouchers                       Voucher[]
   campaignInvoices               CampaignInvoice[]
   invoices                       Invoice[]
+  paymentLinks                   PaymentLink[]
   campaignLedgerEntries          CampaignLedgerEntry[]
   eventOutbox                    EventOutbox[]
   notifications                  Notification[]
@@ -1419,6 +1420,36 @@ model InvoiceLineItem {
   invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId])
+}
+
+// A shareable link that collects a payment. A null amountMinor means the payer
+// chooses the amount. All monetary values are minor units.
+enum PaymentLinkStatus {
+  ACTIVE
+  DISABLED
+  EXPIRED
+}
+
+model PaymentLink {
+  id                  String            @id @default(uuid())
+  workspaceId         String
+  reference           String            @unique
+  title               String
+  description         String?
+  amountMinor         Int?
+  currency            String            @default("NGN")
+  status              PaymentLinkStatus @default(ACTIVE)
+  collectCustomerInfo Boolean           @default(false)
+  timesPaid           Int               @default(0)
+  totalCollectedMinor Int               @default(0)
+  expiresAt           DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  deletedAt           DateTime?
+  workspace           Workspace         @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId, status, createdAt])
+  @@index([deletedAt])
 }
 
 model CampaignBudgetHold {
