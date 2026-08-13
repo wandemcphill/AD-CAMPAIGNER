@@ -16,9 +16,9 @@ import {
   FileText,
   Folder,
   Gift,
-  GraduationCap,
   Globe,
   Globe2,
+  GraduationCap,
   KeyRound,
   LayoutDashboard,
   LifeBuoy,
@@ -65,114 +65,121 @@ type NavItem = {
   permission?: string;
   flag?: string;
 };
-type NavGroup = { title: string; items: NavItem[] };
+/**
+ * A primary customer destination. `children` are the section's second-level
+ * pages, shown inline (accordion-style) only while that section is active. Many
+ * of these sub-pages live at non-co-located routes (e.g. /os/analytics,
+ * /os/library) that no route-subtree layout can wrap, so the shell itself owns
+ * their contextual navigation.
+ */
+type NavSection = NavItem & { children?: NavItem[] };
 
-const NAV_GROUPS: NavGroup[] = [
+// Phase 4 nav restructuring: the sidebar used to be a flat registry of every
+// module (~10 groups / ~40 items). It now exposes 6 primary destinations plus
+// an account group; the individual sub-pages that used to be top-level items
+// (Analytics, Reports, Automation, Library, Personas, Studio, the service
+// verticals, financial products, etc.) are reachable via SectionTabs / hub
+// pages nested under these primaries. See apps/web/app/os/campaigns/page.tsx,
+// wallet/page.tsx, marketplace/page.tsx, rewards/page.tsx and services/page.tsx.
+const PRIMARY_NAV: NavSection[] = [
+  { label: "Home", href: "/os", icon: LayoutDashboard },
   {
-    title: "Core",
-    items: [
-      { label: "Dashboard", href: "/os", icon: LayoutDashboard },
+    label: "Growth",
+    href: "/os/campaigns",
+    icon: Megaphone,
+    children: [
+      { label: "Campaign Builder", href: "/os/campaigns/new", icon: Wand2 },
+      { label: "Campaign Manager", href: "/os/campaigns", icon: Megaphone },
       { label: "AI Studio", href: "/os/studio", icon: Sparkles },
-      { label: "Search", href: "/os/search", icon: Search },
-    ],
-  },
-  {
-    title: "Governance",
-    items: [
-      // Server-side enforcement (RequirePermissions("admin:access", "campaign:approve")
-      // on ApprovalsController) is what actually protects /os/approvals — this
-      // permission check just keeps the link out of the sidebar for users who'd get
-      // a 403 anyway.
+      { label: "Analytics", href: "/os/analytics", icon: BarChart3 },
+      { label: "Reports", href: "/os/reports", icon: FileText },
+      { label: "Automation", href: "/os/automation", icon: Workflow, flag: "workflowAutomation" },
+      { label: "Creative Library", href: "/os/library", icon: Folder },
+      { label: "AI Personas", href: "/os/personas", icon: Bot },
+      { label: "Growth Services", href: "/os/growth", icon: Zap },
+      // Server-side @RequirePermissions is the real guard; the permission field
+      // just keeps the link out of the sidebar for users who'd get a 403.
       { label: "Approvals", href: "/os/approvals", icon: ClipboardCheck, permission: "campaign:approve" },
-      // Mirrors TrustEngineController's @RequirePermissions("analytics:read") gate —
-      // server-side enforcement is what actually protects /os/trust-engine.
       { label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck, permission: "analytics:read", flag: "trustEngine" },
     ],
   },
   {
-    title: "Campaigns",
-    items: [
-      { label: "Campaign Builder", href: "/os/campaigns/new", icon: Wand2 },
-      { label: "Campaign Manager", href: "/os/campaigns", icon: Megaphone },
-      { label: "Analytics", href: "/os/analytics", icon: BarChart3 },
-      { label: "Reports", href: "/os/reports", icon: FileText },
-      { label: "Automation", href: "/os/automation", icon: Workflow, flag: "workflowAutomation" },
+    label: "Money",
+    href: "/os/wallet",
+    icon: Banknote,
+    children: [
+      { label: "Wallet", href: "/os/wallet", icon: CreditCard },
+      { label: "Virtual Accounts", href: "/os/financial-products/accounts", icon: Building2, flag: "virtualAccounts" },
+      { label: "Virtual Cards", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" },
+      { label: "Transfers", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },
     ],
   },
   {
-    title: "Creative",
-    items: [
-      { label: "Creative Library", href: "/os/library", icon: Folder },
-      { label: "AI Personas", href: "/os/personas", icon: Bot },
-    ],
-  },
-  {
-    title: "Growth",
-    items: [
-      { label: "Growth Services", href: "/os/growth", icon: Zap },
+    label: "Services",
+    href: "/os/services",
+    icon: Store,
+    children: [
+      { label: "Airtime", href: "/os/airtime/airtime", icon: Phone, flag: "vtu" },
+      { label: "Data", href: "/os/airtime/data", icon: Wifi, flag: "vtu" },
+      { label: "Gift Cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+      { label: "International Top-Up", href: "/os/telecom", icon: Globe2, flag: "telecomGateway" },
+      { label: "International Numbers", href: "/os/numbers", icon: Globe, flag: "virtualNumbers" },
+      { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone, flag: "virtualNumbers" },
+      { label: "Electricity", href: "/os/utilities/electricity", icon: Lightbulb, flag: "billsElectricity" },
+      { label: "Cable TV", href: "/os/utilities/cable", icon: Tv, flag: "billsCable" },
+      { label: "Education", href: "/os/utilities/education", icon: GraduationCap, flag: "billsEducation" },
+      { label: "Bet Funding", href: "/os/utilities/betting", icon: Trophy, flag: "billsBetting" },
+      { label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell" },
+      { label: "Buy RMB", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" },
       { label: "Digital Access", href: "/os/digital-access", icon: KeyRound, flag: "digitalAccess" },
-      { label: "Marketplace", href: "/os/marketplace", icon: Store },
+    ],
+  },
+  {
+    label: "Marketplace",
+    href: "/os/marketplace",
+    icon: Building2,
+    children: [
+      { label: "Discover", href: "/os/marketplace", icon: Store },
       { label: "Agencies", href: "/os/marketplace/agencies", icon: Briefcase },
       { label: "Creators", href: "/os/marketplace/creators", icon: Globe },
     ],
   },
   {
-    title: "Digital Products",
-    items: [
-      { label: "International Numbers", href: "/os/numbers", icon: Globe, flag: "virtualNumbers" },
-      { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone, flag: "virtualNumbers" },
-      { label: "Gift Cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
-      { label: "Airtime", href: "/os/airtime/airtime", icon: Phone, flag: "vtu" },
-      { label: "Data", href: "/os/airtime/data", icon: Wifi, flag: "vtu" },
-      { label: "International Top-Up", href: "/os/telecom", icon: Globe2, flag: "telecomGateway" },
-      { label: "Electricity", href: "/os/utilities/electricity", icon: Lightbulb, flag: "billsElectricity" },
-      { label: "Cable TV", href: "/os/utilities/cable", icon: Tv, flag: "billsCable" },
-      { label: "Bet Funding", href: "/os/utilities/betting", icon: Trophy, flag: "billsBetting" },
-      { label: "Education", href: "/os/utilities/education", icon: GraduationCap, flag: "billsEducation" },
-      { label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell" },
-      { label: "Buy RMB", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" },
-    ],
-  },
-  {
-    title: "Financial Products",
-    items: [
-      { label: "Virtual Accounts", href: "/os/financial-products/accounts", icon: Building2, flag: "virtualAccounts" },
-      { label: "Virtual Cards", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" },
-      { label: "Remittance", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },
-    ],
-  },
-  {
-    title: "Rewards",
-    items: [
+    label: "Rewards",
+    href: "/os/rewards",
+    icon: Trophy,
+    // No section-level flag: Vouchers is always available, so the section renders
+    // whenever any child is visible. The reward-specific children keep their own
+    // "rewards" flag, so they hide together when the vertical is off.
+    children: [
       { label: "Reward Campaigns", href: "/os/rewards", icon: Trophy, flag: "rewards" },
       { label: "My Progress", href: "/os/rewards/progress", icon: Gift, flag: "rewards" },
       { label: "Scan QR", href: "/os/rewards/scan", icon: QrCode, flag: "rewards" },
-    ],
-  },
-  {
-    title: "Finance",
-    items: [
-      { label: "Wallet", href: "/os/wallet", icon: CreditCard },
       { label: "Vouchers", href: "/os/vouchers", icon: Ticket },
-    ],
-  },
-  {
-    title: "Workspace",
-    items: [
-      { label: "Team", href: "/os/team", icon: Users },
-      { label: "Notifications", href: "/os/notifications", icon: Bell },
-      { label: "Support", href: "/os/support", icon: LifeBuoy, flag: "support" },
-      { label: "Profile", href: "/os/profile", icon: UserCircle },
-      { label: "Settings", href: "/os/settings", icon: Settings },
     ],
   },
 ];
 
+const ACCOUNT_NAV: NavItem[] = [
+  { label: "Team", href: "/os/team", icon: Users },
+  { label: "Transactions", href: "/os/wallet", icon: FileText },
+  { label: "Notifications", href: "/os/notifications", icon: Bell },
+  { label: "Support", href: "/os/support", icon: LifeBuoy, flag: "support" },
+  { label: "Profile", href: "/os/profile", icon: UserCircle },
+  { label: "Settings", href: "/os/settings", icon: Settings },
+];
+
+// Flat lookup of every navigable item, used for the header title.
+const ALL_NAV_ITEMS: NavItem[] = [
+  ...PRIMARY_NAV.flatMap((section) => [section, ...(section.children ?? [])]),
+  ...ACCOUNT_NAV,
+];
+
 const MOBILE_NAV: NavItem[] = [
   { label: "Home", href: "/os", icon: LayoutDashboard },
-  { label: "Studio", href: "/os/studio", icon: Sparkles },
-  { label: "Campaigns", href: "/os/campaigns", icon: Megaphone },
-  { label: "Wallet", href: "/os/wallet", icon: CreditCard },
+  { label: "Growth", href: "/os/campaigns", icon: Megaphone },
+  { label: "Money", href: "/os/wallet", icon: Banknote },
+  { label: "Services", href: "/os/services", icon: Store },
   { label: "More", href: "/os/search", icon: Menu },
 ];
 
@@ -227,10 +234,17 @@ export function OsShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const visibleNavGroups = NAV_GROUPS.map((group) => ({
-    ...group,
-    items: group.items.filter(canSeeNavItem)
-  })).filter((group) => group.items.length > 0);
+  const visiblePrimary = PRIMARY_NAV.filter(canSeeNavItem).map((section) => ({
+    ...section,
+    children: (section.children ?? []).filter(canSeeNavItem)
+  }));
+  const visibleAccount = ACCOUNT_NAV.filter(canSeeNavItem);
+
+  // A section is expanded when it — or any of its children — is the active route.
+  function sectionIsActive(section: { href: string; children?: NavItem[] }) {
+    if (isActive(section.href)) return true;
+    return (section.children ?? []).some((child) => isActive(child.href));
+  }
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -264,12 +278,53 @@ export function OsShell({ children }: { children: ReactNode }) {
         </button>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
-          {visibleNavGroups.map((group) => (
-            <div className="mb-4" key={group.title}>
+          <div className="mb-4">
+            {visiblePrimary.map((section) => {
+              const expanded = sectionIsActive(section);
+              return (
+                <div key={section.href}>
+                  <a
+                    className={cn(
+                      "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium transition",
+                      expanded
+                        ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
+                        : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
+                    )}
+                    href={section.href}
+                  >
+                    <section.icon className="size-4 shrink-0" />
+                    {section.label}
+                  </a>
+                  {expanded && section.children.length > 0 && (
+                    <div className="my-1 ml-[22px] flex flex-col gap-0.5 border-l border-[var(--ft-border)] pl-2">
+                      {section.children.map((child) => (
+                        <a
+                          className={cn(
+                            "flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-[12.5px] transition",
+                            isActive(child.href)
+                              ? "font-medium text-[var(--ft-accent)]"
+                              : "text-[var(--ft-text-secondary)] hover:text-[var(--ft-text-primary)]"
+                          )}
+                          href={child.href}
+                          key={child.href}
+                        >
+                          <child.icon className="size-3.5 shrink-0" />
+                          {child.label}
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {visibleAccount.length > 0 && (
+            <div className="mb-4">
               <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                {group.title}
+                Account
               </p>
-              {group.items.map((item) => (
+              {visibleAccount.map((item) => (
                 <a
                   className={cn(
                     "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium transition",
@@ -285,7 +340,7 @@ export function OsShell({ children }: { children: ReactNode }) {
                 </a>
               ))}
             </div>
-          ))}
+          )}
         </nav>
 
         <div className="border-t border-[var(--ft-border)] p-3">
@@ -320,16 +375,52 @@ export function OsShell({ children }: { children: ReactNode }) {
               <span className="text-sm font-bold">FlipTrybe</span>
               <button onClick={() => setSidebarOpen(false)} type="button"><X className="size-5" /></button>
             </div>
-            {visibleNavGroups.map((group) => (
-              <div className="mb-4" key={group.title}>
-                <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">{group.title}</p>
-                {group.items.map((item) => (
+            <div className="mb-4">
+              {visiblePrimary.map((section) => {
+                const expanded = sectionIsActive(section);
+                return (
+                  <div key={section.href}>
+                    <a
+                      className={cn(
+                        "flex h-10 items-center gap-3 rounded-[var(--radius-md)] px-3 text-sm font-medium transition",
+                        expanded ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]" : "text-[var(--ft-text-secondary)]"
+                      )}
+                      href={section.href}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <section.icon className="size-4" />
+                      {section.label}
+                    </a>
+                    {expanded && section.children.length > 0 && (
+                      <div className="my-1 ml-6 flex flex-col gap-0.5 border-l border-[var(--ft-border)] pl-2">
+                        {section.children.map((child) => (
+                          <a
+                            className={cn(
+                              "flex h-9 items-center gap-2 rounded-[var(--radius-md)] px-3 text-[13px] transition",
+                              isActive(child.href) ? "font-medium text-[var(--ft-accent)]" : "text-[var(--ft-text-secondary)]"
+                            )}
+                            href={child.href}
+                            key={child.href}
+                            onClick={() => setSidebarOpen(false)}
+                          >
+                            <child.icon className="size-4" />
+                            {child.label}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {visibleAccount.length > 0 && (
+              <div className="mb-4">
+                <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Account</p>
+                {visibleAccount.map((item) => (
                   <a
                     className={cn(
                       "flex h-10 items-center gap-3 rounded-[var(--radius-md)] px-3 text-sm font-medium transition",
-                      isActive(item.href)
-                        ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
-                        : "text-[var(--ft-text-secondary)]"
+                      isActive(item.href) ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]" : "text-[var(--ft-text-secondary)]"
                     )}
                     href={item.href}
                     key={item.href}
@@ -340,7 +431,7 @@ export function OsShell({ children }: { children: ReactNode }) {
                   </a>
                 ))}
               </div>
-            ))}
+            )}
             <div className="border-t border-[var(--ft-border)] px-3 pt-3">
               <button
                 className="flex h-10 w-full items-center gap-3 rounded-[var(--radius-md)] px-3 text-sm font-medium text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)] disabled:opacity-60"
@@ -365,7 +456,7 @@ export function OsShell({ children }: { children: ReactNode }) {
               <Menu className="size-5 text-[var(--ft-text-muted)]" />
             </button>
             <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
-              {NAV_GROUPS.flatMap((g) => g.items).find((i) => isActive(i.href))?.label ?? "FlipTrybe"}
+              {ALL_NAV_ITEMS.filter((i) => isActive(i.href)).sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "FlipTrybe"}
             </div>
           </div>
           <div className="flex items-center gap-1">

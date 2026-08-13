@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2, Trophy, Users, Zap } from "lucide-react";
+import { Gift, Plus, QrCode, Trash2, Trophy, Users, Zap } from "lucide-react";
 import Link from "next/link";
 
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
@@ -15,6 +15,13 @@ import {
 } from "../../rewards/api";
 import { loadVoucherProducts, type VoucherProduct } from "../../vouchers/api";
 import { ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
+import { SectionTabs, type SectionTab } from "../section-tabs";
+
+const REWARDS_TABS: SectionTab[] = [
+  { label: "Reward Campaigns", href: "/os/rewards", icon: Trophy },
+  { label: "My Progress", href: "/os/rewards/progress", icon: Gift },
+  { label: "Scan QR", href: "/os/rewards/scan", icon: QrCode },
+];
 
 const TASK_TYPE_LABELS: Record<RewardTaskType, string> = {
   QR_SCAN: "Scan a QR code",
@@ -324,6 +331,8 @@ export default function RewardsPage() {
         title="Reward Campaigns"
         eyebrow={<><Trophy className="h-4 w-4" /><span>Rewards</span></>}
       />
+
+      <SectionTabs items={REWARDS_TABS} />
 
       <NewCampaignPanel onCreated={refresh} />
 

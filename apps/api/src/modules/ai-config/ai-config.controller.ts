@@ -6,8 +6,12 @@ import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../re
 import { AiConfigService } from "./ai-config.service";
 import type { UpdateAiConfigDto } from "./ai-config.dtos";
 
+// AI provider configuration (model provider, API endpoint, system-prompt override)
+// is internal infrastructure that must never leak to customers. Both read and write
+// are platform-admin only. "analytics:read" is held by every workspace role, so it
+// must NOT gate reads here; admin:access resolves solely from isPlatformAdmin.
 @Controller("ai-config")
-@RequirePermissions("analytics:read")
+@RequirePermissions("admin:access")
 @RequireFeature("aiCampaignAssistant")
 export class AiConfigController {
   constructor(@Inject(AiConfigService) private readonly aiConfig: AiConfigService) {}

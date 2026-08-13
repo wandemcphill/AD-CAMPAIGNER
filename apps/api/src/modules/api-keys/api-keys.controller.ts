@@ -4,8 +4,12 @@ import { RequirePermissions } from "../authorization.decorators";
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
 import { ApiKeysService } from "./api-keys.service";
 
+// API keys are internal platform infrastructure: listing (even masked metadata),
+// creating, and revoking are all platform-admin only. "analytics:read" is held by
+// every workspace role (down to VIEWER), so gating reads on it would let any member
+// enumerate a workspace's keys. admin:access resolves solely from isPlatformAdmin.
 @Controller("developer/api-keys")
-@RequirePermissions("analytics:read")
+@RequirePermissions("admin:access")
 export class ApiKeysController {
   constructor(@Inject(ApiKeysService) private readonly apiKeys: ApiKeysService) {}
 

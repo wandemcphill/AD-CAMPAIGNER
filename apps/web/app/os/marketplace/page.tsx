@@ -15,6 +15,13 @@ import {
   type MarketplaceAgencyRecord,
   type MarketplaceCreatorRecord
 } from "../../marketplace/api";
+import { SectionTabs, type SectionTab } from "../section-tabs";
+
+const MARKETPLACE_TABS: SectionTab[] = [
+  { label: "Overview", href: "/os/marketplace", icon: Store },
+  { label: "Agencies", href: "/os/marketplace/agencies", icon: Briefcase },
+  { label: "Creators", href: "/os/marketplace/creators", icon: Globe },
+];
 
 export default function MarketplacePage() {
   const [query, setQuery] = useState("");
@@ -44,6 +51,8 @@ export default function MarketplacePage() {
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
+      <SectionTabs items={MARKETPLACE_TABS} />
+
       {/* Hero */}
       <motion.div
         animate={{ opacity: 1, y: 0 }}

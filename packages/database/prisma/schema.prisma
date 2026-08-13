@@ -594,6 +594,11 @@ model User {
   username                       String                          @unique
   name                           String
   displayName                    String?
+  // Date of birth, used to enforce the 18+ age gate on financial products and
+  // managed ad campaigns (see AgeGuard / @RequireAdult). Nullable because it is
+  // collected during onboarding/KYC, not at account creation; a null value is
+  // treated as "not yet verified" and fails the gate.
+  dateOfBirth                    DateTime?
   defaultWorkspaceId             String?
   status                         UserStatus                      @default(ACTIVE)
   isPlatformAdmin                Boolean                         @default(false)

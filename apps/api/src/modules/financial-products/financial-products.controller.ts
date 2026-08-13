@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
 
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
+import { RequireAdult } from "../age.decorators";
 import { RequirePermissions } from "../authorization.decorators";
 import { RequireFeature } from "../feature-flag.decorators";
 import type {
@@ -13,7 +14,11 @@ import type {
 } from "./financial-products.dtos";
 import { FinancialProductsService } from "./financial-products.service";
 
+// Virtual accounts, cards and remittance are age-restricted (18+) per the route
+// map. @RequireAdult on the controller applies to every route here, including the
+// read endpoints — an under-18 user cannot even enumerate these products.
 @Controller("financial-products")
+@RequireAdult()
 export class FinancialProductsController {
   constructor(
     @Inject(FinancialProductsService) private readonly financial: FinancialProductsService

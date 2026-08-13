@@ -3,6 +3,9 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Banknote,
+  Bitcoin,
+  Building2,
   CheckCircle2,
   CreditCard,
   Download,
@@ -11,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Ticket,
   WalletCards,
   X
 } from "lucide-react";
@@ -53,6 +57,9 @@ import type { BillingActivity } from "../../campaigns/data";
 import { useBillingData } from "../../campaigns/use-campaign-dashboard-data";
 import { useFeatureFlags } from "../../lib/feature-flags";
 import { useApiSession } from "../../lib/use-session";
+import { SectionTabs, type SectionTab } from "../section-tabs";
+
+const MONEY_TABS_BASE: SectionTab[] = [{ label: "Wallet", href: "/os/wallet", icon: WalletCards }];
 
 type BillingTab = "history" | "invoices" | "methods" | "withdraw";
 
@@ -294,6 +301,15 @@ export default function BillingPage() {
   const [withdrawalsError, setWithdrawalsError] = useState<string>();
   const { flags } = useFeatureFlags();
   const visibleBillingTabs = billingTabs.filter((tab) => !tab.flag || flags[tab.flag] === true);
+  const moneyTabs: SectionTab[] = [
+    ...MONEY_TABS_BASE,
+    { label: "Vouchers", href: "/os/vouchers", icon: Ticket },
+    ...(flags["virtualAccounts"] === true || flags["virtualCards"] === true || flags["remittance"] === true
+      ? [{ label: "Financial Products", href: "/os/financial-products", icon: Building2 }]
+      : []),
+    ...(flags["cryptoSell"] === true ? [{ label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin }] : []),
+    ...(flags["rmbBuy"] === true ? [{ label: "Buy RMB", href: "/os/rmb", icon: Banknote }] : []),
+  ];
   const currency: CurrencyCode = wallet?.availableBalance.currency ?? "NGN";
   const available = wallet?.availableBalance ?? null;
   const held = wallet?.heldBalance ?? null;
@@ -481,6 +497,10 @@ export default function BillingPage() {
         }
         title="Wallet & Billing"
       />
+
+      <div className="mt-4">
+        <SectionTabs items={moneyTabs} />
+      </div>
 
       <ErrorNotice message={error ?? formError} />
 

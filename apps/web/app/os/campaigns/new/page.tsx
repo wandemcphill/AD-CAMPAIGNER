@@ -54,8 +54,10 @@ import {
 } from "../../../campaigns/components";
 import { destinationLabels, objectiveLabels, objectiveOptions } from "../../../campaigns/data";
 import { useCampaignBuilderData } from "../../../campaigns/use-campaign-dashboard-data";
+import { isAgeRestrictedError } from "../../../lib/api-client";
 import { useApiSession } from "../../../lib/use-session";
 import { loadPersonas, type PersonaRecord } from "../../../personas/api";
+import { AgeGateNotice } from "../../age-gate-notice";
 
 type CampaignFormState = {
   ageRange: string;
@@ -498,6 +500,7 @@ export default function NewCampaignPage() {
   const [createdCampaign, setCreatedCampaign] = useState<Campaign>();
   const [formError, setFormError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
+  const [ageRestricted, setAgeRestricted] = useState(false);
   const [personas, setPersonas] = useState<PersonaRecord[]>([]);
 
   useEffect(() => {
@@ -605,8 +608,14 @@ export default function NewCampaignPage() {
           "Your campaign was saved as a draft, but we could not send it to the team just now. Open it from your campaigns list to try submitting again."
         );
       }
-    } catch {
-      setFormError("We could not send this brief right now. Your draft is still here, so try again in a moment.");
+    } catch (caught) {
+      if (isAgeRestrictedError(caught)) {
+        // POST /campaigns is 18+ (AgeGuard). Prompt for date of birth instead of a
+        // generic retry message the user can't act on.
+        setAgeRestricted(true);
+      } else {
+        setFormError("We could not send this brief right now. Your draft is still here, so try again in a moment.");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -665,6 +674,12 @@ export default function NewCampaignPage() {
       />
 
       <ErrorNotice message={formError ?? error} />
+
+      {ageRestricted ? (
+        <div className="mt-4">
+          <AgeGateNotice feature="Creating an ad campaign" />
+        </div>
+      ) : null}
 
       {!businessProfileComplete ? (
         <Panel className="mt-6 overflow-hidden border-[var(--ft-accent)]/35">

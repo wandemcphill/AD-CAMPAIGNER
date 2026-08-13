@@ -24,6 +24,7 @@ import type {
   UpdateGrowthServiceDto
 } from "./platform.dtos";
 import { AuthSessionService } from "./auth-session.service";
+import { RequireAdult } from "./age.decorators";
 import { Public, RequirePermissions } from "./authorization.decorators";
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
@@ -306,6 +307,26 @@ export class AdAccountsController {
   }
 }
 
+// The signed-in user's own account settings. analytics:read is the broadest
+// permission (held by every workspace role), so any authenticated member can set
+// their own date of birth — the value that unlocks the 18+ age gate.
+@Controller("me")
+@RequirePermissions("analytics:read")
+export class MeController {
+  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+
+  @Patch("date-of-birth")
+  setDateOfBirth(
+    @Body() body: { dateOfBirth: string },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.platform.updateMyDateOfBirth(
+      workspaceContextFromRequest(request),
+      body?.dateOfBirth
+    );
+  }
+}
+
 @Controller("campaigns")
 @RequirePermissions("analytics:read")
 export class CampaignsController {
@@ -345,14 +366,18 @@ export class CampaignsController {
     return this.managedAds.getCampaign(workspaceContextFromRequest(request), id);
   }
 
+  // Managed ad campaigns are age-restricted (18+) per the route map. The gate is on
+  // creation only — listing/viewing existing campaigns is not age-gated.
   @Post()
   @RequirePermissions("campaign:create")
+  @RequireAdult()
   create(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
     return this.managedAds.createCampaign(workspaceContextFromRequest(request), body);
   }
 
   @Post("wizard")
   @RequirePermissions("campaign:create")
+  @RequireAdult()
   createFromWizard(@Body() body: Record<string, unknown>, @Req() request: WorkspaceContextRequest) {
     return this.managedAds.createCampaignFromWizard(workspaceContextFromRequest(request), body);
   }

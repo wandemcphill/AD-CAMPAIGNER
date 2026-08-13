@@ -53,11 +53,15 @@ const SETTINGS_NAV: SettingsNavGroup[] = [
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { session } = useApiSession();
-  const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
-  const adminOnlyHrefs: Route[] = ["/os/settings/integrations", "/os/settings/ai"];
+  // AI configuration, API keys and webhook management are internal platform
+  // infrastructure: their API endpoints require admin:access, which resolves solely
+  // from isPlatformAdmin (never a workspace OWNER/ADMIN role). Gate the links on the
+  // same flag so we never show a workspace owner a tab whose data 403s.
+  const isPlatformAdmin = Boolean(session?.isPlatformAdmin);
+  const platformAdminOnlyHrefs: Route[] = ["/os/settings/integrations", "/os/settings/ai"];
   const visibleNav = SETTINGS_NAV.map((group) => ({
     ...group,
-    items: group.items.filter((item) => isAdmin || !adminOnlyHrefs.includes(item.href))
+    items: group.items.filter((item) => isPlatformAdmin || !platformAdminOnlyHrefs.includes(item.href))
   })).filter((group) => group.items.length > 0);
 
   return (

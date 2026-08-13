@@ -1,13 +1,16 @@
 "use client";
 
-import { type ReactNode, useCallback } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Building2 } from "lucide-react";
 
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState } from "../../campaigns/components";
+import { isAgeRestrictedError } from "../../lib/api-client";
 import { useFeatureFlags } from "../../lib/feature-flags";
+import { AgeGateNotice } from "../age-gate-notice";
+import { loadAccounts } from "./api";
 
 // Each tab is backed by its own feature flag and its own provider domain — a
 // deployment can run remittance without virtual cards. Tabs whose flag is off
@@ -31,6 +34,18 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
   const pathname = usePathname();
   const activeTab =
     TABS.find((t) => pathname.startsWith(`/os/financial-products/${t.id}`))?.id ?? "accounts";
+
+  // Financial products are 18+ (AgeGuard runs before the feature-flag gate, so this
+  // probe surfaces the age 403 regardless of which products are switched on). When
+  // the user has no verified date of birth, show the friendly prompt, not a raw error.
+  const [ageRestricted, setAgeRestricted] = useState(false);
+  useEffect(() => {
+    void loadAccounts().catch((caught) => {
+      if (isAgeRestrictedError(caught)) {
+        setAgeRestricted(true);
+      }
+    });
+  }, []);
 
   const onChange = useCallback(
     (id: string) => {
@@ -62,7 +77,11 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
           </div>
         )}
 
-        {flagsReady && availableTabs.length === 0 ? (
+        {ageRestricted ? (
+          <div className="mt-6">
+            <AgeGateNotice feature="Financial products" />
+          </div>
+        ) : flagsReady && availableTabs.length === 0 ? (
           <div className="mt-6">
             <EmptyState
               copy="Virtual accounts, virtual cards, and international transfers are not switched on for this workspace yet. Contact support if you were expecting access."
