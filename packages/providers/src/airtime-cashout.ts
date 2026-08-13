@@ -449,7 +449,7 @@ export function createIACafeAirtimeCashoutAdapter(
       };
     },
 
-    async getBalance(_phone, _network) {
+    getBalance(_phone, _network) {
       // IACafe's A2C API has no standalone "check airtime balance" endpoint —
       // balance/eligibility is only surfaced indirectly through the OTP
       // request/verify flow and the final transfer response's
@@ -457,7 +457,7 @@ export function createIACafeAirtimeCashoutAdapter(
       // balance, not the SIM's airtime balance). There is nothing to query
       // here, so this intentionally returns a zeroed placeholder rather than
       // guessing — same limitation the legacy airtimetocash adapter has.
-      return { balanceMinor: 0, currency: 'NGN' };
+      return Promise.resolve({ balanceMinor: 0, currency: 'NGN' });
     },
 
     async getQuote(input) {

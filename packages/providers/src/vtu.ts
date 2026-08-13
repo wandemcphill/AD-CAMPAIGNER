@@ -196,6 +196,11 @@ function pad2(n: number) {
   return n.toString().padStart(2, "0");
 }
 
+/** Stringify a value pulled from an untyped provider response, without risking '[object Object]'. */
+function asString(value: unknown, fallback = ""): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
+}
+
 /** VTpass requires request_id in format YYYYMMDDHHII (Africa/Lagos time). */
 function vtpassRequestId(orderId: string, createdAt: Date): string {
   // Derive YYYYMMDDHHII from createdAt in WAT (UTC+1).
@@ -2331,18 +2336,18 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
         | Array<Record<string, unknown>>;
       const rows = Array.isArray(res) ? res : (res.data ?? []);
       return rows.map((p) => {
-        const network = String(p["network"] ?? "MTN").toUpperCase() as VtuNetwork;
-        const size = String(p["size"] ?? p["data"] ?? "");
-        const validity = String(p["validity"] ?? "");
-        const name = String(p["plan"] ?? p["name"] ?? `${network} ${size} ${validity}`);
+        const network = asString(p["network"], "MTN").toUpperCase() as VtuNetwork;
+        const size = asString(p["size"] ?? p["data"]);
+        const validity = asString(p["validity"]);
+        const name = asString(p["plan"] ?? p["name"], `${network} ${size} ${validity}`);
         return {
-          providerPlanId: String(p["plan_id"] ?? p["id"] ?? ""),
+          providerPlanId: asString(p["plan_id"] ?? p["id"]),
           network,
           planType: "SME" as const,
           displayName: name,
           sizeMb: 0,
           validityDays: 30,
-          costMinor: Math.round(parseFloat(String(p["price"] ?? p["amount"] ?? 0)) * 100),
+          costMinor: Math.round(parseFloat(asString(p["price"] ?? p["amount"], "0")) * 100),
           currency: "NGN"
         };
       });
@@ -2407,10 +2412,10 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
       };
     },
 
-    async getBalance() {
+    getBalance() {
       // No dedicated balance endpoint is documented for Swiftlink. /get/plans is used
       // as a lightweight authenticated probe for checkHealth; getBalance is unsupported.
-      return { providerName: "swiftlink", balanceMinor: 0, currency: "NGN" };
+      return Promise.resolve({ providerName: "swiftlink", balanceMinor: 0, currency: "NGN" });
     },
 
     async checkHealth() {
@@ -2496,9 +2501,9 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
           for (const p of rows) {
             offers.push({
               cableProvider: provider,
-              packageCode: String(p["variation_code"] ?? p["code"] ?? ""),
-              displayName: String(p["name"] ?? p["package"] ?? ""),
-              costMinor: Math.round(parseFloat(String(p["price"] ?? p["amount"] ?? 0)) * 100),
+              packageCode: asString(p["variation_code"] ?? p["code"]),
+              displayName: asString(p["name"] ?? p["package"]),
+              costMinor: Math.round(parseFloat(asString(p["price"] ?? p["amount"], "0")) * 100),
               currency: "NGN"
             });
           }
@@ -3213,7 +3218,7 @@ interface SirpEnvelope {
   time?: string;
 }
 
-function mapSirpOutcome(httpStatus: number, body: SirpEnvelope): VtuSubmitStatus {
+function mapSirpOutcome(httpStatus: number, _body: SirpEnvelope): VtuSubmitStatus {
   // HTTP status is authoritative per SIRP's docs, not the `code` field in the body.
   if (httpStatus === 200 || httpStatus === 201) return "DELIVERED";
   if (httpStatus === 424) return "FAILED";
@@ -3345,14 +3350,14 @@ export function createSirpDataAdapter(config: SirpDataConfig): VtuProviderAdapte
       };
     },
 
-    async getOrderStatus(_reference) {
+    getOrderStatus(_reference) {
       // SIRP's docs don't document a requery/transaction-status endpoint — status must
       // be tracked from the original purchase response (and any webhook, if configured).
-      return {
+      return Promise.resolve({
         providerReference: _reference,
         status: "AMBIGUOUS" as const,
         failureReason: "SIRP Data has no documented order-status endpoint"
-      };
+      });
     },
 
     async getBalance() {
