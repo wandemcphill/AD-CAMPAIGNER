@@ -1,6 +1,6 @@
 # Phase 3 — Complete
 
-**Status:** ✅ COMPLETE (Quality + Classification Stages)
+**Status:** ✅ COMPLETE (Quality + Classification Stages) — code-complete only; see [00-PROJECT-COMPLETE.md](00-PROJECT-COMPLETE.md) for enablement status (`trustEngine` flag is off).
 
 ## What Was Built
 

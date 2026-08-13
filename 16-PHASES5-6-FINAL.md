@@ -1,6 +1,6 @@
 # Phases 5–6 — Complete
 
-**Status:** ✅ COMPLETE (Fraud Scoring + Duplicate Detection)
+**Status:** ✅ COMPLETE (Fraud Scoring + Duplicate Detection) — code-complete only; see [00-PROJECT-COMPLETE.md](00-PROJECT-COMPLETE.md) for enablement status (`trustEngine` flag is off).
 
 ## What Was Built
 

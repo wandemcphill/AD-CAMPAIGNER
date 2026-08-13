@@ -6,6 +6,8 @@
 
 **Status:** Phase 0–6 Complete | 71 Tests Passing | 10,150+ LOC | 0 Type Errors
 
+**Code status vs. enablement status:** everything below describes code and test completeness — the implementation, its 71 tests, and its type-safety are done. It does **not** mean the feature is live. `trustEngine` and `trustEngineAdmin` in `packages/feature-flags/src/index.ts` are both `false`, so the Trust Engine is not reachable by any user or admin until those flags are turned on per-environment. "Complete" here means code-complete, not enabled.
+
 ---
 
 ## The Pipeline: From Upload to Verdict

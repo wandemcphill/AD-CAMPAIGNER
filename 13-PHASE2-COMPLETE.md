@@ -1,6 +1,6 @@
 # Phase 2 — Complete
 
-**Status:** ✅ COMPLETE (Core + Tests)
+**Status:** ✅ COMPLETE (Core + Tests) — code-complete only; see [00-PROJECT-COMPLETE.md](00-PROJECT-COMPLETE.md) for enablement status (`trustEngine` flag is off).
 
 ## What Was Fixed
 
