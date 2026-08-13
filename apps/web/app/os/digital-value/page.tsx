@@ -323,7 +323,7 @@ export default function DigitalValuePage() {
               <h1 className="text-xl font-bold">Gift Cards & Cashout</h1>
             </div>
             <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-              Buy Reloadly gift cards, sell unused cards through SOGO, or convert airtime.
+              Buy gift cards, sell unused cards, or convert airtime to cash.
             </p>
           </div>
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
@@ -362,9 +362,9 @@ export default function DigitalValuePage() {
             ) : availableProducts.length === 0 ? (
               <Panel className="p-5">
                 <EmptyState
-                  copy="Reloadly gift card products are not available yet. Check provider credentials and refresh."
+                  copy="Gift cards are temporarily unavailable. Please try again shortly."
                   icon={Tags}
-                  title="No gift cards exposed"
+                  title="No gift cards available"
                 />
               </Panel>
             ) : (
@@ -456,7 +456,7 @@ export default function DigitalValuePage() {
               </label>
             </div>
             <Button className="mt-4" onClick={() => void quoteSellCard()} type="button">
-              Get SOGO quote
+              Get quote
             </Button>
             <label className="mt-4 grid gap-2 text-sm text-[var(--ft-text-secondary)]">
               Gift card code
@@ -474,7 +474,7 @@ export default function DigitalValuePage() {
               type="button"
               variant="secondary"
             >
-              {busy === "sell" ? "Submitting..." : "Submit to SOGO"}
+              {busy === "sell" ? "Submitting..." : "Submit card"}
             </Button>
             {sellQuote ? (
               <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3 text-sm text-[var(--ft-text-primary)]">

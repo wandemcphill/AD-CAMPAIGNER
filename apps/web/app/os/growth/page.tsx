@@ -41,7 +41,7 @@ export default function GrowthServicesPage() {
             <Badge tone={growthEnabled ? "success" : "warning"}>
               {growthEnabled ? "Orders open" : "Setup mode"}
             </Badge>
-            <Badge tone="info">Supplier routed</Badge>
+            <Badge tone="info">Managed delivery</Badge>
           </>
         }
         title="Growth Services"
