@@ -1,239 +1,285 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowDown, Orbit, Sparkles } from "lucide-react";
-import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import { Badge, Button, Panel } from "@fliptrybe/ui";
 
 import { trackHomepageEvent } from "./analytics";
-import { CampaignPreview } from "./campaign-preview";
-import { CommandBar } from "./command-bar";
-import { generationSteps } from "./data";
+import { channels, productPillars, trustSignals, workflowSteps } from "./data";
 import { MarketingFooter } from "./footer";
 import { MarketingNavigation } from "./navigation";
-import { ParticleCanvas } from "./particle-canvas";
 
 const defaultPrompt = "I sell shoes in Lagos.";
-const motionPreferenceKey = "fliptribe-homepage-reduced-motion";
 
-type ReducedMotionSectionProps = {
+function FadeUp({
+  children,
+  delay = 0,
+  reducedMotion
+}: {
+  children: React.ReactNode;
+  delay?: number;
   reducedMotion: boolean;
-};
-
-type FinalCtaSectionProps = ReducedMotionSectionProps & {
-  onGenerate: (prompt: string) => void;
-};
-
-function SectionLoading({ label }: { label: string }) {
+}) {
   return (
-    <section className="border-t border-white/10 bg-[#050507] px-4 py-20 sm:px-6">
-      <div className="mx-auto max-w-7xl rounded-md border border-white/10 bg-white/[0.035] p-6">
-        <div className="font-mono text-xs uppercase tracking-[0.24em] text-white/38">
-          Loading {label}
-        </div>
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
-          <div className="h-full w-1/3 rounded-full bg-[var(--flip-amber)]" />
-        </div>
-      </div>
-    </section>
+    <motion.div
+      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: reducedMotion ? 0 : 16 }}
+      transition={{ delay, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      viewport={{ once: true, margin: "-80px" }}
+      whileInView={{ opacity: 1, y: 0 }}
+    >
+      {children}
+    </motion.div>
   );
 }
 
-const CreationMatrix = dynamic<ReducedMotionSectionProps>(
-  () => import("./creation-matrix").then((module) => module.CreationMatrix),
-  { loading: () => <SectionLoading label="Creation Matrix" /> }
-);
-const OmnichannelHighway = dynamic<ReducedMotionSectionProps>(
-  () => import("./omnichannel-highway").then((module) => module.OmnichannelHighway),
-  { loading: () => <SectionLoading label="Omnichannel Highway" /> }
-);
-const AiOptimization = dynamic<ReducedMotionSectionProps>(
-  () => import("./ai-optimization").then((module) => module.AiOptimization),
-  { loading: () => <SectionLoading label="AI Optimization" /> }
-);
-const AgencyOs = dynamic<ReducedMotionSectionProps>(
-  () => import("./agency-os").then((module) => module.AgencyOs),
-  { loading: () => <SectionLoading label="Agency OS" /> }
-);
-const Marketplace = dynamic<ReducedMotionSectionProps>(
-  () => import("./marketplace").then((module) => module.Marketplace),
-  { loading: () => <SectionLoading label="Marketplace" /> }
-);
-const CreativeEngine = dynamic<ReducedMotionSectionProps>(
-  () => import("./creative-engine").then((module) => module.CreativeEngine),
-  { loading: () => <SectionLoading label="Creative Engine" /> }
-);
-const FinalCta = dynamic<FinalCtaSectionProps>(
-  () => import("./final-cta").then((module) => module.FinalCta),
-  { loading: () => <SectionLoading label="Final CTA" /> }
-);
-
 export function FliptribeHomepage() {
   const prefersReducedMotion = useReducedMotion();
-  const [manualReducedMotion, setManualReducedMotion] = useState(false);
+  const reducedMotion = Boolean(prefersReducedMotion);
   const [prompt, setPrompt] = useState(defaultPrompt);
   const [activeStep, setActiveStep] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [pulseKey, setPulseKey] = useState(0);
-  const reducedMotion = Boolean(prefersReducedMotion || manualReducedMotion);
 
   useEffect(() => {
-    setManualReducedMotion(window.localStorage.getItem(motionPreferenceKey) === "true");
+    const interval = window.setInterval(() => {
+      setActiveStep((step) => (step + 1) % workflowSteps.length);
+    }, 2200);
+    return () => window.clearInterval(interval);
   }, []);
 
-  const toggleReducedMotion = () => {
-    setManualReducedMotion((value) => {
-      const nextValue = !value;
-      window.localStorage.setItem(motionPreferenceKey, String(nextValue));
-      trackHomepageEvent("motion_preference_toggled", { reducedMotion: nextValue });
-
-      return nextValue;
-    });
-  };
-
-  useEffect(() => {
-    if (!isGenerating) {
-      return undefined;
-    }
-
-    setActiveStep(0);
-    // The interval prints each AI artifact in sequence while the canvas converges.
-    const interval = window.setInterval(() => {
-      setActiveStep((step) => {
-        if (step >= generationSteps.length - 1) {
-          window.clearInterval(interval);
-          setIsGenerating(false);
-          return step;
-        }
-
-        return step + 1;
-      });
-    }, reducedMotion ? 120 : 760);
-
-    return () => window.clearInterval(interval);
-  }, [isGenerating, reducedMotion]);
-
-  const nodeCopy = useMemo(
-    () => [
-      "Idea",
-      generationSteps[Math.min(activeStep, generationSteps.length - 1)]?.label ?? "Campaign",
-      "Customers"
-    ],
-    [activeStep]
-  );
-
-  const generate = (nextPrompt: string) => {
-    setPrompt(nextPrompt);
-    setPulseKey((key) => key + 1);
-    setIsGenerating(true);
-  };
+  function handleGenerateClick() {
+    trackHomepageEvent("command_generated", { prompt });
+  }
 
   return (
     <main
-      className="flip-home ft-shell min-h-screen overflow-hidden bg-[#0B0F19] text-white"
-      id="engine"
-      style={{
-        "--flip-primary": "#0066FF",
-        "--flip-accent": "#8B5CF6",
-        "--flip-cyan": "#06B6D4",
-        "--flip-emerald": "#10B981",
-        "--flip-surface": "#111827",
-        "--flip-white": "#F9FAFB"
-      } as React.CSSProperties}
+      className="min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]"
+      id="top"
+      style={{ backgroundImage: "var(--ft-bg-page-gradient)" }}
     >
       <MarketingNavigation />
 
-      <section className="relative isolate flex min-h-[100svh] items-start px-4 pt-24 pb-14 sm:px-6 lg:pt-28 xl:items-center xl:pt-24">
-        <ParticleCanvas pulseKey={pulseKey} reducedMotion={reducedMotion} />
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_48%_20%,rgba(0,102,255,0.18),transparent_26%),radial-gradient(circle_at_78%_30%,rgba(139,92,246,0.14),transparent_28%),linear-gradient(180deg,rgba(11,15,25,0.1),#0B0F19_92%)]" />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.045] [background-image:linear-gradient(rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.5)_1px,transparent_1px)] [background-size:64px_64px]" />
+      {/* Hero */}
+      <section className="relative overflow-hidden px-4 pt-32 pb-20 sm:px-6 sm:pt-40">
+        <div className="pointer-events-none absolute inset-0 -z-10 opacity-60 [background:radial-gradient(circle_at_20%_10%,var(--ft-accent-glow),transparent_38%),radial-gradient(circle_at_82%_18%,var(--ft-accent-2-glow),transparent_36%)]" />
 
-        <div className="relative z-10 mx-auto w-full max-w-7xl">
-          <div className="mx-auto max-w-5xl text-center">
-            <motion.div
-              animate={{ scaleX: 1 }}
-              className="mx-auto h-px w-48 origin-left bg-[linear-gradient(90deg,transparent,var(--flip-primary),var(--flip-accent),transparent)]"
-              initial={{ scaleX: reducedMotion ? 1 : 0 }}
-              transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-            />
-            <motion.div
-              animate={{ y: 0 }}
-              className="mt-5 inline-flex items-center gap-2 rounded-[12px] border border-white/10 bg-white/[0.045] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.22em] text-white/56 backdrop-blur-xl sm:mt-6 sm:text-xs"
-              initial={{ y: reducedMotion ? 0 : 14 }}
-              transition={{ delay: 0.1, duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <Orbit className="size-4 text-[var(--flip-primary)]" />
+        <div className="mx-auto max-w-4xl text-center">
+          <FadeUp reducedMotion={reducedMotion}>
+            <Badge tone="info">
+              <Sparkles className="mr-1 size-3.5" />
               AI growth operating system
-            </motion.div>
+            </Badge>
+          </FadeUp>
 
-            <motion.h1
-              animate={{ clipPath: "inset(0% 0% 0% 0%)", y: 0 }}
-              className="mx-auto mt-5 max-w-5xl text-balance text-4xl font-black tracking-normal text-white sm:text-6xl lg:text-7xl 2xl:text-8xl"
-              initial={{
-                clipPath: reducedMotion ? "inset(0% 0% 0% 0%)" : "inset(0% 0% 100% 0%)",
-                y: reducedMotion ? 0 : 28
-              }}
-              transition={{ delay: 0.18, duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
-            >
-              Turn one business idea into customers.
-            </motion.h1>
+          <FadeUp delay={0.08} reducedMotion={reducedMotion}>
+            <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
+              Turn one business idea into paying customers.
+            </h1>
+          </FadeUp>
 
-            <motion.p
-              animate={{ clipPath: "inset(0% 0% 0% 0%)", y: 0 }}
-              className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/62 sm:text-lg lg:text-xl lg:leading-8"
-              initial={{
-                clipPath: reducedMotion ? "inset(0% 0% 0% 0%)" : "inset(0% 0% 100% 0%)",
-                y: reducedMotion ? 0 : 18
-              }}
-              transition={{ delay: 0.28, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-            >
-              Fliptribe assembles audience intelligence, creative, distribution, and optimization
-              into one living campaign engine.
-            </motion.p>
+          <FadeUp delay={0.16} reducedMotion={reducedMotion}>
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[var(--ft-text-secondary)] sm:text-lg">
+              FlipTrybe plans your audience, writes your ad copy, designs your creative, and
+              launches across Meta, TikTok, Google, and WhatsApp — from one AI-native command
+              center.
+            </p>
+          </FadeUp>
 
-            <CommandBar isGenerating={isGenerating} onGenerate={generate} prompt={prompt} />
-
-            <div className="mx-auto mt-5 grid max-w-2xl grid-cols-3 gap-2">
-              {nodeCopy.map((item, index) => (
-                <motion.div
-                  animate={{ y: index <= Math.min(activeStep, 2) ? 0 : 8 }}
-                  className="rounded-md border border-white/10 bg-white/[0.035] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-white/48"
-                  initial={false}
-                  key={`${item}-${index}`}
-                >
-                  {item}
-                </motion.div>
-              ))}
+          <FadeUp delay={0.24} reducedMotion={reducedMotion}>
+            <div className="mx-auto mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+              <a href="/register">
+                <Button className="h-12 px-6 text-sm" onClick={handleGenerateClick}>
+                  Get started free
+                  <ArrowRight className="size-4" />
+                </Button>
+              </a>
+              <a
+                className="inline-flex h-12 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] px-6 text-sm font-semibold text-[var(--ft-text-primary)] transition hover:border-[var(--ft-border-strong)]"
+                href="#how-it-works"
+              >
+                See how it works
+              </a>
             </div>
-          </div>
+          </FadeUp>
 
-          <CampaignPreview activeStep={activeStep} prompt={prompt} />
-
-          <a
-            className="mx-auto mt-8 flex w-fit items-center gap-2 rounded-[12px] border border-white/10 px-3 py-2 font-mono text-xs uppercase tracking-[0.24em] text-white/48 transition hover:border-white/24 hover:text-white"
-            href="#phase-one"
-          >
-            <Sparkles className="size-4 text-[var(--flip-primary)]" />
-            Phase engine online
-            <ArrowDown className="size-4" />
-          </a>
+          <FadeUp delay={0.32} reducedMotion={reducedMotion}>
+            <div className="mx-auto mt-10 max-w-xl rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 text-left shadow-[var(--shadow-lg)] sm:p-5">
+              <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--ft-text-muted)]">
+                <Sparkles className="size-3.5 text-[var(--ft-accent)]" />
+                Describe your business
+              </div>
+              <input
+                className="mt-3 h-11 w-full rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none transition focus:border-[var(--ft-accent)] focus:ring-2 focus:ring-[var(--ft-accent-glow)]"
+                onChange={(event) => setPrompt(event.currentTarget.value)}
+                placeholder={defaultPrompt}
+                value={prompt}
+              />
+              <div className="mt-3 grid grid-cols-5 gap-1.5">
+                {workflowSteps.map((step, index) => (
+                  <div
+                    className="rounded-[var(--radius-sm)] border px-1.5 py-1.5 text-center font-mono text-[9px] uppercase tracking-[0.06em] transition"
+                    key={step.label}
+                    style={
+                      index === activeStep
+                        ? {
+                            borderColor: "var(--ft-accent)",
+                            background: "var(--ft-accent-subtle)",
+                            color: "var(--ft-accent-strong)"
+                          }
+                        : {
+                            borderColor: "var(--ft-border)",
+                            color: "var(--ft-text-muted)"
+                          }
+                    }
+                  >
+                    {step.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </FadeUp>
         </div>
       </section>
 
-      <div id="phase-one">
-        <CreationMatrix reducedMotion={reducedMotion} />
-        <OmnichannelHighway reducedMotion={reducedMotion} />
-        <AiOptimization reducedMotion={reducedMotion} />
-        <AgencyOs reducedMotion={reducedMotion} />
-        <Marketplace reducedMotion={reducedMotion} />
-        <CreativeEngine reducedMotion={reducedMotion} />
-        <FinalCta onGenerate={generate} reducedMotion={reducedMotion} />
-      </div>
+      {/* How it works */}
+      <section className="border-t border-[var(--ft-border)] px-4 py-20 sm:px-6" id="how-it-works">
+        <div className="mx-auto max-w-6xl">
+          <FadeUp reducedMotion={reducedMotion}>
+            <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+              From idea to live campaign in five steps
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-center text-sm text-[var(--ft-text-secondary)]">
+              Every campaign moves through the same AI pipeline — audience, copy, creative,
+              video, and launch.
+            </p>
+          </FadeUp>
 
-      <MarketingFooter
-        onToggleReducedMotion={toggleReducedMotion}
-        reducedMotion={reducedMotion}
-      />
+          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {workflowSteps.map((step, index) => (
+              <FadeUp delay={index * 0.06} key={step.label} reducedMotion={reducedMotion}>
+                <Panel className="h-full p-5">
+                  <div className="grid size-10 place-items-center rounded-[var(--radius-md)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent-strong)]">
+                    <step.icon className="size-5" />
+                  </div>
+                  <div className="mt-4 text-sm font-semibold">{step.label}</div>
+                  <p className="mt-1.5 text-xs leading-5 text-[var(--ft-text-secondary)]">
+                    {step.detail}
+                  </p>
+                  <div className="mt-3 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--ft-accent)]">
+                    {step.metric}
+                  </div>
+                </Panel>
+              </FadeUp>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Omnichannel */}
+      <section className="border-t border-[var(--ft-border)] bg-[var(--ft-bg-muted)]/40 px-4 py-20 sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <FadeUp reducedMotion={reducedMotion}>
+            <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+              One campaign, every channel
+            </h2>
+          </FadeUp>
+
+          <div className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {channels.map((channel, index) => (
+              <FadeUp delay={index * 0.06} key={channel.label} reducedMotion={reducedMotion}>
+                <Panel className="p-5 text-center">
+                  <channel.icon className="mx-auto size-6 text-[var(--ft-accent)]" />
+                  <div className="mt-3 text-sm font-semibold">{channel.label}</div>
+                  <div className="mt-1 text-xs text-[var(--ft-text-secondary)]">
+                    {channel.metric}
+                  </div>
+                </Panel>
+              </FadeUp>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Product pillars */}
+      <section className="border-t border-[var(--ft-border)] px-4 py-20 sm:px-6" id="products">
+        <div className="mx-auto max-w-6xl">
+          <FadeUp reducedMotion={reducedMotion}>
+            <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+              Everything a growing business needs
+            </h2>
+            <p className="mx-auto mt-3 max-w-xl text-center text-sm text-[var(--ft-text-secondary)]">
+              One workspace for campaigns, commerce, and finance.
+            </p>
+          </FadeUp>
+
+          <div className="mt-12 grid gap-5 sm:grid-cols-2">
+            {productPillars.map((pillar, index) => (
+              <FadeUp delay={index * 0.06} key={pillar.title} reducedMotion={reducedMotion}>
+                <Panel className="flex h-full flex-col p-6">
+                  <div className="grid size-11 place-items-center rounded-[var(--radius-md)] bg-[var(--ft-accent-2-subtle)] text-[var(--ft-accent-2)]">
+                    <pillar.icon className="size-5" />
+                  </div>
+                  <div className="mt-4 text-lg font-semibold">{pillar.title}</div>
+                  <p className="mt-2 flex-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                    {pillar.description}
+                  </p>
+                  <a
+                    className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--ft-accent)] transition hover:text-[var(--ft-accent-dim)]"
+                    href={pillar.href}
+                  >
+                    {pillar.cta}
+                    <ArrowRight className="size-3.5" />
+                  </a>
+                </Panel>
+              </FadeUp>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Trust */}
+      <section className="border-t border-[var(--ft-border)] bg-[var(--ft-bg-muted)]/40 px-4 py-16 sm:px-6">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-center gap-4">
+          {trustSignals.map((signal) => (
+            <span
+              className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] px-4 py-2.5 text-sm font-medium text-[var(--ft-text-secondary)]"
+              key={signal.label}
+            >
+              <signal.icon className="size-4 text-[var(--ft-accent)]" />
+              {signal.label}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      {/* Final CTA */}
+      <section className="border-t border-[var(--ft-border)] px-4 py-24 sm:px-6">
+        <FadeUp reducedMotion={reducedMotion}>
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">Ready to grow?</h2>
+            <p className="mt-3 text-sm text-[var(--ft-text-secondary)] sm:text-base">
+              Create your workspace in under a minute — no credit card required to start.
+            </p>
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <a href="/register">
+                <Button className="h-12 px-6 text-sm">
+                  Get started free
+                  <ArrowRight className="size-4" />
+                </Button>
+              </a>
+              <a
+                className="inline-flex h-12 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--ft-border)] px-6 text-sm font-semibold text-[var(--ft-text-primary)] transition hover:border-[var(--ft-border-strong)]"
+                href="/guest"
+              >
+                Pay a bill as guest
+              </a>
+            </div>
+          </div>
+        </FadeUp>
+      </section>
+
+      <MarketingFooter />
     </main>
   );
 }
