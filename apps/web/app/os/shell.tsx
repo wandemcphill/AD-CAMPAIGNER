@@ -105,10 +105,12 @@ const PRIMARY_NAV: NavSection[] = [
   },
   {
     label: "Money",
-    href: "/os/wallet",
+    href: "/os/money",
     icon: Banknote,
     children: [
+      { label: "Overview", href: "/os/money", icon: Banknote },
       { label: "Wallet", href: "/os/wallet", icon: CreditCard },
+      { label: "Invoices", href: "/os/money/invoices", icon: FileText, flag: "invoicing" },
       { label: "Virtual Accounts", href: "/os/financial-products/accounts", icon: Building2, flag: "virtualAccounts" },
       { label: "Virtual Cards", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" },
       { label: "Transfers", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },
@@ -178,7 +180,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
 const MOBILE_NAV: NavItem[] = [
   { label: "Home", href: "/os", icon: LayoutDashboard },
   { label: "Growth", href: "/os/campaigns", icon: Megaphone },
-  { label: "Money", href: "/os/wallet", icon: Banknote },
+  { label: "Money", href: "/os/money", icon: Banknote },
   { label: "Services", href: "/os/services", icon: Store },
   { label: "More", href: "/os/search", icon: Menu },
 ];

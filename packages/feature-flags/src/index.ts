@@ -65,7 +65,11 @@ export const featureFlagDefaults = {
   kybVerification: false,
   telecomGateway: true,
   guestCheckout: true,
-  support: true
+  support: true,
+  // Customer invoicing and payment links are self-contained FlipTrybe features
+  // (no external provider integration to sandbox-verify), so they default on.
+  invoicing: true,
+  paymentLinks: true
 } as const;
 
 export type FeatureFlag = keyof typeof featureFlagDefaults;

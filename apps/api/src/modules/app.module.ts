@@ -44,6 +44,7 @@ import { FeatureFlagGuard } from "./feature-flag.guard";
 import { RealtimeGateway } from "./realtime.gateway";
 import { PrismaModule } from "./prisma.module";
 import { DigitalAccessModule } from "./digital-access/digital-access.module";
+import { InvoicesModule } from "./invoices/invoices.module";
 import { ApprovalsModule } from "./approvals/approvals.module";
 import { VouchersModule } from "./vouchers/vouchers.module";
 import { VtuModule } from "./vtu/vtu.module";
@@ -87,6 +88,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     PrismaModule,
     ApprovalsModule,
     DigitalAccessModule,
+    InvoicesModule,
     VouchersModule,
     VtuModule,
     TelecomGatewayModule,

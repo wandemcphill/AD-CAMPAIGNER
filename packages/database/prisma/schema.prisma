@@ -691,6 +691,7 @@ model Workspace {
   mediaAssets                    MediaAsset[]
   vouchers                       Voucher[]
   campaignInvoices               CampaignInvoice[]
+  invoices                       Invoice[]
   campaignLedgerEntries          CampaignLedgerEntry[]
   eventOutbox                    EventOutbox[]
   notifications                  Notification[]
@@ -1367,6 +1368,57 @@ model CampaignInvoice {
   @@index([campaignId, status])
   @@index([dueAt])
   @@index([deletedAt])
+}
+
+// General-purpose customer invoicing (distinct from CampaignInvoice, which bills
+// campaign spend). All monetary values are minor units. Line items are relational
+// so an invoice can be edited item-by-item.
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+}
+
+model Invoice {
+  id              String            @id @default(uuid())
+  workspaceId     String
+  number          String
+  status          InvoiceStatus     @default(DRAFT)
+  customerName    String
+  customerEmail   String?
+  currency        String            @default("NGN")
+  subtotalMinor   Int               @default(0)
+  totalMinor      Int               @default(0)
+  amountPaidMinor Int               @default(0)
+  notes           String?
+  issuedAt        DateTime?
+  dueAt           DateTime?
+  paidAt          DateTime?
+  voidedAt        DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id])
+  lineItems       InvoiceLineItem[]
+
+  @@unique([workspaceId, number])
+  @@index([workspaceId, status, createdAt])
+  @@index([dueAt])
+  @@index([deletedAt])
+}
+
+model InvoiceLineItem {
+  id             String  @id @default(uuid())
+  invoiceId      String
+  description    String
+  quantity       Int     @default(1)
+  unitPriceMinor Int
+  amountMinor    Int
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
 
 model CampaignBudgetHold {
