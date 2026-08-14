@@ -25,6 +25,20 @@ const BENEFITS = [
   "Every transaction receipted and searchable"
 ];
 
+/**
+ * What the new account holder came here to do. This only decides where we drop
+ * them after signup — it is deliberately not persisted, because there is no
+ * backend field for it and inventing one would imply personalisation we don't
+ * actually do. Skipping it lands on the onboarding checklist, same as before.
+ */
+const INTENTS = [
+  { destination: "/os/services", id: "pay", label: "Pay bills & buy airtime" },
+  { destination: "/os/money", id: "money", label: "Manage money & get paid" },
+  { destination: "/os/campaigns/new", id: "grow", label: "Grow my business" }
+] as const;
+
+type IntentId = (typeof INTENTS)[number]["id"];
+
 export default function RegisterPage() {
   const router = useRouter();
   const { loading: sessionLoading, session, signUp } = useApiSession();
@@ -34,6 +48,7 @@ export default function RegisterPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [intent, setIntent] = useState<IntentId>();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -99,7 +114,8 @@ export default function RegisterPage() {
         }
       }
 
-      router.replace("/onboarding");
+      const destination = INTENTS.find((option) => option.id === intent)?.destination;
+      router.replace(destination ?? "/onboarding");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Registration failed.");
     } finally {
@@ -238,6 +254,32 @@ export default function RegisterPage() {
                   type="password"
                   value={confirmPassword}
                 />
+
+                <div className="grid gap-1.5">
+                  <span className="text-sm font-medium text-[var(--ft-text-primary)]">
+                    What brings you here?
+                  </span>
+                  <span className="text-xs text-[var(--ft-text-muted)]">
+                    Optional — we&apos;ll take you straight there. You can do all of it either way.
+                  </span>
+                  <div className="mt-1 grid gap-2 sm:grid-cols-3">
+                    {INTENTS.map((option) => (
+                      <button
+                        aria-pressed={intent === option.id}
+                        className={`rounded-[var(--radius-md)] border px-3 py-2.5 text-left text-xs font-medium leading-4 transition ${
+                          intent === option.id
+                            ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent-strong)]"
+                            : "border-[var(--ft-border)] text-[var(--ft-text-secondary)] hover:border-[var(--ft-accent)]/40"
+                        }`}
+                        key={option.id}
+                        onClick={() => setIntent((prev) => (prev === option.id ? undefined : option.id))}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
                 {error ? (
                   <motion.div

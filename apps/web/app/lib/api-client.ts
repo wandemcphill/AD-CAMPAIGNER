@@ -170,13 +170,51 @@ function messageFromPayload(payload: unknown) {
   return undefined;
 }
 
+/**
+ * Anything that would leak how FlipTrybe is built if it reached a customer:
+ * supplier names, driver/runtime errors, raw HTTP status text. The API's own
+ * hand-written messages ("Username or password is invalid.") are already
+ * customer-safe and must pass through untouched — this is a backstop for the
+ * paths nobody hand-wrote, not a replacement for writing good messages.
+ */
+const INTERNAL_ERROR_PATTERNS = [
+  // Suppliers and infrastructure vendors.
+  /\b(korapay|reloadly|clubkonnect|fincra|swappr|payscribe|termii|sogo|cloudinary|perfect\s*panel|textverified|nellobyte)\b/i,
+  // Runtime / driver / network failures.
+  /\b(prisma|econnrefused|etimedout|enotfound|econnreset|socket hang up|getaddrinfo|redis|bullmq)\b/i,
+  // Programming errors that escaped as messages.
+  /\b(cannot read|is not a function|undefined is not|null is not|unexpected token|stack trace)\b/i,
+  // Generic server-tier HTTP status text, which tells a customer nothing.
+  /^(internal server error|bad gateway|service unavailable|gateway timeout|request failed)\.?$/i
+];
+
+function friendlyFallback(status: number) {
+  if (status === 401) return "Your session has expired. Please sign in again.";
+  if (status === 403) return "You don't have access to this.";
+  if (status === 404) return "We couldn't find what you were looking for.";
+  if (status === 429) return "Too many attempts. Please wait a moment and try again.";
+  if (status >= 500) return "Something went wrong on our end. Please try again shortly.";
+  return "Something went wrong. Please try again.";
+}
+
+export function sanitizeErrorMessage(message: string | undefined, status: number) {
+  const trimmed = message?.trim();
+  if (!trimmed) {
+    return friendlyFallback(status);
+  }
+  if (INTERNAL_ERROR_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+    return friendlyFallback(status);
+  }
+  return trimmed;
+}
+
 async function readErrorMessage(response: Response) {
   try {
     const payload = (await response.json()) as unknown;
 
-    return messageFromPayload(payload) ?? response.statusText;
+    return sanitizeErrorMessage(messageFromPayload(payload) ?? response.statusText, response.status);
   } catch {
-    return response.statusText;
+    return sanitizeErrorMessage(response.statusText, response.status);
   }
 }
 
