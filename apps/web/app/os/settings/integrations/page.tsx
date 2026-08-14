@@ -357,7 +357,7 @@ export default function IntegrationsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { session } = useApiSession();
-  const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
+  const isAdmin = Boolean(session?.isPlatformAdmin);
   const visibleTabs = isAdmin ? TABS : TABS.filter((tabItem) => tabItem.id === "connected");
   // ?tab= makes each section deep-linkable, which is what lets /os/settings/api
   // redirect straight to the API Keys tab instead of duplicating it.

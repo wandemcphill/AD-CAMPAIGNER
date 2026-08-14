@@ -22,7 +22,7 @@ const DEFAULT_SYSTEM_PROMPT =
 export default function AiConfigurationPage() {
   const router = useRouter();
   const { session } = useApiSession();
-  const isAdmin = session?.role === "OWNER" || session?.role === "ADMIN";
+  const isAdmin = Boolean(session?.isPlatformAdmin);
 
   useEffect(() => {
     if (session && !isAdmin) {
