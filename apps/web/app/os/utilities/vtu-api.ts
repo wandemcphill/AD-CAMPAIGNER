@@ -37,7 +37,7 @@ export interface BettingCompany {
 }
 
 export interface EducationPlan {
-  examType: string;
+  productCode: string;
   displayName: string;
   costMinor: number;
 }

@@ -35,7 +35,7 @@ export default function EducationTabPage() {
     void loadEducationPlans()
       .then((plans) => {
         setEducationPlans(plans);
-        setExamType((prev) => prev ?? plans[0]?.examType);
+        setExamType((prev) => prev ?? plans[0]?.productCode);
       })
       .catch(() => setEducationPlans([]));
   }, []);
@@ -45,7 +45,7 @@ export default function EducationTabPage() {
   }, [profileId]);
 
   const isJambExam = examType === "de" || (examType?.startsWith("utme") ?? false);
-  const selectedEducationPlan = educationPlans.find((p) => p.examType === examType);
+  const selectedEducationPlan = educationPlans.find((p) => p.productCode === examType);
 
   async function submitVerifyJamb() {
     if (!profileId.trim()) return;
@@ -129,7 +129,7 @@ export default function EducationTabPage() {
             value={examType ?? ""}
           >
             {educationPlans.map((p) => (
-              <option key={p.examType} value={p.examType}>
+              <option key={p.productCode} value={p.productCode}>
                 {p.displayName} — {formatNaira(p.costMinor)}
               </option>
             ))}

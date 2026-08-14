@@ -58,3 +58,14 @@ export interface AdminGuestTransactionQueryDto {
 export interface AdminGuestRetryFulfilmentDto {
   reference: string;
 }
+
+export interface GuestVerifyMeterDto {
+  disco: string;
+  meterNumber: string;
+  meterType: "PREPAID" | "POSTPAID";
+}
+
+export interface GuestVerifyCableDto {
+  provider: string;
+  smartCardNumber: string;
+}

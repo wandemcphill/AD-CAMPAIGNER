@@ -72,6 +72,62 @@ export function getGuestReceipt(reference: string) {
   return apiRequest<GuestTransactionSummary>(`/guest/receipt/${encodeURIComponent(reference)}`);
 }
 
+export interface GuestDataPlan {
+  network: string;
+  providerPlanId: string;
+  displayName: string;
+  sizeMb: number;
+  validityDays: number;
+  costMinor: number;
+}
+
+export interface GuestCablePackage {
+  id: string;
+  cableProvider: string;
+  packageCode: string;
+  displayName: string;
+  costMinor: number;
+}
+
+export interface GuestMeterValidation {
+  valid: boolean;
+  customerName?: string;
+  address?: string;
+  minAmountMinor?: number;
+}
+
+export function loadGuestDataPlans(network: string) {
+  return apiRequest<GuestDataPlan[]>(`/guest/data-plans?network=${encodeURIComponent(network)}`);
+}
+
+export function loadGuestCablePackages(provider: string) {
+  return apiRequest<GuestCablePackage[]>(`/guest/cable-packages?provider=${encodeURIComponent(provider)}`);
+}
+
+export interface GuestEducationPlan {
+  productCode: string;
+  displayName: string;
+  costMinor: number;
+}
+
+export function loadGuestEducationPlans() {
+  return apiRequest<GuestEducationPlan[]>("/guest/education-plans");
+}
+
+export function verifyGuestMeter(input: { disco: string; meterNumber: string; meterType: "PREPAID" | "POSTPAID" }) {
+  return apiRequest<GuestMeterValidation>("/guest/verify-meter", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function verifyGuestCable(input: { provider: string; smartCardNumber: string }) {
+  return apiRequest<GuestMeterValidation>("/guest/verify-cable", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
 export function checkReturningGuest(contact: string) {
   return apiRequest<{ returning: boolean; lastPurchaseAt: string | null }>(
     `/guest/returning?contact=${encodeURIComponent(contact)}`

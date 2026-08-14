@@ -1,13 +1,31 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Smartphone, Wifi, Zap, Tv, Dices, GraduationCap } from "lucide-react";
 
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 import { Input, SelectCard } from "@fliptrybe/ui/components";
 
-import { startGuestCheckout, initiateGuestPayment, type GuestProductType } from "./guest-checkout-api";
+import {
+  startGuestCheckout,
+  initiateGuestPayment,
+  loadGuestDataPlans,
+  loadGuestCablePackages,
+  loadGuestEducationPlans,
+  verifyGuestMeter,
+  verifyGuestCable,
+  type GuestProductType,
+  type GuestDataPlan,
+  type GuestCablePackage,
+  type GuestEducationPlan,
+  type GuestMeterValidation
+} from "./guest-checkout-api";
+import { CABLE_PROVIDERS, ELECTRIC_COMPANIES } from "../os/utilities/vtu-api";
+
+function formatNaira(amountMinor: number) {
+  return `₦${(amountMinor / 100).toLocaleString("en-NG", { maximumFractionDigits: 0 })}`;
+}
 
 const PRODUCTS: Array<{ id: GuestProductType; title: string; description: string; icon: React.ReactNode }> = [
   { id: "AIRTIME", title: "Airtime", description: "Top up any Nigerian network", icon: <Smartphone className="size-4" /> },
@@ -28,23 +46,120 @@ export default function GuestBillsPage() {
   const [network, setNetwork] = useState("MTN");
   const [msisdn, setMsisdn] = useState("");
   const [bundleId, setBundleId] = useState("");
-  const [disco, setDisco] = useState("");
+  const [dataPlans, setDataPlans] = useState<GuestDataPlan[]>([]);
+  const [loadingDataPlans, setLoadingDataPlans] = useState(false);
+  const [disco, setDisco] = useState(ELECTRIC_COMPANIES[0]!.code);
   const [meterNumber, setMeterNumber] = useState("");
-  const [cableProvider, setCableProvider] = useState("");
+  const [meterValidation, setMeterValidation] = useState<GuestMeterValidation>();
+  const [meterValidating, setMeterValidating] = useState(false);
+  const [cableProvider, setCableProvider] = useState(CABLE_PROVIDERS[0]!.id);
   const [smartCardNumber, setSmartCardNumber] = useState("");
   const [packageCode, setPackageCode] = useState("");
+  const [cablePackages, setCablePackages] = useState<GuestCablePackage[]>([]);
+  const [loadingCablePackages, setLoadingCablePackages] = useState(false);
+  const [cardValidation, setCardValidation] = useState<GuestMeterValidation>();
+  const [cardValidating, setCardValidating] = useState(false);
   const [bookmaker, setBookmaker] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [examType, setExamType] = useState("");
+  const [educationPlans, setEducationPlans] = useState<GuestEducationPlan[]>([]);
+  const [loadingEducationPlans, setLoadingEducationPlans] = useState(false);
   const [amountNaira, setAmountNaira] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string>();
 
   const needsAmount = productType === "AIRTIME" || productType === "ELECTRICITY" || productType === "BETTING";
 
+  useEffect(() => {
+    if (productType !== "DATA") return;
+    setLoadingDataPlans(true);
+    setBundleId("");
+    loadGuestDataPlans(network)
+      .then(setDataPlans)
+      .catch(() => setDataPlans([]))
+      .finally(() => setLoadingDataPlans(false));
+  }, [productType, network]);
+
+  useEffect(() => {
+    if (productType !== "EDUCATION") return;
+    setLoadingEducationPlans(true);
+    loadGuestEducationPlans()
+      .then((plans) => {
+        setEducationPlans(plans);
+        setExamType((prev) => prev || plans[0]?.productCode || "");
+      })
+      .catch(() => setEducationPlans([]))
+      .finally(() => setLoadingEducationPlans(false));
+  }, [productType]);
+
+  useEffect(() => {
+    if (productType !== "CABLE") return;
+    setLoadingCablePackages(true);
+    setPackageCode("");
+    loadGuestCablePackages(cableProvider)
+      .then(setCablePackages)
+      .catch(() => setCablePackages([]))
+      .finally(() => setLoadingCablePackages(false));
+  }, [productType, cableProvider]);
+
+  useEffect(() => {
+    setCardValidation(undefined);
+  }, [cableProvider, smartCardNumber]);
+
+  useEffect(() => {
+    setMeterValidation(undefined);
+  }, [disco, meterNumber]);
+
+  const selectedPackage = useMemo(
+    () => cablePackages.find((p) => p.packageCode === packageCode),
+    [cablePackages, packageCode]
+  );
+
+  async function submitVerifyMeter() {
+    if (!meterNumber.trim()) return;
+    setMeterValidating(true);
+    setError(undefined);
+    setMeterValidation(undefined);
+    try {
+      const result = await verifyGuestMeter({ disco, meterNumber: meterNumber.trim(), meterType: "PREPAID" });
+      setMeterValidation(result);
+      if (!result.valid) setError("Meter validation failed. Check the meter number and provider.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "We could not validate this meter.");
+    } finally {
+      setMeterValidating(false);
+    }
+  }
+
+  async function submitVerifyCard() {
+    if (!smartCardNumber.trim()) return;
+    setCardValidating(true);
+    setError(undefined);
+    setCardValidation(undefined);
+    try {
+      const result = await verifyGuestCable({ provider: cableProvider, smartCardNumber: smartCardNumber.trim() });
+      setCardValidation(result);
+      if (!result.valid) setError("Smartcard verification failed. Check the smartcard/IUC number.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "We could not verify this smartcard.");
+    } finally {
+      setCardValidating(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(undefined);
+
+    if (productType === "ELECTRICITY" && !meterValidation?.valid) {
+      setError("Verify the meter number before paying.");
+      return;
+    }
+    if (productType === "CABLE" && !cardValidation?.valid) {
+      setError("Verify the smartcard number before paying.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -156,29 +271,152 @@ export default function GuestBillsPage() {
             )}
 
             {productType === "DATA" && (
-              <Input
-                hint="Provider plan ID from the data plan catalog"
-                id="bundleId"
-                label="Data bundle"
-                onChange={(e) => setBundleId(e.currentTarget.value)}
-                placeholder="e.g. 1000"
-                required
-                value={bundleId}
-              />
+              <div className="grid gap-1.5">
+                <span className="text-sm font-medium">Choose a data plan</span>
+                {loadingDataPlans ? (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] px-4 py-3 text-sm text-[var(--ft-text-muted)]">
+                    Loading plans…
+                  </div>
+                ) : dataPlans.length === 0 ? (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] px-4 py-3 text-sm text-[var(--ft-text-muted)]">
+                    No data plans available for this network right now.
+                  </div>
+                ) : (
+                  <div className="grid max-h-64 gap-2 overflow-y-auto">
+                    {dataPlans.map((plan) => (
+                      <button
+                        className={`flex items-center justify-between rounded-[var(--radius-md)] border p-3 text-left text-sm transition ${
+                          bundleId === plan.providerPlanId
+                            ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5"
+                            : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
+                        }`}
+                        key={plan.providerPlanId}
+                        onClick={() => setBundleId(plan.providerPlanId)}
+                        type="button"
+                      >
+                        <span className="font-medium">{plan.displayName}</span>
+                        <span className="font-semibold">{formatNaira(Math.ceil(plan.costMinor * 1.02))}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {productType === "ELECTRICITY" && (
               <>
-                <Input id="disco" label="Disco" onChange={(e) => setDisco(e.currentTarget.value)} placeholder="e.g. ikeja-electric" required value={disco} />
-                <Input id="meterNumber" label="Meter number" onChange={(e) => setMeterNumber(e.currentTarget.value)} required value={meterNumber} />
+                <div className="grid gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="disco">Distribution company</label>
+                  <select
+                    className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                    id="disco"
+                    onChange={(e) => setDisco(e.target.value)}
+                    value={disco}
+                  >
+                    {ELECTRIC_COMPANIES.map((d) => (
+                      <option key={d.code} value={d.code}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="meterNumber">Meter number</label>
+                  <div className="flex gap-2">
+                    <input
+                      className="h-11 flex-1 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                      id="meterNumber"
+                      onChange={(e) => setMeterNumber(e.target.value)}
+                      value={meterNumber}
+                    />
+                    <Button
+                      disabled={!meterNumber.trim() || meterValidating}
+                      onClick={() => void submitVerifyMeter()}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {meterValidating ? "Checking..." : "Verify"}
+                    </Button>
+                  </div>
+                  {meterValidation?.valid && (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--ft-green)]/30 bg-[var(--ft-green)]/5 p-3 text-sm">
+                      <div className="font-medium">{meterValidation.customerName ?? "Meter verified"}</div>
+                      {meterValidation.address && (
+                        <div className="text-xs text-[var(--ft-text-muted)]">{meterValidation.address}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
             {productType === "CABLE" && (
               <>
-                <Input id="cableProvider" label="Provider" onChange={(e) => setCableProvider(e.currentTarget.value)} placeholder="dstv / gotv / startimes" required value={cableProvider} />
-                <Input id="smartCardNumber" label="Smart card number" onChange={(e) => setSmartCardNumber(e.currentTarget.value)} required value={smartCardNumber} />
-                <Input id="packageCode" label="Package" onChange={(e) => setPackageCode(e.currentTarget.value)} placeholder="e.g. dstv-padi" required value={packageCode} />
+                <div className="grid gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="cableProvider">Provider</label>
+                  <select
+                    className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                    id="cableProvider"
+                    onChange={(e) => setCableProvider(e.target.value)}
+                    value={cableProvider}
+                  >
+                    {CABLE_PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="smartCardNumber">Smart card number</label>
+                  <div className="flex gap-2">
+                    <input
+                      className="h-11 flex-1 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                      id="smartCardNumber"
+                      onChange={(e) => setSmartCardNumber(e.target.value)}
+                      value={smartCardNumber}
+                    />
+                    <Button
+                      disabled={!smartCardNumber.trim() || cardValidating}
+                      onClick={() => void submitVerifyCard()}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {cardValidating ? "Checking..." : "Verify"}
+                    </Button>
+                  </div>
+                  {cardValidation?.valid && (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--ft-green)]/30 bg-[var(--ft-green)]/5 p-3 text-sm">
+                      <div className="font-medium">{cardValidation.customerName ?? "Smartcard verified"}</div>
+                    </div>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <span className="text-sm font-medium">Select package</span>
+                  {loadingCablePackages ? (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] px-4 py-3 text-sm text-[var(--ft-text-muted)]">
+                      Loading packages…
+                    </div>
+                  ) : cablePackages.length === 0 ? (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] px-4 py-3 text-sm text-[var(--ft-text-muted)]">
+                      No packages available for this provider right now.
+                    </div>
+                  ) : (
+                    <div className="grid max-h-64 gap-2 overflow-y-auto">
+                      {cablePackages.map((pkg) => (
+                        <button
+                          className={`flex items-center justify-between rounded-[var(--radius-md)] border p-3 text-left text-sm transition ${
+                            packageCode === pkg.packageCode
+                              ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5"
+                              : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
+                          }`}
+                          key={pkg.id}
+                          onClick={() => setPackageCode(pkg.packageCode)}
+                          type="button"
+                        >
+                          <span className="font-medium">{pkg.displayName}</span>
+                          <span className="font-semibold">{formatNaira(Math.ceil(pkg.costMinor * 1.02))}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -190,7 +428,36 @@ export default function GuestBillsPage() {
             )}
 
             {productType === "EDUCATION" && (
-              <Input id="examType" label="Exam PIN" onChange={(e) => setExamType(e.currentTarget.value)} placeholder="waecdirect" required value={examType} />
+              <div className="grid gap-1.5">
+                <span className="text-sm font-medium">Choose an exam PIN</span>
+                {loadingEducationPlans ? (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] px-4 py-3 text-sm text-[var(--ft-text-muted)]">
+                    Loading products…
+                  </div>
+                ) : educationPlans.length === 0 ? (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] px-4 py-3 text-sm text-[var(--ft-text-muted)]">
+                    No exam PIN products are available right now.
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    {educationPlans.map((plan) => (
+                      <button
+                        className={`flex items-center justify-between rounded-[var(--radius-md)] border p-3 text-left text-sm transition ${
+                          examType === plan.productCode
+                            ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5"
+                            : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
+                        }`}
+                        key={plan.productCode}
+                        onClick={() => setExamType(plan.productCode)}
+                        type="button"
+                      >
+                        <span className="font-medium">{plan.displayName}</span>
+                        <span className="font-semibold">{formatNaira(plan.costMinor)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
 
             {needsAmount && (
@@ -211,7 +478,17 @@ export default function GuestBillsPage() {
               </div>
             )}
 
-            <Button className="h-11 w-full justify-center" disabled={submitting} type="submit">
+            <Button
+              className="h-11 w-full justify-center"
+              disabled={
+                submitting ||
+                (productType === "DATA" && !bundleId) ||
+                (productType === "CABLE" && (!selectedPackage || !cardValidation?.valid)) ||
+                (productType === "ELECTRICITY" && !meterValidation?.valid) ||
+                (productType === "EDUCATION" && !examType)
+              }
+              type="submit"
+            >
               {submitting ? "Starting..." : "Continue to payment"}
               <ArrowRight className="size-4" />
             </Button>

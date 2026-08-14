@@ -14,7 +14,9 @@ import type {
   AdminGuestTransactionQueryDto,
   GuestCheckoutDto,
   GuestMigrateDto,
-  GuestPaymentDto
+  GuestPaymentDto,
+  GuestVerifyCableDto,
+  GuestVerifyMeterDto
 } from "./guest-checkout.dtos";
 
 interface MinimalRequest {
@@ -74,6 +76,66 @@ export class GuestCheckoutController {
   })
   checkout(@Body() body: GuestCheckoutDto, @Req() request: MinimalRequest) {
     return this.guest.checkout(body, requestContext(request));
+  }
+
+  @Get("data-plans")
+  @Public()
+  @Throttle({ short: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({ summary: "List human-readable data bundles for a network (no account required)" })
+  @ApiQuery({ name: "network", required: false, enum: ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] })
+  dataPlans(@Query("network") network?: string) {
+    return this.guest.listDataPlans(network);
+  }
+
+  @Get("cable-packages")
+  @Public()
+  @Throttle({ short: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({ summary: "List cable packages for a provider (no account required)" })
+  @ApiQuery({ name: "provider", required: false })
+  cablePackages(@Query("provider") provider?: string) {
+    return this.guest.listCablePackages(provider);
+  }
+
+  @Get("education-plans")
+  @Public()
+  @Throttle({ short: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({ summary: "List human-readable exam PIN products (no account required)" })
+  educationPlans() {
+    return this.guest.listEducationPlans();
+  }
+
+  @Post("verify-meter")
+  @Public()
+  @Throttle({ short: { limit: 15, ttl: 60_000 } })
+  @ApiOperation({ summary: "Validate a prepaid/postpaid meter before payment (no account required)" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["disco", "meterNumber", "meterType"],
+      properties: {
+        disco: { type: "string" },
+        meterNumber: { type: "string" },
+        meterType: { type: "string", enum: ["PREPAID", "POSTPAID"] }
+      }
+    }
+  })
+  verifyMeter(@Body() body: GuestVerifyMeterDto) {
+    return this.guest.validateMeter(body);
+  }
+
+  @Post("verify-cable")
+  @Public()
+  @Throttle({ short: { limit: 15, ttl: 60_000 } })
+  @ApiOperation({ summary: "Verify a smartcard/IUC number before payment (no account required)" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["provider", "smartCardNumber"],
+      properties: { provider: { type: "string" }, smartCardNumber: { type: "string" } }
+    }
+  })
+  verifyCable(@Body() body: GuestVerifyCableDto) {
+    return this.guest.verifyCable(body);
   }
 
   @Post("payment")

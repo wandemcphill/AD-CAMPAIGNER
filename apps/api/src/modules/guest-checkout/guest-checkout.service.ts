@@ -221,6 +221,33 @@ export class GuestCheckoutService {
   // DATA/CABLE/EDUCATION are fixed-price catalog products — pricing is always resolved
   // server-side from the VTU catalog tables, never trusted from the request body, since
   // an unauthenticated caller could otherwise buy a real bundle for an arbitrary amount.
+  // Human-readable catalog/verification lookups for the guest checkout form — the
+  // same VTU catalog and provider calls the authenticated flow uses, exposed without
+  // requiring a session so guests never have to type a raw provider plan ID or
+  // free-type a disco/provider slug.
+  async listDataPlans(network?: string) {
+    const normalized = network && VTU_NETWORKS.includes(network as VtuNetwork) ? (network as VtuNetwork) : undefined;
+    return (await this.vtu?.listDataPlans(normalized)) ?? [];
+  }
+
+  async listCablePackages(provider?: string) {
+    return (await this.vtu?.listCablePackages(provider)) ?? [];
+  }
+
+  async listEducationPlans() {
+    return (await this.vtu?.listEducationPlans()) ?? [];
+  }
+
+  async validateMeter(input: { disco: string; meterNumber: string; meterType: "PREPAID" | "POSTPAID" }) {
+    if (!this.vtu) throw new BadRequestException("Meter validation is temporarily unavailable.");
+    return this.vtu.validateMeter(input);
+  }
+
+  async verifyCable(input: { provider: string; smartCardNumber: string }) {
+    if (!this.vtu) throw new BadRequestException("Smartcard verification is temporarily unavailable.");
+    return this.vtu.verifyCable(input);
+  }
+
   private async resolveProduct(input: GuestCheckoutDto): Promise<{
     beneficiaryPlain: string;
     beneficiaryMasked: string;
