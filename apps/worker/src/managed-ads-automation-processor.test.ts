@@ -71,18 +71,18 @@ describe("processManagedAdsAutomationJob", () => {
         fromStatus: "ACTIVE",
         toStatus: "COMPLETED",
         actorType: "SYSTEM"
-      })
+      }) as Record<string, unknown>
     });
 
     expect(ledgerEntryUpsert).toHaveBeenCalledTimes(1);
     expect(ledgerEntryUpsert.mock.calls[0]?.[0]).toMatchObject({
       where: { idempotencyKey: "hold:hold_1:release" },
-      create: expect.objectContaining({ kind: "RELEASE", amountMinor: 5000, walletId: "wallet_1" })
+      create: expect.objectContaining({ kind: "RELEASE", amountMinor: 5000, walletId: "wallet_1" }) as Record<string, unknown>
     });
 
     expect(campaignBudgetHoldUpdate).toHaveBeenCalledWith({
       where: { id: "hold_1" },
-      data: expect.objectContaining({ status: "RELEASED", releaseLedgerEntryId: "ledger_release_1" })
+      data: expect.objectContaining({ status: "RELEASED", releaseLedgerEntryId: "ledger_release_1" }) as Record<string, unknown>
     });
 
     expect(auditLogCreate).toHaveBeenCalledWith({
@@ -92,7 +92,7 @@ describe("processManagedAdsAutomationJob", () => {
         action: "campaign.auto_completed",
         entityType: "Campaign",
         entityId: "camp_1"
-      })
+      }) as Record<string, unknown>
     });
   });
 
