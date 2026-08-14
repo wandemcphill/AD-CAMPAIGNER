@@ -276,7 +276,7 @@ export function OsShell({ children }: { children: ReactNode }) {
   function runCommand(href: string) {
     setCommandOpen(false);
     setCommandQuery("");
-    router.push(href as Parameters<typeof router.push>[0]);
+    router.push(href);
   }
 
   async function handleSignOut() {
