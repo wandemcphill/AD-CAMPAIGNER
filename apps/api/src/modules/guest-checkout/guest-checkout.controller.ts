@@ -15,6 +15,7 @@ import type {
   GuestCheckoutDto,
   GuestMigrateDto,
   GuestPaymentDto,
+  GuestVerifyBettingDto,
   GuestVerifyCableDto,
   GuestVerifyMeterDto
 } from "./guest-checkout.dtos";
@@ -94,6 +95,29 @@ export class GuestCheckoutController {
   @ApiQuery({ name: "provider", required: false })
   cablePackages(@Query("provider") provider?: string) {
     return this.guest.listCablePackages(provider);
+  }
+
+  @Get("betting-companies")
+  @Public()
+  @Throttle({ short: { limit: 30, ttl: 60_000 } })
+  @ApiOperation({ summary: "List supported betting platforms (no account required)" })
+  bettingCompanies() {
+    return this.guest.listBettingCompanies();
+  }
+
+  @Post("verify-betting")
+  @Public()
+  @Throttle({ short: { limit: 15, ttl: 60_000 } })
+  @ApiOperation({ summary: "Verify a betting account before payment (no account required)" })
+  @ApiBody({
+    schema: {
+      type: "object",
+      required: ["bettingCompany", "customerId"],
+      properties: { bettingCompany: { type: "string" }, customerId: { type: "string" } }
+    }
+  })
+  verifyBetting(@Body() body: GuestVerifyBettingDto) {
+    return this.guest.verifyBetting(body);
   }
 
   @Get("education-plans")

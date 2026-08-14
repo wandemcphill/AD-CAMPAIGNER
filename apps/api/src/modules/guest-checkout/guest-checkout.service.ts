@@ -248,6 +248,15 @@ export class GuestCheckoutService {
     return this.vtu.verifyCable(input);
   }
 
+  async listBettingCompanies() {
+    return (await this.vtu?.listBettingCompanies()) ?? [];
+  }
+
+  async verifyBetting(input: { bettingCompany: string; customerId: string }) {
+    if (!this.vtu) throw new BadRequestException("Betting account verification is temporarily unavailable.");
+    return this.vtu.verifyBetting(input);
+  }
+
   private async resolveProduct(input: GuestCheckoutDto): Promise<{
     beneficiaryPlain: string;
     beneficiaryMasked: string;

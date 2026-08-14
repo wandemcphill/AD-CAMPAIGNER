@@ -13,12 +13,15 @@ import {
   loadGuestDataPlans,
   loadGuestCablePackages,
   loadGuestEducationPlans,
+  loadGuestBettingCompanies,
   verifyGuestMeter,
   verifyGuestCable,
+  verifyGuestBetting,
   type GuestProductType,
   type GuestDataPlan,
   type GuestCablePackage,
   type GuestEducationPlan,
+  type GuestBettingCompany,
   type GuestMeterValidation
 } from "./guest-checkout-api";
 import { CABLE_PROVIDERS, ELECTRIC_COMPANIES } from "../os/utilities/vtu-api";
@@ -60,7 +63,11 @@ export default function GuestBillsPage() {
   const [cardValidation, setCardValidation] = useState<GuestMeterValidation>();
   const [cardValidating, setCardValidating] = useState(false);
   const [bookmaker, setBookmaker] = useState("");
+  const [bettingCompanies, setBettingCompanies] = useState<GuestBettingCompany[]>([]);
+  const [loadingBettingCompanies, setLoadingBettingCompanies] = useState(false);
   const [customerId, setCustomerId] = useState("");
+  const [bettingValidation, setBettingValidation] = useState<GuestMeterValidation>();
+  const [bettingValidating, setBettingValidating] = useState(false);
   const [examType, setExamType] = useState("");
   const [educationPlans, setEducationPlans] = useState<GuestEducationPlan[]>([]);
   const [loadingEducationPlans, setLoadingEducationPlans] = useState(false);
@@ -91,6 +98,38 @@ export default function GuestBillsPage() {
       .catch(() => setEducationPlans([]))
       .finally(() => setLoadingEducationPlans(false));
   }, [productType]);
+
+  useEffect(() => {
+    if (productType !== "BETTING") return;
+    setLoadingBettingCompanies(true);
+    loadGuestBettingCompanies()
+      .then((companies) => {
+        setBettingCompanies(companies);
+        setBookmaker((prev) => prev || companies[0]?.code || "");
+      })
+      .catch(() => setBettingCompanies([]))
+      .finally(() => setLoadingBettingCompanies(false));
+  }, [productType]);
+
+  useEffect(() => {
+    setBettingValidation(undefined);
+  }, [bookmaker, customerId]);
+
+  async function submitVerifyBetting() {
+    if (!bookmaker || !customerId.trim()) return;
+    setBettingValidating(true);
+    setError(undefined);
+    setBettingValidation(undefined);
+    try {
+      const result = await verifyGuestBetting({ bettingCompany: bookmaker, customerId: customerId.trim() });
+      setBettingValidation(result);
+      if (!result.valid) setError("Betting account verification failed. Check the customer ID.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "We could not verify this account.");
+    } finally {
+      setBettingValidating(false);
+    }
+  }
 
   useEffect(() => {
     if (productType !== "CABLE") return;
@@ -157,6 +196,10 @@ export default function GuestBillsPage() {
     }
     if (productType === "CABLE" && !cardValidation?.valid) {
       setError("Verify the smartcard number before paying.");
+      return;
+    }
+    if (productType === "BETTING" && !bettingValidation?.valid) {
+      setError("Verify the betting account before paying.");
       return;
     }
 
@@ -422,8 +465,50 @@ export default function GuestBillsPage() {
 
             {productType === "BETTING" && (
               <>
-                <Input id="bookmaker" label="Bookmaker" onChange={(e) => setBookmaker(e.currentTarget.value)} placeholder="e.g. product-bet-king" required value={bookmaker} />
-                <Input id="customerId" label="Customer / account ID" onChange={(e) => setCustomerId(e.currentTarget.value)} required value={customerId} />
+                <div className="grid gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="bookmaker">Betting platform</label>
+                  <select
+                    className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                    disabled={loadingBettingCompanies || bettingCompanies.length === 0}
+                    id="bookmaker"
+                    onChange={(e) => setBookmaker(e.target.value)}
+                    value={bookmaker}
+                  >
+                    {loadingBettingCompanies ? (
+                      <option value="">Loading platforms…</option>
+                    ) : bettingCompanies.length === 0 ? (
+                      <option value="">No platforms available</option>
+                    ) : (
+                      bettingCompanies.map((c) => (
+                        <option key={c.code} value={c.code}>{c.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div className="grid gap-1.5">
+                  <label className="text-sm font-medium" htmlFor="customerId">Customer / account ID</label>
+                  <div className="flex gap-2">
+                    <input
+                      className="h-11 flex-1 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+                      id="customerId"
+                      onChange={(e) => setCustomerId(e.target.value)}
+                      value={customerId}
+                    />
+                    <Button
+                      disabled={!bookmaker || !customerId.trim() || bettingValidating}
+                      onClick={() => void submitVerifyBetting()}
+                      type="button"
+                      variant="secondary"
+                    >
+                      {bettingValidating ? "Checking..." : "Verify"}
+                    </Button>
+                  </div>
+                  {bettingValidation?.valid && (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--ft-green)]/30 bg-[var(--ft-green)]/5 p-3 text-sm">
+                      <div className="font-medium">{bettingValidation.customerName ?? "Account verified"}</div>
+                    </div>
+                  )}
+                </div>
               </>
             )}
 
@@ -485,7 +570,8 @@ export default function GuestBillsPage() {
                 (productType === "DATA" && !bundleId) ||
                 (productType === "CABLE" && (!selectedPackage || !cardValidation?.valid)) ||
                 (productType === "ELECTRICITY" && !meterValidation?.valid) ||
-                (productType === "EDUCATION" && !examType)
+                (productType === "EDUCATION" && !examType) ||
+                (productType === "BETTING" && !bettingValidation?.valid)
               }
               type="submit"
             >

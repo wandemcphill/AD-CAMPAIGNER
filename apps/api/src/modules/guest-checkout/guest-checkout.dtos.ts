@@ -69,3 +69,8 @@ export interface GuestVerifyCableDto {
   provider: string;
   smartCardNumber: string;
 }
+
+export interface GuestVerifyBettingDto {
+  bettingCompany: string;
+  customerId: string;
+}

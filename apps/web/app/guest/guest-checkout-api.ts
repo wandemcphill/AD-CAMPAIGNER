@@ -104,6 +104,22 @@ export function loadGuestCablePackages(provider: string) {
   return apiRequest<GuestCablePackage[]>(`/guest/cable-packages?provider=${encodeURIComponent(provider)}`);
 }
 
+export interface GuestBettingCompany {
+  code: string;
+  name: string;
+}
+
+export function loadGuestBettingCompanies() {
+  return apiRequest<GuestBettingCompany[]>("/guest/betting-companies");
+}
+
+export function verifyGuestBetting(input: { bettingCompany: string; customerId: string }) {
+  return apiRequest<GuestMeterValidation>("/guest/verify-betting", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
 export interface GuestEducationPlan {
   productCode: string;
   displayName: string;
