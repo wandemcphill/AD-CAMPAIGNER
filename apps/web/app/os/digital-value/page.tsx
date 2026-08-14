@@ -40,7 +40,7 @@ const tabs = [
   { id: "airtime", label: "Airtime cashout" }
 ];
 
-const sellBrands = ["APPLE_GIFT_CARD", "AMAZON", "STEAM", "GOOGLE_PLAY", "PLAYSTATION"];
+const sellBrands = ["APPLE", "AMAZON", "STEAM", "GOOGLE_PLAY", "PLAYSTATION"];
 const sellRegions = ["US", "UK", "EU", "GLOBAL"];
 
 function formatNgn(value: number) {
@@ -58,7 +58,7 @@ export default function DigitalValuePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [forbidden, setForbidden] = useState(false);
-  const [sellBrand, setSellBrand] = useState(sellBrands[0] ?? "APPLE_GIFT_CARD");
+  const [sellBrand, setSellBrand] = useState(sellBrands[0] ?? "APPLE");
   const [sellRegion, setSellRegion] = useState(sellRegions[0] ?? "US");
   const [sellDenomination, setSellDenomination] = useState(50);
   const [sellCode, setSellCode] = useState("");
