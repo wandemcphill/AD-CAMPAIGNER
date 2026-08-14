@@ -12,3 +12,8 @@ export type CreateInvoiceDto = {
   dueAt?: string;
   lineItems: InvoiceLineItemInput[];
 };
+
+export type PayInvoiceDto = {
+  payerEmail?: string;
+  redirectUrl?: string;
+};

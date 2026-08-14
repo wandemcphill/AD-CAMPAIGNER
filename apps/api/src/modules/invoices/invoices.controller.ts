@@ -1,10 +1,39 @@
-import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Req } from "@nestjs/common";
 
-import { RequirePermissions } from "../authorization.decorators";
+import { Public, RequirePermissions } from "../authorization.decorators";
 import { RequireFeature } from "../feature-flag.decorators";
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
-import type { CreateInvoiceDto } from "./invoices.dtos";
+import type { CreateInvoiceDto, PayInvoiceDto } from "./invoices.dtos";
 import { InvoicesService } from "./invoices.service";
+
+// Public resolver + payment for a shared invoice link. Unauthenticated, and
+// deliberately returns only payer-facing fields (see InvoicesService.resolvePublic).
+@Controller("public/invoices")
+@Public()
+export class PublicInvoicesController {
+  constructor(@Inject(InvoicesService) private readonly invoices: InvoicesService) {}
+
+  @Get(":id")
+  resolve(@Param("id") id: string) {
+    return this.invoices.resolvePublic(id);
+  }
+
+  @Post(":id/pay")
+  pay(@Param("id") id: string, @Body() body: PayInvoiceDto) {
+    return this.invoices.initiatePayment(id, body, body.redirectUrl);
+  }
+}
+
+@Controller("api/webhooks")
+@Public()
+export class InvoicesWebhookController {
+  constructor(@Inject(InvoicesService) private readonly invoices: InvoicesService) {}
+
+  @Post("korapay-invoice")
+  korapay(@Body() body: unknown, @Headers("x-korapay-signature") signature?: string) {
+    return this.invoices.handleKorapayWebhook(body, signature);
+  }
+}
 
 // Customer invoicing. Reads require analytics:read (any workspace role); creating,
 // sending, marking paid and voiding require payment:manage (FINANCE and up).
