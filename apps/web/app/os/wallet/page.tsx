@@ -281,6 +281,15 @@ export default function BillingPage() {
   const { session } = useApiSession();
   const [amount, setAmount] = useState("50000");
   const [activeTab, setActiveTab] = useState<BillingTab>("history");
+  // ?tab= lets Money link straight at a specific surface (Transactions → history,
+  // Payouts → withdraw) instead of those needing routes of their own. Read once on
+  // mount via window.location to avoid useSearchParams' Suspense requirement.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    if (requested && billingTabs.some((tab) => tab.value === requested)) {
+      setActiveTab(requested as BillingTab);
+    }
+  }, []);
   const [intent, setIntent] = useState<PaymentIntent>();
   const [selectedActivity, setSelectedActivity] = useState<BillingActivity>();
   const [formError, setFormError] = useState<string>();

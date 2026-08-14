@@ -6,10 +6,12 @@ import {
   ArrowDownLeft,
   ArrowRight,
   ArrowUpRight,
+  Banknote,
   Building2,
   CreditCard,
   FileText,
   Link2,
+  Receipt,
   Send,
   Ticket,
   Wallet,
@@ -40,6 +42,11 @@ const ENTRIES: MoneyEntry[] = [
   { label: "Virtual Accounts", description: "Collect payments to dedicated accounts", href: "/os/financial-products/accounts", icon: Building2, flag: "virtualAccounts" },
   { label: "Virtual Cards", description: "Issue and manage spending cards", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" },
   { label: "Transfers", description: "Send money locally and abroad", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },
+  // Transactions and Payouts don't have routes of their own — they're surfaces of
+  // the wallet page, deep-linked via ?tab=. Payouts stays hidden until
+  // walletWithdrawals is on, matching the tab's own gating.
+  { label: "Transactions", description: "Every movement on your ledger", href: "/os/wallet?tab=history", icon: Receipt },
+  { label: "Payouts", description: "Withdraw to your bank account", href: "/os/wallet?tab=withdraw", icon: Banknote, flag: "walletWithdrawals" },
   { label: "Vouchers", description: "Buy and redeem value vouchers", href: "/os/vouchers", icon: Ticket }
 ];
 

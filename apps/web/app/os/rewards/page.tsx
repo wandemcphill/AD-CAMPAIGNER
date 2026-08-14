@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Gift, Plus, QrCode, Trash2, Trophy, Users, Zap } from "lucide-react";
+import { Gift, Plus, QrCode, Ticket, Trash2, Trophy, Users, Zap } from "lucide-react";
 import Link from "next/link";
 
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
@@ -17,10 +17,13 @@ import { loadVoucherProducts, type VoucherProduct } from "../../vouchers/api";
 import { ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
 import { SectionTabs, type SectionTab } from "../section-tabs";
 
+// Vouchers lives at its own top-level route but belongs to the Rewards section in
+// the sidebar, so it appears here too — otherwise entering Rewards loses the tab.
 const REWARDS_TABS: SectionTab[] = [
   { label: "Reward Campaigns", href: "/os/rewards", icon: Trophy },
   { label: "My Progress", href: "/os/rewards/progress", icon: Gift },
   { label: "Scan QR", href: "/os/rewards/scan", icon: QrCode },
+  { label: "Vouchers", href: "/os/vouchers", icon: Ticket },
 ];
 
 const TASK_TYPE_LABELS: Record<RewardTaskType, string> = {

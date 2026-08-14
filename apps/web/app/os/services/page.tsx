@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import {
@@ -9,9 +10,11 @@ import {
   GraduationCap,
   Globe,
   Globe2,
+  History,
   KeyRound,
   Lightbulb,
   Phone,
+  Search,
   Smartphone,
   Trophy,
   Tv,
@@ -71,18 +74,39 @@ const CATEGORIES: ServiceCategory[] = [
   },
 ];
 
+/**
+ * Where each service records its order history. These are the existing per-vertical
+ * history routes — Services links to them rather than inventing a unified order
+ * feed, which would need a cross-vertical API that doesn't exist.
+ */
+const ORDER_HISTORY: Array<{ label: string; href: Route; flag?: string }> = [
+  { label: "Airtime & data", href: "/os/airtime/history", flag: "vtu" },
+  { label: "Bills & utilities", href: "/os/utilities/history", flag: "billsElectricity" },
+  { label: "Growth services", href: "/os/growth/orders" },
+];
+
 export default function ServicesHubPage() {
   const { flags, ready } = useFeatureFlags();
+  const [query, setQuery] = useState("");
 
   function isEnabled(flag?: string) {
     if (!flag) return true;
     return ready && flags[flag] === true;
   }
 
+  const normalizedQuery = query.trim().toLowerCase();
   const visibleCategories = CATEGORIES.map((category) => ({
     ...category,
-    items: category.items.filter((item) => isEnabled(item.flag)),
+    items: category.items.filter(
+      (item) =>
+        isEnabled(item.flag) &&
+        (normalizedQuery.length === 0 ||
+          item.label.toLowerCase().includes(normalizedQuery) ||
+          item.description.toLowerCase().includes(normalizedQuery)),
+    ),
   })).filter((category) => category.items.length > 0);
+
+  const visibleHistory = ORDER_HISTORY.filter((entry) => isEnabled(entry.flag));
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
@@ -93,9 +117,43 @@ export default function ServicesHubPage() {
         </p>
       </header>
 
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--ft-text-muted)]" />
+          <input
+            aria-label="Search services"
+            className="h-10 w-full rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pl-9 pr-3 text-sm outline-none transition focus:border-[var(--ft-accent)]"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search services"
+            type="search"
+            value={query}
+          />
+        </div>
+
+        {visibleHistory.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
+              Your orders
+            </span>
+            {visibleHistory.map((entry) => (
+              <Link
+                className="inline-flex items-center gap-1 rounded-full border border-[var(--ft-border)] px-3 py-1 text-xs font-medium text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)]/40 hover:text-[var(--ft-accent)]"
+                href={entry.href}
+                key={entry.href}
+              >
+                <History className="size-3" />
+                {entry.label}
+              </Link>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
       {visibleCategories.length === 0 ? (
         <div className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-8 text-center text-sm text-[var(--ft-text-muted)]">
-          Services are being set up for your workspace. Check back shortly.
+          {normalizedQuery.length > 0
+            ? `No services match “${query.trim()}”.`
+            : "Services are being set up for your workspace. Check back shortly."}
         </div>
       ) : (
         <div className="grid gap-8">

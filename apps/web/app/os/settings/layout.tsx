@@ -9,8 +9,10 @@ import {
   Bot,
   Building2,
   CreditCard,
+  LifeBuoy,
   Plug,
   Shield,
+  SlidersHorizontal,
   UserCircle,
   Users,
   type LucideIcon
@@ -30,7 +32,8 @@ const SETTINGS_NAV: SettingsNavGroup[] = [
   { group: "Security", items: [
     { label: "Security", href: "/os/settings/security", icon: Shield },
   ]},
-  { group: "Notifications", items: [
+  { group: "Preferences", items: [
+    { label: "Preferences", href: "/os/settings/preferences", icon: SlidersHorizontal },
     { label: "Notifications", href: "/os/settings/notifications", icon: Bell },
   ]},
   { group: "Team", items: [
@@ -38,6 +41,9 @@ const SETTINGS_NAV: SettingsNavGroup[] = [
   ]},
   { group: "Billing", items: [
     { label: "Wallet", href: "/os/settings/wallet", icon: CreditCard },
+  ]},
+  { group: "Help", items: [
+    { label: "Support", href: "/os/support", icon: LifeBuoy },
   ]},
   { group: "AI & Developer", items: [
     // One page (see apps/web/app/os/settings/ai/page.tsx) holds both the AI Configuration
