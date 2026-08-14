@@ -273,10 +273,9 @@ export const guestServices = [
 
 /**
  * Public nav. Every entry must resolve to a section that exists on this page or
- * a real route — no links to pages we haven't built. "Pricing" and "Resources"
- * are deliberately absent: there is no pricing page, and publishing rate/price
- * comparisons we cannot verify would breach the same truthfulness rule the
- * capability status chips enforce.
+ * a real route — no links to pages we haven't built. "Resources" is still
+ * absent: there is no documentation/blog surface to point it at, and a nav item
+ * leading nowhere is worse than one missing.
  */
 export const navItems = [
   { href: "#money", label: "Money" },
@@ -284,6 +283,7 @@ export const navItems = [
   { href: "#growth", label: "Grow" },
   { href: "#marketplace", label: "Marketplace" },
   { href: "#how-it-works", label: "How it works" },
+  { href: "/pricing", label: "Pricing" },
   { href: "/guest", label: "Pay a bill" }
 ];
 

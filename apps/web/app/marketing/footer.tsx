@@ -23,6 +23,10 @@ export function MarketingFooter() {
 
         <div className="border-t border-[var(--ft-border)] pt-6">
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-[var(--ft-text-secondary)]">
+            <Link className="transition hover:text-[var(--ft-text-primary)]" href="/pricing">
+              Pricing
+            </Link>
+            <div className="h-4 w-px bg-[var(--ft-border)]" />
             <Link className="transition hover:text-[var(--ft-text-primary)]" href="/terms">
               Terms of Service
             </Link>
