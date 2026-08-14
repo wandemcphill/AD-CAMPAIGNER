@@ -14,19 +14,22 @@
   --ft-accent-2: #8b5cf6;
   --ft-accent-2-subtle: #ede9fe;
   --ft-accent-2-glow: rgba(139, 92, 246, 0.16);
-  --ft-bg-base: #f5f2ee;
-  --ft-bg-surface: #fdfbf8;
+  /* Cool neutral surfaces: the light theme reads as premium fintech rather than
+     the warm beige it used to be. Brand character comes from the purple/orange
+     accents below, not from tinting every background. */
+  --ft-bg-base: #f6f7f9;
+  --ft-bg-surface: #ffffff;
   --ft-bg-raised: #ffffff;
-  --ft-bg-muted: #ede9e3;
-  --ft-bg-sunken: #e8e3db;
-  --ft-bg-page-gradient: linear-gradient(180deg, #f5f2ee 0%, #efe8dd 54%, #f5f2ee 100%);
-  --ft-border: #e0dad1;
-  --ft-border-strong: #cfc8bc;
-  --ft-border-emphasis: #a89880;
-  --ft-text-primary: #1a1611;
-  --ft-text-secondary: #5c5346;
-  --ft-text-muted: #9e9285;
-  --ft-text-inverse: #fdfbf8;
+  --ft-bg-muted: #eef0f4;
+  --ft-bg-sunken: #e6e9ef;
+  --ft-bg-page-gradient: linear-gradient(180deg, #f8f9fb 0%, #f1f3f7 54%, #f8f9fb 100%);
+  --ft-border: #e4e7ec;
+  --ft-border-strong: #cfd5df;
+  --ft-border-emphasis: #9aa4b5;
+  --ft-text-primary: #0f1420;
+  --ft-text-secondary: #4a5365;
+  --ft-text-muted: #8b93a3;
+  --ft-text-inverse: #ffffff;
   --ft-accent: #d97706;
   --ft-accent-dim: #b45309;
   --ft-accent-strong: #92400e;
@@ -63,11 +66,11 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --radius-xl: 20px;
-  --shadow-xs: 0 1px 2px rgba(26, 22, 17, 0.06);
-  --shadow-sm: 0 1px 4px rgba(26, 22, 17, 0.08), 0 0 0 1px rgba(26, 22, 17, 0.04);
-  --shadow-md: 0 4px 12px rgba(26, 22, 17, 0.1), 0 1px 3px rgba(26, 22, 17, 0.06);
-  --shadow-lg: 0 8px 24px rgba(26, 22, 17, 0.12), 0 2px 6px rgba(26, 22, 17, 0.06);
-  --shadow-xl: 0 20px 48px rgba(26, 22, 17, 0.14);
+  --shadow-xs: 0 1px 2px rgba(15, 20, 32, 0.06);
+  --shadow-sm: 0 1px 4px rgba(15, 20, 32, 0.08), 0 0 0 1px rgba(15, 20, 32, 0.04);
+  --shadow-md: 0 4px 12px rgba(15, 20, 32, 0.1), 0 1px 3px rgba(15, 20, 32, 0.06);
+  --shadow-lg: 0 8px 24px rgba(15, 20, 32, 0.12), 0 2px 6px rgba(15, 20, 32, 0.06);
+  --shadow-xl: 0 20px 48px rgba(15, 20, 32, 0.14);
   --background: var(--ft-bg-base);
   --foreground: var(--ft-text-primary);
   --muted: var(--ft-text-secondary);

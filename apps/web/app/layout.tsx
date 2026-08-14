@@ -30,7 +30,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body>
-        <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(0,102,255,0.08),_transparent_30%),radial-gradient(circle_at_80%_10%,_rgba(139,92,246,0.08),_transparent_24%),linear-gradient(180deg,_#050507_0%,_#0B0F19_38%,_#050507_100%)]">
+        {/* Themed page ground. This used to hardcode the retired marketing palette
+            (#050507/#0B0F19), which fought the light theme wherever a route didn't
+            paint an opaque surface of its own. */}
+        <div className="min-h-screen bg-[var(--ft-bg-base)]">
           {children}
         </div>
       </body>
