@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUpRight, Wallet } from "lucide-react";
+import { ArrowUpRight, CreditCard, TrendingUp, Wallet } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { heroEvents } from "./data";
@@ -55,8 +55,20 @@ export function HeroComposition({ reducedMotion }: { reducedMotion: boolean }) {
             <Wallet className="size-3.5 text-[var(--ft-accent)]" />
             Wallet balance
           </span>
-          <span className="rounded-full border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] px-2 py-0.5 font-mono text-[10px] font-medium tracking-[0.04em] text-[var(--ft-green)] uppercase">
-            NGN
+          {/* NGN is the only settled currency today; the rest are shown dimmed and
+              labelled below so the composition never implies live FX balances. */}
+          <span className="flex items-center gap-1">
+            <span className="rounded-full border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] px-2 py-0.5 font-mono text-[10px] font-medium tracking-[0.04em] text-[var(--ft-green)] uppercase">
+              NGN
+            </span>
+            {["USD", "GBP", "EUR"].map((code) => (
+              <span
+                className="rounded-full border border-[var(--ft-border)] px-2 py-0.5 font-mono text-[10px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase"
+                key={code}
+              >
+                {code}
+              </span>
+            ))}
           </span>
         </div>
 
@@ -65,6 +77,9 @@ export function HeroComposition({ reducedMotion }: { reducedMotion: boolean }) {
         </div>
         <div className="mt-1 text-xs text-[var(--ft-text-secondary)]">
           Available · ₦120,000 held for active campaigns
+        </div>
+        <div className="mt-1 font-mono text-[10px] text-[var(--ft-text-muted)]">
+          USD · GBP · EUR coming soon
         </div>
 
         <div className="mt-5 grid grid-cols-3 gap-2">
@@ -76,6 +91,35 @@ export function HeroComposition({ reducedMotion }: { reducedMotion: boolean }) {
               {action}
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Virtual card + campaign return, side by side */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[linear-gradient(135deg,var(--ft-accent-strong),var(--ft-accent-2))] p-4 text-white shadow-[var(--shadow-md)]">
+          <div className="flex items-center justify-between">
+            <CreditCard className="size-4 opacity-90" />
+            <span className="rounded-full bg-white/20 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.06em]">
+              Soon
+            </span>
+          </div>
+          <div className="mt-4 font-mono text-sm tracking-[0.14em]">•••• 4291</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.1em] opacity-80">
+            Virtual card
+          </div>
+        </div>
+
+        <div className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 shadow-[var(--shadow-sm)]">
+          <span className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--ft-text-muted)]">
+            <TrendingUp className="size-3.5 text-[var(--ft-green)]" />
+            Return on spend
+          </span>
+          <div className="mt-3 font-mono text-2xl font-bold tabular-nums text-[var(--ft-green)]">
+            3.4×
+          </div>
+          <div className="mt-1 text-[11px] text-[var(--ft-text-secondary)]">
+            Across active campaigns
+          </div>
         </div>
       </div>
 

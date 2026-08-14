@@ -1,9 +1,12 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowLeftRight,
+  Banknote,
   BarChart3,
   CreditCard,
   FileText,
   Gift,
+  Globe2,
   GraduationCap,
   Landmark,
   Link2,
@@ -30,9 +33,17 @@ import {
  * virtual cards, remittance, multi-currency wallets, KYC) is "soon" until the
  * flag is enabled per-environment with a seeded ProviderConfig row.
  *
+ * The four tiers are deliberately distinct and must not be used loosely:
+ *   live             — completable end-to-end today, in every market we serve.
+ *   selected-markets — built and enabled, but only for some corridors/regions.
+ *   early-access     — real, but gated to invited workspaces rather than open.
+ *   soon             — not completable yet. Covers both "flag off pending
+ *                      provider/compliance sign-off" and "not built".
+ * When in doubt, pick the weaker claim.
+ *
  * See docs/PHASE0-RECON.md for the audit this mapping came from.
  */
-export type CapabilityStatus = "live" | "soon";
+export type CapabilityStatus = "live" | "selected-markets" | "early-access" | "soon";
 
 export type Capability = {
   description: string;
@@ -72,6 +83,20 @@ const moneyCapabilities: Capability[] = [
     title: "Payment links"
   },
   {
+    // walletWithdrawals defaults false — same sandbox-verification gate as
+    // remittance, since it reuses the NGN payout adapters.
+    description: "Withdraw a settled balance to your bank account.",
+    icon: Banknote,
+    status: "soon",
+    title: "Payouts"
+  },
+  {
+    description: "Hold and settle in NGN today, with USD, GBP and EUR next.",
+    icon: Globe2,
+    status: "soon",
+    title: "Multi-currency balances"
+  },
+  {
     description: "Dedicated account numbers for collecting payments.",
     icon: Landmark,
     status: "soon",
@@ -84,11 +109,34 @@ const moneyCapabilities: Capability[] = [
     title: "Virtual cards"
   },
   {
+    description: "Convert between supported currencies at a quoted rate.",
+    icon: ArrowLeftRight,
+    status: "soon",
+    title: "FX"
+  },
+  {
     description: "Cross-border transfers on supported corridors.",
     icon: Send,
     status: "soon",
     title: "International transfers"
   }
+];
+
+/**
+ * Remittance corridors. These mirror the six seeded in the API
+ * (apps/api/src/modules/financial-products/remittance-corridor.service.ts) —
+ * inbound to West Africa from GB/US, NOT outbound from Nigeria. Every corridor
+ * there is created `enabled: false` pending provider verification and
+ * KYB/compliance sign-off, so none may be advertised as live, and no exchange
+ * rate is quoted here because we have no verified public rate to quote.
+ */
+export const remittanceCorridors = [
+  { from: "United Kingdom", fromCode: "GBP", to: "Nigeria", toCode: "NGN" },
+  { from: "United States", fromCode: "USD", to: "Nigeria", toCode: "NGN" },
+  { from: "United Kingdom", fromCode: "GBP", to: "Ghana", toCode: "GHS" },
+  { from: "United States", fromCode: "USD", to: "Ghana", toCode: "GHS" },
+  { from: "United Kingdom", fromCode: "GBP", to: "Liberia", toCode: "LRD" },
+  { from: "United States", fromCode: "USD", to: "Liberia", toCode: "LRD" }
 ];
 
 // ── SERVICES ─────────────────────────────────────────────────────────────────
@@ -134,7 +182,7 @@ const servicesCapabilities: Capability[] = [
 // ── GROWTH ───────────────────────────────────────────────────────────────────
 const growthCapabilities: Capability[] = [
   {
-    description: "Brief a campaign and our operators plan, launch and optimise it.",
+    description: "Brief once and run on Meta, Google and TikTok from one place.",
     icon: Megaphone,
     status: "live",
     title: "Managed campaigns"
@@ -158,6 +206,12 @@ const growthCapabilities: Capability[] = [
     title: "Creator marketplace"
   }
 ];
+
+/** Ad platforms we run campaigns on, shown in the Growth pillar. */
+export const adPlatforms = ["Meta", "Google", "TikTok"];
+
+/** The campaign lifecycle, shown as a flow in the Growth pillar. */
+export const growthStages = ["Audience", "Creative", "Launch", "Optimise", "Conversion"];
 
 export const pillars: Pillar[] = [
   {
@@ -217,11 +271,51 @@ export const guestServices = [
   { icon: Store, label: "Betting" }
 ];
 
+/**
+ * Public nav. Every entry must resolve to a section that exists on this page or
+ * a real route — no links to pages we haven't built. "Pricing" and "Resources"
+ * are deliberately absent: there is no pricing page, and publishing rate/price
+ * comparisons we cannot verify would breach the same truthfulness rule the
+ * capability status chips enforce.
+ */
 export const navItems = [
   { href: "#money", label: "Money" },
   { href: "#services", label: "Services" },
   { href: "#growth", label: "Grow" },
+  { href: "#marketplace", label: "Marketplace" },
+  { href: "#how-it-works", label: "How it works" },
   { href: "/guest", label: "Pay a bill" }
+];
+
+/** "How it works" — three honest steps, no account required for step one. */
+export const howItWorks = [
+  {
+    body: "Pay a bill or buy airtime as a guest — no signup, no account, receipt included.",
+    step: "01",
+    title: "Start without an account"
+  },
+  {
+    body: "Create a free account to keep your receipts, hold a balance and invoice clients.",
+    step: "02",
+    title: "Open your workspace"
+  },
+  {
+    body: "Brief a campaign and put your business in front of the right customers.",
+    step: "03",
+    title: "Grow when you're ready"
+  }
+];
+
+/**
+ * Marketplace teaser. The marketplace agency/creator listings are served by a
+ * @Public() API controller, so this section describes a genuinely public
+ * surface — but the browsable directory itself lives behind /os, so the CTA
+ * points at registration rather than pretending a public listing page exists.
+ */
+export const marketplaceHighlights = [
+  { icon: Users, label: "Vetted creators you can hire for campaigns" },
+  { icon: Store, label: "Agencies that run growth end-to-end" },
+  { icon: Megaphone, label: "Brief, book and track the work in one place" }
 ];
 
 export const trustSignals = [
