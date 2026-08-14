@@ -26,15 +26,15 @@ services:
       - key: NODE_ENV
         value: production
       - key: APP_URL
-        value: https://fliptrybe-ads-campaigner-web-g24r.onrender.com
+        value: https://fliptrybe.xyz
       - key: ADMIN_URL
         value: https://fliptrybe-ads-campaigner-admin-umys.onrender.com
       - key: API_URL
         value: https://ft-campaigner-api-fra.onrender.com
       - key: PUBLIC_APP_URL
-        value: https://fliptrybe-ads-campaigner-web-g24r.onrender.com
+        value: https://fliptrybe.xyz
       - key: FRONTEND_URLS
-        value: https://fliptrybe-ads-campaigner-web-g24r.onrender.com,https://fliptrybe-ads-campaigner-admin-umys.onrender.com
+        value: https://fliptrybe.xyz,https://fliptrybe-ads-campaigner-web-g24r.onrender.com,https://fliptrybe-ads-campaigner-admin-umys.onrender.com
       - key: PORT
         value: "10000"
       - key: DATABASE_URL
@@ -213,7 +213,7 @@ services:
       - key: KORAPAY_WEBHOOK_SECRET
         sync: false
       - key: KORAPAY_REDIRECT_URL
-        value: https://fliptrybe-ads-campaigner-web-g24r.onrender.com
+        value: https://fliptrybe.xyz
       - key: TREASURY_BANK_NAME
         sync: false
       - key: TREASURY_ACCOUNT_NAME
@@ -405,7 +405,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: NEXT_PUBLIC_APP_URL
-        value: https://fliptrybe-ads-campaigner-web-g24r.onrender.com
+        value: https://fliptrybe.xyz
       - key: NEXT_PUBLIC_API_URL
         value: https://ft-campaigner-api-fra.onrender.com
       - key: NEXT_PUBLIC_API_BASE_URL
@@ -623,7 +623,7 @@ services:
       - key: KORAPAY_WEBHOOK_SECRET
         sync: false
       - key: KORAPAY_REDIRECT_URL
-        value: https://fliptrybe-ads-campaigner-web-g24r.onrender.com
+        value: https://fliptrybe.xyz
       - key: TREASURY_BANK_NAME
         sync: false
       - key: TREASURY_ACCOUNT_NAME

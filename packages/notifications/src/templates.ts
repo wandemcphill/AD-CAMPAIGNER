@@ -17,7 +17,7 @@ export interface NotificationTemplateVars {
   [key: string]: string | undefined;
 }
 
-const DEFAULT_SUPPORT_URL = "https://fliptrybe.com/support";
+const DEFAULT_SUPPORT_URL = `${process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fliptrybe.xyz"}/support`;
 
 export function renderTemplate(template: string, vars: NotificationTemplateVars): string {
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key: string) => vars[key] ?? "");

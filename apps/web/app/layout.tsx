@@ -4,9 +4,15 @@ import { DEFAULT_THEME, themeInitScript } from "@fliptrybe/ui";
 
 import "./globals.css";
 
+import { APP_URL } from "./lib/app-url";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(APP_URL),
   title: "FlipTrybe Ads Campaigner",
   description: "FlipTrybe's AI growth operating system for creators, commerce, and growth teams.",
+  alternates: {
+    canonical: "/"
+  },
   icons: {
     icon: [
       { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
@@ -19,6 +25,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "FlipTrybe Ads Campaigner",
     description: "FlipTrybe's AI growth operating system for creators, commerce, and growth teams.",
+    url: "/",
     images: [{ url: "/og-image-1200x630.png", width: 1200, height: 630 }]
   }
 };

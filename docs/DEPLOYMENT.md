@@ -29,6 +29,10 @@ SMM fulfillment is configured as a routed multi-supplier layer across SMDPanel, 
 
 Korapay is the live Phase 1 payment gateway when `PAYMENT_PROVIDER=live` and `KORAPAY_SECRET_KEY` is present. Confirm `KORAPAY_WEBHOOK_URL` matches the actual API domain in the form `https://<api-domain>/api/webhooks/korapay`, keep `KORAPAY_REDIRECT_URL` pointed at the customer web app, and keep treasury bank details in Render env only. `KORAPAY_WEBHOOK_SECRET` is reserved for the actual webhook signing secret; do not put the webhook URL in that variable.
 
+## Canonical Domain
+
+`https://fliptrybe.xyz` is the canonical public URL for the customer web app, mapped as a custom domain on the `fliptrybe-ads-campaigner-web` Render service (Render still serves the app; DNS just points the domain at it). It drives `NEXT_PUBLIC_APP_URL` (web service — used for Next.js `metadataBase`, canonical/OG tags, `sitemap.xml`, and `robots.txt`) and `APP_URL` / `PUBLIC_APP_URL` (API service — used for password-reset links, voucher/QR links, and the Korapay redirect default). `FRONTEND_URLS` on the API service must include `https://fliptrybe.xyz` for CORS to accept requests from it. The admin app and the API's own `onrender.com` host are unaffected by this migration — only the customer-facing web app moved to the custom domain. When adding a new outbound link that should point at the customer app (emails, webhooks, QR codes), read it from `APP_URL`/`NEXT_PUBLIC_APP_URL` rather than hardcoding a domain.
+
 Keep `TRUST_PROXY_AUTH_HEADERS=false` and `DIGITAL_ACCESS_TRUST_AUTH_HEADERS=false` on public Render services. Only enable either flag behind a trusted auth proxy that strips incoming user-supplied identity headers and reissues verified headers to the API.
 
 ## Rollout Preflight
@@ -222,5 +226,5 @@ For a new Render environment:
 - `DATABASE_URL` is injected from Render Postgres.
 - `REDIS_URL` is injected from Render Key Value.
 - The Key Value instance is internal-only with `ipAllowList: []`.
-- Service names are used for the expected `onrender.com` URLs; update `APP_URL`, `ADMIN_URL`, `API_URL`, and `NEXT_PUBLIC_API_URL` if Render assigns different subdomains.
+- `APP_URL`/`NEXT_PUBLIC_APP_URL`/`PUBLIC_APP_URL` point at the canonical custom domain (`https://fliptrybe.xyz`); `ADMIN_URL`, `API_URL`, and `NEXT_PUBLIC_API_URL` still use the `onrender.com` URLs Render assigned those services. Update whichever set changes if Render reassigns a subdomain or a new custom domain is attached.
 - Feature toggles should be changed in Render service env and deployed in small batches.
