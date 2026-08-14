@@ -1,10 +1,9 @@
 import type { Job } from "bullmq";
 
 import { createPrismaClient, type DatabaseClient, type CampaignStatus } from "@fliptrybe/database";
-import type { ManagedAdsAutomationJob } from "@fliptrybe/events";
 
 import { processQueueJob, type ProcessorResult } from "./processors";
-import type { QueueName, QueuePayloads } from "./queues";
+import type { QueuePayloads } from "./queues";
 
 // Real DB-backed handler for the "lifecycle_sweep" managed-ads-automation kind. Every
 // other kind (request_submitted, status_changed, campaign_launch, performance_sync,
@@ -28,13 +27,13 @@ function getDb(): DatabaseClient {
 export async function processManagedAdsAutomationJob(
   job: Job<QueuePayloads["managed-ads-automation"]>
 ): Promise<ProcessorResult> {
-  const data = job.data as ManagedAdsAutomationJob;
+  const data = job.data;
 
   if (data.kind === "lifecycle_sweep") {
     return runLifecycleSweep();
   }
 
-  return processQueueJob("managed-ads-automation" as QueueName, job as Job<QueuePayloads[QueueName]>);
+  return processQueueJob("managed-ads-automation", job);
 }
 
 async function runLifecycleSweep(): Promise<ProcessorResult> {

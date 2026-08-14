@@ -1,14 +1,14 @@
 import type { Job } from "bullmq";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const campaignFindMany = vi.fn();
-const campaignStatusHistoryCreate = vi.fn();
-const campaignBudgetHoldFindMany = vi.fn();
-const campaignBudgetHoldUpdate = vi.fn();
+const campaignFindMany = vi.fn<(args: Record<string, unknown>) => Promise<Record<string, unknown>[]>>();
+const campaignStatusHistoryCreate = vi.fn<(args: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>>();
+const campaignBudgetHoldFindMany = vi.fn<(args: Record<string, unknown>) => Promise<Record<string, unknown>[]>>();
+const campaignBudgetHoldUpdate = vi.fn<(args: { where: unknown; data: Record<string, unknown> }) => Promise<Record<string, unknown>>>();
 const ledgerEntryUpsert = vi.fn<(args: { where: unknown; update: unknown; create: Record<string, unknown> }) => Promise<Record<string, unknown>>>(
   (args) => Promise.resolve({ id: "ledger_release_1", ...args.create })
 );
-const auditLogCreate = vi.fn();
+const auditLogCreate = vi.fn<(args: { data: Record<string, unknown> }) => Promise<Record<string, unknown>>>();
 const executeRaw = vi.fn(() => Promise.resolve(1));
 
 function fakeTx() {
