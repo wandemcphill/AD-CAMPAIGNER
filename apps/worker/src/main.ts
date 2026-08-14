@@ -9,6 +9,7 @@ import { processWorkflowAutomationJob } from "./workflow-automation-processor";
 import { processRewardEngineJob } from "./reward-engine-processor";
 import { processTrustEngineJob } from "./trust-engine-processor";
 import { processNotificationDispatchJob } from "./notifications-processor";
+import { processManagedAdsAutomationJob } from "./managed-ads-automation-processor";
 
 const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379", {
   maxRetriesPerRequest: null
@@ -20,6 +21,31 @@ const VTU_LIVE_PROVIDERS = ["vtpass", "clubkonnect"];
 
 // Virtual Number providers wired to real adapters (see virtual-numbers-processor.ts).
 const VIRTUAL_NUMBER_LIVE_PROVIDERS = ["smspool", "5sim", "smspva"];
+
+async function scheduleManagedAdsRecurringJobs() {
+  if (!shouldStartQueueWorker("managed-ads-automation")) return;
+
+  const queue = new Queue<QueuePayloads["managed-ads-automation"]>("managed-ads-automation", { connection });
+
+  // Sweep for campaigns past endsAt every 15 minutes — see managed-ads-automation-processor.ts.
+  await queue.upsertJobScheduler(
+    "ma-lifecycle-sweep",
+    { every: 15 * 60_000 },
+    {
+      name: "lifecycle_sweep",
+      data: {
+        id: "ma-lifecycle-sweep",
+        kind: "lifecycle_sweep",
+        workspaceId: "system",
+        requestId: "lifecycle-sweep",
+        idempotencyKey: "managed-ads:lifecycle_sweep",
+        queuedAt: new Date().toISOString()
+      }
+    }
+  );
+
+  return queue;
+}
 
 async function scheduleWorkflowAutomationJobs() {
   if (!shouldStartQueueWorker("workflow-automation")) return;
@@ -210,6 +236,15 @@ const workers = enabledQueues.map((queueName) => {
     });
   }
 
+  if (queueName === "managed-ads-automation") {
+    return new Worker<QueuePayloads["managed-ads-automation"]>(queueName, processManagedAdsAutomationJob, {
+      connection,
+      concurrency: Number(
+        process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency
+      )
+    });
+  }
+
   return new Worker<QueuePayloads[QueueName]>(
     queueName,
     (job) => Promise.resolve(processQueueJob(queueName, job)),
@@ -235,6 +270,7 @@ for (const worker of workers) {
 let vtuSchedulerQueue: Queue<QueuePayloads["vtu-fulfilment"]> | undefined;
 let virtualNumbersSchedulerQueue: Queue<QueuePayloads["virtual-numbers"]> | undefined;
 let workflowAutomationSchedulerQueue: Queue<QueuePayloads["workflow-automation"]> | undefined;
+let managedAdsSchedulerQueue: Queue<QueuePayloads["managed-ads-automation"]> | undefined;
 
 scheduleVtuRecurringJobs()
   .then((queue) => {
@@ -267,11 +303,21 @@ scheduleWorkflowAutomationJobs()
     console.error("Failed to schedule Workflow Automation recurring jobs", { error });
   });
 
+scheduleManagedAdsRecurringJobs()
+  .then((queue) => {
+    managedAdsSchedulerQueue = queue;
+    if (queue) console.log("Managed Ads recurring jobs scheduled");
+  })
+  .catch((error: unknown) => {
+    console.error("Failed to schedule Managed Ads recurring jobs", { error });
+  });
+
 async function shutdown() {
   await Promise.all(workers.map((worker) => worker.close()));
   if (vtuSchedulerQueue) await vtuSchedulerQueue.close();
   if (virtualNumbersSchedulerQueue) await virtualNumbersSchedulerQueue.close();
   if (workflowAutomationSchedulerQueue) await workflowAutomationSchedulerQueue.close();
+  if (managedAdsSchedulerQueue) await managedAdsSchedulerQueue.close();
   await connection.quit();
   process.exit(0);
 }

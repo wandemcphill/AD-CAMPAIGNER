@@ -344,7 +344,8 @@ export const managedAdsAutomationJobKinds = [
   "status_changed",
   "campaign_launch",
   "performance_sync",
-  "budget_check"
+  "budget_check",
+  "lifecycle_sweep"
 ] as const;
 
 export type ManagedAdsAutomationJobKind = (typeof managedAdsAutomationJobKinds)[number];
