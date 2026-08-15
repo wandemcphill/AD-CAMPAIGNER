@@ -2183,6 +2183,57 @@ export class ManagedAdsService {
     };
   }
 
+  // `getWallet` returns every entry ever written, which is fine for balances but
+  // not for history. This is the paged/filterable read the wallet UI and any
+  // future statement export should use.
+  async listWalletLedger(
+    context: AuthenticatedRequestContext | undefined,
+    query: { from?: string; to?: string; limit?: number; cursor?: string } = {}
+  ) {
+    const scope = requireScope(context);
+    const wallet = await this.getOrCreateWallet(this.db, scope.workspaceId, "NGN");
+
+    const limit = Math.min(Math.max(Number(query.limit) || 50, 1), 200);
+    const createdAt: { gte?: Date; lte?: Date } = {};
+
+    if (query.from) {
+      const from = new Date(query.from);
+      if (Number.isNaN(from.getTime())) {
+        throw new BadRequestException("`from` must be an ISO 8601 date.");
+      }
+      createdAt.gte = from;
+    }
+
+    if (query.to) {
+      const to = new Date(query.to);
+      if (Number.isNaN(to.getTime())) {
+        throw new BadRequestException("`to` must be an ISO 8601 date.");
+      }
+      createdAt.lte = to;
+    }
+
+    if (createdAt.gte && createdAt.lte && createdAt.gte > createdAt.lte) {
+      throw new BadRequestException("`from` must not be after `to`.");
+    }
+
+    const rows = await this.db.ledgerEntry.findMany({
+      where: {
+        walletId: wallet.id,
+        ...(createdAt.gte || createdAt.lte ? { createdAt } : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {})
+    });
+
+    const page = rows.slice(0, limit);
+
+    return {
+      entries: page.map(mapLedgerEntry),
+      nextCursor: rows.length > limit ? (page[page.length - 1]?.id ?? null) : null
+    };
+  }
+
   async listCampaignLedger(context: AuthenticatedRequestContext | undefined, campaignId: string) {
     const scope = requireScope(context);
     const campaign = await this.findCampaignFinancialRecord(scope.workspaceId, campaignId);

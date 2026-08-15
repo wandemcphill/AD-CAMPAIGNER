@@ -777,6 +777,22 @@ export class WalletController {
     return this.managedAds.getWallet(workspaceContextFromRequest(request));
   }
 
+  @Get("ledger")
+  listLedger(
+    @Req() request: WorkspaceContextRequest,
+    @Query("from") from?: string,
+    @Query("to") to?: string,
+    @Query("limit") limit?: string,
+    @Query("cursor") cursor?: string
+  ) {
+    return this.managedAds.listWalletLedger(workspaceContextFromRequest(request), {
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+      ...(limit ? { limit: Number(limit) } : {}),
+      ...(cursor ? { cursor } : {})
+    });
+  }
+
   @Post("funding-intents")
   createFundingIntent(
     @Body() body: Record<string, unknown>,

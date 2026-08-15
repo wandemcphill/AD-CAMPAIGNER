@@ -9,6 +9,7 @@ import type {
   CampaignSpendBreakdown,
   CurrencyCode,
   DestinationKind,
+  LedgerEntry,
   Money,
   PaymentIntent,
   Wallet
@@ -314,15 +315,44 @@ export async function loadCampaignBuilderData(): Promise<CampaignBuilderState> {
   };
 }
 
+// Money in: funds arriving or a reservation/charge being given back.
+// Money out: a settled charge, or funds reserved and no longer spendable.
+const ledgerInflowKinds = new Set(["CREDIT", "RELEASE", "REVERSAL"]);
+
+const ledgerKindLabels: Record<string, string> = {
+  CREDIT: "Wallet top-up",
+  DEBIT: "Charge",
+  HOLD: "Funds reserved",
+  RELEASE: "Reservation released",
+  REVERSAL: "Refund"
+};
+
+function toBillingActivity(entry: LedgerEntry): BillingActivity {
+  const inflow = ledgerInflowKinds.has(entry.kind);
+
+  return {
+    id: entry.id,
+    label: entry.description || ledgerKindLabels[entry.kind] || entry.kind,
+    // The wallet UI derives sign, colour and type from this string's prefix.
+    amount: `${inflow ? "+" : "-"}${formatMoney(entry.amount)}`,
+    reference: entry.reference ?? "—",
+    status: ledgerKindLabels[entry.kind] || entry.kind,
+    at: formatDateTime(entry.createdAt)
+  };
+}
+
 export async function loadBillingData(): Promise<BillingState> {
   if (!getStoredToken()) {
     return defaultBillingState;
   }
 
-  const wallet = await apiRequest<Wallet>("/wallet");
+  const [wallet, ledger] = await Promise.all([
+    apiRequest<Wallet>("/wallet"),
+    apiRequest<{ entries: LedgerEntry[]; nextCursor: string | null }>("/wallet/ledger?limit=100")
+  ]);
 
   return {
-    activity: [],
+    activity: ledger.entries.map(toBillingActivity),
     loading: false,
     source: "api",
     wallet
