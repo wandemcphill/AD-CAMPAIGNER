@@ -13,7 +13,6 @@ import type { AuthenticatedRequestContext } from "../request-context";
 import type { CreatePaymentLinkDto, PayPaymentLinkDto } from "./payment-links.dtos";
 
 type PaymentLink = Prisma.PaymentLinkGetPayload<Record<string, never>>;
-type PaymentLinkPayment = Prisma.PaymentLinkPaymentGetPayload<Record<string, never>>;
 
 // Same pattern as guest-checkout.service.ts's getGuestPaymentGateway(): live Korapay
 // when configured for live mode, mock otherwise. Kept as a standalone factory (not a
@@ -48,8 +47,6 @@ function verifyPaymentLinkKorapaySignature(input: { body: unknown; signature?: s
   const actual = Buffer.from(input.signature);
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
-
-const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
 function requireWorkspaceId(context: AuthenticatedRequestContext) {
   const workspaceId = context.workspaceId;
