@@ -11,6 +11,9 @@ import { apiRequest } from "../lib/api-client";
 import { useApiSession } from "../lib/use-session";
 import { AdminAuthState } from "../ui/admin-auth-state";
 
+// Keep in step with HIGH_MARKUP_BPS in PricingRuleService.
+const HIGH_MARKUP_BPS = 10_000;
+
 type ProviderStatus = "HEALTHY" | "DEGRADED" | "DOWN" | "DISABLED";
 
 type ProviderHealth = {
@@ -153,10 +156,22 @@ export default function AdminProvidersPage() {
 
   async function submitPricingRule() {
     const markupBps = Number(ruleMarkupBps);
-    if (!Number.isFinite(markupBps) || markupBps < 0) {
-      setError("Enter a valid non-negative markup (basis points).");
+    if (!Number.isInteger(markupBps) || markupBps < 0) {
+      setError("Enter a whole, non-negative markup in basis points (100 bps = 1%).");
       return;
     }
+
+    // Mirrors the server guard in PricingRuleService. A rule silently reprices
+    // every order in its domain, so anything over 100% needs a deliberate yes.
+    let confirmHighMarkup = false;
+    if (markupBps > HIGH_MARKUP_BPS) {
+      confirmHighMarkup = window.confirm(
+        `${(markupBps / 100).toFixed(2)}% markup on every ${ruleDomain} order matching this rule.\n\n` +
+          "That is unusually high. Apply it?"
+      );
+      if (!confirmHighMarkup) return;
+    }
+
     setRuleSubmitting(true);
     setError(undefined);
     try {
@@ -167,7 +182,8 @@ export default function AdminProvidersPage() {
           ...(ruleCountry.trim() ? { countryCode: ruleCountry.trim().toUpperCase() } : {}),
           ...(ruleProductType.trim() ? { productType: ruleProductType.trim().toUpperCase() } : {}),
           ...(ruleProvider.trim() ? { providerName: ruleProvider.trim() } : {}),
-          markupBps
+          markupBps,
+          ...(confirmHighMarkup ? { confirmHighMarkup } : {})
         })
       });
       setRuleCountry("");

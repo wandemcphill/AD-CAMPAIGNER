@@ -85,13 +85,23 @@ export class ProvidersController {
       providerName?: string;
       markupBps: number;
       specificity?: number;
-    }
+      confirmHighMarkup?: boolean;
+    },
+    @Req() request: WorkspaceContextRequest
   ) {
-    return this.pricingRules.create(body);
+    return this.pricingRules.create(body, authenticatedContextFromHeaders(request.headers));
   }
 
   @Patch("pricing-rules/:id")
-  setPricingRuleActive(@Param("id") id: string, @Body() body: { active: boolean }) {
-    return this.pricingRules.setActive(id, body.active);
+  setPricingRuleActive(
+    @Param("id") id: string,
+    @Body() body: { active: boolean },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.pricingRules.setActive(
+      id,
+      body.active,
+      authenticatedContextFromHeaders(request.headers)
+    );
   }
 }
