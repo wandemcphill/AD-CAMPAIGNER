@@ -8,6 +8,7 @@ import { FinancialProductsController } from "./financial-products.controller";
 import { FinancialProductsService } from "./financial-products.service";
 import { FinancialProductsWebhookController } from "./financial-products-webhook.controller";
 import { FinancialProductsWebhookService } from "./financial-products-webhook.service";
+import { FinancialReconciliationController } from "./financial-reconciliation.controller";
 import { FinancialReconciliationService } from "./financial-reconciliation.service";
 import { KycService } from "./kyc.service";
 import { RemittanceBeneficiaryService } from "./remittance-beneficiary.service";
@@ -28,9 +29,15 @@ const anyFinancialVerticalEnabled =
   imports: [PrismaModule, ProvidersModule],
   // The webhook controller is registered unconditionally — see its own header
   // comment. Only the customer-facing controller is gated.
+  // FinancialReconciliationController is likewise unconditional: an exception
+  // opened while a vertical was live still has to be resolvable afterwards.
   controllers: anyFinancialVerticalEnabled
-    ? [FinancialProductsController, FinancialProductsWebhookController]
-    : [FinancialProductsWebhookController],
+    ? [
+        FinancialProductsController,
+        FinancialProductsWebhookController,
+        FinancialReconciliationController
+      ]
+    : [FinancialProductsWebhookController, FinancialReconciliationController],
   providers: [
     FinancialProductsService,
     FinancialProductsWebhookService,

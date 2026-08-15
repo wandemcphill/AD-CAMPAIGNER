@@ -10,7 +10,7 @@
  * divergence — it records the divergence. Any corrective money movement is a
  * separate, audited, dual-controlled action.
  */
-import { Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 
 import { type Prisma } from "@fliptrybe/database";
 
@@ -112,6 +112,107 @@ export class FinancialReconciliationService {
       `Reconciliation exception ${kind} opened for ${resourceType}:${resourceId} ` +
         `(provider=${rest.providerName}) — id=${row.id}`
     );
+
+    return row;
+  }
+
+  /**
+   * Operator-facing listing. Unlike listOpen this can surface resolved and
+   * won't-fix rows too, so an exception's history stays reviewable after it has
+   * been closed.
+   */
+  async list(
+    filter: {
+      status?: "OPEN" | "INVESTIGATING" | "RESOLVED" | "WONT_FIX";
+      workspaceId?: string;
+      providerName?: string;
+      limit?: number;
+    } = {}
+  ) {
+    const take = Math.min(Math.max(Number(filter.limit) || 100, 1), 500);
+
+    const exceptions = await this.prisma.client.financialReconciliationException.findMany({
+      where: {
+        // Default to the actionable queue rather than the full history.
+        ...(filter.status ? { status: filter.status } : { status: { in: ["OPEN", "INVESTIGATING"] } }),
+        ...(filter.workspaceId ? { workspaceId: filter.workspaceId } : {}),
+        ...(filter.providerName ? { providerName: filter.providerName } : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take
+    });
+
+    const counts = await this.prisma.client.financialReconciliationException.groupBy({
+      by: ["status"],
+      _count: { _all: true }
+    });
+
+    return {
+      exceptions,
+      counts: Object.fromEntries(
+        counts.map((row) => [row.status, row._count?._all ?? 0])
+      ) as Record<string, number>
+    };
+  }
+
+  /**
+   * Moves an exception between states. Like `resolve`, this deliberately
+   * performs no corrective money movement — that is a separate, audited action
+   * (a wallet adjustment or a vertical's own refund path).
+   */
+  async setStatus(
+    id: string,
+    status: "OPEN" | "INVESTIGATING" | "RESOLVED" | "WONT_FIX",
+    actorUserId: string | undefined,
+    note: string
+  ) {
+    const allowed = ["OPEN", "INVESTIGATING", "RESOLVED", "WONT_FIX"];
+    if (!allowed.includes(status)) {
+      throw new BadRequestException(`status must be one of ${allowed.join(", ")}.`);
+    }
+
+    const trimmedNote = (note ?? "").trim();
+    if (trimmedNote.length < 3) {
+      throw new BadRequestException("A note is required when changing an exception's status.");
+    }
+
+    const existing = await this.prisma.client.financialReconciliationException.findUnique({
+      where: { id }
+    });
+
+    if (!existing) {
+      throw new NotFoundException(`Reconciliation exception ${id} not found.`);
+    }
+
+    const closing = status === "RESOLVED" || status === "WONT_FIX";
+
+    const row = await this.prisma.client.financialReconciliationException.update({
+      where: { id },
+      data: {
+        status,
+        resolutionNote: trimmedNote,
+        ...(actorUserId ? { resolvedByUserId: actorUserId } : {}),
+        ...(closing ? { resolvedAt: new Date() } : { resolvedAt: null })
+      }
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        ...(row.workspaceId ? { workspaceId: row.workspaceId } : {}),
+        ...(actorUserId ? { actorUserId } : {}),
+        action: `financial_reconciliation.${status.toLowerCase()}`,
+        entityType: "FinancialReconciliationException",
+        entityId: id,
+        metadata: {
+          resourceType: row.resourceType,
+          resourceId: row.resourceId,
+          kind: row.kind,
+          providerName: row.providerName,
+          previousStatus: existing.status,
+          note: trimmedNote
+        }
+      }
+    });
 
     return row;
   }
