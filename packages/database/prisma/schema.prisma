@@ -2974,7 +2974,18 @@ model VtuEducationPlan {
   costMinor    Int
   currency     String   @default("NGN")
   active       Boolean  @default(true)
+  // "SYNC"   — written by education_catalog_sync from the provider's own catalog.
+  // "MANUAL" — entered by an admin. education_catalog_sync must not overwrite the
+  //            price of, or deactivate as stale, a MANUAL row.
+  //
+  // This exists because not every provider can price itself. SirpData sells WAEC,
+  // NECO, UTME and NABTEB PINs but publishes no pricing endpoint — its documented
+  // API exposes the price only as `amountCharged` in the purchase response, after
+  // the money is already spent. Without an admin-entered price it can never serve
+  // an education order at all, since the purchase path requires a plan row first.
+  pricingSource String  @default("SYNC")
   lastSyncedAt DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   @@unique([providerName, productCode])
   @@index([active])

@@ -10,12 +10,27 @@ import { createPrismaClient } from "../src/index";
 const NETWORKS = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] as const;
 const PRODUCT_TYPES = ["AIRTIME", "DATA"] as const;
 const BILLS_PRODUCT_TYPES = ["ELECTRICITY", "CABLE"] as const;
-// Betting/education support on VTpass is not verified — ClubKonnect only for now.
-const CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES = ["BETTING", "EDUCATION"] as const;
+// Betting support on VTpass is not verified — ClubKonnect only for now.
+const CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES = ["BETTING"] as const;
 
 const ROUTE_PRIORITY = {
   clubkonnect: 10,
   vtpass: 20
+};
+
+// EDUCATION routes separately from the other bills.
+//
+// It used to sit in CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES, which sent every exam
+// PIN to ClubKonnect — the most expensive of the options and the one whose
+// account tier returns no JAMB pricing at all. SirpData and TopupWizard are the
+// cheapest sources for WAEC/NECO/NABTEB, so they lead and ClubKonnect stays on
+// as the fallback that is already funded and verified.
+//
+// Lower number = higher priority (VtuProviderRoute is ordered priority: asc).
+const EDUCATION_ROUTE_PRIORITY = {
+  sirpdata: 10,
+  topupwizard: 15,
+  clubkonnect: 30
 };
 
 interface DataPlanSeed {
@@ -176,6 +191,37 @@ async function seedBillsRoutes(db: ReturnType<typeof createPrismaClient>) {
         priority,
         active: true,
         note: "Seeded primary bills route (only provider verified for this product)"
+      }
+    });
+    created++;
+  }
+
+  for (const [provider, priority] of Object.entries(EDUCATION_ROUTE_PRIORITY)) {
+    const existing = await db.vtuProviderRoute.findFirst({
+      where: { productType: "EDUCATION", network: null, provider }
+    });
+
+    if (existing) {
+      // Re-assert priority so an environment seeded before education moved off
+      // ClubKonnect-only picks up the new ordering instead of keeping the old.
+      if (existing.priority !== priority) {
+        await db.vtuProviderRoute.update({ where: { id: existing.id }, data: { priority } });
+      }
+      skipped++;
+      continue;
+    }
+
+    await db.vtuProviderRoute.create({
+      data: {
+        productType: "EDUCATION",
+        network: null,
+        provider,
+        priority,
+        active: true,
+        note:
+          provider === "clubkonnect"
+            ? "Seeded education fallback (funded account; no JAMB pricing at this tier)"
+            : "Seeded education route (cheapest source for WAEC/NECO/NABTEB)"
       }
     });
     created++;

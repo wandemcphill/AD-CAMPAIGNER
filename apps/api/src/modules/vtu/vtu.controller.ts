@@ -1,4 +1,16 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req
+} from "@nestjs/common";
 
 import {
   workspaceContextFromRequest,
@@ -6,6 +18,7 @@ import {
 } from "../request-context";
 import { RequirePermissions } from "../authorization.decorators";
 import type {
+  AdminEducationPlanUpsertDto,
   AdminVtuRouteUpdateDto,
   BillsOrderQueryDto,
   BuyAirtimeEpinDto,
@@ -200,6 +213,28 @@ export class AdminVtuController {
     @Req() request: WorkspaceContextRequest
   ) {
     return this.vtu.adminUpdateSkuMapping(mappingId, body, workspaceContextFromRequest(request));
+  }
+
+  // ─── Education plan pricing ──────────────────────────────────────────────────
+  // For providers with no pricing endpoint of their own (SirpData) this is the
+  // only way a plan row exists, and buyEducation refuses to charge without one.
+
+  @Get("education/plans")
+  listEducationPlans(@Query() query: { providerName?: string }) {
+    return this.vtu.adminListEducationPlans(query);
+  }
+
+  @Put("education/plans")
+  upsertEducationPlan(
+    @Body() body: AdminEducationPlanUpsertDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.vtu.adminUpsertEducationPlan(body, workspaceContextFromRequest(request));
+  }
+
+  @Delete("education/plans/:id")
+  deleteEducationPlan(@Param("id") id: string, @Req() request: WorkspaceContextRequest) {
+    return this.vtu.adminDeleteEducationPlan(id, workspaceContextFromRequest(request));
   }
 
   // ─── Provider Control Center ─────────────────────────────────────────────────

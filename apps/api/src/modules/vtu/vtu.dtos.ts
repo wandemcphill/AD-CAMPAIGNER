@@ -51,6 +51,18 @@ export interface AdminVtuRouteUpdateDto {
   enabled?: boolean;
 }
 
+// Admin-entered education pricing. Upserts on (providerName, productCode) and
+// marks the row MANUAL so education_catalog_sync leaves its price alone.
+// costMinor is minor units (kobo), like every other money field on the platform.
+export interface AdminEducationPlanUpsertDto {
+  providerName: string;
+  productCode: string;
+  displayName: string;
+  costMinor: number;
+  currency?: string;
+  active?: boolean;
+}
+
 // Phase 5 — Bills & Cable
 
 export type MeterType = "PREPAID" | "POSTPAID";

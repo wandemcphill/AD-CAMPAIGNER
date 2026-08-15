@@ -136,6 +136,17 @@ const BETTING_COMPANIES: Array<{ code: string; name: string }> = [
 // surfaced), so education_catalog_sync will populate them with real prices when
 // the provider returns any. This bootstrap set exists for the pre-first-sync
 // case only, and a guessed price here would be charged as if it were verified.
+// Education product codes a provider documents, used to reject an unusable exam
+// type when an admin configures a price rather than when a customer tries to buy
+// one. Providers absent from this map are not validated — theirs come from
+// education_catalog_sync, which can only return codes they actually sell.
+const PROVIDER_EDUCATION_CODES: Record<string, string[]> = {
+  // "Native API Documentation | SIRP DATA", Educational PINs (retrieved
+  // 2026-08-15): examType "can be either 'waec_pin', 'neco_pin', 'utme_pin' or
+  // 'nabteb_pin'". Matches the examMap in createSirpDataAdapter.
+  sirpdata: ["waec_pin", "neco_pin", "utme_pin", "nabteb_pin"]
+};
+
 const EDUCATION_PLANS: Array<{ examType: string; displayName: string; costMinor: number }> = [
   { examType: "waecdirect", displayName: "WAEC Result Checker PIN", costMinor: 535000 },
   { examType: "waec-registraion", displayName: "WAEC Registration PIN", costMinor: 3750000 }
@@ -2272,6 +2283,117 @@ export class VtuService {
         entityType: "VtuProviderSkuMapping",
         entityId: mappingId,
         metadata: patch
+      }
+    });
+
+    return updated;
+  }
+
+  // ─── Admin: education plan pricing ───────────────────────────────────────────
+  //
+  // Education is the one bills vertical where a provider may be unable to price
+  // itself. education_catalog_sync covers ClubKonnect and TopupWizard, which both
+  // expose a catalog endpoint. SirpData does not: its documented API returns the
+  // cost only as `amountCharged` on the purchase response, so the price is not
+  // knowable until after the money is spent. Since buyEducation requires a plan
+  // row before it will charge anything, SirpData can never serve an order without
+  // a price entered here.
+  //
+  // A MANUAL row is authoritative — the sync will neither reprice nor deactivate
+  // it (see processEducationCatalogSync).
+
+  async adminListEducationPlans(query: { providerName?: string } = {}) {
+    return this.db.vtuEducationPlan.findMany({
+      where: query.providerName ? { providerName: query.providerName } : {},
+      orderBy: [{ providerName: "asc" }, { productCode: "asc" }]
+    });
+  }
+
+  async adminUpsertEducationPlan(
+    input: {
+      providerName: string;
+      productCode: string;
+      displayName: string;
+      costMinor: number;
+      currency?: string;
+      active?: boolean;
+    },
+    ctx: AuthenticatedRequestContext
+  ) {
+    const providerName = input.providerName?.trim().toLowerCase();
+    const productCode = input.productCode?.trim();
+
+    if (!providerName) throw new BadRequestException("providerName is required.");
+    if (!productCode) throw new BadRequestException("productCode is required.");
+    if (!input.displayName?.trim()) throw new BadRequestException("displayName is required.");
+    if (!Number.isInteger(input.costMinor) || input.costMinor <= 0) {
+      throw new BadRequestException("costMinor must be a positive integer of minor units (kobo).");
+    }
+
+    // Reject an exam type the provider does not sell at the point it is
+    // configured, rather than letting a customer discover it at purchase.
+    const known = PROVIDER_EDUCATION_CODES[providerName];
+    if (known && !known.includes(productCode)) {
+      throw new BadRequestException(
+        `${providerName} does not sell education product "${productCode}". ` +
+          `Supported: ${known.join(", ")}.`
+      );
+    }
+
+    const plan = await this.db.vtuEducationPlan.upsert({
+      where: { providerName_productCode: { providerName, productCode } },
+      update: {
+        displayName: input.displayName.trim(),
+        costMinor: input.costMinor,
+        ...(input.currency ? { currency: input.currency } : {}),
+        ...(input.active !== undefined ? { active: input.active } : {}),
+        pricingSource: "MANUAL"
+      },
+      create: {
+        id: uid("vedu"),
+        providerName,
+        productCode,
+        displayName: input.displayName.trim(),
+        costMinor: input.costMinor,
+        currency: input.currency ?? "NGN",
+        active: input.active ?? true,
+        pricingSource: "MANUAL"
+      }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        actorUserId: ctx.userId,
+        action: "VTU_EDUCATION_PLAN_PRICED",
+        entityType: "VtuEducationPlan",
+        entityId: plan.id,
+        metadata: { providerName, productCode, costMinor: input.costMinor, active: plan.active }
+      }
+    });
+
+    return plan;
+  }
+
+  async adminDeleteEducationPlan(id: string, ctx: AuthenticatedRequestContext) {
+    const plan = await this.db.vtuEducationPlan.findUnique({ where: { id } });
+    if (!plan) throw new NotFoundException("Education plan not found.");
+
+    // Deactivate rather than delete: a synced row would simply reappear on the
+    // next run, and an order history referencing it stays readable either way.
+    const updated = await this.db.vtuEducationPlan.update({
+      where: { id },
+      data: { active: false }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        id: uid("aud"),
+        actorUserId: ctx.userId,
+        action: "VTU_EDUCATION_PLAN_DEACTIVATED",
+        entityType: "VtuEducationPlan",
+        entityId: id,
+        metadata: { providerName: plan.providerName, productCode: plan.productCode }
       }
     });
 

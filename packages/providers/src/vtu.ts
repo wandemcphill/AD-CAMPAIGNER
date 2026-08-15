@@ -2892,8 +2892,17 @@ export function createEBillsFullAdapter(config: EBillsFullConfig): VtuProviderAd
 //   POST /requerytrx       — requery: clientReference
 //   POST /pricing          — product pricing: serviceID, type, dataType
 //
-// Researched pricing benchmarks (RESEARCHED_PUBLIC_PRICE):
-//   WAEC ₦3,450 | NECO ₦1,230 | NABTEB ₦800
+// /education is docs-verified (2026-08-15), including its response envelope:
+//   { status: "success"|"error", message, data: { pinType, pins: [{ pin, serialNo }],
+//     quantity, amount, reference, clientReference, date, type } }
+// Note `pins` is an ARRAY and the serial field is `serialNo`, not `serialNumber`.
+// Error cases ("Incorrect Service ID") return `data` as [] rather than an object,
+// which mapTwStatus handles by falling back to the top-level status.
+//
+// Published API-tier pricing (topupwizard.com/pricing, retrieved 2026-08-15):
+//   WAEC ₦3,450 | NECO ₦1,230 | NABTEB ₦800 | NBAIS ₦920
+// Reference figures only — real prices come from POST /pricing via
+// listEducationPlans(). Useful as a sanity check on a synced value.
 //
 // Required env vars: TOPUPWIZARD_API_KEY, TOPUPWIZARD_BASE_URL
 
@@ -3139,31 +3148,68 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
     },
 
     async listEducationPlans(): Promise<VtuEducationPlanOffer[]> {
-      // Fetch via POST /pricing with education type.
-      try {
-        const res = (await twPost("/pricing", {
-          serviceID: "WAEC",
-          type: "education",
-          typeSingle: true
-        })) as {
-          status?: string;
-          data?: Array<{ serviceID?: string; name?: string; price?: number }>;
-        };
-        if (res.status !== "success") return [];
-        return (res.data ?? []).map((p) => ({
-          productCode: p.serviceID ?? "",
-          displayName: p.name ?? p.serviceID ?? "",
-          costMinor: Math.round((p.price ?? 0) * 100),
-          currency: "NGN"
-        }));
-      } catch { return []; }
+      // Fetch via POST /pricing with education type, once per exam board.
+      //
+      // This asked for serviceID "WAEC" and nothing else, so NECO, NABTEB and
+      // NBAIS could never reach the catalog — even though purchaseEducation
+      // below accepts whatever serviceID the catalog yields. Each board is
+      // queried separately because the endpoint takes typeSingle: true; a
+      // failure on one board must not lose the others, so they are settled
+      // independently.
+      //
+      // Cross-check for whatever comes back: TopupWizard's published pricing
+      // page (retrieved 2026-08-15) lists API-tier costs of WAEC ₦3,450,
+      // NECO ₦1,230, NABTEB ₦800, NBAIS ₦920. Prices are taken from the live
+      // response, not from these figures — they are here so a wildly different
+      // synced value is recognisable as wrong.
+      const boards = ["WAEC", "NECO", "NABTEB", "NBAIS"];
+      const results = await Promise.allSettled(
+        boards.map(async (serviceID) => {
+          const res = (await twPost("/pricing", {
+            serviceID,
+            type: "education",
+            typeSingle: true
+          })) as {
+            status?: string;
+            data?: Array<{ serviceID?: string; name?: string; price?: number }>;
+          };
+          if (res.status !== "success") return [];
+          return res.data ?? [];
+        })
+      );
+
+      const offers: VtuEducationPlanOffer[] = [];
+      const seen = new Set<string>();
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        for (const p of result.value) {
+          const productCode = p.serviceID ?? "";
+          if (!productCode || seen.has(productCode)) continue;
+          const costMinor = Math.round((p.price ?? 0) * 100);
+          // An unpriced row is not a free product — skip rather than publish a
+          // plan that would sell at no cost.
+          if (!Number.isFinite(costMinor) || costMinor <= 0) continue;
+          seen.add(productCode);
+          offers.push({
+            productCode,
+            displayName: p.name ?? productCode,
+            costMinor,
+            currency: "NGN"
+          });
+        }
+      }
+      return offers;
     },
 
-    // POST /education — serviceID, quantity, clientReference
-    // TODO: serviceID is a provider-specific numeric catalog id fetched via POST /pricing
-    // (type: "education"). It must come from VtuProviderSkuMapping, not be fabricated here.
-    // input.examType is passed through as-is until the SKU-mapping table is populated for
-    // TopupWizard's education product catalog.
+    // POST /education — serviceID, quantity, clientReference. Verified against
+    // TopupWizard's published endpoint docs (2026-08-15).
+    //
+    // serviceID is a provider-specific NUMERIC catalog id (the docs' example
+    // sends 100), obtained from POST /pricing with type "education". It is
+    // passed through from input.examType, which is the productCode carried on
+    // the VtuEducationPlan row that listEducationPlans() populated — so the two
+    // agree as long as the catalog is the source of the code, which is why
+    // buyEducation refuses to charge without a plan row.
     async purchaseEducation(input): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }> {
       const res = (await twPost("/education", {
         serviceID: input.examType,
@@ -3172,14 +3218,34 @@ export function createTopupWizardAdapter(config: TopupWizardConfig): VtuProvider
       })) as {
         status?: string;
         message?: string;
-        data?: { status?: string; pin?: string; serialNumber?: string };
+        data?: {
+          status?: string;
+          pins?: Array<{ pin?: string; serialNo?: string }>;
+        };
       };
+
+      // The PIN is nested in data.pins[] as { pin, serialNo }.
+      //
+      // This read data.pin and data.serialNumber — neither of which the response
+      // has — so a SUCCESSFUL purchase returned no PIN and no serial at all. The
+      // order still settled DELIVERED, meaning the customer was charged and the
+      // exam PIN, which is the entire product, was silently dropped on the floor.
+      // Nothing errored, so nothing surfaced it.
+      //
+      // quantity is always 1 here, so there is exactly one entry to take; the
+      // interface carries a single pin/serial pair.
+      const first = res.data?.pins?.[0];
+      const status = mapTwStatus(res);
+
       return {
+        // Our clientReference, deliberately — getOrderStatus requeries via POST
+        // /requerytrx keyed on clientReference, not on TopupWizard's own
+        // data.reference.
         providerReference: input.reference,
-        status: mapTwStatus(res),
-        ...(res.data?.pin ? { pin: res.data.pin } : {}),
-        ...(res.data?.serialNumber ? { serialNumber: res.data.serialNumber } : {}),
-        ...(mapTwStatus(res) === "FAILED" ? { failureReason: res.message } : {})
+        status,
+        ...(first?.pin ? { pin: first.pin } : {}),
+        ...(first?.serialNo ? { serialNumber: first.serialNo } : {}),
+        ...(status === "FAILED" ? { failureReason: res.message } : {})
       };
     }
   };

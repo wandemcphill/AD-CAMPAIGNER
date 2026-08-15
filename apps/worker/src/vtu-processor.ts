@@ -8,9 +8,11 @@ import {
   createSwiftlinkAdapter,
   createEBillsFullAdapter,
   createTopupWizardAdapter,
+  createSirpDataAdapter,
   createISquareDataAdapter,
   createInlomaxAdapter,
   createVTUGateAdapter,
+  createIACafeAdapter,
   type VtuProviderAdapter
 } from "@fliptrybe/providers";
 
@@ -67,6 +69,23 @@ function buildAdapter(providerName: string): VtuProviderAdapter {
       return createTopupWizardAdapter({
         apiKey: process.env["TOPUPWIZARD_API_KEY"] ?? "",
         ...(process.env["TOPUPWIZARD_BASE_URL"] ? { baseUrl: process.env["TOPUPWIZARD_BASE_URL"] } : {})
+      });
+    // sirpdata and iacafe were missing here while present in the API's own
+    // buildAdapter, so every background job for them — education_catalog_sync,
+    // poll_status, reconcile — silently fell through to `default:` and was
+    // served by a MOCK adapter. This switch must stay in step with
+    // VtuService.buildAdapter; the two are the same table.
+    case "sirpdata":
+      return createSirpDataAdapter({
+        apiKey: process.env["SIRPDATA_API_KEY"] ?? "",
+        ...(process.env["SIRPDATA_BASE_URL"] ? { baseUrl: process.env["SIRPDATA_BASE_URL"] } : {})
+      });
+    case "iacafe":
+      // LIVE credential — see the LIVE CREDENTIAL WARNING comment on
+      // createIACafeAdapter in @fliptrybe/providers before enabling real traffic.
+      return createIACafeAdapter({
+        apiKey: process.env["IACAFE_API_KEY"] ?? "",
+        ...(process.env["IACAFE_BASE_URL"] ? { baseUrl: process.env["IACAFE_BASE_URL"] } : {})
       });
     case "isquaredata":
       return createISquareDataAdapter({
@@ -421,14 +440,37 @@ export async function processEducationCatalogSync(job: Job<VtuFulfilmentJob>): P
   const db = getDb();
   const adapter = buildAdapter(providerName);
   if (!adapter.listEducationPlans) {
-    return `education_catalog_sync: ${providerName} does not support education plan discovery`;
+    // Expected for SirpData, which sells exam PINs but publishes no pricing
+    // endpoint. Its plans are priced by an admin instead (PUT
+    // /admin/vtu/education/plans) — this is not an error state.
+    return (
+      `education_catalog_sync: ${providerName} has no education catalog endpoint — ` +
+      `its plans must be priced manually via /admin/vtu/education/plans`
+    );
   }
 
   const offers = await adapter.listEducationPlans();
   const seenCodes = new Set<string>();
 
+  // A MANUAL row was priced by an admin because the provider cannot price
+  // itself (see VtuService.adminUpsertEducationPlan). The sync must never
+  // reprice one or deactivate it as stale — doing either would silently undo an
+  // operator's configuration on the next daily run.
+  const manual = await db.vtuEducationPlan.findMany({
+    where: { providerName, pricingSource: "MANUAL" },
+    select: { productCode: true }
+  });
+  const manualCodes = new Set(manual.map((p) => p.productCode));
+
+  let skippedManual = 0;
+
   for (const offer of offers) {
     seenCodes.add(offer.productCode);
+
+    if (manualCodes.has(offer.productCode)) {
+      skippedManual++;
+      continue;
+    }
 
     await db.vtuEducationPlan.upsert({
       where: {
@@ -444,6 +486,7 @@ export async function processEducationCatalogSync(job: Job<VtuFulfilmentJob>): P
         costMinor: offer.costMinor,
         currency: offer.currency,
         active: true,
+        pricingSource: "SYNC",
         lastSyncedAt: new Date()
       },
       update: {
@@ -457,7 +500,7 @@ export async function processEducationCatalogSync(job: Job<VtuFulfilmentJob>): P
   }
 
   const existing = await db.vtuEducationPlan.findMany({
-    where: { providerName, active: true },
+    where: { providerName, active: true, pricingSource: "SYNC" },
     select: { id: true, productCode: true }
   });
   const staleIds = existing
@@ -471,7 +514,10 @@ export async function processEducationCatalogSync(job: Job<VtuFulfilmentJob>): P
     });
   }
 
-  return `education_catalog_sync: ${providerName} synced ${offers.length} plans, ${staleIds.length} deactivated`;
+  return (
+    `education_catalog_sync: ${providerName} synced ${offers.length} plans, ` +
+    `${staleIds.length} deactivated, ${skippedManual} left to admin pricing`
+  );
 }
 
 // ─── provider_health ───────────────────────────────────────────────────────────
