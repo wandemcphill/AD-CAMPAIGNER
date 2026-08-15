@@ -10,6 +10,7 @@ import {
   Bitcoin,
   Bot,
   Briefcase,
+  ClipboardList,
   Building2,
   ClipboardCheck,
   CreditCard,
@@ -146,6 +147,7 @@ const PRIMARY_NAV: NavSection[] = [
       { label: "Discover", href: "/os/marketplace", icon: Store },
       { label: "Agencies", href: "/os/marketplace/agencies", icon: Briefcase },
       { label: "Creators", href: "/os/marketplace/creators", icon: Globe },
+      { label: "Applications", href: "/os/marketplace/applications", icon: ClipboardList },
     ],
   },
   {

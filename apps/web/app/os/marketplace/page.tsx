@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight, Briefcase, FileText, Globe, Search, Star, Store, Zap } from "lucide-react";
+import {
+  ArrowRight,
+  Briefcase,
+  ClipboardList,
+  FileText,
+  Globe,
+  Search,
+  Star,
+  Store,
+  Zap
+} from "lucide-react";
 import { motion } from "framer-motion";
 
 import { Badge } from "@fliptrybe/ui";
@@ -21,6 +31,7 @@ const MARKETPLACE_TABS: SectionTab[] = [
   { label: "Overview", href: "/os/marketplace", icon: Store },
   { label: "Agencies", href: "/os/marketplace/agencies", icon: Briefcase },
   { label: "Creators", href: "/os/marketplace/creators", icon: Globe },
+  { label: "Applications", href: "/os/marketplace/applications", icon: ClipboardList },
 ];
 
 export default function MarketplacePage() {
