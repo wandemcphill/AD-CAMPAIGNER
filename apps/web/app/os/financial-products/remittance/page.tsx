@@ -88,12 +88,7 @@ export default function RemittanceTabPage() {
         recipientName: recipientName.trim(),
         recipientAccountNumber: recipientAccountNumber.trim(),
         recipientBankCode: recipientBankCode.trim(),
-        recipientCountry,
-        sourceAmountMinor: quote.sourceAmountMinor,
-        sourceCurrency: quote.sourceCurrency,
-        destinationAmountMinor: quote.destinationAmountMinor,
-        destinationCurrency: quote.destinationCurrency,
-        feeMinor: quote.feeMinor
+        recipientCountry
       });
       if (result.status !== "active") {
         setError("Transfer was charged but could not be confirmed — check back shortly.");
@@ -165,6 +160,13 @@ export default function RemittanceTabPage() {
                 {quote.destinationCurrency} {(quote.destinationAmountMinor / 100).toLocaleString()}
               </span>{" "}
               · fee {formatNaira(quote.feeMinor)}
+            </div>
+
+            {/* The debit can exceed the amount typed above once a markup applies,
+                so it is shown explicitly rather than left to be inferred. */}
+            <div className="text-xs text-[var(--ft-text-muted)]">
+              You&rsquo;ll be charged {formatNaira(quote.sourceAmountMinor)}
+              {!quote.isLocked && " · rate is indicative until the transfer completes"}
             </div>
 
             <input

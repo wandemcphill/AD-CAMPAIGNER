@@ -107,8 +107,10 @@ export class FinancialProductsController {
   @Post("remittance/quote")
   @RequireFeature("remittance")
   @RequirePermissions("campaign:create")
-  getRemittanceQuote(@Body() body: RemittanceQuoteDto) {
-    return this.financial.getRemittanceQuote(body);
+  // Needs the workspace context now that a quote is persisted against it — the
+  // send leg checks ownership before consuming it.
+  getRemittanceQuote(@Body() body: RemittanceQuoteDto, @Req() request: WorkspaceContextRequest) {
+    return this.financial.getRemittanceQuote(workspaceContextFromRequest(request), body);
   }
 
   @Post("remittance/send")

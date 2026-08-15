@@ -2223,13 +2223,18 @@ model VirtualCard {
 }
 
 model VirtualCardWalletCharge {
-  id                  String   @id @default(uuid())
-  workspaceId         String
-  walletId            String
-  cardId              String
-  idempotencyKey      String   @unique
-  amountMinor         Int
-  currency            String   @default("NGN")
+  id             String @id @default(uuid())
+  workspaceId    String
+  walletId       String
+  cardId         String
+  idempotencyKey String @unique
+  // Total debited from the wallet. costMinor is what actually reaches the card;
+  // marginMinor is FlipTrybe's markup, which is not loaded onto the card and is
+  // therefore not part of what a termination refund returns.
+  amountMinor    Int
+  costMinor      Int?
+  marginMinor    Int    @default(0)
+  currency       String @default("NGN")
   status              String   @default("CHARGED")
   debitLedgerEntryId  String?
   refundLedgerEntryId String?
@@ -2255,6 +2260,66 @@ enum RemittanceTransferStatus {
   // Reconciliation has been opened for this transfer and an operator (or the
   // reconciliation job) must resolve it before any further money movement.
   RECONCILIATION_REQUIRED
+}
+
+enum RemittanceQuoteStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+// A remittance quote as WE issued it, persisted at quote time so that the send
+// leg has a server-side record to validate against.
+//
+// Why this exists rather than trusting the request body: /remittance/send used
+// to accept destinationAmountMinor, feeMinor and rate straight from the client
+// and persist them unchecked. The `quoteId` it received was the PROVIDER's
+// quote id — an opaque string with no row behind it — so nothing on our side
+// could confirm that the numbers being recorded were the numbers the customer
+// was actually quoted. Now the client holds this row's id, and the send leg
+// derives every amount from here.
+//
+// Consumed exactly once via a conditional status update (see
+// FinancialProductsService.consumeRemittanceQuote) — the same reserve-then-mark
+// discipline FxService.useQuote applies to FxQuote.
+model RemittanceQuote {
+  id          String  @id @default(uuid())
+  workspaceId String
+  userId      String?
+  // The adapter's own name (bare vendor, e.g. "fincra") — the send leg rebuilds
+  // the SAME adapter from this rather than re-routing, so a locked quote is
+  // honoured by the provider that actually issued it.
+  providerName    String
+  // The provider's quote id. Only forwarded to providers whose
+  // remittanceCapabilities.supportsLockedQuotes is true.
+  providerQuoteId String
+
+  sourceCurrency String
+  // What the customer is debited: costMinor + marginMinor.
+  sourceAmountMinor Int
+  // The provider's own source leg — what we instruct them to send.
+  costMinor         Int
+  // FlipTrybe's markup, resolved from PricingRule at quote time so the rate the
+  // customer saw is the rate they are charged, even if an admin reprices after.
+  marginMinor       Int @default(0)
+
+  destinationCurrency    String
+  destinationAmountMinor Int
+  feeMinor               Int
+  rate                   Float
+  // Mirrors the provider's RemittanceQuote.isLocked — false means the numbers
+  // above were indicative only. Never presented to a customer as a guarantee.
+  isLocked               Boolean @default(false)
+
+  status     RemittanceQuoteStatus @default(ACTIVE)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  transferId String?
+  createdAt  DateTime              @default(now())
+
+  @@index([workspaceId, status])
+  @@index([transferId])
 }
 
 // Generic financial reconciliation exception. Modelled on the existing
@@ -2388,12 +2453,21 @@ model RemittanceTransfer {
   userId                 String?
   providerName           String
   providerReference      String?
+  // Our RemittanceQuote.id — the row the amounts below were derived from.
   quoteId                String
+  // The provider's own quote id, carried separately now that quoteId refers to
+  // our row. Nullable for transfers created before quotes were persisted.
+  providerQuoteId        String?
   recipientName          String
   recipientAccountNumber String
   recipientBankCode      String
   recipientCountry       String
+  // What the customer was debited (costMinor + marginMinor).
   sourceAmountMinor      Int
+  // The provider's source leg, and our markup on it. Nullable/zero-defaulted
+  // for the pre-margin transfers already in the table, where debit == send.
+  costMinor              Int?
+  marginMinor            Int                       @default(0)
   sourceCurrency         String
   destinationAmountMinor Int
   destinationCurrency    String

@@ -280,7 +280,14 @@ export function OsShell({ children }: { children: ReactNode }) {
   function runCommand(href: string) {
     setCommandOpen(false);
     setCommandQuery("");
-    router.push(href);
+    // This cast IS load-bearing, despite what the lint rule reports. next.config
+    // sets typedRoutes: true, so during `next build` router.push takes a
+    // generated Route union, not string, and NavItem.href is a plain string.
+    // The rule only sees a no-op when .next/types has not been generated yet —
+    // which is why removing it (a7d12fe, 8f48cb8) breaks the build every time
+    // and gets reverted. Disable the rule here rather than losing the cast again.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    router.push(href as Parameters<typeof router.push>[0]);
   }
 
   async function handleSignOut() {

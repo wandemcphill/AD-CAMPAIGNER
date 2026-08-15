@@ -100,7 +100,9 @@ export function terminateCard(id: string) {
 export type RemittanceStatus = "QUOTED" | "CHARGED" | "PROCESSING" | "COMPLETED" | "FAILED" | "DISPUTED";
 
 export interface RemittanceQuote {
+  /** Opaque server-side quote id. Pass it back to sendRemittance verbatim. */
   quoteId: string;
+  /** The full wallet debit, inclusive of FlipTrybe's markup. */
   sourceAmountMinor: number;
   sourceCurrency: string;
   destinationAmountMinor: number;
@@ -108,6 +110,8 @@ export interface RemittanceQuote {
   feeMinor: number;
   rate: number;
   expiresAt: string;
+  /** false = indicative only. Do not present these numbers as guaranteed. */
+  isLocked: boolean;
 }
 
 export interface RemittanceTransfer {
@@ -133,17 +137,15 @@ export function getRemittanceQuote(input: {
   });
 }
 
+// No amounts are sent. The server reads them off the quote row that quoteId
+// identifies — echoing them back from the client would only be a claim, and
+// used to be persisted as though it were fact.
 export function sendRemittance(input: {
   quoteId: string;
   recipientName: string;
   recipientAccountNumber: string;
   recipientBankCode: string;
   recipientCountry: string;
-  sourceAmountMinor: number;
-  sourceCurrency: string;
-  destinationAmountMinor: number;
-  destinationCurrency: string;
-  feeMinor: number;
 }) {
   return apiRequest<ResponseEnvelope<RemittanceTransfer>>("/financial-products/remittance/send", {
     method: "POST",

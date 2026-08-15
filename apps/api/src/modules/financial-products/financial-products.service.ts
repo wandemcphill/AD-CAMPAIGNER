@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException
 } from "@nestjs/common";
 
-import { Prisma, type DatabaseClient } from "@fliptrybe/database";
+import { Prisma, type DatabaseClient, type ProviderDomain } from "@fliptrybe/database";
 import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
@@ -24,6 +24,7 @@ import {
 } from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
+import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing-rule.service";
 import { ProviderRouterService } from "../providers/provider-router.service";
 import { FinancialReconciliationService } from "./financial-reconciliation.service";
 import { RemittanceBeneficiaryService } from "./remittance-beneficiary.service";
@@ -71,6 +72,16 @@ function toTypedEntry(e: DbLedgerEntryRow): LedgerEntry {
 }
 
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
+
+/**
+ * How long one of our remittance quotes stays usable.
+ *
+ * A provider's own expiresAt is honoured when it is shorter, but never when it
+ * is longer: for an unlocked (indicative) quote the provider is making no
+ * commitment at all, so a generous expiry on their side is not a reason for us
+ * to hold a price. Whichever comes first wins.
+ */
+const REMITTANCE_QUOTE_TTL_MS = 15 * 60 * 1000;
 
 /**
  * Two different spellings of "which provider" reach the build*Adapter factories
@@ -123,11 +134,38 @@ export class FinancialProductsService {
     private readonly prismaService: PrismaService,
     private readonly providerRouter: ProviderRouterService,
     private readonly reconciliation: FinancialReconciliationService,
-    private readonly beneficiaries?: RemittanceBeneficiaryService
+    private readonly beneficiaries?: RemittanceBeneficiaryService,
+    private readonly pricingRules?: PricingRuleService
   ) {}
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
+  }
+
+  // ─── Markup ─────────────────────────────────────────────────────────────────
+
+  /**
+   * FlipTrybe's cut on a financial-product sale, resolved from PricingRule the
+   * same way VtuService.applyMarkup does.
+   *
+   * The fallback is 0 bps, deliberately unlike VTU's 2%. These verticals have
+   * always run at exactly cost, so defaulting to a non-zero markup would
+   * reprice every live transfer the moment this deploys. An admin opts in by
+   * creating a PricingRule for the domain — which, until now, silently did
+   * nothing because this service never consulted the rules at all.
+   *
+   * Returns whole minor units, rounded up, so a markup can never round away to
+   * nothing on a small order.
+   */
+  private async resolveMarginMinor(
+    domain: ProviderDomain,
+    costMinor: number,
+    filter: PricingRuleFilter
+  ): Promise<number> {
+    if (!this.pricingRules) return 0;
+    const bps = await this.pricingRules.resolveMarkupBps(domain, filter, 0);
+    if (bps <= 0) return 0;
+    return Math.ceil((costMinor * bps) / 10_000);
   }
 
   // ─── Adapter factories ──────────────────────────────────────────────────────
@@ -270,6 +308,13 @@ export class FinancialProductsService {
 
   // ─── Virtual Accounts ───────────────────────────────────────────────────────
 
+  // NO MARKUP HERE, deliberately. VIRTUAL_ACCOUNT is a valid PricingRule domain,
+  // but issuing an account moves no money — there is no wallet debit to mark up.
+  // Earning on this vertical means introducing a charge (a creation fee, a
+  // per-credit commission on inbound funding, or a monthly rent), and which of
+  // those to levy is a pricing decision, not a wiring gap. Until that decision is
+  // made, a VIRTUAL_ACCOUNT pricing rule still has nothing to apply to.
+
   async createAccount(ctx: AuthenticatedRequestContext, dto: CreateVirtualAccountDto) {
     const currency = dto.currency ?? "NGN";
     const reference = uid("va");
@@ -337,6 +382,15 @@ export class FinancialProductsService {
     const idempotencyKey = `virtual_card_${cardId}`;
     const cardProvider = await this.selectCardAdapter(cardId);
 
+    // The customer is debited funding + markup; only the funding reaches the
+    // card. dto.fundingAmountMinor stays the amount the card is loaded with, so
+    // a markup never quietly shrinks the balance the customer asked for.
+    const marginMinor = await this.resolveMarginMinor("VIRTUAL_CARD", dto.fundingAmountMinor, {
+      productType: "NGN_CARD",
+      providerName: cardProvider.name
+    });
+    const totalDebitMinor = dto.fundingAmountMinor + marginMinor;
+
     // hold_and_flag (default): a provider failure after we've already debited is
     // ambiguous — the card may have been issued on their side despite a timeout on
     // ours. Ops resolves it rather than us guessing whether to auto-reverse.
@@ -349,9 +403,9 @@ export class FinancialProductsService {
           })) as DbLedgerEntryRow[];
           const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
-          if (available.amountMinor < dto.fundingAmountMinor) {
+          if (available.amountMinor < totalDebitMinor) {
             throw new ForbiddenException(
-              `Insufficient balance. Required ₦${(dto.fundingAmountMinor / 100).toFixed(2)}.`
+              `Insufficient balance. Required ₦${(totalDebitMinor / 100).toFixed(2)}.`
             );
           }
 
@@ -359,7 +413,7 @@ export class FinancialProductsService {
             data: {
               walletId: wallet.id,
               kind: "DEBIT",
-              amountMinor: dto.fundingAmountMinor,
+              amountMinor: totalDebitMinor,
               currency,
               reference: idempotencyKey,
               description: `Virtual card funding: ${dto.cardholderName}`,
@@ -375,7 +429,9 @@ export class FinancialProductsService {
               walletId: wallet.id,
               cardId,
               idempotencyKey,
-              amountMinor: dto.fundingAmountMinor,
+              amountMinor: totalDebitMinor,
+              costMinor: dto.fundingAmountMinor,
+              marginMinor,
               currency,
               status: "CHARGED",
               debitLedgerEntryId: ledgerEntry.id
@@ -407,7 +463,7 @@ export class FinancialProductsService {
           charge: {
             chargeId: card.chargeId!,
             walletId: card.walletId!,
-            amountMinor: dto.fundingAmountMinor,
+            amountMinor: totalDebitMinor,
             currency: currency as CurrencyCode,
             debitLedgerEntryId: card.ledgerEntryId
           }
@@ -469,6 +525,14 @@ export class FinancialProductsService {
       throw new BadRequestException("Only an active card can be funded.");
     }
 
+    // Same split as issueCard: dto.amountMinor is what lands on the card, the
+    // markup rides on top of the wallet debit.
+    const marginMinor = await this.resolveMarginMinor("VIRTUAL_CARD", dto.amountMinor, {
+      productType: "NGN_CARD",
+      providerName: card.providerName
+    });
+    const totalDebitMinor = dto.amountMinor + marginMinor;
+
     const outcome = await this.db.$transaction(async (tx) => {
       const wallet = await this.getWallet(ctx.workspaceId, tx);
       const entries = (await tx.ledgerEntry.findMany({
@@ -476,24 +540,43 @@ export class FinancialProductsService {
       })) as DbLedgerEntryRow[];
       const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
-      if (available.amountMinor < dto.amountMinor) {
+      if (available.amountMinor < totalDebitMinor) {
         throw new ForbiddenException(
-          `Insufficient balance. Required ₦${(dto.amountMinor / 100).toFixed(2)}.`
+          `Insufficient balance. Required ₦${(totalDebitMinor / 100).toFixed(2)}.`
         );
       }
 
       const idempotencyKey = `virtual_card_topup_${uid("t")}`;
-      await tx.ledgerEntry.create({
+      const ledgerEntry = await tx.ledgerEntry.create({
         data: {
           walletId: wallet.id,
           kind: "DEBIT",
-          amountMinor: dto.amountMinor,
+          amountMinor: totalDebitMinor,
           currency: card.currency,
           reference: idempotencyKey,
           description: `Virtual card top-up: ${card.last4}`,
           idempotencyKey,
-          sourceType: "VirtualCard",
+          sourceType: "VirtualCardWalletCharge",
           sourceId: card.id
+        }
+      });
+
+      // A top-up produced only a ledger entry before, which left its margin with
+      // nowhere to be recorded. It gets a charge row of its own now — distinct
+      // from the issuance charge that terminateCard refunds against, which is
+      // still found by card.chargeId.
+      await tx.virtualCardWalletCharge.create({
+        data: {
+          workspaceId: ctx.workspaceId,
+          walletId: wallet.id,
+          cardId: card.id,
+          idempotencyKey,
+          amountMinor: totalDebitMinor,
+          costMinor: dto.amountMinor,
+          marginMinor,
+          currency: card.currency,
+          status: "CHARGED",
+          debitLedgerEntryId: ledgerEntry.id
         }
       });
 
@@ -563,19 +646,136 @@ export class FinancialProductsService {
 
   // ─── Remittance ─────────────────────────────────────────────────────────────
 
-  async getRemittanceQuote(dto: RemittanceQuoteDto) {
+  /**
+   * Quotes a transfer AND persists what we quoted.
+   *
+   * The `quoteId` handed back is our RemittanceQuote row id, not the provider's
+   * — the provider's is kept alongside it and forwarded only to providers that
+   * honour locked quotes. sendRemittance reads every amount back off this row,
+   * so the numbers the customer agreed to are the numbers that get charged.
+   */
+  async getRemittanceQuote(ctx: AuthenticatedRequestContext, dto: RemittanceQuoteDto) {
     const remittanceProvider = await this.selectRemittanceAdapter(uid("rtq"));
-    return remittanceProvider.getQuote({
+    const quote = await remittanceProvider.getQuote({
       sourceCurrency: dto.sourceCurrency,
       destinationCurrency: dto.destinationCurrency,
       sourceAmountMinor: dto.sourceAmountMinor
     });
+
+    // Markup is resolved once, here, and frozen onto the row. Repricing after a
+    // quote is issued must not change what an already-quoted customer pays.
+    // No countryCode in the filter: PricingRule.countryCode means a country, and
+    // the only geography known at quote time is the destination CURRENCY — the
+    // recipient's country does not arrive until send. Corridor-specific pricing
+    // would need its own dimension; a rule left country-agnostic still matches.
+    const marginMinor = await this.resolveMarginMinor("REMITTANCE", quote.sourceAmountMinor, {
+      productType: "BANK_TRANSFER",
+      providerName: remittanceProvider.name
+    });
+
+    const row = await this.db.remittanceQuote.create({
+      data: {
+        workspaceId: ctx.workspaceId,
+        userId: ctx.userId,
+        providerName: remittanceProvider.name,
+        providerQuoteId: quote.quoteId,
+        sourceCurrency: quote.sourceCurrency,
+        sourceAmountMinor: quote.sourceAmountMinor + marginMinor,
+        costMinor: quote.sourceAmountMinor,
+        marginMinor,
+        destinationCurrency: quote.destinationCurrency,
+        destinationAmountMinor: quote.destinationAmountMinor,
+        feeMinor: quote.feeMinor,
+        rate: quote.rate,
+        isLocked: quote.isLocked,
+        expiresAt: this.remittanceQuoteExpiry(quote.expiresAt)
+      }
+    });
+
+    // Same shape the client already consumes, with sourceAmountMinor now being
+    // the full debit (provider leg + our markup) rather than the provider leg
+    // alone — so what the customer is shown is what leaves their wallet.
+    return {
+      quoteId: row.id,
+      sourceAmountMinor: row.sourceAmountMinor,
+      sourceCurrency: row.sourceCurrency,
+      destinationAmountMinor: row.destinationAmountMinor,
+      destinationCurrency: row.destinationCurrency,
+      feeMinor: row.feeMinor,
+      rate: row.rate,
+      expiresAt: row.expiresAt.toISOString(),
+      isLocked: row.isLocked
+    };
+  }
+
+  /** Provider expiry if it is sooner than ours; our TTL otherwise. */
+  private remittanceQuoteExpiry(providerExpiresAt: string): Date {
+    const ours = new Date(Date.now() + REMITTANCE_QUOTE_TTL_MS);
+    const theirs = new Date(providerExpiresAt);
+    if (Number.isNaN(theirs.getTime())) return ours;
+    return theirs < ours ? theirs : ours;
+  }
+
+  /**
+   * Loads, validates and consumes a quote in one step.
+   *
+   * Ownership failures are reported as not-found rather than forbidden so a
+   * foreign quote id cannot be probed — the same reasoning as FxService.useQuote.
+   * The claim itself is a conditional update on status, which is what makes it
+   * single-use: two concurrent sends both pass the reads above, and exactly one
+   * of them gets count === 1 back.
+   */
+  private async consumeRemittanceQuote(
+    ctx: AuthenticatedRequestContext,
+    quoteId: string,
+    transferId: string
+  ) {
+    const quote = await this.db.remittanceQuote.findUnique({ where: { id: quoteId } });
+
+    if (!quote || quote.workspaceId !== ctx.workspaceId) {
+      throw new NotFoundException(`Quote ${quoteId} not found.`);
+    }
+
+    if (quote.status !== "ACTIVE") {
+      throw new BadRequestException(
+        `Quote is ${quote.status} and cannot be used again. Request a new quote.`
+      );
+    }
+
+    if (quote.expiresAt < new Date()) {
+      await this.db.remittanceQuote.updateMany({
+        where: { id: quoteId, status: "ACTIVE" },
+        data: { status: "EXPIRED" }
+      });
+      throw new BadRequestException("Quote has expired. Request a new quote.");
+    }
+
+    const claimed = await this.db.remittanceQuote.updateMany({
+      where: { id: quoteId, status: "ACTIVE" },
+      data: { status: "USED", usedAt: new Date(), transferId }
+    });
+
+    if (claimed.count !== 1) {
+      throw new BadRequestException("Quote has already been used. Request a new quote.");
+    }
+
+    return quote;
   }
 
   async sendRemittance(ctx: AuthenticatedRequestContext, dto: SendRemittanceDto) {
     const transferId = uid("rt");
     const idempotencyKey = `remittance_${transferId}`;
-    const remittanceProvider = await this.selectRemittanceAdapter(transferId);
+
+    // Validate and consume the quote BEFORE anything is charged. Everything
+    // below reads from `quote`, never from `dto` — the request body carries the
+    // recipient and the quote id, and no amounts at all.
+    const quote = await this.consumeRemittanceQuote(ctx, dto.quoteId, transferId);
+
+    // Rebuild the adapter that issued the quote rather than re-routing. Routing
+    // again here could hand the transfer to a different provider than the one
+    // whose price the customer accepted — and would make a locked quote id
+    // meaningless, since it is only valid at the provider that minted it.
+    const remittanceProvider = this.buildRemittanceAdapter(quote.providerName);
 
     const outcome = await runChargeSaga({
       debit: async () => {
@@ -586,9 +786,9 @@ export class FinancialProductsService {
           })) as DbLedgerEntryRow[];
           const available = calculateAvailableBalance(entries.map(toTypedEntry));
 
-          if (available.amountMinor < dto.sourceAmountMinor) {
+          if (available.amountMinor < quote.sourceAmountMinor) {
             throw new ForbiddenException(
-              `Insufficient balance. Required ₦${(dto.sourceAmountMinor / 100).toFixed(2)}.`
+              `Insufficient balance. Required ₦${(quote.sourceAmountMinor / 100).toFixed(2)}.`
             );
           }
 
@@ -596,8 +796,8 @@ export class FinancialProductsService {
             data: {
               walletId: wallet.id,
               kind: "DEBIT",
-              amountMinor: dto.sourceAmountMinor,
-              currency: dto.sourceCurrency,
+              amountMinor: quote.sourceAmountMinor,
+              currency: quote.sourceCurrency,
               reference: idempotencyKey,
               description: `Remittance to ${dto.recipientName}`,
               idempotencyKey,
@@ -612,8 +812,8 @@ export class FinancialProductsService {
               walletId: wallet.id,
               transferId,
               idempotencyKey,
-              amountMinor: dto.sourceAmountMinor,
-              currency: dto.sourceCurrency,
+              amountMinor: quote.sourceAmountMinor,
+              currency: quote.sourceCurrency,
               status: "CHARGED",
               debitLedgerEntryId: ledgerEntry.id
             }
@@ -625,17 +825,20 @@ export class FinancialProductsService {
               workspaceId: ctx.workspaceId,
               userId: ctx.userId,
               providerName: remittanceProvider.name,
-              quoteId: dto.quoteId,
+              quoteId: quote.id,
+              providerQuoteId: quote.providerQuoteId,
               recipientName: dto.recipientName,
               recipientAccountNumber: dto.recipientAccountNumber,
               recipientBankCode: dto.recipientBankCode,
               recipientCountry: dto.recipientCountry,
-              sourceAmountMinor: dto.sourceAmountMinor,
-              sourceCurrency: dto.sourceCurrency,
-              destinationAmountMinor: dto.destinationAmountMinor,
-              destinationCurrency: dto.destinationCurrency,
-              feeMinor: dto.feeMinor,
-              quotedRate: dto.rate ?? null,
+              sourceAmountMinor: quote.sourceAmountMinor,
+              costMinor: quote.costMinor,
+              marginMinor: quote.marginMinor,
+              sourceCurrency: quote.sourceCurrency,
+              destinationAmountMinor: quote.destinationAmountMinor,
+              destinationCurrency: quote.destinationCurrency,
+              feeMinor: quote.feeMinor,
+              quotedRate: quote.rate,
               // Whether this quote was actually locked is a property of the
               // PROVIDER, not of what the customer was shown — never assume a
               // lock a provider (e.g. Swappr) never made.
@@ -668,13 +871,16 @@ export class FinancialProductsService {
           // a saga retry of execute() must not be able to create a second
           // provider-side payout for the same logical FlipTrybe transaction.
           idempotencyKey,
-          amountMinor: dto.sourceAmountMinor,
-          sourceCurrency: dto.sourceCurrency,
-          destinationCurrency: dto.destinationCurrency,
-          // Only forward quoteId to providers that can actually honour one —
-          // Swappr has no server-side quote object to receive it.
+          // The provider's own leg, NOT the customer's debit — the difference
+          // between the two is our margin and must not be sent onward.
+          amountMinor: quote.costMinor,
+          sourceCurrency: quote.sourceCurrency,
+          destinationCurrency: quote.destinationCurrency,
+          // Only forward a quoteId to providers that can actually honour one —
+          // Swappr has no server-side quote object to receive it. It is the
+          // PROVIDER's id, not ours; ours means nothing to them.
           ...(remittanceProvider.remittanceCapabilities.supportsLockedQuotes
-            ? { quoteId: dto.quoteId }
+            ? { quoteId: quote.providerQuoteId }
             : {}),
           recipient: {
             name: dto.recipientName,
@@ -748,8 +954,11 @@ export class FinancialProductsService {
           providerName: remittanceProvider.name,
           kind: "AMBIGUOUS_PROVIDER_RESULT",
           internalStatus: nextStatus,
-          internalAmountMinor: dto.sourceAmountMinor,
-          internalCurrency: dto.sourceCurrency,
+          // The provider's leg, not the customer's debit — this figure gets
+          // compared against the provider's own record of the payout, and our
+          // markup never appears there.
+          internalAmountMinor: quote.costMinor,
+          internalCurrency: quote.sourceCurrency,
           idempotencyKey,
           detail:
             `Provider call did not return a confirmed result. The payout MAY have been ` +

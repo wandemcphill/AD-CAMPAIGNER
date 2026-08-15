@@ -1,4 +1,4 @@
-import { IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsInt, IsOptional, IsString, Min } from "class-validator";
 
 // ─── Virtual Accounts ───────────────────────────────────────────────────────────
 
@@ -46,10 +46,16 @@ export class RemittanceQuoteDto {
   sourceAmountMinor!: number;
 }
 
-// The client echoes back the amounts it was quoted (RemittanceQuote's response
-// shape) — the provider re-validates by quoteId in sendTransfer(); this DTO's
-// values are what we persist for our own record, not what's trusted for money
-// movement (that's the provider's job, keyed by quoteId).
+// Carries no amounts, by design.
+//
+// This DTO used to accept sourceAmountMinor, destinationAmountMinor, feeMinor
+// and rate from the client and persist them unchecked — a client could post any
+// destination amount, fee or rate it liked and have it recorded as fact. Those
+// values now come off the RemittanceQuote row that quoteId identifies (see
+// FinancialProductsService.consumeRemittanceQuote), which is also where expiry,
+// ownership and single-use are enforced.
+//
+// quoteId is OUR RemittanceQuote.id, not the provider's quote id.
 export class SendRemittanceDto {
   @IsString()
   quoteId!: string;
@@ -65,32 +71,6 @@ export class SendRemittanceDto {
 
   @IsString()
   recipientCountry!: string;
-
-  @IsInt()
-  @Min(1)
-  sourceAmountMinor!: number;
-
-  @IsString()
-  sourceCurrency!: string;
-
-  @IsInt()
-  @Min(0)
-  destinationAmountMinor!: number;
-
-  @IsString()
-  destinationCurrency!: string;
-
-  @IsInt()
-  @Min(0)
-  feeMinor!: number;
-
-  // Client echoes back the rate it was quoted (RemittanceQuote.rate) so it can
-  // be persisted as quotedRate — the ground truth for whether that rate held
-  // is the provider's remittanceCapabilities.supportsLockedQuotes, not this
-  // value, but we still record what the customer actually saw.
-  @IsOptional()
-  @IsNumber()
-  rate?: number;
 }
 
 // ─── Wallet Withdrawal ────────────────────────────────────────────────────────────
