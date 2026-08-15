@@ -353,6 +353,24 @@ services:
         sync: false
       - key: RELOADLY_CLIENT_SECRET
         sync: false
+      # Gift cards are a DIFFERENT Reloadly host from top-ups above, and take
+      # precedence over RELOADLY_BASE_URL in the gift card adapter.
+      - key: RELOADLY_GIFTCARDS_BASE_URL
+        value: https://giftcards.reloadly.com
+      - key: RELOADLY_SANDBOX
+        value: "false"
+
+      # ── Gift card sell (SOGO) ────────────────────────────────────────────
+      # SOGO_API_KEY gates the gift card sell vertical. Leaving it unset no
+      # longer breaks boot — the endpoints report "not available" instead.
+      - key: SOGO_API_KEY
+        sync: false
+      - key: SOGO_BASE_URL
+        value: https://api.sogo.africa/v1
+      - key: SOGO_SANDBOX
+        value: "false"
+      - key: SOGO_WEBHOOK_SECRET
+        sync: false
 
       # ── Virtual accounts / cards / remittance providers ──────────────────
       # Register these callback URLs in each provider's dashboard — they are the
@@ -696,6 +714,20 @@ services:
       - key: RELOADLY_CLIENT_ID
         sync: false
       - key: RELOADLY_CLIENT_SECRET
+        sync: false
+      - key: RELOADLY_GIFTCARDS_BASE_URL
+        value: https://giftcards.reloadly.com
+      - key: RELOADLY_SANDBOX
+        value: "false"
+
+      # ── Gift card sell (SOGO) ────────────────────────────────────────────
+      - key: SOGO_API_KEY
+        sync: false
+      - key: SOGO_BASE_URL
+        value: https://api.sogo.africa/v1
+      - key: SOGO_SANDBOX
+        value: "false"
+      - key: SOGO_WEBHOOK_SECRET
         sync: false
 
       # ── Virtual accounts / cards / remittance providers ──────────────────

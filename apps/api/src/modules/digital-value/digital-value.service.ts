@@ -4,7 +4,8 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
-  NotFoundException
+  NotFoundException,
+  type OnModuleInit
 } from '@nestjs/common';
 
 import { Prisma, type DatabaseClient } from '@fliptrybe/database';
@@ -88,11 +89,18 @@ const GIFT_CARD_BUY_MARGIN_BPS = 200;
 const GIFT_CARD_SELL_FEE_BPS = 200;
 
 @Injectable()
-export class DigitalValueService {
+export class DigitalValueService implements OnModuleInit {
   private readonly logger = new Logger(DigitalValueService.name);
-  private giftCardSellProvider: GiftCardSellProvider | null = null;
-  private giftCardBuyProvider: GiftCardPurchaseProvider | null = null;
-  private airtimeCashoutProvider: AirtimeCashoutProvider | null = null;
+
+  // `undefined` = not yet resolved; `null` = resolved and unconfigured.
+  // These are built lazily rather than in the constructor: this service is an
+  // eager singleton in an always-imported module, so a missing SOGO/Reloadly
+  // credential used to abort Nest's bootstrap and take the whole API down with
+  // it. A missing credential must degrade exactly one vertical — every call
+  // site already guards on null and throws "not available".
+  private sellProviderResolved: GiftCardSellProvider | null | undefined;
+  private buyProviderResolved: GiftCardPurchaseProvider | null | undefined;
+  private cashoutProviderResolved: AirtimeCashoutProvider | null | undefined;
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -100,8 +108,46 @@ export class DigitalValueService {
     private readonly fx: FxService,
     private readonly approvals: ApprovalsService,
     private readonly pricingRules: PricingRuleService
-  ) {
-    this.initializeProviders();
+  ) {}
+
+  // Resolve every provider once at startup so an unconfigured vertical shows up
+  // in the deploy logs immediately, rather than on the first customer request.
+  // Resolution never throws, so this cannot block boot.
+  onModuleInit() {
+    const unavailable = [
+      this.giftCardSellProvider ? null : "gift card sell (SOGO_API_KEY)",
+      this.giftCardBuyProvider ? null : "gift card buy (RELOADLY_CLIENT_ID/SECRET)",
+      this.airtimeCashoutProvider ? null : "airtime cashout"
+    ].filter((entry): entry is string => entry !== null);
+
+    if (unavailable.length > 0) {
+      this.logger.warn(
+        `Digital value providers unavailable — these endpoints will return 400 until configured: ${unavailable.join(", ")}`
+      );
+    }
+  }
+
+  private get giftCardSellProvider(): GiftCardSellProvider | null {
+    if (this.sellProviderResolved === undefined) {
+      this.sellProviderResolved = this.buildSogoAdapter();
+    }
+    return this.sellProviderResolved;
+  }
+
+  private get giftCardBuyProvider(): GiftCardPurchaseProvider | null {
+    if (this.buyProviderResolved === undefined) {
+      this.buyProviderResolved = this.buildReloadlyAdapter();
+    }
+    return this.buyProviderResolved;
+  }
+
+  private get airtimeCashoutProvider(): AirtimeCashoutProvider | null {
+    if (this.cashoutProviderResolved === undefined) {
+      this.cashoutProviderResolved = featureFlags.airtimeCashout
+        ? this.buildAirtimeCashoutProvider()
+        : createMockAirtimeCashoutAdapter();
+    }
+    return this.cashoutProviderResolved;
   }
 
   // A PricingRule row (domain=GIFT_CARD) overrides these fallbacks when one
@@ -125,17 +171,6 @@ export class DigitalValueService {
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
-  }
-
-  private initializeProviders() {
-    this.giftCardSellProvider = this.buildSogoAdapter();
-    this.giftCardBuyProvider = this.buildReloadlyAdapter();
-
-    if (featureFlags.airtimeCashout) {
-      this.airtimeCashoutProvider = this.buildAirtimeCashoutProvider();
-    } else {
-      this.airtimeCashoutProvider = createMockAirtimeCashoutAdapter();
-    }
   }
 
   // Single-provider slot (one active airtime-cashout provider at a time), matching
@@ -164,13 +199,13 @@ export class DigitalValueService {
     });
   }
 
-  private buildSogoAdapter(): GiftCardSellProvider {
+  // Returns null (never throws) when unconfigured: gift card selling is then
+  // reported unavailable per-request instead of taking the API down at boot.
+  // There is deliberately no mock fallback — an unconfigured vertical must be
+  // visibly off, not quietly fake.
+  private buildSogoAdapter(): GiftCardSellProvider | null {
     const sogoApiKey = process.env['SOGO_API_KEY'] ?? process.env['SOGO_SECRET_KEY'];
-    if (!sogoApiKey) {
-      throw new Error(
-        'SOGO_API_KEY is required to initialize the gift card sell provider — no mock fallback in this build'
-      );
-    }
+    if (!sogoApiKey) return null;
     return createSogoGiftCardAdapter({
       apiKey: sogoApiKey,
       sandbox: process.env['SOGO_SANDBOX'] === 'true',
@@ -178,7 +213,8 @@ export class DigitalValueService {
     });
   }
 
-  private buildReloadlyAdapter(): GiftCardPurchaseProvider {
+  // Null-when-unconfigured, for the same reason as buildSogoAdapter above.
+  private buildReloadlyAdapter(): GiftCardPurchaseProvider | null {
     const reloadlyClientId =
       process.env['RELOADLY_CLIENT_ID'] ?? process.env['RELOADLY_API_CLIENT_ID'];
     const reloadlyClientSecret =
@@ -186,18 +222,19 @@ export class DigitalValueService {
       process.env['RELOADLY_API_CLIENT_KEY'] ??
       process.env['RELOADLY_API_CLIENT_SECRET'];
 
-    if (!reloadlyClientId || !reloadlyClientSecret) {
-      throw new Error(
-        'RELOADLY_CLIENT_ID and RELOADLY_CLIENT_SECRET are required to initialize the gift card buy provider — no mock fallback in this build'
-      );
-    }
+    if (!reloadlyClientId || !reloadlyClientSecret) return null;
 
     return createReloadlyGiftCardAdapter({
       clientId: reloadlyClientId,
       clientSecret: reloadlyClientSecret,
       sandbox: process.env['RELOADLY_SANDBOX'] === 'true',
-      ...((process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'])
-        ? { baseUrl: process.env['RELOADLY_BASE_URL'] ?? process.env['RELOADLY_GIFTCARDS_BASE_URL'] }
+      // RELOADLY_GIFTCARDS_BASE_URL wins over the generic RELOADLY_BASE_URL:
+      // the generic one is set to the top-ups host (topups.reloadly.com) for the
+      // telecom gateway, and gift cards live on a different host entirely
+      // (giftcards.reloadly.com). Preferring the generic var pointed every gift
+      // card call at the top-ups API.
+      ...((process.env['RELOADLY_GIFTCARDS_BASE_URL'] ?? process.env['RELOADLY_BASE_URL'])
+        ? { baseUrl: process.env['RELOADLY_GIFTCARDS_BASE_URL'] ?? process.env['RELOADLY_BASE_URL'] }
         : {})
     });
   }
