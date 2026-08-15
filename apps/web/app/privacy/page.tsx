@@ -268,7 +268,7 @@ export default function PrivacyPage() {
 
             <h3 className="mb-3 mt-4 text-lg font-semibold text-white/90">9.6 Contact Us</h3>
             <p className="leading-relaxed">
-              To exercise your rights, contact us at support@fliptrybe.com
+              To exercise your rights, contact us at hello@fliptrybe.xyz
             </p>
           </section>
 
@@ -312,7 +312,7 @@ export default function PrivacyPage() {
             </p>
             <p className="mt-3 leading-relaxed">
               <strong>FlipTrybe</strong><br />
-              Email: support@fliptrybe.com
+              Email: hello@fliptrybe.xyz
             </p>
             <p className="mt-4 leading-relaxed">
               We will respond to privacy inquiries within a reasonable timeframe.
@@ -323,7 +323,7 @@ export default function PrivacyPage() {
           <section>
             <h2 className="mb-4 text-2xl font-semibold text-white">15. Data Processor Information</h2>
             <p className="leading-relaxed">
-              FlipTrybe processes personal information on behalf of users and their organization. For details about how we process personal data as a service provider or data processor, please contact support@fliptrybe.com.
+              FlipTrybe processes personal information on behalf of users and their organization. For details about how we process personal data as a service provider or data processor, please contact hello@fliptrybe.xyz.
             </p>
           </section>
         </div>

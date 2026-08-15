@@ -277,7 +277,7 @@ export default function TermsPage() {
             </p>
             <p className="mt-3 leading-relaxed">
               <strong>FlipTrybe</strong><br />
-              Email: support@fliptrybe.com
+              Email: hello@fliptrybe.xyz
             </p>
           </section>
 
