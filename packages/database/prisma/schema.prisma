@@ -1783,6 +1783,9 @@ model FxRateCache {
 
 model FxQuote {
   id                 String        @id @default(uuid())
+  // Nullable because quotes predate tenant scoping. Where it is set it is
+  // enforced on use and on settlement; rows without it are legacy admin quotes.
+  workspaceId        String?
   baseCurrency       String        @default("USD")
   quoteCurrency      String        @default("NGN")
   sourceAmountMinor  BigInt
@@ -1799,6 +1802,7 @@ model FxQuote {
 
   @@index([baseCurrency, quoteCurrency, expiresAt, status])
   @@index([transactionId])
+  @@index([workspaceId])
 }
 
 model SettlementInstruction {

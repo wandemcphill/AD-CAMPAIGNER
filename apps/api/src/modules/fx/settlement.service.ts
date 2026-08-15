@@ -203,6 +203,12 @@ export class SettlementService {
       throw new NotFoundException(`Quote not found: ${quoteId}`);
     }
 
+    // The beneficiary is checked against dto.workspaceId below; the quote must
+    // be too, or one workspace could settle against another's locked rate.
+    if (quote.workspaceId && dto.workspaceId && quote.workspaceId !== dto.workspaceId) {
+      throw new NotFoundException(`Quote not found: ${quoteId}`);
+    }
+
     if (quote.status !== "USED") {
       throw new BadRequestException(`Quote must be USED to settle, currently: ${quote.status}`);
     }

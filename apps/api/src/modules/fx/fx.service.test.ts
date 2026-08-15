@@ -108,4 +108,60 @@ describe("FxService.createQuote", () => {
 
     expect(quote.rateProvenance).toBe("bootstrap");
   });
+
+  it("stamps the quote with the requesting workspace", async () => {
+    const { created, db } = buildDb({ id: "fxr_1", rateMicros: 1_000_000_000n, bufferBps: 0 });
+
+    await buildService(db).createQuote({ workspaceId: "ws_1" } as never, quoteRequest);
+
+    expect(created[0]?.["workspaceId"]).toBe("ws_1");
+  });
+});
+
+describe("FxService.useQuote", () => {
+  function buildQuoteDb(workspaceId: string | null) {
+    const update = vi.fn(() => Promise.resolve({}));
+
+    return {
+      update,
+      db: {
+        fxQuote: {
+          findUnique: vi.fn(() =>
+            Promise.resolve({
+              id: "fxq_1",
+              workspaceId,
+              status: "ACTIVE",
+              expiresAt: new Date(Date.now() + 60_000)
+            })
+          ),
+          update
+        }
+      }
+    };
+  }
+
+  it("refuses a quote belonging to another workspace", async () => {
+    const { db, update } = buildQuoteDb("ws_1");
+
+    await expect(buildService(db).useQuote("fxq_1", "txn_1", "ws_2")).rejects.toThrow(
+      /not found/i
+    );
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("accepts a quote belonging to the caller's workspace", async () => {
+    const { db, update } = buildQuoteDb("ws_1");
+
+    await buildService(db).useQuote("fxq_1", "txn_1", "ws_1");
+
+    expect(update).toHaveBeenCalled();
+  });
+
+  it("still accepts legacy quotes that predate workspace scoping", async () => {
+    const { db, update } = buildQuoteDb(null);
+
+    await buildService(db).useQuote("fxq_1", "txn_1", "ws_1");
+
+    expect(update).toHaveBeenCalled();
+  });
 });

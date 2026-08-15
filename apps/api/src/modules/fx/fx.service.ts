@@ -430,6 +430,7 @@ export class FxService implements OnModuleInit {
     const quote = await this.db.fxQuote.create({
       data: {
         id: uid("fxq"),
+        ...(ctx?.workspaceId ? { workspaceId: ctx.workspaceId } : {}),
         baseCurrency,
         quoteCurrency,
         sourceAmountMinor: BigInt(sourceAmountMinor),
@@ -460,10 +461,16 @@ export class FxService implements OnModuleInit {
     };
   }
 
-  async useQuote(quoteId: string, transactionId: string): Promise<void> {
+  async useQuote(quoteId: string, transactionId: string, workspaceId?: string): Promise<void> {
     const quote = await this.db.fxQuote.findUnique({ where: { id: quoteId } });
 
     if (!quote) {
+      throw new NotFoundException(`Quote ${quoteId} not found`);
+    }
+
+    // Quote ids are guessable enough that ownership must be checked rather than
+    // assumed. Reported as not-found so a foreign id can't be probed.
+    if (quote.workspaceId && workspaceId && quote.workspaceId !== workspaceId) {
       throw new NotFoundException(`Quote ${quoteId} not found`);
     }
 
