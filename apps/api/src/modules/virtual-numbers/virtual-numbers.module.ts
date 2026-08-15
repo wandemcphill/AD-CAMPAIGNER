@@ -1,5 +1,6 @@
 import { MiddlewareConsumer, Module, type NestModule } from "@nestjs/common";
 
+import { ProvidersModule } from "../providers/providers.module";
 import { PrismaModule } from "../prisma.module";
 import { QueueProducerService } from "../queue-producer.service";
 import { AuthSessionService } from "../auth-session.service";
@@ -14,7 +15,7 @@ import {
 import { VirtualNumbersService } from "./virtual-numbers.service";
 
 @Module({
-  imports: [FxModule, PrismaModule, NotificationsModule],
+  imports: [FxModule, PrismaModule, NotificationsModule, ProvidersModule],
   controllers: [
     VirtualNumbersController,
     VirtualNumbersWebhookController,

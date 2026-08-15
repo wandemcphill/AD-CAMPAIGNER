@@ -22,6 +22,7 @@ import {
 } from '@fliptrybe/providers';
 
 import { PrismaService } from '../prisma.service';
+import { PricingRuleService, type PricingRuleFilter } from '../providers/pricing-rule.service';
 import { QueueProducerService } from '../queue-producer.service';
 import { FxService } from '../fx/fx.service';
 import { ApprovalsService } from '../approvals/approvals.service';
@@ -81,6 +82,11 @@ function toTypedEntry(e: DbLedgerEntryRow): LedgerEntry {
 
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
+// Fallbacks when no PricingRule (domain=GIFT_CARD) matches. These are the
+// values that were hardcoded inline before; admin-overridable via /admin/providers.
+const GIFT_CARD_BUY_MARGIN_BPS = 200;
+const GIFT_CARD_SELL_FEE_BPS = 200;
+
 @Injectable()
 export class DigitalValueService {
   private readonly logger = new Logger(DigitalValueService.name);
@@ -92,9 +98,29 @@ export class DigitalValueService {
     private readonly prismaService: PrismaService,
     private readonly queue: QueueProducerService,
     private readonly fx: FxService,
-    private readonly approvals: ApprovalsService
+    private readonly approvals: ApprovalsService,
+    private readonly pricingRules: PricingRuleService
   ) {
     this.initializeProviders();
+  }
+
+  // A PricingRule row (domain=GIFT_CARD) overrides these fallbacks when one
+  // matches. Buy and sell are separate productTypes so an operator can price
+  // the two sides independently.
+  private async giftCardBuyMarginBps(filter: PricingRuleFilter = {}): Promise<number> {
+    return this.pricingRules.resolveMarkupBps(
+      "GIFT_CARD",
+      { productType: "BUY", ...filter },
+      GIFT_CARD_BUY_MARGIN_BPS
+    );
+  }
+
+  private async giftCardSellFeeBps(filter: PricingRuleFilter = {}): Promise<number> {
+    return this.pricingRules.resolveMarkupBps(
+      "GIFT_CARD",
+      { productType: "SELL", ...filter },
+      GIFT_CARD_SELL_FEE_BPS
+    );
   }
 
   private get db(): DatabaseClient {
@@ -196,7 +222,11 @@ export class DigitalValueService {
     }
 
     const rate = await this.giftCardSellProvider.getRate(dto.brand, dto.region, dto.denomination);
-    const feeNgn = Math.ceil((rate.rateMinor * 0.02) / 100);
+    const feeBps = await this.giftCardSellFeeBps({
+      ...(dto.region ? { countryCode: String(dto.region) } : {}),
+      providerName: this.giftCardSellProvider.name
+    });
+    const feeNgn = Math.ceil((rate.rateMinor * (feeBps / 10_000)) / 100);
     const payoutNgn = Math.floor((rate.rateMinor - feeNgn) / 100);
 
     const quote = await this.db.giftCardSellQuote.create({
@@ -210,7 +240,7 @@ export class DigitalValueService {
         currency: rate.currency,
         providerRate: rate.rateMinor.toString(),
         providerRateTimestamp: rate.rateTimestamp,
-        fliptrybeMarkupBps: 200,
+        fliptrybeMarkupBps: feeBps,
         fliptrybeFeeBps: 0,
         quotedCustomerPayoutNgn: payoutNgn,
         expiresAt: new Date(Date.now() + 60 * 1000)
@@ -622,7 +652,10 @@ export class DigitalValueService {
     const priceData = await this.giftCardBuyProvider.getPrice(dto.productId, dto.quantity);
 
     const costNgn = Math.ceil((product.retailPrice * 100) / 0.95) * dto.quantity;
-    const marginBps = 200;
+    const marginBps = await this.giftCardBuyMarginBps({
+      ...(product.region ? { countryCode: String(product.region) } : {}),
+      providerName: this.giftCardBuyProvider.name
+    });
     const marginNgn = Math.ceil(costNgn * (marginBps / 10000));
     const totalNgn = costNgn + marginNgn;
 

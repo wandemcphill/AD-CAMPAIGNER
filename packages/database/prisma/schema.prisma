@@ -1755,6 +1755,10 @@ model FxRate {
   quoteCurrency String       @default("NGN")
   rateMicros    BigInt
   bufferBps     Int          @default(0)
+  // Customer spread applied on top of the provider rate. Lives beside bufferBps
+  // so both halves of the margin are set in one admin action instead of one
+  // being a code constant.
+  spreadBps     Int          @default(150)
   source        FxRateSource @default(MANUAL)
   effectiveFrom DateTime     @default(now())
   effectiveTo   DateTime?

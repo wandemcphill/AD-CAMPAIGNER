@@ -1,6 +1,8 @@
 export interface SetFxRateDto {
   rate: number; // decimal NGN per USD, e.g. 1450.25
   bufferBps?: number;
+  /** Customer spread in bps. Omit to carry the current rate's spread forward. */
+  spreadBps?: number;
   note?: string;
   confirmLargeChange?: boolean;
 }

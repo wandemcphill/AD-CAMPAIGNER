@@ -21,6 +21,7 @@ import {
 } from "@fliptrybe/providers";
 
 import { PrismaService } from "../prisma.service";
+import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing-rule.service";
 import { QueueProducerService } from "../queue-producer.service";
 import { FxService } from "../fx/fx.service";
 import type { AuthenticatedRequestContext } from "../request-context";
@@ -30,8 +31,9 @@ type DbClient = DatabaseClient | Prisma.TransactionClient;
 
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
-// 35% margin over wholesale — numbers carry higher margin than VTU per the plan's
-// indicative pricing (23-45% across SKUs).
+// Fallback margin over wholesale when no PricingRule (domain=VIRTUAL_NUMBER)
+// matches — numbers carry higher margin than VTU per the plan's indicative
+// pricing (23-45% across SKUs). Admin-overridable via /admin/providers.
 const MARKUP_BPS = 3_500;
 const DEFAULT_NUMBER_COUNTRIES = [
   { isoCode: "US", name: "United States", dialPrefix: "+1", flagEmoji: "US", sortOrder: 10 },
@@ -39,10 +41,6 @@ const DEFAULT_NUMBER_COUNTRIES = [
   { isoCode: "CA", name: "Canada", dialPrefix: "+1", flagEmoji: "CA", sortOrder: 30 },
   { isoCode: "NG", name: "Nigeria", dialPrefix: "+234", flagEmoji: "NG", sortOrder: 40 }
 ] as const;
-
-function applyMarkup(costMinorUsd: number): number {
-  return Math.ceil(costMinorUsd * (1 + MARKUP_BPS / 10_000));
-}
 
 function usdMinorToNgnMinor(usdMinor: number, rateMicros: bigint): number {
   return Math.ceil((usdMinor * Number(rateMicros)) / 1_000_000);
@@ -87,8 +85,23 @@ export class VirtualNumbersService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly queue: QueueProducerService,
-    private readonly fx: FxService
+    private readonly fx: FxService,
+    private readonly pricingRules: PricingRuleService
   ) {}
+
+  // A PricingRule row (domain=VIRTUAL_NUMBER) overrides MARKUP_BPS when one
+  // matches; otherwise this falls back to the previously hardcoded margin.
+  private async applyMarkup(
+    costMinorUsd: number,
+    filter: PricingRuleFilter = {}
+  ): Promise<number> {
+    const bps = await this.pricingRules.resolveMarkupBps("VIRTUAL_NUMBER", filter, MARKUP_BPS);
+    return Math.ceil(costMinorUsd * (1 + bps / 10_000));
+  }
+
+  private async resolveMarkupBps(filter: PricingRuleFilter = {}): Promise<number> {
+    return this.pricingRules.resolveMarkupBps("VIRTUAL_NUMBER", filter, MARKUP_BPS);
+  }
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
@@ -233,7 +246,10 @@ export class VirtualNumbersService {
     chargeMinorNgn: number,
     rate: { rateMicros: bigint }
   ) {
-    const EXPECTED_MARGIN_BPS = 3_500;
+    // Compare against the margin actually in force for this country/provider,
+    // not a fixed constant — otherwise every order priced by a PricingRule
+    // would report a false variance.
+    const EXPECTED_MARGIN_BPS = await this.resolveMarkupBps({ countryCode, providerName });
 
     function usdMinorToNgnMinor(usdMinor: number, rateMicros: bigint): number {
       return Math.ceil((usdMinor * Number(rateMicros)) / 1_000_000);
@@ -362,6 +378,8 @@ export class VirtualNumbersService {
     // Browsing the catalog must not hard-fail on a stale FX rate — only an actual
     // purchase enforces that guardrail. Fall back to the bootstrap rate for display.
     const rate = await this.fx.getActiveRate().catch(() => ({ rateMicros: 1_450_000_000n }));
+    // One rule lookup for the whole catalog rather than one per product.
+    const markupBps = await this.resolveMarkupBps({ countryCode });
 
     return products.map((p) => ({
       ...p,
@@ -369,7 +387,10 @@ export class VirtualNumbersService {
       // provider at purchase time); metadata.referenceCostMinorUsd is a cached
       // catalog-sync value used only for display estimates here.
       estimatedPriceMinorNgn: usdMinorToNgnMinor(
-        applyMarkup(Number((p.metadata as Record<string, unknown>)?.["referenceCostMinorUsd"] ?? 0)),
+        Math.ceil(
+          Number((p.metadata as Record<string, unknown>)?.["referenceCostMinorUsd"] ?? 0) *
+            (1 + markupBps / 10_000)
+        ),
         rate.rateMicros
       )
     }));
@@ -484,7 +505,13 @@ export class VirtualNumbersService {
           continue;
         }
 
-        const chargeMinor = usdMinorToNgnMinor(applyMarkup(offer.costMinorUsd), rate.rateMicros);
+        const chargeMinor = usdMinorToNgnMinor(
+          await this.applyMarkup(offer.costMinorUsd, {
+            countryCode: product.countryCode,
+            providerName
+          }),
+          rate.rateMicros
+        );
 
         return await this.chargeAndProvision(
           ctx,
@@ -726,7 +753,13 @@ export class VirtualNumbersService {
     if (!offer) throw new BadRequestException("No renewal inventory available right now.");
 
     const rate = await this.fx.getActiveRate();
-    const chargeMinor = usdMinorToNgnMinor(applyMarkup(offer.costMinorUsd), rate.rateMicros);
+    const chargeMinor = usdMinorToNgnMinor(
+      await this.applyMarkup(offer.costMinorUsd, {
+        countryCode: number.countryCode,
+        providerName: number.providerName
+      }),
+      rate.rateMicros
+    );
     const idempotencyKey = `vn_order_${orderId}`;
 
     const outcome = await runChargeSaga({
@@ -1067,7 +1100,7 @@ export class VirtualNumbersService {
         minMarginBps,
         maxMarginBps,
         belowTargetCount,
-        expectedMarginBps: MARKUP_BPS
+        expectedMarginBps: await this.resolveMarkupBps()
       },
       providerStats,
       orders: analytics.map((a) => ({

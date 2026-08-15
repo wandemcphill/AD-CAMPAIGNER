@@ -39,7 +39,10 @@ const DEFAULT_RATE_PAIRS: Array<{ baseCurrency: string; quoteCurrency: string }>
   { baseCurrency: "EUR", quoteCurrency: "NGN" }
 ];
 
-const DEFAULT_SPREAD_BPS = 150; // 1.5% spread
+const DEFAULT_SPREAD_BPS = 150; // 1.5% — fallback when no FxRate row sets one
+// Ceiling for an admin-set customer spread. 20% is far above any legitimate FX
+// margin and exists to catch a typo, not to express policy.
+const MAX_SPREAD_BPS = 2_000;
 const DEFAULT_BUFFER_BPS = 100; // 1% buffer
 const FX_MAX_AGE_HOURS = 72;
 const FX_RATE_CACHE_TTL_MINUTES = 5;
@@ -333,6 +336,24 @@ export class FxService implements OnModuleInit {
 
   // ─── Rate Resolution (Manual Fallback or Cache) ─────────────────────────────
 
+  /**
+   * The admin-set spread for a pair, independent of which source supplied the
+   * rate. A cached provider rate has no FxRate row of its own, but the operator
+   * still expects the spread they configured to apply.
+   */
+  private async configuredSpreadBps(
+    baseCurrency: string,
+    quoteCurrency: string
+  ): Promise<number | null> {
+    const active = await this.db.fxRate.findFirst({
+      where: { baseCurrency, quoteCurrency, effectiveTo: null },
+      orderBy: { effectiveFrom: "desc" },
+      select: { spreadBps: true }
+    });
+
+    return active?.spreadBps ?? null;
+  }
+
   async getActiveRate(
     baseCurrency = "USD",
     quoteCurrency = "NGN"
@@ -344,6 +365,8 @@ export class FxService implements OnModuleInit {
     // Margin already baked into `rateMicros`. Callers that add their own margin
     // must subtract this or they will charge it twice.
     bufferBpsApplied: number;
+    // Admin-configured customer spread for this pair, when an FxRate row sets one.
+    spreadBps: number | null;
   }> {
     // First try cached rate
     const cached = await this.getCachedRate(baseCurrency, quoteCurrency);
@@ -353,7 +376,10 @@ export class FxService implements OnModuleInit {
         fxRateId: null,
         isBootstrap: false,
         usingFallback: false,
-        bufferBpsApplied: 0
+        bufferBpsApplied: 0,
+        // A cached provider rate has no FxRate row, so the spread still comes
+        // from the pair's configured rate when one exists.
+        spreadBps: await this.configuredSpreadBps(baseCurrency, quoteCurrency)
       };
     }
 
@@ -370,7 +396,8 @@ export class FxService implements OnModuleInit {
           fxRateId: null,
           isBootstrap: true,
           usingFallback: true,
-          bufferBpsApplied: 0
+          bufferBpsApplied: 0,
+          spreadBps: null
         };
       }
 
@@ -396,7 +423,8 @@ export class FxService implements OnModuleInit {
       fxRateId: active.id,
       isBootstrap: false,
       usingFallback: true,
-      bufferBpsApplied: active.bufferBps
+      bufferBpsApplied: active.bufferBps,
+      spreadBps: active.spreadBps
     };
   }
 
@@ -411,7 +439,7 @@ export class FxService implements OnModuleInit {
     }
 
     const rate = await this.getActiveRate(baseCurrency, quoteCurrency);
-    const spreadBps = DEFAULT_SPREAD_BPS;
+    const spreadBps = rate.spreadBps ?? DEFAULT_SPREAD_BPS;
     const bufferBps = DEFAULT_BUFFER_BPS;
 
     // Customer rate = provider rate + spread + buffer, where the total buffer is
@@ -526,6 +554,15 @@ export class FxService implements OnModuleInit {
       }
     }
 
+    // Carry the existing spread forward when the caller does not set one, so
+    // updating a rate never silently resets the margin to the code default.
+    const spreadBps = dto.spreadBps ?? current?.spreadBps ?? DEFAULT_SPREAD_BPS;
+    if (!Number.isInteger(spreadBps) || spreadBps < 0 || spreadBps > MAX_SPREAD_BPS) {
+      throw new BadRequestException(
+        `spreadBps must be a whole number between 0 and ${MAX_SPREAD_BPS}.`
+      );
+    }
+
     const now = new Date();
     const newRate = await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
       if (current) {
@@ -539,6 +576,7 @@ export class FxService implements OnModuleInit {
           quoteCurrency: "NGN",
           rateMicros: toMicros(dto.rate),
           bufferBps: dto.bufferBps ?? 0,
+          spreadBps,
           source: "MANUAL",
           effectiveFrom: now,
           setByUserId: ctx.userId,
@@ -556,7 +594,8 @@ export class FxService implements OnModuleInit {
           metadata: {
             oldRate: current ? fromMicros(current.rateMicros) : null,
             newRate: dto.rate,
-            bufferBps: dto.bufferBps ?? 0
+            bufferBps: dto.bufferBps ?? 0,
+            spreadBps
           }
         }
       });

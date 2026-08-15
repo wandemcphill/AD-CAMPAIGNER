@@ -11,7 +11,7 @@ const DEFAULT_BUFFER_BPS = 100;
  * @param cachedRate a VALID, fresh FxRateCache row, or null for a cache miss
  */
 function buildDb(
-  manualRate: { id: string; rateMicros: bigint; bufferBps: number } | null,
+  manualRate: { id: string; rateMicros: bigint; bufferBps: number; spreadBps?: number } | null,
   cachedRate: { providerRateMicros: bigint } | null = null
 ) {
   const created: Record<string, unknown>[] = [];
@@ -107,6 +107,26 @@ describe("FxService.createQuote", () => {
     const quote = await buildService(db).createQuote({} as never, quoteRequest);
 
     expect(quote.rateProvenance).toBe("bootstrap");
+  });
+
+  it("uses the admin-configured spread instead of the code default", async () => {
+    const rawRateMicros = 1_000_000_000n;
+    const { db } = buildDb({ id: "fxr_1", rateMicros: rawRateMicros, bufferBps: 0, spreadBps: 400 });
+
+    const quote = await buildService(db).createQuote({} as never, quoteRequest);
+
+    expect(quote.spreadBps).toBe(400);
+    expect(quote.customerRateMicros).toBe(
+      (rawRateMicros * BigInt(10_000 + 400 + DEFAULT_BUFFER_BPS)) / 10_000n
+    );
+  });
+
+  it("falls back to the default spread when the rate row sets none", async () => {
+    const { db } = buildDb({ id: "fxr_1", rateMicros: 1_000_000_000n, bufferBps: 0 });
+
+    const quote = await buildService(db).createQuote({} as never, quoteRequest);
+
+    expect(quote.spreadBps).toBe(DEFAULT_SPREAD_BPS);
   });
 
   it("stamps the quote with the requesting workspace", async () => {
