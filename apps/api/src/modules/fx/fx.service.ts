@@ -336,11 +336,25 @@ export class FxService implements OnModuleInit {
   async getActiveRate(
     baseCurrency = "USD",
     quoteCurrency = "NGN"
-  ): Promise<{ rateMicros: bigint; fxRateId: string | null; isBootstrap: boolean; usingFallback: boolean }> {
+  ): Promise<{
+    rateMicros: bigint;
+    fxRateId: string | null;
+    isBootstrap: boolean;
+    usingFallback: boolean;
+    // Margin already baked into `rateMicros`. Callers that add their own margin
+    // must subtract this or they will charge it twice.
+    bufferBpsApplied: number;
+  }> {
     // First try cached rate
     const cached = await this.getCachedRate(baseCurrency, quoteCurrency);
     if (cached) {
-      return { rateMicros: cached.rateMicros, fxRateId: null, isBootstrap: false, usingFallback: false };
+      return {
+        rateMicros: cached.rateMicros,
+        fxRateId: null,
+        isBootstrap: false,
+        usingFallback: false,
+        bufferBpsApplied: 0
+      };
     }
 
     // Fall back to manual rate
@@ -351,7 +365,13 @@ export class FxService implements OnModuleInit {
 
     if (!active) {
       if (baseCurrency === "USD" && quoteCurrency === "NGN") {
-        return { rateMicros: BOOTSTRAP_RATE_MICROS, fxRateId: null, isBootstrap: true, usingFallback: true };
+        return {
+          rateMicros: BOOTSTRAP_RATE_MICROS,
+          fxRateId: null,
+          isBootstrap: true,
+          usingFallback: true,
+          bufferBpsApplied: 0
+        };
       }
 
       throw new BadRequestException(
@@ -371,7 +391,13 @@ export class FxService implements OnModuleInit {
 
     const bufferedMicros = (active.rateMicros * BigInt(10_000 + active.bufferBps)) / 10_000n;
 
-    return { rateMicros: bufferedMicros, fxRateId: active.id, isBootstrap: false, usingFallback: true };
+    return {
+      rateMicros: bufferedMicros,
+      fxRateId: active.id,
+      isBootstrap: false,
+      usingFallback: true,
+      bufferBpsApplied: active.bufferBps
+    };
   }
 
   // ─── Quote Locking ────────────────────────────────────────────────────────
@@ -388,8 +414,12 @@ export class FxService implements OnModuleInit {
     const spreadBps = DEFAULT_SPREAD_BPS;
     const bufferBps = DEFAULT_BUFFER_BPS;
 
-    // Customer rate = provider rate + spread + buffer
-    const totalBps = spreadBps + bufferBps;
+    // Customer rate = provider rate + spread + buffer, where the total buffer is
+    // the target minus whatever getActiveRate already baked in (the manual-rate
+    // path applies the FxRate row's own bufferBps). Without this the manual path
+    // charges the buffer twice.
+    const remainingBufferBps = Math.max(0, bufferBps - rate.bufferBpsApplied);
+    const totalBps = spreadBps + remainingBufferBps;
     const customerRateMicros = (rate.rateMicros * BigInt(10_000 + totalBps)) / 10_000n;
 
     // Calculate result amount
@@ -406,7 +436,9 @@ export class FxService implements OnModuleInit {
         providerRateMicros: rate.rateMicros,
         customerRateMicros,
         spreadBps,
-        bufferBps,
+        // Buffer applied on top of the stored providerRateMicros, which on the
+        // manual path already carries the FxRate row's own buffer.
+        bufferBps: remainingBufferBps,
         resultAmountMinor: BigInt(resultAmountMinor),
         status: "ACTIVE",
         expiresAt
@@ -423,7 +455,8 @@ export class FxService implements OnModuleInit {
       spreadBps,
       resultAmountMinor,
       expiresAt,
-      status: "ACTIVE"
+      status: "ACTIVE",
+      rateProvenance: rate.isBootstrap ? "bootstrap" : rate.usingFallback ? "manual" : "live"
     };
   }
 

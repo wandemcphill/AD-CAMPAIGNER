@@ -29,6 +29,12 @@ export interface FxQuoteResponseDto {
   resultAmountMinor: number;
   expiresAt: Date;
   status: "ACTIVE" | "EXPIRED" | "USED" | "CANCELLED";
+  /**
+   * Where the underlying rate came from. `bootstrap` is a hardcoded USD/NGN
+   * constant used when no cached or manual rate exists — it is not a real
+   * market rate and must never be presented to a customer as one.
+   */
+  rateProvenance: "live" | "manual" | "bootstrap";
 }
 
 export interface FxRateCacheStatusDto {
