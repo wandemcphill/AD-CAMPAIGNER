@@ -73,6 +73,38 @@ function toTypedEntry(e: DbLedgerEntryRow): LedgerEntry {
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
 /**
+ * Two different spellings of "which provider" reach the build*Adapter factories
+ * below, and they are not the same string:
+ *
+ *  - ProviderRouterService.select() returns `ProviderConfig.name`. That column is
+ *    globally `@unique`, so a vendor serving two domains needs two rows with
+ *    distinct names — hence "swappr-virtual-account" and "swappr-remittance".
+ *  - getAccount()/closeAccount()/getCard() re-derive an adapter from the
+ *    `providerName` persisted on the VirtualAccount/VirtualCard row, which was
+ *    written from the adapter's own `.name` — the bare vendor ("swappr").
+ *
+ * Mapping the config-row spellings back to a vendor key lets both forms resolve.
+ * This is an explicit table rather than suffix-stripping so that an unrecognised
+ * row still falls through to the factories' `default:` and fails loudly, instead
+ * of being silently coerced into some vendor it happens to share a prefix with.
+ *
+ * Add a row here whenever seed-financial-products.ts adds a ProviderConfig row.
+ */
+const VENDOR_BY_PROVIDER_CONFIG_NAME: Record<string, string> = {
+  "swappr-virtual-account": "swappr",
+  "swappr-remittance": "swappr",
+  "payscribe-virtual-account": "payscribe",
+  "payscribe-virtual-card": "payscribe",
+  "yativo-remittance": "yativo",
+  "fincra-remittance": "fincra"
+};
+
+/** Accepts either a ProviderConfig row name or a bare adapter name. */
+function vendorKey(providerName: string): string {
+  return VENDOR_BY_PROVIDER_CONFIG_NAME[providerName] ?? providerName;
+}
+
+/**
  * Phase E — accounts, cards, remittance. No real provider is CONTRACTED yet:
  * there are no live API credentials for Swappr (virtual accounts + remittance),
  * Payscribe (virtual cards), or Yativo (remittance fallback) in this environment.
@@ -101,7 +133,7 @@ export class FinancialProductsService {
   // ─── Adapter factories ──────────────────────────────────────────────────────
 
   private buildAccountAdapter(providerName: string): VirtualAccountProvider {
-    switch (providerName) {
+    switch (vendorKey(providerName)) {
       case "swappr":
         return createSwapprVirtualAccountProvider({
           apiKey: process.env["SWAPPR_API_KEY"] ?? "",
@@ -125,7 +157,7 @@ export class FinancialProductsService {
   }
 
   private buildCardAdapter(providerName: string): VirtualCardProvider {
-    switch (providerName) {
+    switch (vendorKey(providerName)) {
       case "payscribe":
         return createPayscribeVirtualCardProvider({
           apiKey: process.env["PAYSCRIBE_API_KEY"] ?? "",
@@ -142,7 +174,7 @@ export class FinancialProductsService {
   }
 
   private buildRemittanceAdapter(providerName: string): RemittanceProvider {
-    switch (providerName) {
+    switch (vendorKey(providerName)) {
       case "swappr":
         return createSwapprRemittanceProvider({
           apiKey: process.env["SWAPPR_API_KEY"] ?? "",

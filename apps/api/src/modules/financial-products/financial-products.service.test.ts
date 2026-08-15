@@ -95,7 +95,12 @@ describe("FinancialProductsService.sendRemittance — ambiguous failure handling
     };
 
     const providerRouter = {
-      select: vi.fn(() => Promise.resolve({ providerName: "fincra" }))
+      // The name the router really returns is ProviderConfig.name, which the
+      // seed writes with a domain suffix — not the bare vendor name. Stubbing
+      // the bare name here is what let the resolution bug (config rows the
+      // build*Adapter switches had no case for) pass CI; provider-name
+      // resolution now has its own test in provider-name-resolution.test.ts.
+      select: vi.fn(() => Promise.resolve({ providerName: "fincra-remittance" }))
     } as unknown as ProviderRouterService;
 
     service = new FinancialProductsService(prisma, providerRouter, reconciliation);
