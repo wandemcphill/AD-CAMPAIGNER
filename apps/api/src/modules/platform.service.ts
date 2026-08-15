@@ -2085,6 +2085,46 @@ export class PlatformService {
     };
   }
 
+  /**
+   * Reads durable AuditLog rows first, falling back to (and merging with) the
+   * process-local list. Before this read the console only ever showed in-memory
+   * entries, so audit rows written straight to the database — provider changes,
+   * pricing rules, wallet adjustments, digital access — were invisible.
+   */
+  async listAuditLogsFromStore(
+    context?: AuthenticatedRequestContext,
+    limit = 100
+  ): Promise<AuditLog[]> {
+    const scope = requireWorkspaceContext(context);
+
+    const rows = this.db.auditLog
+      ? await this.db.auditLog.findMany({
+          where: { workspaceId: scope.workspaceId },
+          orderBy: { createdAt: "desc" },
+          take: Math.min(Math.max(limit, 1), 500)
+        })
+      : [];
+
+    const persisted: AuditLog[] = rows.map((row: any) => ({
+      id: row.id,
+      workspaceId: row.workspaceId,
+      ...(row.actorUserId ? { actorUserId: row.actorUserId } : {}),
+      action: row.action,
+      entityType: row.entityType,
+      entityId: row.entityId,
+      metadata: row.metadata ?? {},
+      createdAt: iso(row.createdAt),
+      updatedAt: iso(row.updatedAt ?? row.createdAt)
+    }));
+
+    const seen = new Set(persisted.map((entry) => `${entry.action}:${entry.entityId}`));
+    const memoryOnly = this.listAuditLogs(context).filter(
+      (entry) => !seen.has(`${entry.action}:${entry.entityId}`)
+    );
+
+    return [...persisted, ...memoryOnly];
+  }
+
   listAuditLogs(context?: AuthenticatedRequestContext): AuditLog[] {
     const scope = requireWorkspaceContext(context);
     const timestamp = now();
@@ -2139,6 +2179,24 @@ export class PlatformService {
       createdAt: timestamp,
       updatedAt: timestamp
     });
+
+    // The in-memory list above is process-local: it is lost on restart and not
+    // shared between API instances. Growth captures, releases and refunds are
+    // recorded through here, so without a durable row a money movement would
+    // have no audit trail. Fire-and-forget — an audit write must never fail the
+    // transaction that triggered it.
+    void this.db.auditLog
+      ?.create({
+        data: {
+          workspaceId: input.workspaceId,
+          ...(input.actorUserId === undefined ? {} : { actorUserId: input.actorUserId }),
+          action: input.action,
+          entityType: input.entityType,
+          entityId: input.entityId,
+          metadata: (input.metadata ?? {}) as never
+        }
+      })
+      ?.catch(() => undefined);
   }
 
   private recordGrowthMonitoringEvent(input: Omit<GrowthMonitoringEvent, "id" | "createdAt">) {

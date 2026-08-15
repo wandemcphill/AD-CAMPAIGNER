@@ -1236,7 +1236,10 @@ export class AuditController {
   constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
 
   @Get("logs")
-  list(@Req() request: WorkspaceContextRequest) {
-    return this.platform.listAuditLogs(workspaceContextFromRequest(request));
+  list(@Req() request: WorkspaceContextRequest, @Query("limit") limit?: string) {
+    return this.platform.listAuditLogsFromStore(
+      workspaceContextFromRequest(request),
+      limit ? Number(limit) : undefined
+    );
   }
 }
