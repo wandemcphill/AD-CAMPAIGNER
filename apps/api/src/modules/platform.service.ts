@@ -4,6 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
@@ -24,7 +25,10 @@ import {
   createRoutedSmmSupplier,
   parseSmmServiceMap
 } from "@fliptrybe/providers";
-import type { PerfectPanelSmmSupplierConfig } from "@fliptrybe/providers";
+import type {
+  PerfectPanelSmmSupplierConfig,
+  RoutedSmmSupplierOptions
+} from "@fliptrybe/providers";
 import {
   applyGrowthServiceAdminControls,
   assessSmmOrderFraud,
@@ -350,9 +354,8 @@ function createSmmSupplierBundle() {
     }
   ] satisfies PerfectPanelSmmSupplierConfig[];
 
-  const suppliers = supplierConfigs
-    .filter((config) => Boolean(config.apiKey))
-    .map((config) => createPerfectPanelSmmSupplier(config));
+  const configured = supplierConfigs.filter((config) => Boolean(config.apiKey));
+  const suppliers = configured.map((config) => createPerfectPanelSmmSupplier(config));
   const firstConfiguredSupplier = supplierConfigs.find((config) => Boolean(config.apiKey))?.name;
   const providerAudit: SmmSupplierAuditProvider[] = supplierConfigs.map((config) => ({
     name: config.name,
@@ -371,9 +374,43 @@ function createSmmSupplierBundle() {
 
   return {
     providerAudit,
-    supplier: createRoutedSmmSupplier(suppliers),
+    supplier: createRoutedSmmSupplier(suppliers, buildSmmRoutingOptions(configured)),
     suppliers
   };
+}
+
+const smmRoutingLogger = new Logger("SmmRouting");
+
+/**
+ * Cheapest-quote routing can only rank panels whose quotes share a currency, and
+ * the configured set is mixed by default: Sizzle quotes NGN, SMDPanel / SMMRaja
+ * / JAP / Peakerr quote USD. SMM_USD_NGN_RATE (naira per dollar) is what makes
+ * those comparable.
+ *
+ * No default rate on purpose — a hardcoded one would silently drift and quietly
+ * change which panel wins. Unset, a mixed set falls back to a stable non-price
+ * ordering, and this warns once at startup so that is visible rather than
+ * looking like a working price comparison.
+ */
+function buildSmmRoutingOptions(
+  configured: Array<{ name: string; currency: string }>
+): RoutedSmmSupplierOptions {
+  const currencies = new Set(configured.map((config) => config.currency));
+  if (currencies.size <= 1) return {};
+
+  const usdNgn = Number(process.env.SMM_USD_NGN_RATE ?? "");
+  if (!Number.isFinite(usdNgn) || usdNgn <= 0) {
+    smmRoutingLogger.warn(
+      `Configured SMM panels quote in mixed currencies (${[...currencies].join(", ")}) but ` +
+        `SMM_USD_NGN_RATE is not set. Quotes cannot be compared on price across currencies — ` +
+        `routing will order them by supplier name instead. Set SMM_USD_NGN_RATE to restore ` +
+        `cheapest-quote routing.`
+    );
+    return {};
+  }
+
+  // rates are expressed as comparison-currency units per one unit of the key.
+  return { comparisonCurrency: "USD", rates: { NGN: 1 / usdNgn } };
 }
 
 @Injectable()

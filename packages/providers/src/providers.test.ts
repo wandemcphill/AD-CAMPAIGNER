@@ -269,6 +269,120 @@ describe("provider contracts", () => {
     expect(order.supplierReference).toBe("cheap:12345");
   });
 
+  describe("SMM routing across mixed currencies", () => {
+    // Sizzle defaults to NGN while SMDPanel/SMMRaja/JAP/Peakerr default to USD,
+    // so the moment Sizzle is configured the comparator sees two currencies.
+    // It used to fall through to supplier.name.localeCompare() there, deciding
+    // the "cheapest" panel alphabetically — "aaa-panel" beat every rival on
+    // name alone regardless of price.
+    const servicesFetcher = (rate: string) =>
+      ((_url, init) => {
+        const requestBody = init?.body;
+        const body =
+          requestBody instanceof URLSearchParams
+            ? requestBody.toString()
+            : typeof requestBody === "string"
+              ? requestBody
+              : "";
+
+        if (body.includes("action=services")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify([
+                {
+                  service: 10,
+                  name: "Instagram Followers",
+                  category: "Instagram",
+                  type: "Default",
+                  rate,
+                  min: "10",
+                  max: "100000"
+                }
+              ])
+            )
+          );
+        }
+
+        return Promise.resolve(new Response(JSON.stringify({ order: 12345 })));
+      }) satisfies typeof fetch;
+
+    // $2.00/1000 vs ₦500.00/1000. At ₦1,500/$ the naira panel is ~₦3,000
+    // cheaper per 1000, so it must win — but only alphabetically last, so a
+    // name-based comparator would pick the dollar panel instead.
+    const buildPanels = () => [
+      createPerfectPanelSmmSupplier({
+        name: "aaa-dollar-panel",
+        apiUrl: "https://usd.test/api/v2",
+        apiKey: "key",
+        currency: "USD",
+        fetcher: servicesFetcher("2.00")
+      }),
+      createPerfectPanelSmmSupplier({
+        name: "zzz-naira-panel",
+        apiUrl: "https://ngn.test/api/v2",
+        apiKey: "key",
+        currency: "NGN",
+        fetcher: servicesFetcher("500.00")
+      })
+    ];
+
+    const quoteInput = {
+      serviceKind: "FOLLOWERS" as const,
+      quantity: 1000,
+      destination: {
+        kind: "INSTAGRAM_PROFILE" as const,
+        url: "https://instagram.com/fliptrybe"
+      }
+    };
+
+    it("picks the genuinely cheaper panel once a rate makes the currencies comparable", async () => {
+      const router = createRoutedSmmSupplier(buildPanels(), {
+        comparisonCurrency: "USD",
+        rates: { NGN: 1 / 1500 }
+      });
+
+      const quote = await router.quoteService(quoteInput);
+
+      // ₦500 ≈ $0.33 against $2.00.
+      expect(quote.supplierName).toBe("zzz-naira-panel");
+      expect(quote.amount.currency).toBe("NGN");
+    });
+
+    it("reverses the winner when the rate makes the naira panel the expensive one", async () => {
+      const router = createRoutedSmmSupplier(buildPanels(), {
+        comparisonCurrency: "USD",
+        rates: { NGN: 1 / 100 } // ₦500 ≈ $5.00 against $2.00
+      });
+
+      const quote = await router.quoteService(quoteInput);
+
+      expect(quote.supplierName).toBe("aaa-dollar-panel");
+    });
+
+    it("still ranks correctly within a single currency without any rates", async () => {
+      const router = createRoutedSmmSupplier([
+        createPerfectPanelSmmSupplier({
+          name: "aaa-expensive",
+          apiUrl: "https://a.test/api/v2",
+          apiKey: "key",
+          currency: "USD",
+          fetcher: servicesFetcher("2.00")
+        }),
+        createPerfectPanelSmmSupplier({
+          name: "zzz-cheap",
+          apiUrl: "https://z.test/api/v2",
+          apiKey: "key",
+          currency: "USD",
+          fetcher: servicesFetcher("0.50")
+        })
+      ]);
+
+      const quote = await router.quoteService(quoteInput);
+
+      expect(quote.supplierName).toBe("zzz-cheap");
+    });
+  });
+
   it("matches channel member services by subscriber synonyms", async () => {
     const supplier = createPerfectPanelSmmSupplier({
       name: "synonym-panel",

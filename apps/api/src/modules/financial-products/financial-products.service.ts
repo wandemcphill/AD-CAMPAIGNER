@@ -13,8 +13,11 @@ import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
   classifyFallbackSafety,
   createFincraRemittanceProvider,
+  createInflowVirtualAccountProvider,
+  createMapleradVirtualCardProvider,
   createPayscribeVirtualAccountProvider,
   createPayscribeVirtualCardProvider,
+  createSudoVirtualCardProvider,
   createSwapprRemittanceProvider,
   createSwapprVirtualAccountProvider,
   createYativoRemittanceProvider,
@@ -107,7 +110,10 @@ const VENDOR_BY_PROVIDER_CONFIG_NAME: Record<string, string> = {
   "payscribe-virtual-account": "payscribe",
   "payscribe-virtual-card": "payscribe",
   "yativo-remittance": "yativo",
-  "fincra-remittance": "fincra"
+  "fincra-remittance": "fincra",
+  "sudo-virtual-card": "sudo",
+  "maplerad-virtual-card": "maplerad",
+  "inflow-virtual-account": "inflow"
 };
 
 /** Accepts either a ProviderConfig row name or a bare adapter name. */
@@ -177,6 +183,14 @@ export class FinancialProductsService {
           apiKey: process.env["SWAPPR_API_KEY"] ?? "",
           ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {})
         });
+      case "inflow":
+        // Written and tested but previously imported nowhere, same as the two
+        // card issuers. baseUrl defaults to production — set INFLOW_BASE_URL to
+        // https://sandbox.inflowafrica.com/api for testing.
+        return createInflowVirtualAccountProvider({
+          apiKey: process.env["INFLOW_API_KEY"] ?? "",
+          ...(process.env["INFLOW_BASE_URL"] ? { baseUrl: process.env["INFLOW_BASE_URL"] } : {})
+        });
       case "payscribe":
         // Payscribe NGN virtual accounts (documented adapter). Not production-
         // ready until sandbox-verified — keep the ProviderConfig row DISABLED.
@@ -196,6 +210,27 @@ export class FinancialProductsService {
 
   private buildCardAdapter(providerName: string): VirtualCardProvider {
     switch (vendorKey(providerName)) {
+      // Sudo and Maplerad are the two card issuers with confirmed live sandbox
+      // testing (see the adapter headers in packages/providers). Their adapters
+      // were written and tested but imported nowhere, so the only reachable
+      // issuer was Payscribe — which is itself not sandbox-verified. Both are
+      // wired here; which one actually serves traffic is still decided by the
+      // ProviderConfig row and its capability grant, not by this switch.
+      case "sudo":
+        return createSudoVirtualCardProvider({
+          apiKey: process.env["SUDO_API_KEY"] ?? "",
+          ...(process.env["SUDO_BASE_URL"] ? { baseUrl: process.env["SUDO_BASE_URL"] } : {}),
+          // Required for fundCard(): Sudo's transfer endpoint needs an explicit
+          // debit source, which the VirtualCardProvider interface does not carry.
+          ...(process.env["SUDO_FUNDING_ACCOUNT_ID"]
+            ? { fundingAccountId: process.env["SUDO_FUNDING_ACCOUNT_ID"] }
+            : {})
+        });
+      case "maplerad":
+        return createMapleradVirtualCardProvider({
+          apiKey: process.env["MAPLERAD_API_KEY"] ?? "",
+          ...(process.env["MAPLERAD_BASE_URL"] ? { baseUrl: process.env["MAPLERAD_BASE_URL"] } : {})
+        });
       case "payscribe":
         return createPayscribeVirtualCardProvider({
           apiKey: process.env["PAYSCRIBE_API_KEY"] ?? "",

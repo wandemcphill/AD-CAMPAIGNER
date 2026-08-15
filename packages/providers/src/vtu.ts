@@ -707,6 +707,13 @@ const CK_BETTING_COMPANIES: VtuBettingCompanyOffer[] = [
 
 // Verified via /APIWAECPackagesV2.asp (2026-08-06). JAMB exam types come back empty
 // from /APIJAMBPackagesV2.asp at this account tier — intentionally omitted.
+//
+// NECO and NABTEB are deliberately absent too, and must stay absent until a real
+// price is read from the provider. purchaseEducation() below accepts both, and
+// listEducationPlans() now surfaces whatever the live endpoint returns for them —
+// but this is the OFFLINE fallback table, and a guessed cost here would be sold
+// as fact and could sell below cost. An unpriced exam type failing closed is the
+// correct behaviour; inventing a number is not.
 const CK_EDUCATION_PLANS: VtuEducationPlanOffer[] = [
   { productCode: "waecdirect", displayName: "WAEC Result Checker PIN", costMinor: 535000, currency: "NGN" },
   { productCode: "waec-registraion", displayName: "WAEC Registration PIN", costMinor: 3750000, currency: "NGN" }
@@ -1143,14 +1150,27 @@ export function createClubKonnectAdapter(config: ClubKonnectConfig): VtuProvider
           | Record<string, Array<{ PRODUCT_CODE?: string; PRODUCT_NAME?: string; PRODUCT_AMOUNT?: string | number }>>
           | Array<{ PRODUCT_CODE?: string; PRODUCT_NAME?: string; PRODUCT_AMOUNT?: string | number }>;
 
-        const entries = Array.isArray(res) ? res : (res["WAEC"] ?? res["waec"] ?? []);
+        // Read EVERY exam-type key in the response, not just WAEC.
+        //
+        // This used to pick out res["WAEC"] alone, so any other exam type the
+        // endpoint returned — NECO and NABTEB are both mapped by purchaseEducation
+        // below — was silently dropped on the floor. That is why NECO could never
+        // appear in the catalog no matter how often education_catalog_sync ran:
+        // the sync was working, the extraction was discarding the rows.
+        const entries = Array.isArray(res) ? res : Object.values(res ?? {}).flat();
         const offers: VtuEducationPlanOffer[] = [];
         for (const entry of entries ?? []) {
-          if (!entry.PRODUCT_CODE) continue;
+          if (!entry?.PRODUCT_CODE) continue;
+          const costMinor = Math.round(parseFloat(String(entry.PRODUCT_AMOUNT ?? 0)) * 100);
+          // A zero/unparseable price is not a free product — it is a row we
+          // cannot price. Skip it rather than seeding a plan that would sell at
+          // no cost. (JAMB comes back with no usable rows at this account tier;
+          // this is what keeps that from turning into a ₦0 plan.)
+          if (!Number.isFinite(costMinor) || costMinor <= 0) continue;
           offers.push({
             productCode: entry.PRODUCT_CODE,
             displayName: entry.PRODUCT_NAME ?? entry.PRODUCT_CODE,
-            costMinor: Math.round(parseFloat(String(entry.PRODUCT_AMOUNT ?? 0)) * 100),
+            costMinor,
             currency: "NGN"
           });
         }
@@ -3570,7 +3590,12 @@ export function createISquareDataAdapter(config: ISquareDataConfig): VtuProvider
     name: "isquaredata",
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: "VTU" as const,
-    getCapabilities: () => vtuCapabilities("weak", ["DATA", "EDUCATION"]),
+    // DATA only. EDUCATION was declared here but no purchaseEducation method is
+    // implemented, so the router could select this adapter for an education
+    // order and kill it at "Selected provider does not support education
+    // purchases" — after the balance check, so no money was lost, but the
+    // customer got a hard failure for a product we advertised.
+    getCapabilities: () => vtuCapabilities("weak", ["DATA"]),
 
     buildReference(order) {
       return `ISQ${order.id.replace(/[^a-z0-9]/gi, "").slice(0, 16).toUpperCase()}`;

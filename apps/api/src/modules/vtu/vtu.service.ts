@@ -129,6 +129,13 @@ const BETTING_COMPANIES: Array<{ code: string; name: string }> = [
 // Verified via /APIWAECPackagesV2.asp (2026-08-06). JAMB exam types (de, utme-mock,
 // utme-no-mock) come back empty from /APIJAMBPackagesV2.asp at this account tier —
 // keep the JAMB code path but its ExamType list is not currently priced here.
+//
+// NECO/NABTEB are not listed here on purpose. They ARE mapped by the adapters,
+// and the ClubKonnect listEducationPlans() extraction no longer drops non-WAEC
+// exam types (it read only the "WAEC" key before, which is why NECO never
+// surfaced), so education_catalog_sync will populate them with real prices when
+// the provider returns any. This bootstrap set exists for the pre-first-sync
+// case only, and a guessed price here would be charged as if it were verified.
 const EDUCATION_PLANS: Array<{ examType: string; displayName: string; costMinor: number }> = [
   { examType: "waecdirect", displayName: "WAEC Result Checker PIN", costMinor: 535000 },
   { examType: "waec-registraion", displayName: "WAEC Registration PIN", costMinor: 3750000 }
@@ -1835,6 +1842,26 @@ export class VtuService {
       throw new BadRequestException("Selected provider does not support education purchases.");
     }
 
+    // Price lookup BEFORE JAMB profile verification. Verification is a live
+    // provider call, and an exam type we cannot price is going to fail either
+    // way — no reason to spend a round trip (and make the customer wait) before
+    // telling them so.
+    await this.ensureDefaultEducationPlans();
+    const plan = await this.db.vtuEducationPlan.findFirst({
+      where: { providerName: adapter.name, productCode: dto.examType, active: true }
+    });
+    if (!plan) {
+      // Deliberately specific: "not found" here nearly always means the exam
+      // type is real and supported by the adapter but has no price yet — either
+      // education_catalog_sync has not run for this provider, or the provider
+      // returns no priced rows for it at the current account tier (JAMB on
+      // ClubKonnect). Both are operator-actionable; the old message was not.
+      throw new NotFoundException(
+        `No price is available for exam type "${dto.examType}" from ${adapter.name}. ` +
+          `Run education_catalog_sync for this provider, or select a different exam type.`
+      );
+    }
+
     if (isJamb) {
       if (!dto.profileId) throw new BadRequestException("profileId is required for JAMB.");
       if (adapter.verifyJambProfile) {
@@ -1846,12 +1873,6 @@ export class VtuService {
         }
       }
     }
-
-    await this.ensureDefaultEducationPlans();
-    const plan = await this.db.vtuEducationPlan.findFirst({
-      where: { providerName: adapter.name, productCode: dto.examType, active: true }
-    });
-    if (!plan) throw new NotFoundException("Education plan not found or unavailable.");
 
     const chargeMinor = await this.applyMarkup(plan.costMinor, { productType: "EDUCATION" });
     const orderId = uid("vtu");

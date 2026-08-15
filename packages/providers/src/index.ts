@@ -1263,7 +1263,51 @@ export function createPerfectPanelSmmSupplier(
   };
 }
 
-export function createRoutedSmmSupplier(suppliers: SmmSupplierAdapter[]): SmmSupplierAdapter {
+export interface RoutedSmmSupplierOptions {
+  /**
+   * Exchange rates keyed by currency, expressed as minor units of the
+   * comparison currency per one minor unit of that currency. Only used to make
+   * quotes comparable — the winning quote's own amount and currency are
+   * returned untouched.
+   *
+   * Without this, quotes in different currencies cannot be ranked by price at
+   * all (see the comparator below), so a mixed-currency panel set falls back to
+   * a stable, explicitly non-price ordering.
+   */
+  rates?: Record<string, number>;
+  /** Currency the rates convert into. Defaults to the first quote's currency. */
+  comparisonCurrency?: string;
+}
+
+export function createRoutedSmmSupplier(
+  suppliers: SmmSupplierAdapter[],
+  options: RoutedSmmSupplierOptions = {}
+): SmmSupplierAdapter {
+  /**
+   * Cheapest-first, across currencies when we can and never pretending
+   * otherwise when we can't.
+   *
+   * This used to compare amountMinor directly and, on a currency mismatch, fall
+   * through to supplier.name.localeCompare() — which silently decided the
+   * "cheapest" panel alphabetically. That was invisible while every configured
+   * panel quoted USD, and became wrong the moment Sizzle (NGN by default) was
+   * configured alongside SMDPanel/SMMRaja/JAP/Peakerr (USD by default): ₦ and $
+   * amounts were never compared, so routing stopped tracking price entirely.
+   *
+   * With rates supplied, everything converts to a common currency and the
+   * comparison is real. Without them, a mixed set is ordered by name — same as
+   * before, but now that is a deliberate "cannot rank these" path rather than
+   * something that looks like a price comparison.
+   */
+  function comparableAmount(quote: SmmSupplierQuote, target: string): number | undefined {
+    const { amountMinor, currency } = quote.amount;
+    if (currency === target) return amountMinor;
+
+    const rate = options.rates?.[currency];
+    if (rate === undefined || !Number.isFinite(rate) || rate <= 0) return undefined;
+    return amountMinor * rate;
+  }
+
   async function quoteAll(input: Parameters<SmmSupplierAdapter["quoteService"]>[0]) {
     const results = await Promise.allSettled(
       suppliers.map(async (supplier) => ({
@@ -1272,7 +1316,7 @@ export function createRoutedSmmSupplier(suppliers: SmmSupplierAdapter[]): SmmSup
       }))
     );
 
-    return results
+    const fulfilled = results
       .filter(
         (
           result
@@ -1283,14 +1327,26 @@ export function createRoutedSmmSupplier(suppliers: SmmSupplierAdapter[]): SmmSup
           return result.status === "fulfilled";
         }
       )
-      .map((result) => result.value)
-      .sort((left, right) => {
-        if (left.quote.amount.currency !== right.quote.amount.currency) {
-          return left.supplier.name.localeCompare(right.supplier.name);
-        }
+      .map((result) => result.value);
 
-        return left.quote.amount.amountMinor - right.quote.amount.amountMinor;
-      });
+    const target =
+      options.comparisonCurrency ?? fulfilled[0]?.quote.amount.currency ?? "USD";
+
+    return fulfilled.sort((left, right) => {
+      const leftAmount = comparableAmount(left.quote, target);
+      const rightAmount = comparableAmount(right.quote, target);
+
+      // A quote we cannot convert sorts last rather than winning by accident.
+      if (leftAmount === undefined && rightAmount === undefined) {
+        return left.supplier.name.localeCompare(right.supplier.name);
+      }
+      if (leftAmount === undefined) return 1;
+      if (rightAmount === undefined) return -1;
+
+      if (leftAmount !== rightAmount) return leftAmount - rightAmount;
+      // Ties broken by name so routing is deterministic across restarts.
+      return left.supplier.name.localeCompare(right.supplier.name);
+    });
   }
 
   function findSupplierForReference(supplierReference: string) {

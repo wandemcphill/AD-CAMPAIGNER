@@ -34,15 +34,15 @@ import type { FinancialReconciliationService } from "./financial-reconciliation.
 // Mirrors packages/database/prisma/seed-financial-products.ts. If a row is added
 // there, add it here and to VENDOR_BY_PROVIDER_CONFIG_NAME in the service.
 const SEEDED_PROVIDER_CONFIG_NAMES = {
-  account: ["swappr-virtual-account"],
-  card: ["payscribe-virtual-card"],
+  account: ["swappr-virtual-account", "inflow-virtual-account"],
+  card: ["sudo-virtual-card", "maplerad-virtual-card", "payscribe-virtual-card"],
   remittance: ["swappr-remittance", "yativo-remittance", "fincra-remittance"]
 } as const;
 
 // The `name` each adapter reports, and therefore what lands in the DB column.
 const PERSISTED_ADAPTER_NAMES = {
-  account: ["swappr", "payscribe"],
-  card: ["payscribe"],
+  account: ["swappr", "payscribe", "inflow"],
+  card: ["sudo", "maplerad", "payscribe"],
   remittance: ["swappr", "yativo", "fincra"]
 } as const;
 
@@ -65,11 +65,13 @@ const factories = () => buildService() as unknown as Factories;
 describe("financial provider name resolution", () => {
   describe("ProviderConfig row names resolve to an adapter", () => {
     it.each(SEEDED_PROVIDER_CONFIG_NAMES.account)("virtual account: %s", (configName) => {
-      expect(factories().buildAccountAdapter(configName).name).toBe("swappr");
+      const adapter = factories().buildAccountAdapter(configName);
+      expect(configName.startsWith(adapter.name)).toBe(true);
     });
 
     it.each(SEEDED_PROVIDER_CONFIG_NAMES.card)("virtual card: %s", (configName) => {
-      expect(factories().buildCardAdapter(configName).name).toBe("payscribe");
+      const adapter = factories().buildCardAdapter(configName);
+      expect(configName.startsWith(adapter.name)).toBe(true);
     });
 
     it.each(SEEDED_PROVIDER_CONFIG_NAMES.remittance)("remittance: %s", (configName) => {
@@ -101,9 +103,7 @@ describe("financial provider name resolution", () => {
       expect(() => build.buildRemittanceAdapter("swappr-payouts-v2")).toThrow(
         ServiceUnavailableException
       );
-      expect(() => build.buildCardAdapter("sudo-virtual-card")).toThrow(
-        ServiceUnavailableException
-      );
+      expect(() => build.buildCardAdapter("sudo-cards-v2")).toThrow(ServiceUnavailableException);
       expect(() => build.buildAccountAdapter("")).toThrow(ServiceUnavailableException);
     });
   });

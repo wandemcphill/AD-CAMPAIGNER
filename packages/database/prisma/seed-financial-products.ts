@@ -41,11 +41,51 @@ const SEEDS: ProviderConfigSeed[] = [
     }
   },
   {
-    name: "payscribe-virtual-card",
+    name: "sudo-virtual-card",
     domain: "VIRTUAL_CARD",
+    // Ahead of Payscribe: Sudo is live sandbox-verified for NGN Verve issuance,
+    // freeze/unfreeze and top-up (see the adapter header in
+    // packages/providers/src/financial-products.ts). Payscribe is documented but
+    // never sandbox-verified, so it should not be the first card issuer tried.
     priority: 10,
     enabledCountries: ["NG"],
+    metadata: {
+      providerKey: "sudo",
+      role: "primary",
+      note:
+        "Sandbox-verified NGN card issuance; no production credentials yet — SUDO_API_KEY unset. " +
+        "fundCard also needs SUDO_FUNDING_ACCOUNT_ID. terminateCard is not live-verified and throws."
+    }
+  },
+  {
+    name: "maplerad-virtual-card",
+    domain: "VIRTUAL_CARD",
+    priority: 15,
+    enabledCountries: ["NG"],
+    metadata: {
+      providerKey: "maplerad",
+      role: "fallback",
+      note: "Sandbox-verified issuance; no production credentials yet — MAPLERAD_API_KEY unset."
+    }
+  },
+  {
+    name: "payscribe-virtual-card",
+    domain: "VIRTUAL_CARD",
+    // Demoted behind the two sandbox-verified issuers above.
+    priority: 20,
+    enabledCountries: ["NG"],
     metadata: { providerKey: "payscribe", note: "No live credentials yet — PAYSCRIBE_API_KEY unset." }
+  },
+  {
+    name: "inflow-virtual-account",
+    domain: "VIRTUAL_ACCOUNT",
+    priority: 20,
+    enabledCountries: ["NG"],
+    metadata: {
+      providerKey: "inflow",
+      role: "fallback",
+      note: "No live credentials yet — INFLOW_API_KEY unset. baseUrl defaults to production."
+    }
   },
   {
     name: "yativo-remittance",
