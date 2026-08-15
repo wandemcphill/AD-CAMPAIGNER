@@ -11,6 +11,7 @@ import {
   Bot,
   Briefcase,
   ClipboardList,
+  PackageSearch,
   Building2,
   ClipboardCheck,
   CreditCard,
@@ -168,6 +169,7 @@ const PRIMARY_NAV: NavSection[] = [
 
 const ACCOUNT_NAV: NavItem[] = [
   { label: "Team", href: "/os/team", icon: Users },
+  { label: "My Orders", href: "/os/orders", icon: PackageSearch },
   { label: "Transactions", href: "/os/wallet", icon: FileText },
   { label: "Notifications", href: "/os/notifications", icon: Bell },
   { label: "Support", href: "/os/support", icon: LifeBuoy, flag: "support" },
