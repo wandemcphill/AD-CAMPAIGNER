@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowUpDown, Network, Plus, RefreshCcw, ShieldOff, Tags } from "lucide-react";
+import { ArrowUpDown, Network, Plus, RefreshCcw, ShieldCheck, ShieldOff, Tags } from "lucide-react";
 
 import { Badge, Button, Panel, ThemeToggle } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
@@ -82,9 +82,60 @@ interface NumberCompatibilityRow {
 
 const TABS = [
   { id: "registry", label: "Registry" },
+  { id: "grants", label: "Capability Grants" },
   { id: "pricing", label: "Pricing Rules" },
   { id: "compatibility", label: "Number Compatibility" }
 ];
+
+// Mirrors CAPABILITY_LADDER in ProvidersService. Order is load-bearing: the
+// server refuses to raise a rung until every rung before it is met, and clearing
+// one clears everything after it.
+const CAPABILITY_LADDER = [
+  "documented",
+  "implemented",
+  "sandboxVerified",
+  "kybApproved",
+  "complianceApproved",
+  "productionApproved",
+  "enabled"
+] as const;
+
+type CapabilityRung = (typeof CAPABILITY_LADDER)[number];
+
+const RUNG_LABEL: Record<CapabilityRung, string> = {
+  documented: "Documented",
+  implemented: "Adapter built",
+  sandboxVerified: "Sandbox verified",
+  kybApproved: "KYB approved",
+  complianceApproved: "Compliance approved",
+  productionApproved: "Production approved",
+  enabled: "Live"
+};
+
+const RUNG_HINT: Record<CapabilityRung, string> = {
+  documented: "Official API docs confirm this capability exists.",
+  implemented: "Adapter code for it is merged.",
+  sandboxVerified: "A real sandbox call succeeded end to end.",
+  kybApproved: "The provider has approved our business account.",
+  complianceApproved: "Internal compliance sign-off is on file.",
+  productionApproved: "Production credentials issued and tested.",
+  enabled: "Routable for real customer money."
+};
+
+interface CapabilityGrantRow {
+  id: string;
+  providerName: string;
+  capability: string;
+  domain: string;
+  ladder: Record<CapabilityRung, boolean>;
+  nextRung: CapabilityRung | null;
+  routable: boolean;
+  hasProviderConfig: boolean;
+  providerConfigStatus: ProviderStatus | null;
+  priority: number;
+  notes: string | null;
+  updatedAt: string;
+}
 
 const STATUS_TONE: Record<ProviderStatus, "success" | "warning" | "danger" | "neutral"> = {
   HEALTHY: "success",
@@ -106,6 +157,7 @@ export default function AdminProvidersPage() {
   const { error: sessionError, loading: sessionLoading, session } = useApiSession();
   const [tab, setTab] = useState("registry");
   const [entries, setEntries] = useState<ProviderRegistryEntry[]>([]);
+  const [grants, setGrants] = useState<CapabilityGrantRow[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRuleRow[]>([]);
   const [compatRows, setCompatRows] = useState<NumberCompatibilityRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,12 +181,14 @@ export default function AdminProvidersPage() {
   const refresh = useCallback(async () => {
     setError(undefined);
     try {
-      const [registryRes, rulesRes, compatRes] = await Promise.all([
+      const [registryRes, grantsRes, rulesRes, compatRes] = await Promise.all([
         apiRequest<ProviderRegistryEntry[]>("/admin/providers/registry"),
+        apiRequest<CapabilityGrantRow[]>("/admin/providers/capability-grants"),
         apiRequest<PricingRuleRow[]>("/admin/providers/pricing-rules"),
         apiRequest<NumberCompatibilityRow[]>("/admin/digital-products/compatibility")
       ]);
       setEntries(registryRes);
+      setGrants(grantsRes);
       setPricingRules(rulesRes);
       setCompatRows(compatRes);
     } catch (caught) {
@@ -153,6 +207,60 @@ export default function AdminProvidersPage() {
       void refresh();
     }
   }, [sessionLoading, session, refresh]);
+
+  // Clicking a rung either raises the grant to it or revokes it. The server owns
+  // both rules — this only warns first, because "Live" is the switch that lets
+  // real customer money reach a provider, and revoking mid-ladder silently drops
+  // everything above it.
+  async function toggleRung(grant: CapabilityGrantRow, rung: CapabilityRung) {
+    const currentlyMet = grant.ladder[rung];
+    const label = `${grant.providerName} · ${grant.capability}`;
+
+    if (!currentlyMet && rung === "enabled") {
+      const confirmed = window.confirm(
+        `Make ${label} live?\n\n` +
+          "Real customer money will start routing to this provider immediately."
+      );
+      if (!confirmed) return;
+    }
+
+    if (currentlyMet) {
+      const above = CAPABILITY_LADDER.slice(CAPABILITY_LADDER.indexOf(rung) + 1).filter(
+        (higher) => grant.ladder[higher]
+      );
+      if (above.length > 0) {
+        const confirmed = window.confirm(
+          `Revoke "${RUNG_LABEL[rung]}" for ${label}?\n\n` +
+            `This also clears: ${above.map((r) => RUNG_LABEL[r]).join(", ")}.` +
+            (grant.ladder.enabled ? "\n\nThe provider stops routing immediately." : "")
+        );
+        if (!confirmed) return;
+      }
+    }
+
+    const reason = window.prompt(
+      `Why is "${RUNG_LABEL[rung]}" being ${currentlyMet ? "revoked" : "granted"} for ${label}?\n` +
+        "Recorded in the audit log."
+    );
+    if (reason === null) return;
+
+    setSavingId(grant.id);
+    setError(undefined);
+    try {
+      await apiRequest(`/admin/providers/capability-grants/${encodeURIComponent(grant.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          [rung]: !currentlyMet,
+          ...(reason.trim() ? { reason: reason.trim() } : {})
+        })
+      });
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update this capability grant.");
+    } finally {
+      setSavingId(undefined);
+    }
+  }
 
   async function submitPricingRule() {
     const markupBps = Number(ruleMarkupBps);
@@ -427,6 +535,102 @@ export default function AdminProvidersPage() {
                 </div>
               </Panel>
             ))
+          )}
+        </div>
+        )}
+
+        {tab === "grants" && (
+        <div className="grid gap-3">
+          <Panel className="p-5 text-sm text-[var(--ft-text-muted)]">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
+              <ShieldCheck className="size-4 text-[var(--ft-accent)]" />
+              How routing is gated
+            </div>
+            <p className="mt-2 max-w-[70ch]">
+              Accounts, cards and remittance only route to a provider that has reached{" "}
+              <span className="font-medium text-[var(--ft-text-primary)]">Live</span> here. A
+              provider in the registry without a live grant is skipped entirely, whatever its
+              status. Each step has to be earned in order, and revoking one clears every step
+              after it.
+            </p>
+          </Panel>
+
+          {loading ? (
+            <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">Loading capability grants...</Panel>
+          ) : grants.length === 0 ? (
+            <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">
+              No capability grants exist yet. Run{" "}
+              <code className="font-mono text-xs">pnpm --filter @fliptrybe/database seed:provider-capability-grants</code>{" "}
+              to create them.
+            </Panel>
+          ) : (
+            grants.map((grant) => {
+              const blockedByConfig = !grant.hasProviderConfig;
+              return (
+                <Panel className="p-4" key={grant.id}>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="min-w-[12rem] flex-1">
+                      <div className="text-sm font-medium">{grant.providerName}</div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">
+                        {DOMAIN_LABEL[grant.domain] ?? grant.domain} · {grant.capability}
+                      </div>
+                    </div>
+
+                    {grant.routable ? (
+                      <Badge tone="success">routing</Badge>
+                    ) : grant.nextRung ? (
+                      <Badge tone="warning">next: {RUNG_LABEL[grant.nextRung]}</Badge>
+                    ) : (
+                      <Badge tone="neutral">not routing</Badge>
+                    )}
+                  </div>
+
+                  {blockedByConfig && (
+                    <div className="mt-2 text-xs text-[var(--ft-text-muted)]">
+                      No provider registry entry named{" "}
+                      <span className="font-mono">{grant.providerName}</span> — this grant cannot
+                      route until one exists, however far it climbs.
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {CAPABILITY_LADDER.map((rung, index) => {
+                      const met = grant.ladder[rung];
+                      const blocked =
+                        !met && CAPABILITY_LADDER.slice(0, index).some((l) => !grant.ladder[l]);
+                      return (
+                        <button
+                          className={`rounded-[var(--radius-md)] border px-3 py-2 text-left transition-colors ${
+                            met
+                              ? "border-[var(--ft-accent)] bg-[var(--ft-bg-surface)]"
+                              : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)]"
+                          } ${blocked || savingId !== undefined ? "cursor-not-allowed opacity-50" : "hover:border-[var(--ft-accent)]"}`}
+                          disabled={blocked || savingId !== undefined}
+                          key={rung}
+                          onClick={() => void toggleRung(grant, rung)}
+                          title={blocked ? "Earn the earlier steps first." : RUNG_HINT[rung]}
+                          type="button"
+                        >
+                          <div className="flex items-center gap-2 text-xs font-medium">
+                            <span
+                              aria-hidden="true"
+                              className={`inline-block size-2 rounded-full ${
+                                met ? "bg-[var(--ft-accent)]" : "bg-[var(--ft-border)]"
+                              }`}
+                            />
+                            {RUNG_LABEL[rung]}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {grant.notes && (
+                    <div className="mt-3 text-xs text-[var(--ft-text-muted)]">{grant.notes}</div>
+                  )}
+                </Panel>
+              );
+            })
           )}
         </div>
         )}

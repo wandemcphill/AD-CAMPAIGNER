@@ -37,6 +37,44 @@ export class ProvidersController {
     );
   }
 
+  // ── Capability grants ──────────────────────────────────────────────────────
+  // The hard allowlist ProviderRouterService consults before routing any
+  // financial domain. Reaching "enabled" requires climbing every rung below it;
+  // the service enforces the ordering and audits every change.
+
+  @Get("capability-grants")
+  capabilityGrants(@Query("domain") domain?: ProviderDomain) {
+    return this.providers.listCapabilityGrants(domain);
+  }
+
+  // Enabling a provider for real money movement needs payment:manage on top of
+  // admin:access — the same pairing that guards growth order overrides.
+  @Patch("capability-grants/:id")
+  @RequirePermissions("admin:access", "payment:manage")
+  updateCapabilityGrant(
+    @Param("id") id: string,
+    @Body()
+    body: {
+      documented?: boolean;
+      implemented?: boolean;
+      sandboxVerified?: boolean;
+      kybApproved?: boolean;
+      complianceApproved?: boolean;
+      productionApproved?: boolean;
+      enabled?: boolean;
+      priority?: number;
+      notes?: string;
+      reason?: string;
+    },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.providers.updateCapabilityGrant(
+      id,
+      body,
+      authenticatedContextFromHeaders(request.headers)
+    );
+  }
+
   @Post(":domain/:name/disable")
   disable(
     @Param("domain") domain: ProviderDomain,

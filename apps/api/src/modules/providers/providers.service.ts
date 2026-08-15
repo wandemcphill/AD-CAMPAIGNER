@@ -8,6 +8,26 @@ import type { AuthenticatedRequestContext } from "../request-context";
 const VTU_PROVIDERS = ["clubkonnect", "vtpass"];
 const VIRTUAL_NUMBER_PROVIDERS = ["smspool", "5sim", "smspva"];
 
+/**
+ * The ProviderCapabilityGrant ladder, in the order it must be climbed. Each rung
+ * is a claim someone has to stand behind, and `enabled` — the one the router
+ * actually checks — sits at the top so it can't be reached without the rest.
+ *
+ * Order matters: updateCapabilityGrant() reads this array both to reject
+ * skipping a step and to cascade a revocation upward.
+ */
+export const CAPABILITY_LADDER = [
+  "documented",
+  "implemented",
+  "sandboxVerified",
+  "kybApproved",
+  "complianceApproved",
+  "productionApproved",
+  "enabled"
+] as const;
+
+export type CapabilityRung = (typeof CAPABILITY_LADDER)[number];
+
 function isSecretConfigured(value: string | undefined) {
   const trimmed = value?.trim();
   return Boolean(trimmed && trimmed !== "..." && !trimmed.startsWith("replace-"));
@@ -257,6 +277,149 @@ export class ProvidersService {
     });
 
     return updated;
+  }
+
+  // ─── Capability grants ───────────────────────────────────────────────────────
+  // ProviderRouterService.select() treats an enabled ProviderCapabilityGrant as a
+  // hard allowlist: a ProviderConfig row without one can never be routed, whatever
+  // its status. The seed writes every grant with enabled:false on purpose — the
+  // ladder is meant to be earned, one deliberate step at a time.
+  //
+  // Until now nothing in the API or admin app could write this table, so the only
+  // way to bring a financial provider live was a manual SQL statement against
+  // production. These methods make each rung reachable from the admin app while
+  // keeping the ladder's ordering rules enforced server-side.
+
+  async listCapabilityGrants(domain?: ProviderDomain) {
+    const grants = await this.db.providerCapabilityGrant.findMany({
+      where: domain ? { domain } : {},
+      orderBy: [{ domain: "asc" }, { priority: "asc" }, { providerName: "asc" }]
+    });
+
+    const configs = await this.db.providerConfig.findMany({
+      where: { deletedAt: null, name: { in: grants.map((g) => g.providerName) } }
+    });
+    const configByName = new Map(configs.map((c) => [c.name, c]));
+
+    return grants.map((grant) => {
+      const config = configByName.get(grant.providerName);
+      const nextRung = CAPABILITY_LADDER.find((rung) => !grant[rung]);
+
+      return {
+        id: grant.id,
+        providerName: grant.providerName,
+        capability: grant.capability,
+        domain: grant.domain,
+        ladder: Object.fromEntries(CAPABILITY_LADDER.map((rung) => [rung, grant[rung]])),
+        // What an operator has to earn next before this provider can route.
+        nextRung: nextRung ?? null,
+        routable: grant.enabled && config?.status !== "DISABLED" && config !== undefined,
+        // A grant with no matching ProviderConfig row can never route regardless
+        // of how far up the ladder it has climbed — surface that rather than
+        // letting it look ready.
+        hasProviderConfig: config !== undefined,
+        providerConfigStatus: config?.status ?? null,
+        priority: grant.priority,
+        currencies: grant.currencies,
+        countries: grant.countries,
+        notes: grant.notes,
+        updatedAt: grant.updatedAt
+      };
+    });
+  }
+
+  async updateCapabilityGrant(
+    id: string,
+    dto: Partial<Record<CapabilityRung, boolean>> & {
+      priority?: number;
+      notes?: string;
+      reason?: string;
+    },
+    context: Partial<AuthenticatedRequestContext>
+  ) {
+    if (!context.userId) {
+      throw new BadRequestException("An authenticated admin user is required.");
+    }
+
+    const grant = await this.db.providerCapabilityGrant.findUnique({ where: { id } });
+    if (!grant) {
+      throw new NotFoundException(`No ProviderCapabilityGrant row exists with id ${id}.`);
+    }
+
+    const next: Record<CapabilityRung, boolean> = Object.fromEntries(
+      CAPABILITY_LADDER.map((rung) => [rung, dto[rung] ?? grant[rung]])
+    ) as Record<CapabilityRung, boolean>;
+
+    // The two rules below are ordered deliberately. Revocations are applied
+    // first, then promotions are validated against the result — so revoking a
+    // rung that higher ones stand on is a legal (and cascading) operation
+    // rather than something the no-skip rule rejects, while a request that both
+    // revokes a rung and promotes above it still fails on the promotion.
+    const explicit = CAPABILITY_LADDER.filter((rung) => dto[rung] !== undefined);
+
+    // Rule 1 — clearing a rung clears everything above it. Revoking "sandbox
+    // verified" must not leave a provider enabled on the strength of a claim
+    // that no longer holds. This only ever reduces access, so it is applied
+    // rather than rejected.
+    const cascaded: CapabilityRung[] = [];
+    for (const rung of explicit.filter((r) => dto[r] === false)) {
+      const above = CAPABILITY_LADDER.slice(CAPABILITY_LADDER.indexOf(rung) + 1);
+      for (const higher of above) {
+        if (!next[higher]) continue;
+        next[higher] = false;
+        if (!cascaded.includes(higher)) cascaded.push(higher);
+      }
+    }
+
+    // Rule 2 — no skipping. A rung can only be raised once every rung below it
+    // is true, so "enabled" is unreachable without the full ladder beneath it.
+    for (const rung of explicit.filter((r) => dto[r] === true)) {
+      const missing = CAPABILITY_LADDER.slice(0, CAPABILITY_LADDER.indexOf(rung)).filter(
+        (lower) => !next[lower]
+      );
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Cannot set "${rung}" for ${grant.providerName}/${grant.capability} while these earlier ` +
+            `steps are unmet: ${missing.join(", ")}. The grant ladder must be earned in order.`
+        );
+      }
+    }
+
+    const updated = await this.db.providerCapabilityGrant.update({
+      where: { id },
+      data: {
+        ...next,
+        ...(dto.priority !== undefined ? { priority: dto.priority } : {}),
+        ...(dto.notes !== undefined ? { notes: dto.notes } : {})
+      }
+    });
+
+    // Enabling a provider for real money movement is the single most consequential
+    // switch in this service — audit it whether or not anything else changed.
+    await this.db.auditLog.create({
+      data: {
+        actorUserId: context.userId,
+        action:
+          !grant.enabled && updated.enabled
+            ? "provider.capability_enabled"
+            : grant.enabled && !updated.enabled
+              ? "provider.capability_disabled"
+              : "provider.capability_updated",
+        entityType: "ProviderCapabilityGrant",
+        entityId: grant.id,
+        metadata: {
+          providerName: grant.providerName,
+          capability: grant.capability,
+          domain: grant.domain,
+          previous: Object.fromEntries(CAPABILITY_LADDER.map((r) => [r, grant[r]])),
+          next: Object.fromEntries(CAPABILITY_LADDER.map((r) => [r, updated[r]])),
+          cascadedOff: cascaded,
+          reason: dto.reason ?? null
+        }
+      }
+    });
+
+    return { ...updated, cascadedOff: cascaded };
   }
 
   // ─── Emergency disable ───────────────────────────────────────────────────────
