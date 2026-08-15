@@ -122,10 +122,28 @@ async function main() {
   const db = createPrismaClient();
   let created = 0;
   let skipped = 0;
+  let repriced = 0;
 
   for (const seed of SEEDS) {
     const existing = await db.providerConfig.findUnique({ where: { name: seed.name } });
     if (existing) {
+      // Re-assert priority on an existing row, the way seed-vtu.ts does.
+      //
+      // Skipping outright meant a priority change here only ever reached a fresh
+      // database: demoting payscribe-virtual-card behind the sandbox-verified
+      // issuers was a no-op on every environment that already had the row, so it
+      // stayed tied with sudo-virtual-card at 10 and could still win selection.
+      //
+      // Only priority is re-asserted. status is deliberately left alone — an
+      // operator may have enabled a provider after seeding, and this must not
+      // silently disable it again on the next run.
+      if (existing.priority !== seed.priority) {
+        await db.providerConfig.update({
+          where: { name: seed.name },
+          data: { priority: seed.priority }
+        });
+        repriced++;
+      }
       skipped++;
       continue;
     }
@@ -146,7 +164,10 @@ async function main() {
     created++;
   }
 
-  console.log(`ProviderConfig (financial-products): ${created} created, ${skipped} already existed`);
+  console.log(
+    `ProviderConfig (financial-products): ${created} created, ${skipped} already existed` +
+      `, ${repriced} repriced`
+  );
   await db.$disconnect();
 }
 
