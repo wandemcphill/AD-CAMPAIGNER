@@ -1906,6 +1906,151 @@ export class PlatformService {
     };
   }
 
+  // ─── Admin: users ─────────────────────────────────────────────────────────
+
+  async adminSearchUsers(query: {
+    q?: string;
+    status?: "ACTIVE" | "SUSPENDED";
+    limit?: number;
+  }) {
+    const term = (query.q ?? "").trim();
+    const limit = Math.min(Math.max(Number(query.limit) || 25, 1), 100);
+
+    const users = await this.db.user.findMany({
+      where: {
+        deletedAt: null,
+        ...(query.status ? { status: query.status } : {}),
+        ...(term
+          ? {
+              OR: [
+                { username: { contains: term, mode: "insensitive" } },
+                { name: { contains: term, mode: "insensitive" } },
+                { email: { contains: term, mode: "insensitive" } },
+                { id: term }
+              ]
+            }
+          : {})
+      },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        email: true,
+        status: true,
+        isPlatformAdmin: true,
+        createdAt: true
+      }
+    });
+
+    return { users, limit };
+  }
+
+  async adminGetUser(userId: string) {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        username: true,
+        name: true,
+        displayName: true,
+        email: true,
+        phone: true,
+        status: true,
+        isPlatformAdmin: true,
+        emailVerifiedAt: true,
+        totpEnabledAt: true,
+        createdAt: true,
+        deletedAt: true,
+        memberships: {
+          select: {
+            role: true,
+            workspace: { select: { id: true, name: true } }
+          }
+        }
+      }
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User ${userId} not found.`);
+    }
+
+    return user;
+  }
+
+  /**
+   * Suspend or reactivate an account. Suspension is already enforced everywhere
+   * that matters — login rejects a non-ACTIVE user and session resolution
+   * filters on `status: ACTIVE`, so existing sessions stop working too.
+   *
+   * Restricted to ACTIVE/SUSPENDED on purpose: UserStatus also has DELETED,
+   * but that is account deletion rather than a moderation action and is not
+   * something this endpoint should perform.
+   */
+  async adminSetUserStatus(
+    userId: string,
+    status: "ACTIVE" | "SUSPENDED",
+    reason: string,
+    context?: Partial<AuthenticatedRequestContext>
+  ) {
+    if (status !== "ACTIVE" && status !== "SUSPENDED") {
+      throw new BadRequestException("status must be ACTIVE or SUSPENDED.");
+    }
+
+    const trimmedReason = (reason ?? "").trim();
+    if (trimmedReason.length < 3) {
+      throw new BadRequestException("A reason is required when changing an account's status.");
+    }
+
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { id: true, status: true, isPlatformAdmin: true, username: true }
+    });
+
+    if (!user) {
+      throw new NotFoundException(`User ${userId} not found.`);
+    }
+
+    // Two lockout guards: an operator cannot suspend themselves, and cannot
+    // suspend another platform admin. Admin status is granted by the
+    // PLATFORM_ADMIN_USERNAMES env var, so an admin locked out this way could
+    // not be restored from inside the product.
+    if (status === "SUSPENDED") {
+      if (context?.userId && context.userId === userId) {
+        throw new BadRequestException("You cannot suspend your own account.");
+      }
+      if (user.isPlatformAdmin) {
+        throw new BadRequestException(
+          "Platform admins cannot be suspended here — revoke the account from PLATFORM_ADMIN_USERNAMES first."
+        );
+      }
+    }
+
+    const updated = await this.db.user.update({
+      where: { id: userId },
+      data: { status },
+      select: { id: true, username: true, status: true }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        ...(context?.workspaceId ? { workspaceId: context.workspaceId } : {}),
+        ...(context?.userId ? { actorUserId: context.userId } : {}),
+        action: status === "SUSPENDED" ? "user.suspended" : "user.reactivated",
+        entityType: "User",
+        entityId: userId,
+        metadata: {
+          reason: trimmedReason,
+          previousStatus: user.status,
+          username: user.username
+        }
+      }
+    });
+
+    return updated;
+  }
+
   getAdminOverview() {
     if (!legacyMockProvidersAllowed()) {
       return {

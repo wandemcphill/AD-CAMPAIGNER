@@ -1,6 +1,3 @@
-/* Test doubles (hand-rolled Prisma clients, vi.fn() spies) are untyped by
-   design — same disable block platform.service.test.ts uses. */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { describe, expect, it, vi } from "vitest";
 
 import { ManagedAdsService } from "./managed-ads.service";
@@ -12,7 +9,7 @@ function buildDb(existingEntries: Array<Record<string, unknown>> = []) {
   const ledgerCreates: Record<string, unknown>[] = [];
   const auditRows: Record<string, unknown>[] = [];
 
-  const tx: Record<string, any> = {
+  const tx = {
     wallet: {
       upsert: vi.fn(() =>
         Promise.resolve({ id: "wallet_1", workspaceId: "ws_target", currency: "NGN" })
@@ -33,9 +30,14 @@ function buildDb(existingEntries: Array<Record<string, unknown>> = []) {
     }
   };
 
-  const db: Record<string, any> = {
+  const db = {
     ...tx,
-    workspace: { findUnique: vi.fn(() => Promise.resolve({ id: "ws_target", name: "Target" })) },
+    workspace: {
+      findUnique: vi.fn(
+        (): Promise<{ id: string; name: string } | null> =>
+          Promise.resolve({ id: "ws_target", name: "Target" })
+      )
+    },
     $transaction: vi.fn((fn: (client: typeof tx) => Promise<unknown>) => fn(tx))
   };
 
@@ -122,7 +124,7 @@ describe("adminAdjustWallet", () => {
 
   it("rejects an unknown workspace before touching any wallet", async () => {
     const { db, ledgerCreates } = buildDb();
-    db["workspace"].findUnique = vi.fn(() => Promise.resolve(null));
+    db.workspace.findUnique = vi.fn(() => Promise.resolve(null));
 
     await expect(buildService(db).adminAdjustWallet(CONTEXT, validInput)).rejects.toThrow(/not found/i);
     expect(ledgerCreates).toHaveLength(0);

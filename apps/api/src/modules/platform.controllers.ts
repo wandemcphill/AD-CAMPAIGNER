@@ -979,6 +979,44 @@ export class AdminController {
   }
 }
 
+@Controller("admin/users")
+@RequirePermissions("admin:access")
+export class AdminUsersController {
+  constructor(@Inject(PlatformService) private readonly platform: PlatformService) {}
+
+  @Get()
+  search(
+    @Query("q") q?: string,
+    @Query("status") status?: "ACTIVE" | "SUSPENDED",
+    @Query("limit") limit?: string
+  ) {
+    return this.platform.adminSearchUsers({
+      ...(q ? { q } : {}),
+      ...(status ? { status } : {}),
+      ...(limit ? { limit: Number(limit) } : {})
+    });
+  }
+
+  @Get(":id")
+  detail(@Param("id") id: string) {
+    return this.platform.adminGetUser(id);
+  }
+
+  @Patch(":id/status")
+  setStatus(
+    @Param("id") id: string,
+    @Body() body: { status: "ACTIVE" | "SUSPENDED"; reason: string },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.platform.adminSetUserStatus(
+      id,
+      body.status,
+      body.reason,
+      workspaceContextFromRequest(request)
+    );
+  }
+}
+
 @Controller("admin/wallets")
 @RequirePermissions("admin:access")
 export class AdminWalletsController {
