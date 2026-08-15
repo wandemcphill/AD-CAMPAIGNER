@@ -7,7 +7,7 @@ import type { VtuNetwork } from "@fliptrybe/providers";
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import { OutgoingWebhooksService } from "../webhooks/outgoing-webhooks.service";
-import { VtuService } from "../vtu/vtu.service";
+import { AIRTIME_EPIN_DENOMINATIONS_MINOR, VtuService } from "../vtu/vtu.service";
 
 type VoucherProductSeed = {
   id: string;
@@ -18,7 +18,10 @@ type VoucherProductSeed = {
   providerServiceId?: string;
   targetWalletType?: "CAMPAIGN";
   inputSchema: Record<string, unknown>;
+  denominationsMinor?: number[];
 };
+
+const CAMPAIGN_CREDIT_VOUCHER_AMOUNT_MINOR = 500_000;
 
 const productSeeds: VoucherProductSeed[] = [
   {
@@ -27,7 +30,8 @@ const productSeeds: VoucherProductSeed[] = [
     category: "CAMPAIGN",
     handler: "WALLET_CREDIT",
     targetWalletType: "CAMPAIGN",
-    inputSchema: { type: "object", properties: {}, additionalProperties: false }
+    inputSchema: { type: "object", properties: {}, additionalProperties: false },
+    denominationsMinor: [CAMPAIGN_CREDIT_VOUCHER_AMOUNT_MINOR]
   },
   {
     id: "airtime-epin-voucher",
@@ -40,11 +44,13 @@ const productSeeds: VoucherProductSeed[] = [
       type: "object",
       properties: {
         network: { type: "string", enum: ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] },
-        valueMinor: { type: "number", enum: [10_000, 20_000, 50_000] }
+        // enum is derived from denominationsMinor when the catalog is served.
+        valueMinor: { type: "number" }
       },
       required: ["network", "valueMinor"],
       additionalProperties: false
-    }
+    },
+    denominationsMinor: [...AIRTIME_EPIN_DENOMINATIONS_MINOR]
   },
   {
     id: "data-epin-voucher",
@@ -64,8 +70,6 @@ const productSeeds: VoucherProductSeed[] = [
     }
   }
 ];
-
-const CAMPAIGN_CREDIT_VOUCHER_AMOUNT_MINOR = 500_000;
 
 function baseUrl() {
   const value = process.env.PUBLIC_APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -140,9 +144,32 @@ export class VouchersService {
 
   async listProducts() {
     await this.seedProducts();
-    return this.prisma.client.voucherProduct.findMany({
+    const products = await this.prisma.client.voucherProduct.findMany({
       where: { active: true },
       orderBy: [{ category: "asc" }, { name: "asc" }]
+    });
+
+    // Publish the enum from denominationsMinor rather than storing it twice —
+    // the stored schema and the enforced rule would otherwise drift.
+    return products.map((product) => {
+      const schema = (product.inputSchema ?? {}) as Record<string, unknown>;
+      const properties = schema["properties"] as Record<string, unknown> | undefined;
+      const valueMinor = properties?.["valueMinor"] as Record<string, unknown> | undefined;
+
+      if (!valueMinor || product.denominationsMinor.length === 0) {
+        return product;
+      }
+
+      return {
+        ...product,
+        inputSchema: {
+          ...schema,
+          properties: {
+            ...properties,
+            valueMinor: { ...valueMinor, enum: product.denominationsMinor }
+          }
+        }
+      };
     });
   }
 
@@ -298,6 +325,93 @@ export class VouchersService {
     };
   }
 
+  // ─── Admin: product configuration ─────────────────────────────────────────
+
+  async adminListProducts() {
+    return this.prisma.client.voucherProduct.findMany({
+      orderBy: [{ category: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        handler: true,
+        provider: true,
+        providerServiceId: true,
+        denominationsMinor: true,
+        active: true
+      }
+    });
+  }
+
+  async adminSetDenominations(
+    productId: string,
+    denominationsMinor: number[],
+    context?: AuthenticatedRequestContext
+  ) {
+    const product = await this.prisma.client.voucherProduct.findUnique({ where: { id: productId } });
+    if (!product) {
+      throw new NotFoundException(`Voucher product ${productId} not found.`);
+    }
+
+    if (!Array.isArray(denominationsMinor) || denominationsMinor.length === 0) {
+      throw new BadRequestException("At least one denomination is required.");
+    }
+
+    for (const value of denominationsMinor) {
+      if (!Number.isInteger(value) || value <= 0) {
+        throw new BadRequestException("Every denomination must be a positive whole minor-unit amount.");
+      }
+    }
+
+    const unique = [...new Set(denominationsMinor)].sort((a, b) => a - b);
+
+    // A WALLET_CREDIT voucher pays out its single face value on redemption, so
+    // a list would be ambiguous about what a holder actually receives.
+    if (product.handler === "WALLET_CREDIT" && unique.length !== 1) {
+      throw new BadRequestException(
+        "A wallet-credit voucher takes exactly one denomination — its redemption value."
+      );
+    }
+
+    // Fail here rather than at purchase: an EPIN denomination the upstream
+    // provider does not mint would be configurable but unusable.
+    if (product.providerServiceId === "airtime-epin") {
+      const unsupported = unique.filter((v: number) => !AIRTIME_EPIN_DENOMINATIONS_MINOR.includes(v));
+      if (unsupported.length > 0) {
+        throw new BadRequestException(
+          `Airtime EPIN providers only mint ${AIRTIME_EPIN_DENOMINATIONS_MINOR.map((v) => `₦${v / 100}`).join(", ")}. ` +
+            `Unsupported: ${unsupported.map((v) => `₦${v / 100}`).join(", ")}.`
+        );
+      }
+    }
+
+    const updated = await this.prisma.client.voucherProduct.update({
+      where: { id: productId },
+      data: { denominationsMinor: unique }
+    });
+
+    await this.prisma.client.auditLog.create({
+      data: {
+        ...(context?.workspaceId ? { workspaceId: context.workspaceId } : {}),
+        ...(context?.userId ? { actorUserId: context.userId } : {}),
+        action: "voucher_product.denominations_updated",
+        entityType: "VoucherProduct",
+        entityId: productId,
+        metadata: {
+          name: product.name,
+          previous: product.denominationsMinor,
+          next: unique
+        }
+      }
+    });
+
+    return {
+      id: updated.id,
+      name: updated.name,
+      denominationsMinor: updated.denominationsMinor
+    };
+  }
+
   async redeemVoucher(voucherId: string, input: Record<string, unknown>, context?: AuthenticatedRequestContext) {
     const scope = requireContext(context);
     const voucher = await this.getOwnedVoucher(voucherId, scope.userId, scope.workspaceId);
@@ -312,6 +426,10 @@ export class VouchersService {
     const redeemed = await this.prisma.client.$transaction(async (tx: TransactionClient) => {
       if (voucher.product.handler === "WALLET_CREDIT") {
         const currency = "NGN";
+        // Face value comes from the product's configured denomination; the
+        // constant remains only as a fallback for a row that has none.
+        const creditAmountMinor =
+          voucher.product.denominationsMinor?.[0] ?? CAMPAIGN_CREDIT_VOUCHER_AMOUNT_MINOR;
         const wallet = await tx.wallet.upsert({
           where: { workspaceId_currency: { workspaceId: scope.workspaceId, currency } },
           update: {},
@@ -323,7 +441,7 @@ export class VouchersService {
             id: id("led"),
             walletId: wallet.id,
             kind: "CREDIT",
-            amountMinor: CAMPAIGN_CREDIT_VOUCHER_AMOUNT_MINOR,
+            amountMinor: creditAmountMinor,
             currency,
             reference: `voucher_redeem_${voucher.id}`,
             description: `Voucher redemption: ${voucher.product.name}`,
@@ -377,7 +495,7 @@ export class VouchersService {
   // own pinEncrypted field — this is the moment the provider is actually charged and the
   // PIN is "printed"; redemption later is just the buyer using a PIN they already hold.
   private async purchaseProviderEpin(
-    product: { providerServiceId: string | null },
+    product: { providerServiceId: string | null; denominationsMinor?: number[] },
     rawInput: Record<string, unknown>,
     scope: AuthenticatedRequestContext
   ): Promise<{ pin: string; serialNumber: string; batchNo?: string; providerOrderId: string }> {
@@ -390,6 +508,15 @@ export class VouchersService {
       const valueMinor = rawInput["valueMinor"];
       if (typeof valueMinor !== "number") {
         throw new BadRequestException("valueMinor is required for an airtime EPIN voucher.");
+      }
+
+      // The inputSchema enum was declarative only — nothing enforced it here, so
+      // the configured denominations are checked explicitly.
+      const allowed = product.denominationsMinor ?? [];
+      if (allowed.length > 0 && !allowed.includes(valueMinor)) {
+        throw new BadRequestException(
+          `valueMinor must be one of ${allowed.map((v) => `₦${v / 100}`).join(", ")}.`
+        );
       }
 
       const { order, epins } = await this.vtu.buyAirtimeEpin(scope, {
@@ -453,7 +580,10 @@ export class VouchersService {
 
   private async seedProducts() {
     for (const seed of productSeeds) {
-      const existing = await this.prisma.client.voucherProduct.findFirst({ where: { name: seed.name } });
+      const existing = await this.prisma.client.voucherProduct.findFirst({
+        where: { name: seed.name },
+        select: { id: true, providerServiceId: true, denominationsMinor: true }
+      });
 
       if (existing) {
         await this.prisma.client.voucherProduct.update({
@@ -463,7 +593,12 @@ export class VouchersService {
             handler: seed.handler,
             ...(seed.provider === undefined ? {} : { provider: seed.provider }),
             ...(seed.providerServiceId === undefined ? {} : { providerServiceId: seed.providerServiceId }),
-            inputSchema: jsonValue(seed.inputSchema)
+            inputSchema: jsonValue(seed.inputSchema),
+            // Only seed denominations into an empty row. Overwriting here would
+            // silently revert an operator's configuration on every restart.
+            ...(existing.denominationsMinor.length === 0 && seed.denominationsMinor
+              ? { denominationsMinor: seed.denominationsMinor }
+              : {})
           }
         });
         continue;
@@ -478,6 +613,7 @@ export class VouchersService {
           ...(seed.provider === undefined ? {} : { provider: seed.provider }),
           ...(seed.providerServiceId === undefined ? {} : { providerServiceId: seed.providerServiceId }),
           ...(seed.targetWalletType === undefined ? {} : { targetWalletType: seed.targetWalletType }),
+          ...(seed.denominationsMinor ? { denominationsMinor: seed.denominationsMinor } : {}),
           inputSchema: jsonValue(seed.inputSchema)
         }
       });

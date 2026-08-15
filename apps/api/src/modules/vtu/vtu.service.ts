@@ -52,6 +52,11 @@ type DbClient = DatabaseClient | Prisma.TransactionClient;
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
 
 // 2% margin over wholesale.
+// What the upstream EPIN providers actually mint. Voucher denominations are
+// admin-configurable but still have to land inside this set, so it is exported
+// and checked at configuration time rather than only at purchase.
+export const AIRTIME_EPIN_DENOMINATIONS_MINOR = [10_000, 20_000, 50_000];
+
 const MARKUP_BPS = 200;
 const VTU_NETWORKS: VtuNetwork[] = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
 const DEFAULT_VTU_PROVIDER = "clubkonnect";
@@ -716,8 +721,10 @@ export class VtuService {
   ): Promise<{ order: Prisma.VtuOrderGetPayload<Record<string, never>>; epins: VtuEpin[] }> {
     const { workspaceId } = ctx;
 
-    if (![10_000, 20_000, 50_000].includes(dto.valueMinor)) {
-      throw new BadRequestException("Airtime EPIN value must be ₦100, ₦200, or ₦500.");
+    if (!AIRTIME_EPIN_DENOMINATIONS_MINOR.includes(dto.valueMinor)) {
+      throw new BadRequestException(
+        `Airtime EPIN value must be one of ${AIRTIME_EPIN_DENOMINATIONS_MINOR.map((v) => `₦${v / 100}`).join(", ")}.`
+      );
     }
     if (!Number.isInteger(dto.quantity) || dto.quantity < 1 || dto.quantity > 100) {
       throw new BadRequestException("quantity must be between 1 and 100.");

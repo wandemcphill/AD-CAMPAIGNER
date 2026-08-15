@@ -1016,6 +1016,10 @@ model VoucherProduct {
   provider           String?
   providerServiceId  String?
   inputSchema        Json                   @default("{}")
+  // Allowed face values, in minor units. Admin-settable; the valueMinor enum in
+  // inputSchema is derived from this rather than hand-edited. For a
+  // WALLET_CREDIT product the first entry is the amount credited on redemption.
+  denominationsMinor Int[]                  @default([])
   targetWalletType   VoucherWalletType?
   active             Boolean                @default(true)
   metadata           Json                   @default("{}")

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Patch, Post, Req } from "@nestjs/common";
 
 import { Public, RequirePermissions } from "../authorization.decorators";
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
@@ -67,5 +67,29 @@ export class VoucherClaimController {
     @Req() request: WorkspaceContextRequest
   ) {
     return this.vouchers.claimVoucher(token, workspaceContextFromRequest(request));
+  }
+}
+
+@Controller("admin/vouchers")
+@RequirePermissions("admin:access")
+export class AdminVouchersController {
+  constructor(@Inject(VouchersService) private readonly vouchers: VouchersService) {}
+
+  @Get("products")
+  products() {
+    return this.vouchers.adminListProducts();
+  }
+
+  @Patch("products/:id/denominations")
+  setDenominations(
+    @Param("id") id: string,
+    @Body() body: { denominationsMinor: number[] },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.vouchers.adminSetDenominations(
+      id,
+      body.denominationsMinor,
+      workspaceContextFromRequest(request)
+    );
   }
 }
