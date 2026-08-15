@@ -57,7 +57,12 @@ export type AdminMetric = {
   tone?: "neutral" | "success" | "warning" | "info";
 };
 
-export const adminAccessEnabled = process.env.NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS_ADMIN === "true";
+// Opt-out, matching NEXT_PUBLIC_ENABLE_CAMPAIGN_OPS_ADMIN and
+// NEXT_PUBLIC_ENABLE_GROWTH_SERVICES_ADMIN. This was opt-in, which left the
+// console dark while the backend was serving: digitalAccessAdmin defaults true
+// and AdminDigitalAccessController carries no feature gate, so requests were
+// processable by API but invisible to operators.
+export const adminAccessEnabled = process.env.NEXT_PUBLIC_ENABLE_DIGITAL_ACCESS_ADMIN !== "false";
 
 export const navItems: Array<{ label: string; href: string; icon: LucideIcon }> = [
   { label: "Overview", href: "/digital-access/", icon: Sparkles },
