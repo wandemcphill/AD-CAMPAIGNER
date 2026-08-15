@@ -979,6 +979,36 @@ export class AdminController {
   }
 }
 
+@Controller("admin/wallets")
+@RequirePermissions("admin:access")
+export class AdminWalletsController {
+  constructor(@Inject(ManagedAdsService) private readonly managedAds: ManagedAdsService) {}
+
+  @Get(":workspaceId")
+  getWallet(@Param("workspaceId") workspaceId: string) {
+    return this.managedAds.adminGetWallet(workspaceId);
+  }
+
+  @Post(":workspaceId/adjustments")
+  adjust(
+    @Param("workspaceId") workspaceId: string,
+    @Body()
+    body: {
+      direction: "CREDIT" | "DEBIT";
+      amountMinor: number;
+      reason: string;
+      currency?: string;
+      idempotencyKey?: string;
+    },
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.managedAds.adminAdjustWallet(workspaceContextFromRequest(request), {
+      ...body,
+      workspaceId
+    });
+  }
+}
+
 @Controller("admin/growth")
 @RequirePermissions("admin:access")
 export class AdminGrowthController {

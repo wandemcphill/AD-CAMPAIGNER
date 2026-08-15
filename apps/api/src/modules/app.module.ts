@@ -6,6 +6,7 @@ import { ScheduleModule } from "@nestjs/schedule";
 
 import {
   AdminController,
+  AdminWalletsController,
   AnalyticsController,
   AuditController,
   AuthController,
@@ -143,6 +144,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     MediaController,
     SearchController,
     AdminController,
+  AdminWalletsController,
     AdminGrowthController,
     AdminCampaignOpsController,
     AuditController

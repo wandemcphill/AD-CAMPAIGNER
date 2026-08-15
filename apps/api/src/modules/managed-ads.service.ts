@@ -2234,6 +2234,133 @@ export class ManagedAdsService {
     };
   }
 
+  /** Cross-tenant wallet read for operators. Admin-gated at the controller. */
+  async adminGetWallet(workspaceId: string) {
+    const workspace = await this.db.workspace.findUnique({
+      where: { id: workspaceId },
+      select: { id: true, name: true }
+    });
+
+    if (!workspace) {
+      throw new NotFoundException(`Workspace ${workspaceId} not found.`);
+    }
+
+    const wallets = await this.db.wallet.findMany({ where: { workspaceId } });
+
+    return {
+      workspace,
+      wallets: await Promise.all(
+        wallets.map(async (wallet: any) => {
+          const entries = await this.db.ledgerEntry.findMany({
+            where: { walletId: wallet.id },
+            orderBy: { createdAt: "desc" }
+          });
+          const mapped = entries.map(mapLedgerEntry);
+
+          return {
+            id: wallet.id,
+            currency: wallet.currency,
+            availableBalance: calculateAvailableBalance(mapped),
+            recentEntries: mapped.slice(0, 25)
+          };
+        })
+      )
+    };
+  }
+
+  /**
+   * Operator-initiated wallet correction — goodwill credit, or clawback of a
+   * mis-posted amount. Deliberately narrow: a positive amount plus a direction,
+   * never a raw ledger write, so the amountMinor > 0 constraint and the
+   * available-balance floor both still hold.
+   *
+   * `reason` is mandatory and lands in both the ledger description and the
+   * audit row, because an unexplained balance change is unauditable after the
+   * fact. Idempotency is caller-supplied so a retried request cannot double-pay.
+   */
+  async adminAdjustWallet(
+    context: AuthenticatedRequestContext | undefined,
+    input: {
+      workspaceId: string;
+      direction: "CREDIT" | "DEBIT";
+      amountMinor: number;
+      reason: string;
+      currency?: string;
+      idempotencyKey?: string;
+    }
+  ) {
+    const scope = requireScope(context);
+
+    if (input.direction !== "CREDIT" && input.direction !== "DEBIT") {
+      throw new BadRequestException("direction must be CREDIT or DEBIT.");
+    }
+
+    const amountMinor = parsePositiveMinorAmount(
+      input.amountMinor,
+      "Adjustment amount must be a positive minor-unit integer."
+    );
+
+    const reason = (input.reason ?? "").trim();
+    if (reason.length < 3) {
+      throw new BadRequestException("A reason is required for a manual wallet adjustment.");
+    }
+
+    const workspaceId = (input.workspaceId ?? "").trim();
+    if (!workspaceId) {
+      throw new BadRequestException("workspaceId is required.");
+    }
+
+    const workspace = await this.db.workspace.findUnique({ where: { id: workspaceId } });
+    if (!workspace) {
+      throw new NotFoundException(`Workspace ${workspaceId} not found.`);
+    }
+
+    const currency = getCurrency(input.currency, "NGN");
+
+    return this.db.$transaction(async (tx: DbClient) => {
+      const wallet = await this.getOrCreateWallet(tx, workspaceId, currency);
+      await this.lockWallet(tx, wallet.id);
+
+      if (input.direction === "DEBIT") {
+        await this.assertWalletCanPay(tx, wallet.id, amountMinor, currency);
+      }
+
+      const entry = await this.createWalletLedgerEntry(tx, {
+        walletId: wallet.id,
+        kind: input.direction,
+        amountMinor,
+        currency,
+        reference: `adjustment:${wallet.id}`,
+        description: `Manual ${input.direction.toLowerCase()} by operator: ${reason}`,
+        sourceType: "AdminWalletAdjustment",
+        sourceId: wallet.id,
+        ...(input.idempotencyKey ? { idempotencyKey: input.idempotencyKey } : {}),
+        metadata: { reason, adjustedByUserId: scope.userId ?? null }
+      });
+
+      await this.audit(
+        tx,
+        { ...scope, workspaceId },
+        `wallet.adjustment_${input.direction.toLowerCase()}`,
+        "LedgerEntry",
+        entry.id,
+        { amountMinor, currency, reason, targetWorkspaceId: workspaceId }
+      );
+
+      const entries = await tx.ledgerEntry.findMany({ where: { walletId: wallet.id } });
+
+      return {
+        entryId: entry.id,
+        walletId: wallet.id,
+        workspaceId,
+        direction: input.direction,
+        amountMinor,
+        currency,
+        availableBalance: calculateAvailableBalance(entries.map(mapLedgerEntry))
+      };
+    });
+  }
+
   async listCampaignLedger(context: AuthenticatedRequestContext | undefined, campaignId: string) {
     const scope = requireScope(context);
     const campaign = await this.findCampaignFinancialRecord(scope.workspaceId, campaignId);
