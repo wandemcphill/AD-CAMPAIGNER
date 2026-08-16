@@ -1162,12 +1162,43 @@ export class VtuService {
 
   // ─── Data plan catalog ───────────────────────────────────────────────────────
 
+  /**
+   * Data plans a customer can actually buy right now.
+   *
+   * Scoped to the provider that would serve each network, because buyData
+   * resolves its adapter by route and then looks the plan up under
+   * `providerName: adapter.name`. Listing every provider's catalog meant most
+   * of what was shown could not be purchased at all — a plan belonging to a
+   * provider the router would not pick fails with "Data plan not found or
+   * unavailable" after the customer has chosen it. The catalog holds hundreds of
+   * rows for providers that are seeded but have no credentials.
+   *
+   * Selection uses the same path as purchase, so the list and the buy agree even
+   * as health or priority moves traffic between providers.
+   */
   async listDataPlans(network?: VtuNetwork) {
     await this.ensureDefaultCatalog();
-    return this.db.vtuDataPlan.findMany({
-      where: { active: true, ...(network ? { network } : {}) },
-      orderBy: [{ network: "asc" }, { costMinor: "asc" }]
-    });
+
+    const networks: VtuNetwork[] = network ? [network] : [...VTU_NETWORKS];
+    const plansByNetwork = await Promise.all(
+      networks.map(async (net) => {
+        let providerName: string;
+        try {
+          providerName = (await this.selectAdapter("DATA", net)).name;
+        } catch {
+          // No routable provider for this network — nothing is buyable, so
+          // return nothing rather than listing plans that cannot be fulfilled.
+          return [];
+        }
+
+        return this.db.vtuDataPlan.findMany({
+          where: { active: true, network: net, providerName },
+          orderBy: { costMinor: "asc" }
+        });
+      })
+    );
+
+    return plansByNetwork.flat();
   }
 
   // ─── Order history ───────────────────────────────────────────────────────────
