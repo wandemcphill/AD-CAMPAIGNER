@@ -23,8 +23,7 @@ import {
   createClubKonnectAdapter,
   createMobileNigAdapter,
   createMockVtuAdapter,
-  createSmeDataAdapter,
-  createVtpassAdapter
+  createSmeDataAdapter
 } from "./vtu";
 import {
   createFiveSimRentalAdapter,
@@ -57,16 +56,6 @@ const stubFetch: typeof fetch = () =>
  * called here, so nothing is ever sent anywhere.
  */
 const adapters: Array<{ label: string; adapter: ProviderAdapterBase }> = [
-  {
-    label: "vtpass",
-    adapter: createVtpassAdapter({
-      baseUrl: "https://sandbox.vtpass.test",
-      apiKey: "k",
-      publicKey: "pub",
-      secretKey: "sec",
-      fetcher: stubFetch
-    })
-  },
   {
     label: "clubkonnect",
     adapter: createClubKonnectAdapter({

@@ -43,8 +43,8 @@ function buildService(opts: { routedProvider: string; plans: Array<Record<string
 
 const PLANS = [
   { id: "ck1", providerName: "clubkonnect", network: "MTN", costMinor: 30_000 },
-  { id: "vt1", providerName: "vtpass", network: "MTN", costMinor: 28_000 },
-  { id: "vt2", providerName: "vtpass", network: "MTN", costMinor: 29_000 }
+  { id: "vt1", providerName: "swiftlink", network: "MTN", costMinor: 28_000 },
+  { id: "vt2", providerName: "swiftlink", network: "MTN", costMinor: 29_000 }
 ];
 
 describe("VtuService.listDataPlans", () => {
@@ -57,9 +57,9 @@ describe("VtuService.listDataPlans", () => {
   });
 
   it("follows the router when a different provider would serve it", async () => {
-    // If health or priority moves MTN traffic to vtpass, the list has to move too
+    // If health or priority moves MTN traffic to swiftlink, the list has to move too
     // or it would offer plans the selected provider cannot fulfil.
-    const { service } = buildService({ routedProvider: "vtpass", plans: PLANS });
+    const { service } = buildService({ routedProvider: "swiftlink", plans: PLANS });
 
     const listed = await service.listDataPlans("MTN");
 

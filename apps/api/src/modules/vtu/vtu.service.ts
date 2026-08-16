@@ -11,9 +11,9 @@ import { calculateAvailableBalance, runChargeSaga } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
   createMockVtuAdapter,
-  createVtpassAdapter,
   createClubKonnectAdapter,
   createSwiftlinkAdapter,
+  parseSwiftlinkSubcategoryMap,
   createEBillsFullAdapter,
   createTopupWizardAdapter,
   createSirpDataAdapter,
@@ -211,13 +211,6 @@ export class VtuService {
 
   private buildAdapter(providerName: string): VtuProviderAdapter {
     switch (providerName) {
-      case "vtpass":
-        return createVtpassAdapter({
-          baseUrl: process.env["VTPASS_BASE_URL"] ?? "https://sandbox.vtpass.com/api",
-          apiKey: process.env["VTPASS_API_KEY"] ?? "",
-          publicKey: process.env["VTPASS_PUBLIC_KEY"] ?? "",
-          secretKey: process.env["VTPASS_SECRET_KEY"] ?? ""
-        });
       case "clubkonnect":
         return createClubKonnectAdapter({
           userId: process.env["CLUBKONNECT_USER_ID"] ?? "",
@@ -230,8 +223,17 @@ export class VtuService {
             : {})
         });
       case "swiftlink":
+        // subcategory_id is required on every Swiftlink purchase and is not
+        // discoverable via their API — it comes off the dashboard. Supplied as
+        // "MTN:1,GLO:2,AIRTEL:3,NINE_MOBILE:4".
         return createSwiftlinkAdapter({
           apiKey: process.env["SWIFTLINK_API_KEY"] ?? "",
+          dataSubcategoryId: parseSwiftlinkSubcategoryMap(
+            process.env["SWIFTLINK_DATA_SUBCATEGORIES"]
+          ),
+          airtimeSubcategoryId: parseSwiftlinkSubcategoryMap(
+            process.env["SWIFTLINK_AIRTIME_SUBCATEGORIES"]
+          ),
           ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
         });
       case "ebills":

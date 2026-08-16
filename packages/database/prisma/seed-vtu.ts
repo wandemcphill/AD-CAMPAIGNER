@@ -1,36 +1,45 @@
 import { createPrismaClient } from "../src/index";
 
-// Seeds VtuProviderRoute (routing priority table) and VtuDataPlan (data plan catalog)
-// for the two live-wired adapters. ClubKonnect (Nellobyte) is primary — it's the funded,
-// production account; VTpass is configured as fallback. ClubKonnect plan IDs/prices below
-// are verified against the live account as of 2026-08-05 (see vtu.service.ts
-// DEFAULT_DATA_PLANS for the same verified set used as the runtime bootstrap catalog);
-// VTpass entries remain representative until that account is funded and pulled live.
+// Seeds VtuProviderRoute (routing priority table) and VtuDataPlan (data plan catalog).
+//
+// Supplier split:
+//   AIRTIME + CABLE + ELECTRICITY + BETTING -> ClubKonnect (funded, live-verified)
+//   DATA (Nigeria)                          -> Swiftlink
+//   EDUCATION                                -> SirpData, then TopupWizard
+//   DATA (international)                     -> Reloadly, via the telecom gateway
+//
+// VTpass has been removed from the platform. ClubKonnect plan IDs/prices below are
+// verified against the live account as of 2026-08-05 (see vtu.service.ts
+// DEFAULT_DATA_PLANS for the same verified set used as the runtime bootstrap catalog).
 
 const NETWORKS = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] as const;
 const PRODUCT_TYPES = ["AIRTIME", "DATA"] as const;
 const BILLS_PRODUCT_TYPES = ["ELECTRICITY", "CABLE"] as const;
-// Betting support on VTpass is not verified — ClubKonnect only for now.
 const CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES = ["BETTING"] as const;
 
+// DATA is supplied by Swiftlink for Nigeria; ClubKonnect keeps AIRTIME and the
+// other bills. VTpass has been removed from the platform entirely.
 const ROUTE_PRIORITY = {
-  clubkonnect: 10,
-  vtpass: 20
+  clubkonnect: 10
+};
+
+// Per-product-type overrides. DATA does not use ROUTE_PRIORITY because its
+// supplier is Swiftlink, not ClubKonnect.
+const DATA_ROUTE_PRIORITY = {
+  swiftlink: 10
 };
 
 // EDUCATION routes separately from the other bills.
 //
-// It used to sit in CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES, which sent every exam
-// PIN to ClubKonnect — the most expensive of the options and the one whose
-// account tier returns no JAMB pricing at all. SirpData and TopupWizard are the
-// cheapest sources for WAEC/NECO/NABTEB, so they lead and ClubKonnect stays on
-// as the fallback that is already funded and verified.
+// SirpData and TopupWizard ONLY. ClubKonnect is deliberately not a fallback
+// here: it is the most expensive source for exam PINs and its account tier
+// returns no JAMB pricing at all, so falling back to it would quietly sell a
+// worse price rather than fail. WAEC/NECO/JAMB/NABTEB all come from these two.
 //
 // Lower number = higher priority (VtuProviderRoute is ordered priority: asc).
 const EDUCATION_ROUTE_PRIORITY = {
   sirpdata: 10,
-  topupwizard: 15,
-  clubkonnect: 30
+  topupwizard: 15
 };
 
 interface DataPlanSeed {
@@ -42,23 +51,6 @@ interface DataPlanSeed {
   validityDays: number;
   costMinor: number;
 }
-
-// VTpass variation codes follow the documented `<network>-<size>-<validity>` pattern.
-// Representative rates — VTpass is the fallback provider, reconcile against a live pull
-// once that account is funded.
-const VTPASS_PLANS: DataPlanSeed[] = [
-  { providerPlanId: "mtn-10mb-100", network: "MTN", planType: "SME", displayName: "MTN 100MB (1 day)", sizeMb: 100, validityDays: 1, costMinor: 10000 },
-  { providerPlanId: "mtn-1gb-500", network: "MTN", planType: "SME", displayName: "MTN 1GB SME (30 days)", sizeMb: 1024, validityDays: 30, costMinor: 22800 },
-  { providerPlanId: "mtn-2gb-1000", network: "MTN", planType: "SME", displayName: "MTN 2GB SME (30 days)", sizeMb: 2048, validityDays: 30, costMinor: 45600 },
-  { providerPlanId: "mtn-5gb-2500", network: "MTN", planType: "SME", displayName: "MTN 5GB SME (30 days)", sizeMb: 5120, validityDays: 30, costMinor: 114000 },
-  { providerPlanId: "glo-1gb-350", network: "GLO", planType: "SME", displayName: "Glo 1GB (30 days)", sizeMb: 1024, validityDays: 30, costMinor: 27000 },
-  { providerPlanId: "glo-2gb-700", network: "GLO", planType: "SME", displayName: "Glo 2GB (30 days)", sizeMb: 2048, validityDays: 30, costMinor: 47500 },
-  { providerPlanId: "glo-5gb-1500", network: "GLO", planType: "SME", displayName: "Glo 5GB (30 days)", sizeMb: 5120, validityDays: 30, costMinor: 115000 },
-  { providerPlanId: "airtel-1gb-300", network: "AIRTEL", planType: "CG", displayName: "Airtel 1GB CG (30 days)", sizeMb: 1024, validityDays: 30, costMinor: 30000 },
-  { providerPlanId: "airtel-2gb-600", network: "AIRTEL", planType: "CG", displayName: "Airtel 2GB CG (30 days)", sizeMb: 2048, validityDays: 30, costMinor: 55000 },
-  { providerPlanId: "etisalat-1gb-300", network: "NINE_MOBILE", planType: "SME", displayName: "9mobile 1GB SME (30 days)", sizeMb: 1024, validityDays: 30, costMinor: 25000 },
-  { providerPlanId: "etisalat-2gb-600", network: "NINE_MOBILE", planType: "SME", displayName: "9mobile 2GB SME (30 days)", sizeMb: 2048, validityDays: 30, costMinor: 48000 }
-];
 
 // Real ClubKonnect PRODUCT_ID / PRODUCT_NAME / PRODUCT_AMOUNT values pulled from the
 // live account (UserID CK101286023) via /APIDatabundlePlansV2.asp on 2026-08-05.
@@ -107,8 +99,11 @@ async function seedRoutes(db: ReturnType<typeof createPrismaClient>) {
   let skipped = 0;
 
   for (const productType of PRODUCT_TYPES) {
+    // DATA is Swiftlink's; AIRTIME stays with ClubKonnect.
+    const priorities = productType === "DATA" ? DATA_ROUTE_PRIORITY : ROUTE_PRIORITY;
+
     for (const network of NETWORKS) {
-      for (const [provider, priority] of Object.entries(ROUTE_PRIORITY)) {
+      for (const [provider, priority] of Object.entries(priorities)) {
         const existing = await db.vtuProviderRoute.findFirst({
           where: { productType, network, provider }
         });
@@ -128,7 +123,7 @@ async function seedRoutes(db: ReturnType<typeof createPrismaClient>) {
             provider,
             priority,
             active: true,
-            note: `Seeded ${priority === ROUTE_PRIORITY.clubkonnect ? "primary" : "secondary"} route`
+            note: `Seeded ${productType} route (${provider})`
           }
         });
         created++;
@@ -232,7 +227,6 @@ async function seedBillsRoutes(db: ReturnType<typeof createPrismaClient>) {
 
 async function seedDataPlans(db: ReturnType<typeof createPrismaClient>) {
   const rows: Array<{ providerName: string; plan: DataPlanSeed }> = [
-    ...VTPASS_PLANS.map((plan) => ({ providerName: "vtpass", plan })),
     ...CLUBKONNECT_PLANS.map((plan) => ({ providerName: "clubkonnect", plan }))
   ];
 
@@ -269,7 +263,7 @@ async function seedDataPlans(db: ReturnType<typeof createPrismaClient>) {
     });
   }
 
-  console.log(`VtuDataPlan: ${rows.length} rows upserted (vtpass: ${VTPASS_PLANS.length}, clubkonnect: ${CLUBKONNECT_PLANS.length})`);
+  console.log(`VtuDataPlan: ${rows.length} rows upserted (clubkonnect: ${CLUBKONNECT_PLANS.length})`);
 }
 
 async function seedCablePackages(db: ReturnType<typeof createPrismaClient>) {
@@ -308,8 +302,7 @@ async function seedCablePackages(db: ReturnType<typeof createPrismaClient>) {
 // plan IDs. The router uses them to compare costs across providers for the same product.
 // pricingSource: LIVE_PROVIDER = pulled from the API; RESEARCHED_PUBLIC_PRICE = public docs/verifiable.
 // ClubKonnect costs are LIVE_PROVIDER (verified against the funded account 2026-08-05).
-// VTpass costs are RESEARCHED_PUBLIC_PRICE (publicly documented; not yet live-pulled).
-// adminApproved: true on ClubKonnect (verified live); false on VTpass (pending live test).
+// adminApproved: true on ClubKonnect (verified live).
 
 interface CanonicalSkuSeed {
   id: string;
@@ -359,7 +352,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "1000.00", costMinor: 56300, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "mtn-1gb-500", costMinor: 22800, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -371,7 +363,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "2000.00", costMinor: 111700, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "mtn-2gb-1000", costMinor: 45600, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -394,7 +385,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "5000.00", costMinor: 251100, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "mtn-5gb-2500", costMinor: 114000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -406,7 +396,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "1000", costMinor: 46100, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "glo-1gb-350", costMinor: 27000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -418,7 +407,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "2000", costMinor: 92200, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "glo-2gb-700", costMinor: 47500, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -430,7 +418,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "5000", costMinor: 230600, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "glo-5gb-1500", costMinor: 115000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -442,7 +429,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "1499.93", costMinor: 145493, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "airtel-2gb-600", costMinor: 55000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -465,7 +451,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "1000", costMinor: 49200, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "etisalat-1gb-300", costMinor: 25000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   },
   {
@@ -477,7 +462,6 @@ const CANONICAL_SKUS: CanonicalSkuSeed[] = [
     minMarginBps: 200,
     mappings: [
       { providerName: "clubkonnect", providerSku: "2000", costMinor: 98400, adminApproved: true, pricingSourceType: "LIVE_PROVIDER" },
-      { providerName: "vtpass", providerSku: "etisalat-2gb-600", costMinor: 48000, adminApproved: false, pricingSourceType: "RESEARCHED_PUBLIC_PRICE" }
     ]
   }
 ];
@@ -590,13 +574,6 @@ const PROVIDER_CONFIGS: Array<{
     status: "ACTIVE",
     enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "BETTING", "EDUCATION"],
     priority: 10
-  },
-  {
-    providerName: "vtpass",
-    displayName: "VTpass",
-    status: "PRODUCTION_READY",
-    enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"],
-    priority: 20
   },
   {
     providerName: "topupwizard",

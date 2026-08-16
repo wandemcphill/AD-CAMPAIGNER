@@ -3,9 +3,9 @@ import type { Job } from "bullmq";
 import { createPrismaClient, type DatabaseClient } from "@fliptrybe/database";
 import {
   createMockVtuAdapter,
-  createVtpassAdapter,
   createClubKonnectAdapter,
   createSwiftlinkAdapter,
+  parseSwiftlinkSubcategoryMap,
   createEBillsFullAdapter,
   createTopupWizardAdapter,
   createSirpDataAdapter,
@@ -37,13 +37,6 @@ function getDb(): DatabaseClient {
 
 function buildAdapter(providerName: string): VtuProviderAdapter {
   switch (providerName) {
-    case "vtpass":
-      return createVtpassAdapter({
-        baseUrl: process.env["VTPASS_BASE_URL"] ?? "https://sandbox.vtpass.com/api",
-        apiKey: process.env["VTPASS_API_KEY"] ?? "",
-        publicKey: process.env["VTPASS_PUBLIC_KEY"] ?? "",
-        secretKey: process.env["VTPASS_SECRET_KEY"] ?? ""
-      });
     case "clubkonnect":
       return createClubKonnectAdapter({
         userId: process.env["CLUBKONNECT_USER_ID"] ?? "",
@@ -58,6 +51,12 @@ function buildAdapter(providerName: string): VtuProviderAdapter {
     case "swiftlink":
       return createSwiftlinkAdapter({
         apiKey: process.env["SWIFTLINK_API_KEY"] ?? "",
+        dataSubcategoryId: parseSwiftlinkSubcategoryMap(
+          process.env["SWIFTLINK_DATA_SUBCATEGORIES"]
+        ),
+        airtimeSubcategoryId: parseSwiftlinkSubcategoryMap(
+          process.env["SWIFTLINK_AIRTIME_SUBCATEGORIES"]
+        ),
         ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
       });
     case "ebills":

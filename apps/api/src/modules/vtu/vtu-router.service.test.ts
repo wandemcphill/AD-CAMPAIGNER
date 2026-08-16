@@ -173,19 +173,19 @@ describe("VtuRouterService", () => {
       await buildRouter({
         configs: [
           makeConfig({ providerName: "clubkonnect", enabledServices: ["AIRTIME"] }),
-          makeConfig({ providerName: "vtpass", enabledServices: ["AIRTIME"] })
+          makeConfig({ providerName: "swiftlink", enabledServices: ["AIRTIME"] })
         ],
         health: [
           makeHealth({ providerName: "clubkonnect", status: "DOWN" }),
-          makeHealth({ providerName: "vtpass", status: "HEALTHY" })
+          makeHealth({ providerName: "swiftlink", status: "HEALTHY" })
         ],
         balances: [
           makeBalance({ providerName: "clubkonnect" }),
-          makeBalance({ providerName: "vtpass" })
+          makeBalance({ providerName: "swiftlink" })
         ]
       });
       const result = await router.route({ productType: "AIRTIME", network: "MTN" });
-      expect(result.winner.providerName).toBe("vtpass");
+      expect(result.winner.providerName).toBe("swiftlink");
     });
 
     it("skips a provider in maintenance mode", async () => {
@@ -203,15 +203,15 @@ describe("VtuRouterService", () => {
       await buildRouter({
         configs: [
           makeConfig({ providerName: "clubkonnect", minBalanceMinor: 5_000_000, enabledServices: ["AIRTIME"] }),
-          makeConfig({ providerName: "vtpass", minBalanceMinor: 0, enabledServices: ["AIRTIME"] })
+          makeConfig({ providerName: "swiftlink", minBalanceMinor: 0, enabledServices: ["AIRTIME"] })
         ],
         balances: [
           makeBalance({ providerName: "clubkonnect", balanceMinor: 1_000 }), // below threshold
-          makeBalance({ providerName: "vtpass", balanceMinor: 10_000_000 })
+          makeBalance({ providerName: "swiftlink", balanceMinor: 10_000_000 })
         ]
       });
       const result = await router.route({ productType: "AIRTIME", network: "MTN" });
-      expect(result.winner.providerName).toBe("vtpass");
+      expect(result.winner.providerName).toBe("swiftlink");
     });
 
     it("selects the lower-cost provider when costs differ significantly", async () => {
@@ -248,15 +248,15 @@ describe("VtuRouterService", () => {
       await buildRouter({
         configs: [
           makeConfig({ providerName: "clubkonnect", enabledServices: ["AIRTIME"] }),
-          makeConfig({ providerName: "vtpass", enabledServices: ["AIRTIME"] })
+          makeConfig({ providerName: "swiftlink", enabledServices: ["AIRTIME"] })
         ],
         health: [
           makeHealth({ providerName: "clubkonnect", successRateBps: 9900, latencyMs: 200 }),
-          makeHealth({ providerName: "vtpass", successRateBps: 8000, latencyMs: 1200 })
+          makeHealth({ providerName: "swiftlink", successRateBps: 8000, latencyMs: 1200 })
         ],
         balances: [
           makeBalance({ providerName: "clubkonnect" }),
-          makeBalance({ providerName: "vtpass" })
+          makeBalance({ providerName: "swiftlink" })
         ]
       });
       const { winner, allCandidates } = await router.route({ productType: "AIRTIME", network: "MTN" });
@@ -306,15 +306,15 @@ describe("VtuRouterService", () => {
       await buildRouter({
         configs: [
           makeConfig({ providerName: "clubkonnect", enabledServices: ["AIRTIME"] }),
-          makeConfig({ providerName: "vtpass", enabledServices: ["AIRTIME"] })
+          makeConfig({ providerName: "swiftlink", enabledServices: ["AIRTIME"] })
         ],
         health: [
           makeHealth({ providerName: "clubkonnect" }),
-          makeHealth({ providerName: "vtpass" })
+          makeHealth({ providerName: "swiftlink" })
         ],
         balances: [
           makeBalance({ providerName: "clubkonnect" }),
-          makeBalance({ providerName: "vtpass" })
+          makeBalance({ providerName: "swiftlink" })
         ]
       });
       const fallback = await router.routeExcluding(
@@ -322,7 +322,7 @@ describe("VtuRouterService", () => {
         ["clubkonnect"]
       );
       expect(fallback).not.toBeNull();
-      expect(fallback!.providerName).toBe("vtpass");
+      expect(fallback!.providerName).toBe("swiftlink");
     });
 
     it("returns null when all providers are excluded", async () => {

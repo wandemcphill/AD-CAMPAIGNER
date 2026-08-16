@@ -22,7 +22,7 @@ const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379"
 // (seed-vtu.ts EDUCATION_ROUTE_PRIORITY) — without a scheduled
 // education_catalog_sync neither ever gets a VtuEducationPlan row, and every
 // exam-PIN purchase routed to them fails on "no price available".
-const VTU_LIVE_PROVIDERS = ["vtpass", "clubkonnect", "sirpdata", "topupwizard"];
+const VTU_LIVE_PROVIDERS = ["clubkonnect", "swiftlink", "sirpdata", "topupwizard"];
 
 // Virtual Number providers wired to real adapters (see virtual-numbers-processor.ts).
 const VIRTUAL_NUMBER_LIVE_PROVIDERS = ["smspool", "5sim", "smspva"];
