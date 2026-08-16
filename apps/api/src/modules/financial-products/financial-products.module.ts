@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 
 import { featureFlags } from "@fliptrybe/feature-flags";
 
+import { FxModule } from "../fx/fx.module";
 import { PrismaModule } from "../prisma.module";
 import { ProvidersModule } from "../providers/providers.module";
 import { FinancialProductsController } from "./financial-products.controller";
@@ -26,7 +27,10 @@ const anyFinancialVerticalEnabled =
   featureFlags.walletWithdrawals;
 
 @Module({
-  imports: [PrismaModule, ProvidersModule],
+  // FxModule: a USD card is funded from an NGN wallet, so issuance and top-up
+  // convert through the same FxService quote discipline the FX desk uses rather
+  // than a second, parallel rate path.
+  imports: [PrismaModule, ProvidersModule, FxModule],
   // The webhook controller is registered unconditionally — see its own header
   // comment. Only the customer-facing controller is gated.
   // FinancialReconciliationController is likewise unconditional: an exception

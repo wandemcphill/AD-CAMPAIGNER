@@ -4,6 +4,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { FxService } from "../fx/fx.service";
 import type { PrismaService } from "../prisma.service";
 import type { ProviderRouterService } from "../providers/provider-router.service";
 import { FinancialProductsService } from "./financial-products.service";
@@ -71,7 +72,12 @@ function buildService(
   harness: ReturnType<typeof buildHarness>,
   sendTransferImpl: () => Promise<unknown>
 ) {
-  const service = new FinancialProductsService(harness.prisma, harness.providerRouter, harness.reconciliation);
+  const service = new FinancialProductsService(
+    harness.prisma,
+    harness.providerRouter,
+    harness.reconciliation,
+    {} as unknown as FxService
+  );
   const sendTransferMock = vi.fn((..._args: unknown[]) => sendTransferImpl());
   const fakeProvider = {
     name: "swappr",

@@ -205,6 +205,22 @@ export interface VirtualCardProvider extends ProviderAdapterBase {
     reference: string;
   }): Promise<{ providerReference: string; balanceMinor: number }>;
 
+  /**
+   * Pulls balance back off a card. OPTIONAL — not every issuer exposes it.
+   *
+   * Needed before termination on providers whose terminate does not itself
+   * return funds (Payscribe documents exactly this: terminate is irreversible
+   * and balance must be reclaimed via withdraw first).
+   *
+   * `withdrawnMinor` is what the provider confirms actually moved, which may be
+   * less than requested; callers should credit off that, not off the request.
+   */
+  withdrawFromCard?(input: {
+    providerCardId: string;
+    amountMinor: number;
+    reference: string;
+  }): Promise<{ providerReference: string; withdrawnMinor?: number; balanceMinor: number }>;
+
   freezeCard(providerCardId: string): Promise<{ status: 'FROZEN' }>;
   unfreezeCard(providerCardId: string): Promise<{ status: 'ACTIVE' }>;
   terminateCard(providerCardId: string): Promise<{ status: 'TERMINATED'; refundableMinor: number }>;
@@ -1508,6 +1524,24 @@ export function createPayscribeVirtualCardProvider(
       const providerReference = toStr(d['trans_id']) || toStr(card['id']) || input.reference;
       return {
         providerReference,
+        balanceMinor: Number.isFinite(balanceUsd) ? Math.round(balanceUsd * 100) : 0
+      };
+    },
+
+    // PATCH /cards/{id}/withdraw — { amount, ref }, USD major units like topup.
+    // Documented (see docs/providers/payscribe.md) and the prerequisite for
+    // terminating a card without stranding its balance.
+    async withdrawFromCard(input) {
+      const json = await callPayscribeApi(config, `/cards/${input.providerCardId}/withdraw`, {
+        method: 'PATCH',
+        body: { amount: input.amountMinor / 100, ref: input.reference }
+      });
+      const d = payscribeDetails(json);
+      const card = (d['card'] as Record<string, unknown>) ?? {};
+      const balanceUsd = Number(card['balance'] ?? d['current_balance'] ?? d['balance']);
+      return {
+        providerReference: toStr(d['trans_id']) || input.reference,
+        withdrawnMinor: input.amountMinor,
         balanceMinor: Number.isFinite(balanceUsd) ? Math.round(balanceUsd * 100) : 0
       };
     },

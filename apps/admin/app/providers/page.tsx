@@ -56,6 +56,19 @@ const DOMAIN_LABEL: Record<string, string> = {
 
 const DOMAINS = Object.keys(DOMAIN_LABEL);
 
+// Provider-side customer enrollments. Holds no identity data by design — only
+// the opaque provider customer id and the tier reached.
+interface ProviderCustomerRow {
+  id: string;
+  workspaceId: string;
+  workspaceName: string | null;
+  providerName: string;
+  providerCustomerId: string;
+  tier: string | null;
+  status: string;
+  createdAt: string;
+}
+
 interface PricingRuleRow {
   id: string;
   domain: string;
@@ -84,7 +97,8 @@ const TABS = [
   { id: "registry", label: "Registry" },
   { id: "grants", label: "Capability Grants" },
   { id: "pricing", label: "Pricing Rules" },
-  { id: "compatibility", label: "Number Compatibility" }
+  { id: "compatibility", label: "Number Compatibility" },
+  { id: "customers", label: "Enrollments" }
 ];
 
 // Mirrors CAPABILITY_LADDER in ProvidersService. Order is load-bearing: the
@@ -160,6 +174,7 @@ export default function AdminProvidersPage() {
   const [grants, setGrants] = useState<CapabilityGrantRow[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRuleRow[]>([]);
   const [compatRows, setCompatRows] = useState<NumberCompatibilityRow[]>([]);
+  const [providerCustomers, setProviderCustomers] = useState<ProviderCustomerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [savingId, setSavingId] = useState<string>();
@@ -181,16 +196,18 @@ export default function AdminProvidersPage() {
   const refresh = useCallback(async () => {
     setError(undefined);
     try {
-      const [registryRes, grantsRes, rulesRes, compatRes] = await Promise.all([
+      const [registryRes, grantsRes, rulesRes, compatRes, customersRes] = await Promise.all([
         apiRequest<ProviderRegistryEntry[]>("/admin/providers/registry"),
         apiRequest<CapabilityGrantRow[]>("/admin/providers/capability-grants"),
         apiRequest<PricingRuleRow[]>("/admin/providers/pricing-rules"),
-        apiRequest<NumberCompatibilityRow[]>("/admin/digital-products/compatibility")
+        apiRequest<NumberCompatibilityRow[]>("/admin/digital-products/compatibility"),
+        apiRequest<ProviderCustomerRow[]>("/admin/providers/customers")
       ]);
       setEntries(registryRes);
       setGrants(grantsRes);
       setPricingRules(rulesRes);
       setCompatRows(compatRes);
+      setProviderCustomers(customersRes);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load the provider registry.");
     } finally {
@@ -666,10 +683,25 @@ export default function AdminProvidersPage() {
                 />
                 <input
                   className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  list="pricing-product-types"
                   onChange={(e) => setRuleProductType(e.target.value)}
                   placeholder="Product type (optional)"
                   value={ruleProductType}
                 />
+                {/* Free text, so the codes the services actually look up are not
+                    discoverable otherwise. VIRTUAL_CARD reads two: <CCY>_CARD is
+                    a bps markup on the funded amount, <CCY>_CARD_ISSUANCE is a
+                    FLAT per-card fee in kobo (markupBps reused as the amount —
+                    the table has no flat-fee column). */}
+                <datalist id="pricing-product-types">
+                  <option value="NGN_CARD" />
+                  <option value="USD_CARD" />
+                  <option value="NGN_CARD_ISSUANCE" />
+                  <option value="USD_CARD_ISSUANCE" />
+                  <option value="NGN_ACCOUNT" />
+                  <option value="BANK_TRANSFER" />
+                  <option value="EDUCATION" />
+                </datalist>
                 <input
                   className="h-10 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
                   onChange={(e) => setRuleProvider(e.target.value)}
@@ -790,6 +822,52 @@ export default function AdminProvidersPage() {
                   </div>
                   <Badge tone={row.blocked ? "danger" : "success"}>
                     {row.blocked ? "blocked" : "allowed"}
+                  </Badge>
+                </Panel>
+              ))
+            )}
+          </div>
+        )}
+
+        {tab === "customers" && (
+          <div className="mt-6 grid gap-3">
+            <Panel className="p-4 text-xs leading-5 text-[var(--ft-text-secondary)]">
+              A card issuer that requires a verified customer (Payscribe, Sudo, Maplerad) will not
+              issue until the workspace appears here. This is the first thing to check when a
+              customer reports that card creation fails.
+              <br />
+              No identity data is stored — only the issuer&rsquo;s own customer id and the tier
+              reached. Use that id to reconcile against the provider dashboard.
+            </Panel>
+
+            {loading ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">Loading enrollments...</Panel>
+            ) : providerCustomers.length === 0 ? (
+              <Panel className="p-6 text-sm text-[var(--ft-text-muted)]">
+                No workspace has enrolled with a card issuer yet.
+              </Panel>
+            ) : (
+              providerCustomers.map((row) => (
+                <Panel className="flex items-center gap-3 p-4" key={row.id}>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">
+                      {row.workspaceName ?? row.workspaceId}
+                      {!row.workspaceName && (
+                        <span className="ml-2 text-xs font-normal text-[var(--ft-yellow)]">
+                          workspace deleted
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 truncate font-mono text-xs text-[var(--ft-text-muted)]">
+                      {row.providerName} · {row.providerCustomerId}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right text-xs text-[var(--ft-text-muted)]">
+                    {new Date(row.createdAt).toLocaleDateString()}
+                  </div>
+                  {row.tier && <Badge tone="info">tier {row.tier}</Badge>}
+                  <Badge tone={row.status === "ACTIVE" ? "success" : "neutral"}>
+                    {row.status.toLowerCase()}
                   </Badge>
                 </Panel>
               ))

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Req } from "@nestjs/common";
 
 import { workspaceContextFromRequest, type WorkspaceContextRequest } from "../request-context";
 import { RequireAdult } from "../age.decorators";
@@ -11,7 +11,8 @@ import type {
   IssueVirtualCardDto,
   RemittanceQuoteDto,
   RequestWalletWithdrawalDto,
-  SendRemittanceDto
+  SendRemittanceDto,
+  WithdrawVirtualCardDto
 } from "./financial-products.dtos";
 import { FinancialProductsService } from "./financial-products.service";
 
@@ -71,6 +72,30 @@ export class FinancialProductsController {
     return this.financial.enrollCardCustomer(workspaceContextFromRequest(request), body);
   }
 
+  // Read-only: lets the app decide between "issue a card" and "verify first"
+  // before the customer fills anything in.
+  @Get("cards/enrollment")
+  @RequireFeature("virtualCards")
+  @RequirePermissions("analytics:read")
+  getCardEnrollment(
+    @Query("currency") currency: string | undefined,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.financial.getCardEnrollment(workspaceContextFromRequest(request), currency ?? "USD");
+  }
+
+  // Indicative naira cost of a foreign-currency card load. Read-only and writes
+  // no quote row — the binding rate is struck when the card is actually issued.
+  @Get("cards/cost-preview")
+  @RequireFeature("virtualCards")
+  @RequirePermissions("analytics:read")
+  previewCardCost(
+    @Query("currency") currency: string | undefined,
+    @Query("amountMinor") amountMinor: string | undefined
+  ) {
+    return this.financial.previewCardCost(currency ?? "USD", Number(amountMinor ?? 0));
+  }
+
   @Post("cards")
   @RequireFeature("virtualCards")
   @RequirePermissions("campaign:create")
@@ -94,6 +119,19 @@ export class FinancialProductsController {
     @Req() request: WorkspaceContextRequest
   ) {
     return this.financial.fundCard(workspaceContextFromRequest(request), id, body);
+  }
+
+  // Reclaims card balance to the wallet. Must be available independently of
+  // terminate, which on Payscribe is irreversible and does not return funds.
+  @Post("cards/:id/withdraw")
+  @RequireFeature("virtualCards")
+  @RequirePermissions("campaign:create")
+  withdrawFromCard(
+    @Param("id") id: string,
+    @Body() body: WithdrawVirtualCardDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.financial.withdrawFromCard(workspaceContextFromRequest(request), id, body);
   }
 
   @Post("cards/:id/freeze")

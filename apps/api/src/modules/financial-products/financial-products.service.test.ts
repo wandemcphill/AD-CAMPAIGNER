@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { FxService } from "../fx/fx.service";
 import type { PrismaService } from "../prisma.service";
 import type { ProviderRouterService } from "../providers/provider-router.service";
 import { FinancialProductsService } from "./financial-products.service";
@@ -141,7 +142,7 @@ describe("FinancialProductsService.sendRemittance — ambiguous failure handling
       select: vi.fn(() => Promise.resolve({ providerName: "fincra-remittance" }))
     } as unknown as ProviderRouterService;
 
-    service = new FinancialProductsService(prisma, providerRouter, reconciliation);
+    service = new FinancialProductsService(prisma, providerRouter, reconciliation, {} as unknown as FxService);
     // buildRemittanceAdapter switches on providerName via env-config factories;
     // stub it directly so the test exercises only the ambiguous-failure path,
     // not real HTTP adapter construction.
@@ -271,7 +272,8 @@ describe("FinancialProductsService.sendRemittance — quote validation", () => {
     const service = new FinancialProductsService(
       prisma,
       { select: vi.fn() } as unknown as ProviderRouterService,
-      new FinancialReconciliationService(prisma)
+      new FinancialReconciliationService(prisma),
+      {} as unknown as FxService
     );
     (service as unknown as { buildRemittanceAdapter: () => unknown }).buildRemittanceAdapter = () => ({
       name: "fincra",

@@ -1,6 +1,7 @@
 import { ServiceUnavailableException } from "@nestjs/common";
 import { describe, expect, it } from "vitest";
 
+import type { FxService } from "../fx/fx.service";
 import type { PrismaService } from "../prisma.service";
 import type { ProviderRouterService } from "../providers/provider-router.service";
 import { FinancialProductsService } from "./financial-products.service";
@@ -50,7 +51,8 @@ function buildService() {
   return new FinancialProductsService(
     {} as unknown as PrismaService,
     {} as unknown as ProviderRouterService,
-    {} as unknown as FinancialReconciliationService
+    {} as unknown as FinancialReconciliationService,
+    {} as unknown as FxService
   );
 }
 

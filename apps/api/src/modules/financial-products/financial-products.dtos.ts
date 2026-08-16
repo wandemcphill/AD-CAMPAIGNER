@@ -120,6 +120,14 @@ export class FundVirtualCardDto {
   amountMinor!: number;
 }
 
+// Amount is in the CARD's currency (USD cents for a USD card). The wallet is
+// credited the converted equivalent at the live rate.
+export class WithdrawVirtualCardDto {
+  @IsInt()
+  @Min(1)
+  amountMinor!: number;
+}
+
 // ─── Remittance ─────────────────────────────────────────────────────────────────
 
 export class RemittanceQuoteDto {

@@ -28,6 +28,7 @@ import {
   type VirtualCardProvider
 } from "@fliptrybe/providers";
 
+import { FxService } from "../fx/fx.service";
 import { PrismaService } from "../prisma.service";
 import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing-rule.service";
 import { ProviderRouterService } from "../providers/provider-router.service";
@@ -41,7 +42,8 @@ import type {
   IssueVirtualCardDto,
   RemittanceQuoteDto,
   RequestWalletWithdrawalDto,
-  SendRemittanceDto
+  SendRemittanceDto,
+  WithdrawVirtualCardDto
 } from "./financial-products.dtos";
 
 type DbClient = DatabaseClient | Prisma.TransactionClient;
@@ -88,6 +90,9 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
  * to hold a price. Whichever comes first wins.
  */
 const REMITTANCE_QUOTE_TTL_MS = 15 * 60 * 1000;
+
+/** The only currency a FlipTrybe wallet is held in. Everything else converts. */
+const WALLET_CURRENCY = "NGN";
 
 /**
  * Two different spellings of "which provider" reach the build*Adapter factories
@@ -143,6 +148,7 @@ export class FinancialProductsService {
     private readonly prismaService: PrismaService,
     private readonly providerRouter: ProviderRouterService,
     private readonly reconciliation: FinancialReconciliationService,
+    private readonly fx: FxService,
     private readonly beneficiaries?: RemittanceBeneficiaryService,
     private readonly pricingRules?: PricingRuleService
   ) {}
@@ -357,6 +363,36 @@ export class FinancialProductsService {
   }
 
   /**
+   * Whether this workspace can issue a card in `currency` right now, and if not,
+   * why. The app asks this before showing the issue form so a customer is told
+   * up front that verification is needed, rather than filling in a card request
+   * and being rejected by issueCard's guard.
+   *
+   * `required: false` means the issuer for this currency needs no customer at
+   * all (Sudo for NGN), so the form can be shown straight away.
+   */
+  async getCardEnrollment(ctx: AuthenticatedRequestContext, currency = "USD") {
+    const provider = await this.selectCardAdapter(uid("enq"), currency);
+    const required = supportsCustomerEnrollment(provider);
+
+    const row = await this.db.providerCustomer.findUnique({
+      where: {
+        workspaceId_providerName: { workspaceId: ctx.workspaceId, providerName: provider.name }
+      }
+    });
+
+    return {
+      providerName: provider.name,
+      currency: currency.toUpperCase(),
+      required,
+      enrolled: !required || row?.status === "ACTIVE",
+      tier: row?.tier ?? null,
+      status: row?.status ?? null,
+      enrolledAt: row?.createdAt ?? null
+    };
+  }
+
+  /**
    * Creates the provider-side customer and enrolls it to the tier the purpose
    * requires. Identity data is forwarded to the provider and NOT persisted —
    * only the returned customer id and tier are stored.
@@ -463,6 +499,131 @@ export class FinancialProductsService {
     return wallet;
   }
 
+  // ─── Card funding conversion ────────────────────────────────────────────────
+
+  /**
+   * What a card load costs in wallet currency.
+   *
+   * The wallet is NGN-only; Payscribe and Maplerad issue USD cards. Before this,
+   * issueCard compared a USD cents figure against the NGN balance and wrote a
+   * DEBIT of that figure tagged `currency: "USD"` onto the NGN wallet — so a $50
+   * card was charged as ₦50, roughly 1500x under. Same bug on fundCard.
+   *
+   * Conversion goes through FxService.createQuote so card funding uses the same
+   * rate, spread and buffer as every other FX path, and the quote is a real
+   * FxQuote row that gets marked used against the card. No second rate source.
+   *
+   * Returns the NGN cost plus the quote to consume once the charge commits.
+   */
+  private async priceCardLoad(
+    ctx: AuthenticatedRequestContext,
+    cardCurrency: string,
+    amountMinor: number
+  ): Promise<{ walletCostMinor: number; quoteId?: string; rate?: number }> {
+    const currency = cardCurrency.toUpperCase();
+    if (currency === WALLET_CURRENCY) {
+      return { walletCostMinor: amountMinor };
+    }
+
+    const quote = await this.fx.createQuote(ctx, {
+      baseCurrency: currency,
+      quoteCurrency: WALLET_CURRENCY,
+      sourceAmountMinor: amountMinor
+    });
+
+    // A bootstrap rate is a hardcoded constant, not a market rate — FxService
+    // says so itself. Charging a customer real naira against it would invent a
+    // price, so refuse rather than guess.
+    if (quote.rateProvenance === "bootstrap") {
+      throw new ServiceUnavailableException(
+        `No live ${currency}/${WALLET_CURRENCY} rate is available, so a ${currency} card cannot be ` +
+          `priced right now. Try again shortly.`
+      );
+    }
+
+    return {
+      walletCostMinor: quote.resultAmountMinor,
+      quoteId: quote.quoteId,
+      rate: Number(quote.customerRateMicros) / 1_000_000
+    };
+  }
+
+  /**
+   * Indicative naira cost of a card load, for display before the customer
+   * commits. Deliberately does NOT create an FxQuote: a preview refreshes on
+   * every keystroke and would otherwise fill the quote table with rows that are
+   * never consumed. The binding price is struck by priceCardLoad at issuance.
+   *
+   * Returns null for a same-currency card, where there is nothing to preview.
+   */
+  async previewCardCost(cardCurrency: string, amountMinor: number) {
+    const currency = cardCurrency.toUpperCase();
+    if (currency === WALLET_CURRENCY) return null;
+    if (!Number.isInteger(amountMinor) || amountMinor <= 0) {
+      throw new BadRequestException("amountMinor must be a positive integer.");
+    }
+
+    const rate = await this.fx.getCurrent(currency, WALLET_CURRENCY);
+    const spreadBps = rate.spreadBps ?? 0;
+    const customerRateMicros = (rate.rateMicros * BigInt(10_000 + spreadBps)) / 10_000n;
+    const walletCostMinor = Math.round((amountMinor * Number(customerRateMicros)) / 1_000_000);
+
+    return {
+      cardCurrency: currency,
+      cardAmountMinor: amountMinor,
+      walletCurrency: WALLET_CURRENCY,
+      walletCostMinor,
+      rate: Number(customerRateMicros) / 1_000_000,
+      spreadBps,
+      // Indicative: the rate can move between preview and issuance, and the
+      // issuance path re-prices. Never present this as locked.
+      indicative: true
+    };
+  }
+
+  /**
+   * Flat per-card issuance fee, in wallet currency.
+   *
+   * Payscribe charges $2 per card ($1 on paid plans) and that cost is real
+   * whatever we choose to charge on top, so it is admin-settable rather than a
+   * constant. Modelled as a PricingRule with productType "<CCY>_CARD_ISSUANCE"
+   * and markupBps reused as a flat kobo amount — the rule table has no flat-fee
+   * column, and adding one for a single fee is not worth a migration. Defaults
+   * to 0 so nothing is charged until an admin sets it.
+   */
+  private async resolveCardIssuanceFeeMinor(
+    currency: string,
+    providerName: string
+  ): Promise<number> {
+    if (!this.pricingRules) return 0;
+    const flat = await this.pricingRules.resolveMarkupBps(
+      "VIRTUAL_CARD",
+      { productType: `${currency.toUpperCase()}_CARD_ISSUANCE`, providerName },
+      0
+    );
+    return flat > 0 ? flat : 0;
+  }
+
+  /**
+   * Marks a funding quote used. Best-effort by design: the money has already
+   * moved by the time this runs, and failing the whole card issuance because a
+   * quote row could not be stamped would be worse than an unstamped quote.
+   */
+  private async consumeCardFundingQuote(
+    ctx: AuthenticatedRequestContext,
+    quoteId: string | undefined,
+    transactionId: string
+  ) {
+    if (!quoteId) return;
+    try {
+      await this.fx.useQuote(quoteId, transactionId, ctx.workspaceId);
+    } catch (error) {
+      this.logger.warn(
+        `Card funding quote ${quoteId} could not be marked used for ${transactionId}: ${String(error)}`
+      );
+    }
+  }
+
   // ─── Virtual Accounts ───────────────────────────────────────────────────────
 
   // NO MARKUP HERE, deliberately. VIRTUAL_ACCOUNT is a valid PricingRule domain,
@@ -551,14 +712,20 @@ export class FinancialProductsService {
       );
     }
 
-    // The customer is debited funding + markup; only the funding reaches the
-    // card. dto.fundingAmountMinor stays the amount the card is loaded with, so
-    // a markup never quietly shrinks the balance the customer asked for.
-    const marginMinor = await this.resolveMarginMinor("VIRTUAL_CARD", dto.fundingAmountMinor, {
+    // dto.fundingAmountMinor is in the CARD's currency — it is what lands on the
+    // card. The wallet is NGN, so convert before touching it; for an NGN card
+    // this is a no-op passthrough.
+    const load = await this.priceCardLoad(ctx, currency, dto.fundingAmountMinor);
+
+    // Markup and issuance fee are charged in WALLET currency, on the converted
+    // cost — a percentage markup has to apply to what the customer actually pays,
+    // not to a USD figure that would then be added to naira.
+    const marginMinor = await this.resolveMarginMinor("VIRTUAL_CARD", load.walletCostMinor, {
       productType: `${currency.toUpperCase()}_CARD`,
       providerName: cardProvider.name
     });
-    const totalDebitMinor = dto.fundingAmountMinor + marginMinor;
+    const issuanceFeeMinor = await this.resolveCardIssuanceFeeMinor(currency, cardProvider.name);
+    const totalDebitMinor = load.walletCostMinor + marginMinor + issuanceFeeMinor;
 
     // hold_and_flag (default): a provider failure after we've already debited is
     // ambiguous — the card may have been issued on their side despite a timeout on
@@ -583,9 +750,15 @@ export class FinancialProductsService {
               walletId: wallet.id,
               kind: "DEBIT",
               amountMinor: totalDebitMinor,
-              currency,
+              // WALLET currency, not the card's. This entry is money leaving an
+              // NGN wallet; tagging it "USD" made the ledger unreconcilable.
+              currency: WALLET_CURRENCY,
               reference: idempotencyKey,
-              description: `Virtual card funding: ${dto.cardholderName}`,
+              description:
+                currency === WALLET_CURRENCY
+                  ? `Virtual card funding: ${dto.cardholderName}`
+                  : `Virtual card funding: ${dto.cardholderName} ` +
+                    `(${currency} ${(dto.fundingAmountMinor / 100).toFixed(2)} @ ${load.rate?.toFixed(2) ?? "?"})`,
               idempotencyKey,
               sourceType: "VirtualCardWalletCharge",
               sourceId: cardId
@@ -598,10 +771,13 @@ export class FinancialProductsService {
               walletId: wallet.id,
               cardId,
               idempotencyKey,
+              // All three in WALLET currency so the charge reconciles against
+              // the ledger entry above. costMinor is the converted load, not the
+              // USD figure — margin + fee are naira and cannot be added to it.
               amountMinor: totalDebitMinor,
-              costMinor: dto.fundingAmountMinor,
-              marginMinor,
-              currency,
+              costMinor: load.walletCostMinor,
+              marginMinor: marginMinor + issuanceFeeMinor,
+              currency: WALLET_CURRENCY,
               status: "CHARGED",
               debitLedgerEntryId: ledgerEntry.id
             }
@@ -633,7 +809,7 @@ export class FinancialProductsService {
             chargeId: card.chargeId!,
             walletId: card.walletId!,
             amountMinor: totalDebitMinor,
-            currency: currency as CurrencyCode,
+            currency: WALLET_CURRENCY,
             debitLedgerEntryId: card.ledgerEntryId
           }
         };
@@ -664,6 +840,10 @@ export class FinancialProductsService {
 
       compensate: async () => {}
     });
+
+    if (outcome.status === "completed") {
+      await this.consumeCardFundingQuote(ctx, load.quoteId, cardId);
+    }
 
     if (outcome.status !== "completed") {
       this.logger.error(`Card issuance ${cardId} needs ops review: ${String(outcome.error)}`);
@@ -696,13 +876,19 @@ export class FinancialProductsService {
       throw new BadRequestException("Only an active card can be funded.");
     }
 
-    // Same split as issueCard: dto.amountMinor is what lands on the card, the
-    // markup rides on top of the wallet debit.
-    const marginMinor = await this.resolveMarginMinor("VIRTUAL_CARD", dto.amountMinor, {
-      productType: "NGN_CARD",
+    // Same split as issueCard: dto.amountMinor is what lands on the card, in the
+    // CARD's currency, and the wallet is charged the converted cost plus markup.
+    // The conversion runs before the transaction because it writes an FxQuote.
+    const load = await this.priceCardLoad(ctx, card.currency, dto.amountMinor);
+
+    // productType was hardcoded "NGN_CARD" here, so a USD card's top-up margin
+    // was looked up against the NGN rule — an admin pricing USD top-ups would
+    // have seen it silently ignored.
+    const marginMinor = await this.resolveMarginMinor("VIRTUAL_CARD", load.walletCostMinor, {
+      productType: `${card.currency.toUpperCase()}_CARD`,
       providerName: card.providerName
     });
-    const totalDebitMinor = dto.amountMinor + marginMinor;
+    const totalDebitMinor = load.walletCostMinor + marginMinor;
 
     const outcome = await this.db.$transaction(async (tx) => {
       const wallet = await this.getWallet(ctx.workspaceId, tx);
@@ -723,9 +909,14 @@ export class FinancialProductsService {
           walletId: wallet.id,
           kind: "DEBIT",
           amountMinor: totalDebitMinor,
-          currency: card.currency,
+          // Wallet currency — see the same note in issueCard.
+          currency: WALLET_CURRENCY,
           reference: idempotencyKey,
-          description: `Virtual card top-up: ${card.last4}`,
+          description:
+            card.currency === WALLET_CURRENCY
+              ? `Virtual card top-up: ${card.last4}`
+              : `Virtual card top-up: ${card.last4} ` +
+                `(${card.currency} ${(dto.amountMinor / 100).toFixed(2)} @ ${load.rate?.toFixed(2) ?? "?"})`,
           idempotencyKey,
           sourceType: "VirtualCardWalletCharge",
           sourceId: card.id
@@ -743,15 +934,17 @@ export class FinancialProductsService {
           cardId: card.id,
           idempotencyKey,
           amountMinor: totalDebitMinor,
-          costMinor: dto.amountMinor,
+          costMinor: load.walletCostMinor,
           marginMinor,
-          currency: card.currency,
+          currency: WALLET_CURRENCY,
           status: "CHARGED",
           debitLedgerEntryId: ledgerEntry.id
         }
       });
 
       const cardProvider = this.buildCardAdapter(card.providerName);
+      // The provider is told the CARD-currency amount; the wallet was charged
+      // the converted equivalent.
       return cardProvider.fundCard({
         providerCardId: card.providerCardId,
         amountMinor: dto.amountMinor,
@@ -759,7 +952,79 @@ export class FinancialProductsService {
       });
     });
 
+    await this.consumeCardFundingQuote(ctx, load.quoteId, card.id);
+
     return outcome;
+  }
+
+  /**
+   * Pulls balance off a card back into the wallet, converting at the live rate.
+   *
+   * Distinct from terminate: Payscribe's termination is irreversible and does
+   * NOT itself return funds — its docs are explicit that balance is reclaimed
+   * via a separate withdraw call first. Without this endpoint a customer could
+   * only strand the remaining balance on a card they wanted to close.
+   */
+  async withdrawFromCard(
+    ctx: AuthenticatedRequestContext,
+    id: string,
+    dto: WithdrawVirtualCardDto
+  ) {
+    const card = await this.getOwnedCard(ctx, id);
+    if (card.status === "TERMINATED") {
+      throw new BadRequestException("This card has been terminated.");
+    }
+
+    const cardProvider = this.buildCardAdapter(card.providerName);
+    if (!cardProvider.withdrawFromCard) {
+      throw new BadRequestException(
+        `${card.providerName} does not support withdrawing from a card.`
+      );
+    }
+
+    const idempotencyKey = `virtual_card_withdraw_${uid("w")}`;
+    const result = await cardProvider.withdrawFromCard({
+      providerCardId: card.providerCardId,
+      amountMinor: dto.amountMinor,
+      reference: idempotencyKey
+    });
+
+    // Credit the wallet with the converted value of what actually left the card.
+    // Priced off the provider's confirmed amount rather than the request, so a
+    // partial withdrawal cannot over-credit.
+    const withdrawnMinor = result.withdrawnMinor ?? dto.amountMinor;
+    const credit = await this.priceCardLoad(ctx, card.currency, withdrawnMinor);
+
+    const wallet = await this.getWallet(ctx.workspaceId);
+    const entry = await this.db.ledgerEntry.create({
+      data: {
+        walletId: wallet.id,
+        kind: "CREDIT",
+        amountMinor: credit.walletCostMinor,
+        currency: WALLET_CURRENCY,
+        reference: idempotencyKey,
+        description:
+          card.currency === WALLET_CURRENCY
+            ? `Virtual card withdrawal: ${card.last4}`
+            : `Virtual card withdrawal: ${card.last4} ` +
+              `(${card.currency} ${(withdrawnMinor / 100).toFixed(2)} @ ${credit.rate?.toFixed(2) ?? "?"})`,
+        idempotencyKey,
+        sourceType: "VirtualCard",
+        sourceId: card.id
+      }
+    });
+
+    await this.consumeCardFundingQuote(ctx, credit.quoteId, card.id);
+
+    return {
+      cardId: card.id,
+      withdrawnMinor,
+      currency: card.currency,
+      creditedMinor: credit.walletCostMinor,
+      creditedCurrency: WALLET_CURRENCY,
+      ledgerEntryId: entry.id,
+      balanceMinor: result.balanceMinor
+    };
   }
 
   async freezeCard(ctx: AuthenticatedRequestContext, id: string) {

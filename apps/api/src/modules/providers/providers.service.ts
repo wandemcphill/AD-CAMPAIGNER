@@ -328,6 +328,46 @@ export class ProvidersService {
     });
   }
 
+  /**
+   * Which workspaces are enrolled with which issuer, and at what tier.
+   *
+   * An enrollment is a hard prerequisite for issuing a card on Payscribe, Sudo
+   * and Maplerad, so when a customer reports "I can't create a card" this is the
+   * first thing ops needs to see. It is also the only place the provider-side
+   * customer id is visible for reconciling against the provider's dashboard.
+   *
+   * PRIVACY: ProviderCustomer holds no identity data — no DOB, address, ID
+   * number or document image. Those go to the provider at enrollment and are
+   * dropped. Only the opaque id and tier are stored, so this endpoint cannot
+   * leak PII even to an admin.
+   */
+  async listProviderCustomers(providerName?: string) {
+    const customers = await this.db.providerCustomer.findMany({
+      where: providerName ? { providerName } : {},
+      orderBy: [{ providerName: "asc" }, { createdAt: "desc" }]
+    });
+
+    const workspaces = await this.db.workspace.findMany({
+      where: { id: { in: customers.map((c) => c.workspaceId) } },
+      select: { id: true, name: true }
+    });
+    const nameByWorkspace = new Map(workspaces.map((w) => [w.id, w.name]));
+
+    return customers.map((customer) => ({
+      id: customer.id,
+      workspaceId: customer.workspaceId,
+      // Null when the workspace has since been deleted — shown rather than
+      // hidden so an orphaned enrollment is visible to ops.
+      workspaceName: nameByWorkspace.get(customer.workspaceId) ?? null,
+      providerName: customer.providerName,
+      providerCustomerId: customer.providerCustomerId,
+      tier: customer.tier,
+      status: customer.status,
+      createdAt: customer.createdAt,
+      updatedAt: customer.updatedAt
+    }));
+  }
+
   async updateCapabilityGrant(
     id: string,
     dto: Partial<Record<CapabilityRung, boolean>> & {

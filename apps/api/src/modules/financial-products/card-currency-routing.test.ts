@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
 
+import type { FxService } from "../fx/fx.service";
 import type { PrismaService } from "../prisma.service";
 import type { ProviderRouterService } from "../providers/provider-router.service";
 import { FinancialProductsService } from "./financial-products.service";
@@ -37,7 +38,8 @@ function buildService(opts: {
   const service = new FinancialProductsService(
     { client: db } as unknown as PrismaService,
     { select } as unknown as ProviderRouterService,
-    {} as unknown as FinancialReconciliationService
+    {} as unknown as FinancialReconciliationService,
+    {} as unknown as FxService
   );
 
   return { service, select };

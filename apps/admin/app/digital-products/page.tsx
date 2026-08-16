@@ -215,6 +215,10 @@ export default function AdminDigitalProductsPage() {
 
   const [fxInput, setFxInput] = useState("");
   const [fxNote, setFxNote] = useState("");
+  // The spread is the margin taken on every conversion — including NGN→USD card
+  // funding and top-ups. setRate carries the existing spread forward when this
+  // is blank, so leaving it empty never silently resets the margin.
+  const [fxSpreadBps, setFxSpreadBps] = useState("");
   const [fxConfirming, setFxConfirming] = useState(false);
   const [fxSubmitting, setFxSubmitting] = useState(false);
 
@@ -316,12 +320,14 @@ export default function AdminDigitalProductsPage() {
         method: "POST",
         body: JSON.stringify({
           rate,
+          ...(fxSpreadBps.trim() ? { spreadBps: Number(fxSpreadBps) } : {}),
           ...(fxNote.trim() ? { note: fxNote.trim() } : {}),
           confirmLargeChange
         })
       });
       setFxInput("");
       setFxNote("");
+      setFxSpreadBps("");
       setFxConfirming(false);
       await refresh();
     } catch (caught) {
@@ -713,7 +719,8 @@ export default function AdminDigitalProductsPage() {
 
               <div className="mt-5 border-t border-[var(--ft-border)] pt-4">
                 <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
-                  New rate (₦ per USD)
+                  New rate (₦ per USD) · spread in bps is the conversion margin
+                  applied to USD card funding and top-ups; leave blank to keep the current one
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -722,6 +729,13 @@ export default function AdminDigitalProductsPage() {
                     placeholder="1450.00"
                     type="number"
                     value={fxInput}
+                  />
+                  <input
+                    className="h-10 w-36 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                    onChange={(e) => setFxSpreadBps(e.target.value)}
+                    placeholder="Spread bps"
+                    type="number"
+                    value={fxSpreadBps}
                   />
                   <input
                     className="h-10 flex-1 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"

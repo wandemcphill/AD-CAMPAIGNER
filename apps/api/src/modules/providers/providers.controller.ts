@@ -42,6 +42,14 @@ export class ProvidersController {
   // financial domain. Reaching "enabled" requires climbing every rung below it;
   // the service enforces the ordering and audits every change.
 
+  // Provider-side customer enrollments. Read-only: enrollment is a customer
+  // action that sends identity data to the issuer, not something an operator
+  // should be able to trigger on a workspace's behalf from here.
+  @Get("customers")
+  listProviderCustomers(@Query("providerName") providerName?: string) {
+    return this.providers.listProviderCustomers(providerName);
+  }
+
   @Get("capability-grants")
   capabilityGrants(@Query("domain") domain?: ProviderDomain) {
     return this.providers.listCapabilityGrants(domain);

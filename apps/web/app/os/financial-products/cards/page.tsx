@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CreditCard, Snowflake, X } from "lucide-react";
+import { ArrowDownToLine, CreditCard, Snowflake, X } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
@@ -9,13 +9,20 @@ import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
 import {
+  enrollCardCustomer,
   formatNaira,
   freezeCard,
   fundCard,
   issueCard,
+  loadCardCostPreview,
+  loadCardEnrollment,
   loadCards,
   terminateCard,
   unfreezeCard,
+  withdrawFromCard,
+  type CardCostPreview,
+  type CardCurrency,
+  type CardEnrollment,
   type VirtualCard,
   type VirtualCardStatus
 } from "../api";
@@ -26,6 +33,8 @@ const CARD_STATUS_TONE: Record<VirtualCardStatus, "success" | "warning" | "dange
   TERMINATED: "danger"
 };
 
+const CARD_CURRENCIES: CardCurrency[] = ["NGN", "USD"];
+
 export default function CardsTabPage() {
   const [cards, setCards] = useState<VirtualCard[]>([]);
   const [cardsLoading, setCardsLoading] = useState(true);
@@ -35,6 +44,26 @@ export default function CardsTabPage() {
   const [cardActionId, setCardActionId] = useState<string>();
   const [error, setError] = useState<string>();
   const [forbidden, setForbidden] = useState(false);
+
+  const [cardAmountInput, setCardAmountInput] = useState<Record<string, string>>({});
+  const [currency, setCurrency] = useState<CardCurrency>("NGN");
+  const [enrollment, setEnrollment] = useState<CardEnrollment>();
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
+  const [costPreview, setCostPreview] = useState<CardCostPreview | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollForm, setEnrollForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    dateOfBirth: "",
+    street: "",
+    city: "",
+    state: "",
+    country: "NG",
+    idType: "BVN",
+    idNumber: ""
+  });
 
   const refreshCards = useCallback(async () => {
     setError(undefined);
@@ -53,11 +82,50 @@ export default function CardsTabPage() {
     void refreshCards();
   }, [refreshCards]);
 
+  // Asked before the form is shown so a customer needing verification is told
+  // up front, instead of filling everything in and being rejected on submit.
+  const refreshEnrollment = useCallback(async (forCurrency: CardCurrency) => {
+    setEnrollmentLoading(true);
+    try {
+      setEnrollment(await loadCardEnrollment(forCurrency));
+    } catch {
+      // A failed lookup must not block the NGN path, which needs no customer.
+      setEnrollment(undefined);
+    } finally {
+      setEnrollmentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshEnrollment(currency);
+  }, [currency, refreshEnrollment]);
+
+  // What this card will actually cost in naira. Indicative only — the binding
+  // rate is struck at issuance — so it is labelled as such rather than implied
+  // to be locked.
+  useEffect(() => {
+    if (currency === "NGN" || fundingNaira <= 0) {
+      setCostPreview(null);
+      return;
+    }
+    let cancelled = false;
+    void loadCardCostPreview(currency, Math.round(fundingNaira * 100))
+      .then((preview) => {
+        if (!cancelled) setCostPreview(preview);
+      })
+      .catch(() => {
+        if (!cancelled) setCostPreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currency, fundingNaira]);
+
   const submitIssueCard = useCallback(async () => {
     setIssuingCard(true);
     setError(undefined);
     try {
-      const result = await issueCard(cardholderName.trim(), fundingNaira * 100);
+      const result = await issueCard(cardholderName.trim(), fundingNaira * 100, currency);
       if (result.status !== "active") {
         setError(
           "Card funding was charged but issuance is still being confirmed — check back shortly."
@@ -70,14 +138,59 @@ export default function CardsTabPage() {
     } finally {
       setIssuingCard(false);
     }
-  }, [cardholderName, fundingNaira, refreshCards]);
+  }, [cardholderName, currency, fundingNaira, refreshCards]);
 
+  const submitEnrollment = useCallback(async () => {
+    setEnrolling(true);
+    setError(undefined);
+    try {
+      await enrollCardCustomer({
+        firstName: enrollForm.firstName.trim(),
+        lastName: enrollForm.lastName.trim(),
+        email: enrollForm.email.trim(),
+        phone: enrollForm.phone.trim(),
+        currency,
+        country: enrollForm.country.trim() || "NG",
+        ...(enrollForm.dateOfBirth ? { dateOfBirth: enrollForm.dateOfBirth } : {}),
+        ...(enrollForm.street.trim()
+          ? {
+              address: {
+                street: enrollForm.street.trim(),
+                city: enrollForm.city.trim(),
+                state: enrollForm.state.trim(),
+                country: enrollForm.country.trim() || "NG"
+              }
+            }
+          : {}),
+        ...(enrollForm.idType ? { idType: enrollForm.idType } : {}),
+        ...(enrollForm.idNumber.trim() ? { idNumber: enrollForm.idNumber.trim() } : {})
+      });
+      await refreshEnrollment(currency);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not complete verification.");
+    } finally {
+      setEnrolling(false);
+    }
+  }, [currency, enrollForm, refreshEnrollment]);
+
+  // Gate the issue form only when the issuer for this currency actually needs a
+  // customer and this workspace has none.
+  const needsEnrollment = Boolean(enrollment?.required && !enrollment.enrolled);
+
+  // Amount is in the CARD's currency, so it cannot be a shared naira constant —
+  // 500000 minor units is ₦5,000 on an NGN card but $5,000 on a USD one.
   const submitFundCard = useCallback(
-    async (id: string) => {
-      setCardActionId(id);
+    async (card: VirtualCard) => {
+      const major = Number(cardAmountInput[card.id] ?? "");
+      if (!Number.isFinite(major) || major <= 0) {
+        setError("Enter an amount to top up.");
+        return;
+      }
+      setCardActionId(card.id);
       setError(undefined);
       try {
-        await fundCard(id, 500000);
+        await fundCard(card.id, Math.round(major * 100));
+        setCardAmountInput((prev) => ({ ...prev, [card.id]: "" }));
         await refreshCards();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "Could not fund this card.");
@@ -85,7 +198,29 @@ export default function CardsTabPage() {
         setCardActionId(undefined);
       }
     },
-    [refreshCards]
+    [cardAmountInput, refreshCards]
+  );
+
+  const submitWithdraw = useCallback(
+    async (card: VirtualCard) => {
+      const major = Number(cardAmountInput[card.id] ?? "");
+      if (!Number.isFinite(major) || major <= 0) {
+        setError("Enter an amount to withdraw back to your wallet.");
+        return;
+      }
+      setCardActionId(card.id);
+      setError(undefined);
+      try {
+        await withdrawFromCard(card.id, Math.round(major * 100));
+        setCardAmountInput((prev) => ({ ...prev, [card.id]: "" }));
+        await refreshCards();
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "Could not withdraw from this card.");
+      } finally {
+        setCardActionId(undefined);
+      }
+    },
+    [cardAmountInput, refreshCards]
   );
 
   const submitToggleFreeze = useCallback(
@@ -137,31 +272,137 @@ export default function CardsTabPage() {
     <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
       <ErrorNotice message={error} />
       <Panel className="p-5">
-        <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Cardholder name</label>
-        <input
-          className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
-          onChange={(e) => setCardholderName(e.target.value)}
-          placeholder="e.g. Jane Doe"
-          value={cardholderName}
-        />
+        <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Card currency</label>
+        <div className="flex gap-2">
+          {CARD_CURRENCIES.map((code) => (
+            <button
+              className={[
+                "h-10 flex-1 rounded-[var(--radius-lg)] border text-sm font-medium transition-colors",
+                currency === code
+                  ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
+                  : "border-[var(--ft-border)] bg-[var(--ft-bg-surface)] text-[var(--ft-text-secondary)]"
+              ].join(" ")}
+              key={code}
+              onClick={() => setCurrency(code)}
+              type="button"
+            >
+              {code}
+            </button>
+          ))}
+        </div>
 
-        <label className="mb-1 mt-4 block text-xs text-[var(--ft-text-muted)]">Initial funding</label>
-        <input
-          className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
-          min={100}
-          onChange={(e) => setFundingNaira(Number(e.target.value))}
-          type="number"
-          value={fundingNaira}
-        />
+        {enrollmentLoading ? (
+          <p className="mt-4 text-xs text-[var(--ft-text-muted)]">Checking requirements…</p>
+        ) : needsEnrollment ? (
+          <div className="mt-4">
+            <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-xs text-[var(--ft-text-secondary)]">
+              A {currency} card is issued by {enrollment?.providerName}, which requires a verified
+              identity before your first card. This is a one-time step — later cards skip it. Your
+              details go to the card issuer and are not stored by FlipTrybe.
+            </div>
 
-        <Button
-          className="mt-4 w-full justify-center"
-          disabled={!cardholderName.trim() || fundingNaira < 100 || issuingCard}
-          onClick={() => void submitIssueCard()}
-        >
-          <CreditCard className="size-4" />
-          {issuingCard ? "Issuing..." : `Issue card, fund ${formatNaira(fundingNaira * 100)}`}
-        </Button>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ["firstName", "First name", "Jane"],
+                  ["lastName", "Last name", "Doe"],
+                  ["email", "Email", "jane@example.com"],
+                  ["phone", "Phone (with country code)", "+2348030000000"],
+                  ["dateOfBirth", "Date of birth (YYYY-MM-DD)", "1995-04-12"],
+                  ["street", "Street address", "12 Admiralty Way"],
+                  ["city", "City", "Lekki"],
+                  ["state", "State", "Lagos"],
+                  ["country", "Country code", "NG"],
+                  ["idNumber", "ID number", "22200000000"]
+                ] as const
+              ).map(([field, label, placeholder]) => (
+                <label className="block" key={field}>
+                  <span className="mb-1 block text-xs text-[var(--ft-text-muted)]">{label}</span>
+                  <input
+                    className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+                    onChange={(e) =>
+                      setEnrollForm((prev) => ({ ...prev, [field]: e.target.value }))
+                    }
+                    placeholder={placeholder}
+                    value={enrollForm[field]}
+                  />
+                </label>
+              ))}
+              <label className="block">
+                <span className="mb-1 block text-xs text-[var(--ft-text-muted)]">ID type</span>
+                <select
+                  className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-sm outline-none focus:border-[var(--ft-accent)]"
+                  onChange={(e) => setEnrollForm((prev) => ({ ...prev, idType: e.target.value }))}
+                  value={enrollForm.idType}
+                >
+                  {["BVN", "NIN", "PASSPORT", "VIN"].map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <Button
+              className="mt-4 w-full justify-center"
+              disabled={
+                enrolling ||
+                !enrollForm.firstName.trim() ||
+                !enrollForm.lastName.trim() ||
+                !enrollForm.email.trim() ||
+                !enrollForm.phone.trim()
+              }
+              onClick={() => void submitEnrollment()}
+            >
+              {enrolling ? "Verifying…" : `Verify identity for ${currency} cards`}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <label className="mb-1 mt-4 block text-xs text-[var(--ft-text-muted)]">
+              Cardholder name
+            </label>
+            <input
+              className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+              onChange={(e) => setCardholderName(e.target.value)}
+              placeholder="e.g. Jane Doe"
+              value={cardholderName}
+            />
+
+            <label className="mb-1 mt-4 block text-xs text-[var(--ft-text-muted)]">
+              Initial funding ({currency})
+            </label>
+            <input
+              className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
+              min={100}
+              onChange={(e) => setFundingNaira(Number(e.target.value))}
+              type="number"
+              value={fundingNaira}
+            />
+
+            {costPreview && (
+              <p className="mt-2 text-xs text-[var(--ft-text-muted)]">
+                Costs about {formatNaira(costPreview.walletCostMinor)} at ₦
+                {costPreview.rate.toFixed(2)}/{costPreview.cardCurrency} — indicative, the rate is
+                confirmed when the card is issued.
+              </p>
+            )}
+
+            <Button
+              className="mt-4 w-full justify-center"
+              disabled={!cardholderName.trim() || fundingNaira < 1 || issuingCard}
+              onClick={() => void submitIssueCard()}
+            >
+              <CreditCard className="size-4" />
+              {issuingCard
+                ? "Issuing..."
+                : currency === "NGN"
+                  ? `Issue NGN card, charge ${formatNaira(fundingNaira * 100)}`
+                  : `Issue ${currency} card for ${currency} ${fundingNaira.toLocaleString()}`}
+            </Button>
+          </>
+        )}
       </Panel>
 
       <div className="mt-4">
@@ -192,14 +433,35 @@ export default function CardsTabPage() {
                   <Badge tone={CARD_STATUS_TONE[card.status]}>{card.status.toLowerCase()}</Badge>
                 </div>
                 {card.status !== "TERMINATED" && (
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <input
+                      className="h-9 w-32 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 text-xs outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+                      inputMode="decimal"
+                      onChange={(e) =>
+                        setCardAmountInput((prev) => ({ ...prev, [card.id]: e.target.value }))
+                      }
+                      placeholder={`Amount (${card.currency})`}
+                      value={cardAmountInput[card.id] ?? ""}
+                    />
                     <Button
                       className="h-9 px-3 text-xs"
                       disabled={cardActionId === card.id}
-                      onClick={() => void submitFundCard(card.id)}
+                      onClick={() => void submitFundCard(card)}
                       variant="secondary"
                     >
-                      Top up {formatNaira(500000)}
+                      Top up
+                    </Button>
+                    {/* Withdraw first — terminating does not return the balance
+                        on every issuer, so closing a funded card without this
+                        would strand whatever is left on it. */}
+                    <Button
+                      className="h-9 px-3 text-xs"
+                      disabled={cardActionId === card.id}
+                      onClick={() => void submitWithdraw(card)}
+                      variant="secondary"
+                    >
+                      <ArrowDownToLine className="size-3" />
+                      Withdraw
                     </Button>
                     <Button
                       className="h-9 px-3 text-xs"
