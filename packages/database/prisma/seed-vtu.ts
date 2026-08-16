@@ -3,10 +3,10 @@ import { createPrismaClient } from "../src/index";
 // Seeds VtuProviderRoute (routing priority table) and VtuDataPlan (data plan catalog).
 //
 // Supplier split:
-//   AIRTIME + CABLE + ELECTRICITY + BETTING -> ClubKonnect (funded, live-verified)
-//   DATA (Nigeria)                          -> Swiftlink
-//   EDUCATION                                -> SirpData, then TopupWizard
-//   DATA (international)                     -> Reloadly, via the telecom gateway
+//   AIRTIME + DATA + BETTING  -> ClubKonnect (funded, live-verified)
+//   CABLE + ELECTRICITY       -> Swiftlink (cheapest), ClubKonnect as fallback
+//   EDUCATION                 -> SirpData, then TopupWizard
+//   DATA (international)      -> Reloadly, via the telecom gateway
 //
 // VTpass has been removed from the platform. ClubKonnect plan IDs/prices below are
 // verified against the live account as of 2026-08-05 (see vtu.service.ts
@@ -17,16 +17,21 @@ const PRODUCT_TYPES = ["AIRTIME", "DATA"] as const;
 const BILLS_PRODUCT_TYPES = ["ELECTRICITY", "CABLE"] as const;
 const CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES = ["BETTING"] as const;
 
-// DATA is supplied by Swiftlink for Nigeria; ClubKonnect keeps AIRTIME and the
-// other bills. VTpass has been removed from the platform entirely.
+// ClubKonnect serves AIRTIME and DATA — it is the funded, live-verified account.
+// VTpass has been removed from the platform entirely.
 const ROUTE_PRIORITY = {
   clubkonnect: 10
 };
 
-// Per-product-type overrides. DATA does not use ROUTE_PRIORITY because its
-// supplier is Swiftlink, not ClubKonnect.
-const DATA_ROUTE_PRIORITY = {
-  swiftlink: 10
+// CABLE and ELECTRICITY go to Swiftlink first: it is the cheapest source for
+// both. ClubKonnect stays on as fallback so a Swiftlink outage does not take
+// the vertical down — unlike EDUCATION, where falling back would silently sell
+// a worse price, cable/electricity prices are close enough that continuity wins.
+//
+// Lower number = higher priority (VtuProviderRoute is ordered priority: asc).
+const BILLS_ROUTE_PRIORITY = {
+  swiftlink: 10,
+  clubkonnect: 20
 };
 
 // EDUCATION routes separately from the other bills.
@@ -99,11 +104,8 @@ async function seedRoutes(db: ReturnType<typeof createPrismaClient>) {
   let skipped = 0;
 
   for (const productType of PRODUCT_TYPES) {
-    // DATA is Swiftlink's; AIRTIME stays with ClubKonnect.
-    const priorities = productType === "DATA" ? DATA_ROUTE_PRIORITY : ROUTE_PRIORITY;
-
     for (const network of NETWORKS) {
-      for (const [provider, priority] of Object.entries(priorities)) {
+      for (const [provider, priority] of Object.entries(ROUTE_PRIORITY)) {
         const existing = await db.vtuProviderRoute.findFirst({
           where: { productType, network, provider }
         });
@@ -139,7 +141,7 @@ async function seedBillsRoutes(db: ReturnType<typeof createPrismaClient>) {
   let skipped = 0;
 
   for (const productType of BILLS_PRODUCT_TYPES) {
-    for (const [provider, priority] of Object.entries(ROUTE_PRIORITY)) {
+    for (const [provider, priority] of Object.entries(BILLS_ROUTE_PRIORITY)) {
       const existing = await db.vtuProviderRoute.findFirst({
         where: { productType, network: null, provider }
       });
@@ -159,7 +161,7 @@ async function seedBillsRoutes(db: ReturnType<typeof createPrismaClient>) {
           provider,
           priority,
           active: true,
-          note: `Seeded ${priority === ROUTE_PRIORITY.clubkonnect ? "primary" : "secondary"} bills route`
+          note: `Seeded ${productType} route (${provider}, priority ${priority})`
         }
       });
       created++;
@@ -606,8 +608,14 @@ const PROVIDER_CONFIGS: Array<{
   {
     providerName: "swiftlink",
     displayName: "Swiftlink Nigeria",
-    // Full official API docs (swiftlinkng.com/api) now verified and endpoints implemented
-    // against them. Status remains DISCOVERED — no Swiftlink credential has been supplied yet.
+    // Full official API docs (swiftlinkng.com/api) verified and endpoints implemented
+    // against them. Cheapest source for CABLE and ELECTRICITY, which is what it now
+    // leads on (see BILLS_ROUTE_PRIORITY) with ClubKonnect behind it.
+    //
+    // Status stays DISCOVERED: VtuRouterService only selects ACTIVE/PRODUCTION_READY/
+    // SANDBOX, so cable/electricity resolve through the VtuProviderRoute table instead.
+    // Purchases also need SWIFTLINK_DATA_SUBCATEGORIES / SWIFTLINK_AIRTIME_SUBCATEGORIES
+    // from the Swiftlink dashboard — without them the adapter refuses before sending.
     status: "DISCOVERED",
     enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY"],
     priority: 60
