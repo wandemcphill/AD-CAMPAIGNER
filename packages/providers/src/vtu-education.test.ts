@@ -15,6 +15,17 @@ import { createTopupWizardAdapter, createSirpDataAdapter } from "./vtu";
  * (TopupWizard /education and SIRP DATA /educational-pins, both 2026-08-15).
  */
 
+/**
+ * Reads back the request a fetcher recorded. The body is asserted to `string`
+ * rather than left as `BodyInit`, so parsing it does not go through a
+ * default-stringification of a possible object/stream.
+ */
+function recordedRequest(fetcher: typeof fetch, call = 0) {
+  const calls = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls;
+  const [url, init] = calls[call] as [string, { body: string; headers: Record<string, string> }];
+  return { url, headers: init.headers, body: JSON.parse(init.body) as Record<string, unknown> };
+}
+
 function jsonFetcher(payload: unknown, ok = true, status = 200) {
   return vi.fn(() =>
     Promise.resolve(
@@ -71,18 +82,15 @@ describe("TopupWizard purchaseEducation", () => {
       reference: "TWZORDER1"
     });
 
-    const [url, init] = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit
-    ];
-    expect(url).toBe("https://topupwizard.com/api/education");
-    expect(JSON.parse(String(init.body))).toEqual({
+    const sent = recordedRequest(fetcher);
+    expect(sent.url).toBe("https://topupwizard.com/api/education");
+    expect(sent.body).toEqual({
       serviceID: "100",
       quantity: 1,
       clientReference: "TWZORDER1"
     });
     // Non-standard auth header — not "Authorization: Bearer".
-    expect((init.headers as Record<string, string>)["Authorization-Token"]).toBe("token");
+    expect(sent.headers["Authorization-Token"]).toBe("token");
   });
 
   it("reports insufficient funds as FAILED with the provider's message", async () => {
@@ -163,10 +171,6 @@ describe("SirpData purchaseEducation", () => {
       reference: "R1"
     });
 
-    const [, init] = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
-      string,
-      RequestInit
-    ];
-    expect(JSON.parse(String(init.body)).examType).toBe("neco_pin");
+    expect(recordedRequest(fetcher).body["examType"]).toBe("neco_pin");
   });
 });
