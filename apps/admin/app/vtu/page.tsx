@@ -149,6 +149,12 @@ export default function AdminVtuPage() {
             >
               Provider Control Center →
             </a>
+            <a
+              href="/vtu/education"
+              className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:border-primary transition-colors"
+            >
+              Education Pricing →
+            </a>
             <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
               <RefreshCcw className="size-4" />
               Refresh
