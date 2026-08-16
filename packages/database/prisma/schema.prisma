@@ -2415,6 +2415,38 @@ enum FinancialCapability {
   IDEMPOTENCY
 }
 
+// A provider-side customer, created because the provider will not issue a card
+// or a virtual account without one. Payscribe needs tier 2 for cards and tier 1
+// for accounts; Sudo, Maplerad and Inflow each have an equivalent gate.
+//
+// Keyed by (workspaceId, providerName) so swapping providers is additive — the
+// replacement gets its own row and the outgoing one's id stays readable for
+// reconciliation rather than being overwritten.
+//
+// PRIVACY: this table holds NO identity data — no DOB, address, ID number or
+// document image. Those are passed straight through to the provider at
+// enrollment and dropped. Only the opaque customer id and the tier reached are
+// persisted, the same rule KycService follows.
+model ProviderCustomer {
+  id          String  @id @default(uuid())
+  workspaceId String
+  userId      String?
+  // Bare vendor key ("payscribe"), matching the adapter's own .name — not the
+  // suffixed ProviderConfig row name.
+  providerName       String
+  providerCustomerId String
+  // Provider-specific tier string ("tier1" | "tier2" for Payscribe). Opaque to
+  // us beyond recording how far enrollment got, since a card needs a higher
+  // tier than an account and we must know whether to climb further.
+  tier      String?
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workspaceId, providerName])
+  @@index([providerName])
+}
+
 model ProviderCapabilityGrant {
   id           String              @id @default(uuid())
   providerName String

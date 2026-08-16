@@ -6,6 +6,7 @@ import { RequirePermissions } from "../authorization.decorators";
 import { RequireFeature } from "../feature-flag.decorators";
 import type {
   CreateVirtualAccountDto,
+  EnrollProviderCustomerDto,
   FundVirtualCardDto,
   IssueVirtualCardDto,
   RemittanceQuoteDto,
@@ -55,6 +56,20 @@ export class FinancialProductsController {
   }
 
   // ─── Virtual Cards ──────────────────────────────────────────────────────────
+
+  // Enrollment is separate from issuance on purpose: it is a one-time, heavy,
+  // identity-bearing call, while issuing a card is a routine one. Bundling the
+  // two would force every card request to carry a government ID. The identity
+  // fields in the body are forwarded to the provider and never stored.
+  @Post("cards/enroll")
+  @RequireFeature("virtualCards")
+  @RequirePermissions("campaign:create")
+  enrollCardCustomer(
+    @Body() body: EnrollProviderCustomerDto,
+    @Req() request: WorkspaceContextRequest
+  ) {
+    return this.financial.enrollCardCustomer(workspaceContextFromRequest(request), body);
+  }
 
   @Post("cards")
   @RequireFeature("virtualCards")

@@ -18,6 +18,13 @@ interface ProviderConfigSeed {
   domain: "VIRTUAL_ACCOUNT" | "VIRTUAL_CARD" | "REMITTANCE";
   priority: number;
   enabledCountries: string[];
+  // Scopes the row to what the provider can actually issue. The router only
+  // applies its productType filter when this is non-empty (see selectProviders
+  // — an empty array means "no restriction"), so leaving it blank made every
+  // card provider a candidate for every currency: a USD request could resolve
+  // to NGN-only Sudo, and Payscribe/Maplerad were unreachable for USD because
+  // the caller's scope was hardcoded to NGN_CARD.
+  enabledProductTypes: string[];
   metadata: Record<string, unknown>;
 }
 
@@ -27,6 +34,7 @@ const SEEDS: ProviderConfigSeed[] = [
     domain: "VIRTUAL_ACCOUNT",
     priority: 10,
     enabledCountries: ["NG"],
+    enabledProductTypes: ["NGN_ACCOUNT"],
     metadata: { providerKey: "swappr", note: "No live credentials yet — SWAPPR_API_KEY unset." }
   },
   {
@@ -34,6 +42,7 @@ const SEEDS: ProviderConfigSeed[] = [
     domain: "REMITTANCE",
     priority: 10,
     enabledCountries: ["NG", "US", "GB"],
+    enabledProductTypes: ["BANK_TRANSFER"],
     metadata: {
       providerKey: "swappr",
       role: "primary",
@@ -43,12 +52,12 @@ const SEEDS: ProviderConfigSeed[] = [
   {
     name: "sudo-virtual-card",
     domain: "VIRTUAL_CARD",
-    // Ahead of Payscribe: Sudo is live sandbox-verified for NGN Verve issuance,
-    // freeze/unfreeze and top-up (see the adapter header in
-    // packages/providers/src/financial-products.ts). Payscribe is documented but
-    // never sandbox-verified, so it should not be the first card issuer tried.
+    // Priorities are only meaningful WITHIN a product type. Sudo is the sole
+    // NGN issuer, so its 10 never competes with the USD rows below.
     priority: 10,
     enabledCountries: ["NG"],
+    // NGN only — Sudo issues NGN Verve cards and nothing else.
+    enabledProductTypes: ["NGN_CARD"],
     metadata: {
       providerKey: "sudo",
       role: "primary",
@@ -58,10 +67,34 @@ const SEEDS: ProviderConfigSeed[] = [
     }
   },
   {
+    name: "payscribe-virtual-card",
+    domain: "VIRTUAL_CARD",
+    // Leads USD. The earlier ordering put Payscribe last on the grounds that it
+    // was never sandbox-verified while Maplerad was — but that comparison was
+    // being made across currencies it could never actually serve. Within
+    // USD_CARD the deciding fact is that Payscribe is the issuer FlipTrybe has
+    // been granted access to; Maplerad's verification came from a sprint with
+    // no ongoing account. Access beats a stale sandbox result. Both stay
+    // DISABLED and ungranted regardless, so this only decides ordering once an
+    // operator turns one on.
+    priority: 10,
+    enabledCountries: ["NG"],
+    // USD only — Payscribe does not issue NGN cards.
+    enabledProductTypes: ["USD_CARD"],
+    metadata: {
+      providerKey: "payscribe",
+      role: "primary",
+      note:
+        "USD cards only; requires a tier-2 ProviderCustomer before issuance. " +
+        "No live credentials yet — PAYSCRIBE_API_KEY unset."
+    }
+  },
+  {
     name: "maplerad-virtual-card",
     domain: "VIRTUAL_CARD",
     priority: 15,
     enabledCountries: ["NG"],
+    enabledProductTypes: ["USD_CARD"],
     metadata: {
       providerKey: "maplerad",
       role: "fallback",
@@ -69,18 +102,11 @@ const SEEDS: ProviderConfigSeed[] = [
     }
   },
   {
-    name: "payscribe-virtual-card",
-    domain: "VIRTUAL_CARD",
-    // Demoted behind the two sandbox-verified issuers above.
-    priority: 20,
-    enabledCountries: ["NG"],
-    metadata: { providerKey: "payscribe", note: "No live credentials yet — PAYSCRIBE_API_KEY unset." }
-  },
-  {
     name: "inflow-virtual-account",
     domain: "VIRTUAL_ACCOUNT",
     priority: 20,
     enabledCountries: ["NG"],
+    enabledProductTypes: ["NGN_ACCOUNT"],
     metadata: {
       providerKey: "inflow",
       role: "fallback",
@@ -95,6 +121,7 @@ const SEEDS: ProviderConfigSeed[] = [
     // behind swappr-remittance's priority 10.
     priority: 20,
     enabledCountries: ["NG", "US"],
+    enabledProductTypes: ["BANK_TRANSFER"],
     metadata: {
       providerKey: "yativo",
       role: "fallback",
@@ -110,6 +137,7 @@ const SEEDS: ProviderConfigSeed[] = [
     // ProviderCapabilityGrant is flipped on (see seed-provider-capability-grants.ts).
     priority: 15,
     enabledCountries: ["NG"],
+    enabledProductTypes: ["BANK_TRANSFER"],
     metadata: {
       providerKey: "fincra",
       role: "candidate",
@@ -127,20 +155,29 @@ async function main() {
   for (const seed of SEEDS) {
     const existing = await db.providerConfig.findUnique({ where: { name: seed.name } });
     if (existing) {
-      // Re-assert priority on an existing row, the way seed-vtu.ts does.
+      // Re-assert routing fields on an existing row, the way seed-vtu.ts does.
       //
-      // Skipping outright meant a priority change here only ever reached a fresh
-      // database: demoting payscribe-virtual-card behind the sandbox-verified
-      // issuers was a no-op on every environment that already had the row, so it
-      // stayed tied with sudo-virtual-card at 10 and could still win selection.
+      // Skipping outright meant a change here only ever reached a fresh
+      // database: demoting payscribe-virtual-card was a no-op on every
+      // environment that already had the row, so it stayed tied with
+      // sudo-virtual-card at 10 and could still win selection.
       //
-      // Only priority is re-asserted. status is deliberately left alone — an
-      // operator may have enabled a provider after seeding, and this must not
-      // silently disable it again on the next run.
-      if (existing.priority !== seed.priority) {
+      // enabledProductTypes matters even more than priority. Every existing row
+      // was created with [], which the router reads as "no restriction" — so
+      // until it is backfilled, currency scoping silently does nothing and an
+      // NGN-only issuer remains a candidate for a USD card.
+      //
+      // status and enabledCountries are deliberately left alone — an operator
+      // may have enabled a provider or narrowed its countries after seeding, and
+      // a re-run must not silently revert that.
+      const productTypesDiffer =
+        existing.enabledProductTypes.length !== seed.enabledProductTypes.length ||
+        seed.enabledProductTypes.some((t) => !existing.enabledProductTypes.includes(t));
+
+      if (existing.priority !== seed.priority || productTypesDiffer) {
         await db.providerConfig.update({
           where: { name: seed.name },
-          data: { priority: seed.priority }
+          data: { priority: seed.priority, enabledProductTypes: seed.enabledProductTypes }
         });
         repriced++;
       }
@@ -157,7 +194,7 @@ async function main() {
         priority: seed.priority,
         enabledCountries: seed.enabledCountries,
         enabledNetworks: [],
-        enabledProductTypes: [],
+        enabledProductTypes: seed.enabledProductTypes,
         metadata: seed.metadata as Prisma.InputJsonValue
       }
     });
@@ -166,7 +203,7 @@ async function main() {
 
   console.log(
     `ProviderConfig (financial-products): ${created} created, ${skipped} already existed` +
-      `, ${repriced} repriced`
+      `, ${repriced} rescoped`
   );
   await db.$disconnect();
 }

@@ -110,6 +110,67 @@ export interface VirtualAccountProvider extends ProviderAdapterBase {
   closeAccount(providerAccountId: string): Promise<{ closed: boolean }>;
 }
 
+// ─── Provider customers (KYC-gated prerequisite) ────────────────────────────────
+//
+// Several providers refuse to issue a card or a virtual account until a
+// provider-side "customer" exists and has been enrolled to a KYC tier. Payscribe
+// needs tier 2 for cards; Sudo, Maplerad and Inflow each have their own
+// equivalent. The shape of what they need differs, but the flow is identical:
+// hand identity data over once, get back an opaque customer id, reuse it.
+//
+// This is deliberately its own capability rather than part of VirtualCardProvider.
+// Enrollment is not a card concern — the same customer gates virtual accounts too —
+// and providers that need no customer at all (mock, Swappr) should not have to
+// implement a no-op. Adapters that support it return an intersection type, and
+// callers narrow with supportsCustomerEnrollment().
+//
+// PRIVACY RULE, matching KycService: FlipTrybe stores ONLY the returned customer
+// id and tier. Raw identity documents pass through to the provider and are never
+// persisted here. Nothing in ProviderCustomerIdentity is written to our database.
+
+export interface ProviderCustomerIdentity {
+  firstName: string;
+  lastName: string;
+  email: string;
+  /** E.164, including country code — Payscribe rejects bare local numbers. */
+  phone: string;
+  /** ISO-3166 alpha-2. Defaults to NG where the provider requires one. */
+  country?: string;
+  /** YYYY-MM-DD. Required by tier-1-and-above enrollment. */
+  dateOfBirth?: string;
+  address?: {
+    street: string;
+    city: string;
+    state: string;
+    country: string;
+    postalCode?: string;
+  };
+  /** Government ID. Payscribe: BVN for tier 1; NIN | PASSPORT | VIN for tier 2. */
+  idType?: string;
+  idNumber?: string;
+  /** Base64 image, required for Payscribe tier 2. Never stored by FlipTrybe. */
+  idImageBase64?: string;
+}
+
+export interface ProviderCustomerEnrollment {
+  /**
+   * Creates the provider-side customer and raises it to whatever tier `purpose`
+   * requires. Idempotency is the caller's job: FlipTrybe persists the returned
+   * id against (workspace, provider) and does not call this again once set.
+   */
+  enrollCustomer(input: {
+    identity: ProviderCustomerIdentity;
+    purpose: 'VIRTUAL_CARD' | 'VIRTUAL_ACCOUNT';
+    reference: string;
+  }): Promise<{ providerCustomerId: string; tier: string }>;
+}
+
+export function supportsCustomerEnrollment<T>(
+  adapter: T
+): adapter is T & ProviderCustomerEnrollment {
+  return typeof (adapter as { enrollCustomer?: unknown }).enrollCustomer === 'function';
+}
+
 // ─── Virtual Cards ──────────────────────────────────────────────────────────────
 
 export interface VirtualCardDetails {
@@ -1281,7 +1342,9 @@ export function verifyFincraWebhook(rawBody: string, signatureHeader: string, we
 // balance (docs say termination is irreversible and balance is reclaimed via
 // PATCH /cards/{id}/withdraw — this adapter reads the pre-terminate balance to
 // report refundableMinor but does NOT auto-withdraw).
-export function createPayscribeVirtualCardProvider(config: PayscribeConfig): VirtualCardProvider {
+export function createPayscribeVirtualCardProvider(
+  config: PayscribeConfig
+): VirtualCardProvider & ProviderCustomerEnrollment {
   const name = 'payscribe';
 
   async function fetchCard(
@@ -1310,6 +1373,92 @@ export function createPayscribeVirtualCardProvider(config: PayscribeConfig): Vir
     // Payscribe issues USD cards only; customers default to NG domicile.
     getCapabilities: () => liveCapabilities('VIRTUAL_CARD', ['USD_CARD'], ['NG']),
     checkHealth: () => liveHealth(name),
+
+    // Documented flow (docs/providers/payscribe.md § Customers):
+    //   POST  /customers/create        → tier 0, returns customer_id
+    //   PATCH /customers/create/tier1  → dob + address + government ID
+    //   PATCH /customers/create/tier2  → identity document with image
+    //
+    // Cards require tier 2, virtual accounts require tier 1, so `purpose`
+    // decides where to stop rather than always climbing to the top — tier 2
+    // demands a document image a VA-only customer should not have to supply.
+    //
+    // NOT SANDBOX-VERIFIED. Mapped from docs only; the tier endpoints have never
+    // been exercised against live credentials, and the docs also reference a
+    // one-shot "Create Customer - Full" whose schema was not captured. Treat the
+    // request shapes below as documented-not-proven, per the house rule in
+    // docs/providers/provider-capability-matrix.md.
+    async enrollCustomer({ identity, purpose, reference }) {
+      const createJson = await callPayscribeApi(config, '/customers/create', {
+        method: 'POST',
+        body: {
+          first_name: identity.firstName,
+          last_name: identity.lastName,
+          email: identity.email,
+          phone: identity.phone,
+          country: identity.country ?? 'NG',
+          ref: reference
+        }
+      });
+      const created = payscribeDetails(createJson);
+      const providerCustomerId =
+        toStr(created['customer_id']) || toStr(created['id']);
+      if (!providerCustomerId) {
+        throw new ProviderApiError(
+          name,
+          200,
+          'Customer create response contained no customer_id'
+        );
+      }
+
+      // Tier 1 — required for both purposes.
+      if (!identity.dateOfBirth || !identity.address || !identity.idType || !identity.idNumber) {
+        throw new Error(
+          'Payscribe tier-1 enrollment requires dateOfBirth, address, idType and idNumber.'
+        );
+      }
+      await callPayscribeApi(config, '/customers/create/tier1', {
+        method: 'PATCH',
+        body: {
+          customer_id: providerCustomerId,
+          dob: identity.dateOfBirth,
+          address: {
+            street: identity.address.street,
+            city: identity.address.city,
+            state: identity.address.state,
+            country: identity.address.country,
+            postal_code: identity.address.postalCode ?? ''
+          },
+          identification_type: identity.idType,
+          identification_number: identity.idNumber
+        }
+      });
+
+      if (purpose === 'VIRTUAL_ACCOUNT') {
+        return { providerCustomerId, tier: 'tier1' };
+      }
+
+      // Tier 2 — cards only. Needs a document image, which tier 1 does not.
+      if (!identity.idImageBase64) {
+        throw new Error(
+          'Payscribe tier-2 enrollment (required for card issuance) needs idImageBase64.'
+        );
+      }
+      await callPayscribeApi(config, '/customers/create/tier2', {
+        method: 'PATCH',
+        body: {
+          customer_id: providerCustomerId,
+          identity: {
+            type: identity.idType,
+            number: identity.idNumber,
+            country: identity.address.country,
+            image: identity.idImageBase64
+          }
+        }
+      });
+
+      return { providerCustomerId, tier: 'tier2' };
+    },
 
     async issueCard(input) {
       if (!input.providerCustomerId) {

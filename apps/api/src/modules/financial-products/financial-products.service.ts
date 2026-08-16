@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -21,6 +22,7 @@ import {
   createSwapprRemittanceProvider,
   createSwapprVirtualAccountProvider,
   createYativoRemittanceProvider,
+  supportsCustomerEnrollment,
   type RemittanceProvider,
   type VirtualAccountProvider,
   type VirtualCardProvider
@@ -34,6 +36,7 @@ import { RemittanceBeneficiaryService } from "./remittance-beneficiary.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
   CreateVirtualAccountDto,
+  EnrollProviderCustomerDto,
   FundVirtualCardDto,
   IssueVirtualCardDto,
   RemittanceQuoteDto,
@@ -295,19 +298,138 @@ export class FinancialProductsService {
     return this.buildAccountAdapter(selection.providerName);
   }
 
-  private async selectCardAdapter(orderId: string): Promise<VirtualCardProvider> {
+  /**
+   * Card providers are currency-specific and must be routed as such.
+   *
+   * This asked for productType "NGN_CARD" unconditionally, whatever currency the
+   * customer requested. Payscribe and Maplerad issue USD cards only, so a USD
+   * request could never reach either of them — the scope excluded them by
+   * construction. Sudo is NGN-only, so the reverse hazard exists too: an NGN
+   * scope must not resolve to a USD-only issuer.
+   *
+   * The router only enforces this when a ProviderConfig row actually populates
+   * enabledProductTypes (see selectProviders' scope filter — an empty array
+   * means "no restriction"). seed-financial-products.ts now sets it per row;
+   * without that, this scope is passed but ignored.
+   */
+  private async selectCardAdapter(
+    orderId: string,
+    currency: string
+  ): Promise<VirtualCardProvider> {
+    const productType = `${currency.toUpperCase()}_CARD`;
     const selection = await this.providerRouter.select(
       "VIRTUAL_CARD",
-      { productType: "NGN_CARD" },
+      { productType },
       "VirtualCard",
       orderId
     );
     if (!selection) {
       throw new ServiceUnavailableException(
-        "No virtual card provider is currently configured. Contact support."
+        `No virtual card provider is currently configured for ${currency.toUpperCase()} cards. Contact support.`
       );
     }
     return this.buildCardAdapter(selection.providerName);
+  }
+
+  /**
+   * Resolves the provider-side customer a card issuer requires, or explains
+   * precisely what is missing.
+   *
+   * Deliberately does NOT enroll on the fly. Enrollment needs DOB, address and a
+   * government ID document, none of which the issue-card request carries and
+   * none of which FlipTrybe stores — so there is nothing here to enroll *with*.
+   * Callers enroll once via POST /financial-products/cards/enroll, and this
+   * reads the resulting id back.
+   *
+   * Providers with no customer concept (mock, and any future issuer that needs
+   * none) return undefined and their adapters ignore the field.
+   */
+  private async resolveProviderCustomerId(
+    ctx: AuthenticatedRequestContext,
+    providerName: string
+  ): Promise<string | undefined> {
+    const row = await this.db.providerCustomer.findUnique({
+      where: {
+        workspaceId_providerName: { workspaceId: ctx.workspaceId, providerName }
+      }
+    });
+    return row?.status === "ACTIVE" ? row.providerCustomerId : undefined;
+  }
+
+  /**
+   * Creates the provider-side customer and enrolls it to the tier the purpose
+   * requires. Identity data is forwarded to the provider and NOT persisted —
+   * only the returned customer id and tier are stored.
+   */
+  async enrollCardCustomer(
+    ctx: AuthenticatedRequestContext,
+    dto: EnrollProviderCustomerDto
+  ) {
+    const reference = uid("pcu");
+    const provider = await this.selectCardAdapter(reference, dto.currency ?? "USD");
+
+    if (!supportsCustomerEnrollment(provider)) {
+      throw new BadRequestException(
+        `${provider.name} does not require or support customer enrollment.`
+      );
+    }
+
+    const existing = await this.db.providerCustomer.findUnique({
+      where: {
+        workspaceId_providerName: { workspaceId: ctx.workspaceId, providerName: provider.name }
+      }
+    });
+    // Enrolling twice would create a second customer at the provider that we
+    // then have no way to reference, so this is a conflict rather than an upsert.
+    if (existing && existing.status === "ACTIVE") {
+      throw new ConflictException(
+        `This workspace is already enrolled with ${provider.name} (tier ${existing.tier ?? "unknown"}).`
+      );
+    }
+
+    const result = await provider.enrollCustomer({
+      identity: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        email: dto.email,
+        phone: dto.phone,
+        ...(dto.country ? { country: dto.country } : {}),
+        ...(dto.dateOfBirth ? { dateOfBirth: dto.dateOfBirth } : {}),
+        ...(dto.address ? { address: dto.address } : {}),
+        ...(dto.idType ? { idType: dto.idType } : {}),
+        ...(dto.idNumber ? { idNumber: dto.idNumber } : {}),
+        ...(dto.idImageBase64 ? { idImageBase64: dto.idImageBase64 } : {})
+      },
+      purpose: "VIRTUAL_CARD",
+      reference
+    });
+
+    // Only the id and tier are written. Nothing from `identity` is persisted.
+    const row = await this.db.providerCustomer.upsert({
+      where: {
+        workspaceId_providerName: { workspaceId: ctx.workspaceId, providerName: provider.name }
+      },
+      create: {
+        workspaceId: ctx.workspaceId,
+        userId: ctx.userId,
+        providerName: provider.name,
+        providerCustomerId: result.providerCustomerId,
+        tier: result.tier,
+        status: "ACTIVE"
+      },
+      update: {
+        providerCustomerId: result.providerCustomerId,
+        tier: result.tier,
+        status: "ACTIVE"
+      }
+    });
+
+    return {
+      providerName: row.providerName,
+      tier: row.tier,
+      status: row.status,
+      enrolledAt: row.createdAt
+    };
   }
 
   // FALLBACK SAFETY INVARIANT: a provider is selected exactly once per
@@ -415,13 +537,25 @@ export class FinancialProductsService {
     const currency = dto.currency ?? "NGN";
     const cardId = uid("vc");
     const idempotencyKey = `virtual_card_${cardId}`;
-    const cardProvider = await this.selectCardAdapter(cardId);
+    const cardProvider = await this.selectCardAdapter(cardId, currency);
+
+    // Resolved BEFORE the wallet is touched. A card issuer that needs a customer
+    // and has none will throw at the provider call otherwise — after the debit,
+    // which lands the charge in the saga's hold_and_flag path and puts an ops
+    // review on what is really just missing configuration.
+    const providerCustomerId = await this.resolveProviderCustomerId(ctx, cardProvider.name);
+    if (!providerCustomerId && supportsCustomerEnrollment(cardProvider)) {
+      throw new BadRequestException(
+        `${cardProvider.name} requires a verified customer before issuing a card. ` +
+          `Enroll this workspace via POST /financial-products/cards/enroll first.`
+      );
+    }
 
     // The customer is debited funding + markup; only the funding reaches the
     // card. dto.fundingAmountMinor stays the amount the card is loaded with, so
     // a markup never quietly shrinks the balance the customer asked for.
     const marginMinor = await this.resolveMarginMinor("VIRTUAL_CARD", dto.fundingAmountMinor, {
-      productType: "NGN_CARD",
+      productType: `${currency.toUpperCase()}_CARD`,
       providerName: cardProvider.name
     });
     const totalDebitMinor = dto.fundingAmountMinor + marginMinor;
@@ -510,7 +644,9 @@ export class FinancialProductsService {
           reference: cardId,
           cardholderName: dto.cardholderName,
           currency,
-          fundingAmountMinor: dto.fundingAmountMinor
+          fundingAmountMinor: dto.fundingAmountMinor,
+          ...(providerCustomerId ? { providerCustomerId } : {}),
+          ...(dto.brand ? { brand: dto.brand } : {})
         });
 
         return this.db.virtualCard.update({
