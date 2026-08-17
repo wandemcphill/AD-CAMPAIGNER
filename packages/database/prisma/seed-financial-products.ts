@@ -30,12 +30,34 @@ interface ProviderConfigSeed {
 
 const SEEDS: ProviderConfigSeed[] = [
   {
-    name: "swappr-virtual-account",
+    // The ONLY money/virtual-account provider that has fully verified FlipTrybe,
+    // alongside Korapay for collections. Swappr and Inflow below are implemented
+    // and mapped but not verified, so they sit behind it as future options
+    // rather than live candidates.
+    //
+    // Payscribe NGN virtual accounts are collection-only: funds settle to the
+    // business NGN collection balance, so getAccount reports a 0 balance by
+    // design. Supported banks are 9psb, palmpay and cashconnect; palmpay
+    // additionally needs bvn/identity for a tier-0 customer.
+    name: "payscribe-virtual-account",
     domain: "VIRTUAL_ACCOUNT",
     priority: 10,
     enabledCountries: ["NG"],
     enabledProductTypes: ["NGN_ACCOUNT"],
-    metadata: { providerKey: "swappr", note: "No live credentials yet — SWAPPR_API_KEY unset." }
+    metadata: {
+      providerKey: "payscribe",
+      role: "primary",
+      note: "Verified provider. Requires a tier-1 Payscribe customer (ProviderCustomer)."
+    }
+  },
+  {
+    name: "swappr-virtual-account",
+    // Demoted behind Payscribe: implemented but not a verified money provider.
+    domain: "VIRTUAL_ACCOUNT",
+    priority: 20,
+    enabledCountries: ["NG"],
+    enabledProductTypes: ["NGN_ACCOUNT"],
+    metadata: { providerKey: "swappr", note: "Not verified; no live credentials — SWAPPR_API_KEY unset." }
   },
   {
     name: "swappr-remittance",
@@ -104,7 +126,8 @@ const SEEDS: ProviderConfigSeed[] = [
   {
     name: "inflow-virtual-account",
     domain: "VIRTUAL_ACCOUNT",
-    priority: 20,
+    // Behind Payscribe (10) and Swappr (20): implemented, not verified.
+    priority: 30,
     enabledCountries: ["NG"],
     enabledProductTypes: ["NGN_ACCOUNT"],
     metadata: {
