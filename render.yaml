@@ -321,9 +321,27 @@ services:
         sync: false
       - key: ISQUAREDATA_API_KEY
         sync: false
+      # Swiftlink leads on cable and electricity (see BILLS_ROUTE_PRIORITY).
+      # Set SWIFTLINK_API_KEY — the static bearer token from the swiftlinkng.com
+      # dashboard — and nothing else. EMAIL/PASSWORD are a fallback that logs in
+      # via POST /login, used ONLY when no api key is set; setting both is
+      # harmless, the key wins. Leave SWIFTLINK_BASE_URL unset unless overriding
+      # https://swiftlinkng.com/api.
+      #
+      # No subcategory ids to configure — purchase/airtime and purchase/data
+      # both require a subcategory_id, and both resolve it from /get/plans
+      # (data carries it in providerPlanId, airtime is looked up and cached).
+      # SWIFTLINK_AIRTIME_SUBCATEGORIES / SWIFTLINK_DATA_SUBCATEGORIES still
+      # exist as manual overrides if the catalogue ever disagrees with what an
+      # account can actually buy; they are deliberately not declared here so the
+      # dashboard shows only the fields that genuinely need filling in.
       - key: SWIFTLINK_BASE_URL
         sync: false
       - key: SWIFTLINK_API_KEY
+        sync: false
+      - key: SWIFTLINK_EMAIL
+        sync: false
+      - key: SWIFTLINK_PASSWORD
         sync: false
       - key: SIRPDATA_BASE_URL
         sync: false
@@ -687,6 +705,17 @@ services:
       - key: EBILLS_BASE_URL
         value: https://ebill.com.ng/api
       - key: EBILLS_API_KEY
+        sync: false
+      # Mirrors the API service. vtu-processor.ts builds the same Swiftlink
+      # adapter the API does, so without these the worker constructed it with an
+      # empty api key and every order it processed went out unauthenticated.
+      - key: SWIFTLINK_BASE_URL
+        sync: false
+      - key: SWIFTLINK_API_KEY
+        sync: false
+      - key: SWIFTLINK_EMAIL
+        sync: false
+      - key: SWIFTLINK_PASSWORD
         sync: false
       - key: SIRPDATA_BASE_URL
         sync: false

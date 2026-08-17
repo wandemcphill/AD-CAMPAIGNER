@@ -49,14 +49,19 @@ function buildAdapter(providerName: string): VtuProviderAdapter {
           : {})
       });
     case "swiftlink":
+      // Must stay in step with VtuService.buildAdapter — the worker processes
+      // the same orders and had no SWIFTLINK_* vars at all until now, so it
+      // built this adapter with an empty key.
       return createSwiftlinkAdapter({
-        apiKey: process.env["SWIFTLINK_API_KEY"] ?? "",
         dataSubcategoryId: parseSwiftlinkSubcategoryMap(
           process.env["SWIFTLINK_DATA_SUBCATEGORIES"]
         ),
         airtimeSubcategoryId: parseSwiftlinkSubcategoryMap(
           process.env["SWIFTLINK_AIRTIME_SUBCATEGORIES"]
         ),
+        ...(process.env["SWIFTLINK_API_KEY"] ? { apiKey: process.env["SWIFTLINK_API_KEY"] } : {}),
+        ...(process.env["SWIFTLINK_EMAIL"] ? { email: process.env["SWIFTLINK_EMAIL"] } : {}),
+        ...(process.env["SWIFTLINK_PASSWORD"] ? { password: process.env["SWIFTLINK_PASSWORD"] } : {}),
         ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
       });
     case "ebills":

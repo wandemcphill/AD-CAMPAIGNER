@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createSwiftlinkAdapter } from "./vtu";
+import { createSwiftlinkAdapter, resetSwiftlinkCaches } from "./vtu";
 
 /**
  * Swiftlink's /get/plans returns GROUPS, not a flat plan list:
@@ -96,6 +96,12 @@ function adapterWith(
 
   return createSwiftlinkAdapter({ apiKey: "token", fetcher });
 }
+
+// The airtime subcategory cache is process-wide, so it would otherwise carry
+// one case's catalogue into the next.
+beforeEach(() => {
+  resetSwiftlinkCaches();
+});
 
 describe("Swiftlink listDataPlans", () => {
   it("parses the nested group response into flat plan offers", async () => {
@@ -222,5 +228,225 @@ describe("Swiftlink purchaseData", () => {
     const sent = new URLSearchParams(capture.body ?? "");
     expect(sent.get("subcategory_id")).toBe("1");
     expect(sent.get("plan_id")).toBe("1GB for 30 days");
+  });
+});
+
+/**
+ * Airtime subcategory_id used to be hand-configured via
+ * SWIFTLINK_AIRTIME_SUBCATEGORIES, and a purchase failed before it was even
+ * sent when that env var was missing — which it was, on every service. The same
+ * /get/plans response the data catalogue comes from also carries the airtime
+ * groups, so it is resolved rather than configured.
+ */
+function routingAdapter(payload: unknown = LIVE_PLANS) {
+  const calls: string[] = [];
+  const purchases: URLSearchParams[] = [];
+  const fetcher = vi.fn((url: string, init?: RequestInit) => {
+    const target = String(url);
+    calls.push(target);
+
+    if (target.includes("/purchase/airtime")) {
+      purchases.push(new URLSearchParams(init?.body instanceof URLSearchParams ? init.body.toString() : ""));
+
+      return Promise.resolve(new Response(JSON.stringify({ status: 1 }), { status: 200 }));
+    }
+
+    return Promise.resolve(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+  }) as unknown as typeof fetch;
+
+  return { calls, purchases, fetcher };
+}
+
+/**
+ * Swiftlink issues either a static dashboard token or an email/password login.
+ * The /login contract is assumed rather than verified (see swiftlinkLogin), so
+ * these pin the behaviour that does not depend on it: precedence, caching, and
+ * recovery when a token goes stale.
+ */
+describe("Swiftlink authentication", () => {
+  function loginAdapter(options: {
+    unauthorizedFirst?: boolean;
+    loginBody?: unknown;
+  } = {}) {
+    const calls: string[] = [];
+    const authorizations: Array<string | null> = [];
+    let served = 0;
+    const fetcher = vi.fn((url: string, init?: RequestInit) => {
+      const target = String(url);
+      calls.push(target);
+
+      if (target.endsWith("/login")) {
+        const body = options.loginBody ?? { token: `issued-${calls.filter((c) => c.endsWith("/login")).length}` };
+
+        return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+      }
+
+      authorizations.push(new Headers(init?.headers).get("authorization"));
+      served += 1;
+
+      if (options.unauthorizedFirst && served === 1) {
+        return Promise.resolve(new Response("", { status: 401 }));
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(LIVE_PLANS), { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    return { calls, authorizations, fetcher };
+  }
+
+  it("logs in with email and password when no api key is configured", async () => {
+    const { calls, authorizations, fetcher } = loginAdapter();
+    const adapter = createSwiftlinkAdapter({
+      email: "ops@fliptrybe.xyz",
+      password: "secret",
+      fetcher
+    });
+
+    await adapter.listDataPlans();
+
+    expect(calls[0]).toContain("/login");
+    expect(authorizations[0]).toBe("Bearer issued-1");
+  });
+
+  it("prefers a static api key and never calls login", async () => {
+    const { calls, authorizations, fetcher } = loginAdapter();
+    const adapter = createSwiftlinkAdapter({
+      apiKey: "dashboard-token",
+      email: "ops@fliptrybe.xyz",
+      password: "secret",
+      fetcher
+    });
+
+    await adapter.listDataPlans();
+
+    expect(calls.some((url) => url.endsWith("/login"))).toBe(false);
+    expect(authorizations[0]).toBe("Bearer dashboard-token");
+  });
+
+  it("re-authenticates once on a 401 rather than failing the call", async () => {
+    const { calls, authorizations, fetcher } = loginAdapter({ unauthorizedFirst: true });
+    const adapter = createSwiftlinkAdapter({
+      email: "ops@fliptrybe.xyz",
+      password: "secret",
+      fetcher
+    });
+
+    // The token lifetime is undocumented; expiry is discovered via the 401.
+    await expect(adapter.listDataPlans()).resolves.toHaveLength(8);
+    expect(calls.filter((url) => url.endsWith("/login"))).toHaveLength(2);
+    expect(authorizations).toEqual(["Bearer issued-1", "Bearer issued-2"]);
+  });
+
+  it("reuses a cached token across adapter instances", async () => {
+    const { calls, fetcher } = loginAdapter();
+
+    for (let i = 0; i < 3; i += 1) {
+      await createSwiftlinkAdapter({
+        email: "ops@fliptrybe.xyz",
+        password: "secret",
+        fetcher
+      }).listDataPlans();
+    }
+
+    expect(calls.filter((url) => url.endsWith("/login"))).toHaveLength(1);
+  });
+
+  it("reads a token nested under data, not just at the top level", async () => {
+    const { authorizations, fetcher } = loginAdapter({ loginBody: { data: { access_token: "nested" } } });
+    const adapter = createSwiftlinkAdapter({
+      email: "ops@fliptrybe.xyz",
+      password: "secret",
+      fetcher
+    });
+
+    await adapter.listDataPlans();
+
+    expect(authorizations[0]).toBe("Bearer nested");
+  });
+
+  it("says what is missing when neither credential is configured", async () => {
+    const { fetcher } = loginAdapter();
+    const adapter = createSwiftlinkAdapter({ fetcher });
+
+    await expect(adapter.listDataPlans()).rejects.toThrow(/SWIFTLINK_API_KEY/);
+  });
+});
+
+describe("Swiftlink purchaseAirtime", () => {
+  it("resolves subcategory_id from the catalogue with nothing configured", async () => {
+    const { purchases, fetcher } = routingAdapter();
+    const adapter = createSwiftlinkAdapter({ apiKey: "token", fetcher });
+
+    const result = await adapter.purchaseAirtime({
+      network: "MTN",
+      msisdn: "08140003288",
+      faceValueMinor: 50_000,
+      reference: "SWLAIR1"
+    });
+
+    // subcategory_id 8 is the MTN Airtime group in the live response.
+    expect(purchases[0]?.get("subcategory_id")).toBe("8");
+    expect(purchases[0]?.get("amount")).toBe("500.00");
+    expect(purchases[0]?.get("phonenumber")).toBe("08140003288");
+    expect(result.status).not.toBe("FAILED");
+  });
+
+  it("lets an explicit override beat the catalogue without fetching it", async () => {
+    const { calls, purchases, fetcher } = routingAdapter();
+    const adapter = createSwiftlinkAdapter({
+      apiKey: "token",
+      airtimeSubcategoryId: { MTN: "99" },
+      fetcher
+    });
+
+    await adapter.purchaseAirtime({
+      network: "MTN",
+      msisdn: "08140003288",
+      faceValueMinor: 50_000,
+      reference: "SWLAIR2"
+    });
+
+    expect(purchases[0]?.get("subcategory_id")).toBe("99");
+    expect(calls.some((url) => url.includes("/get/plans"))).toBe(false);
+  });
+
+  it("fails cleanly for a network the account cannot sell", async () => {
+    const { purchases, fetcher } = routingAdapter();
+    const adapter = createSwiftlinkAdapter({ apiKey: "token", fetcher });
+
+    // The live response carries an MTN airtime group and no GLO one.
+    const result = await adapter.purchaseAirtime({
+      network: "GLO",
+      msisdn: "08140003288",
+      faceValueMinor: 50_000,
+      reference: "SWLAIR3"
+    });
+
+    expect(result.status).toBe("FAILED");
+    expect(result.failureReason).toContain("GLO");
+    expect(purchases).toHaveLength(0);
+  });
+
+  it("caches the catalogue across adapters instead of re-pulling it per purchase", async () => {
+    const { calls, fetcher } = routingAdapter();
+
+    // buildAdapter constructs a fresh adapter per call in both the API and the
+    // worker, so the cache has to outlive the instance to be worth anything.
+    for (const reference of ["SWLAIR4", "SWLAIR5", "SWLAIR6"]) {
+      await createSwiftlinkAdapter({ apiKey: "token", fetcher }).purchaseAirtime({
+        network: "MTN",
+        msisdn: "08140003288",
+        faceValueMinor: 50_000,
+        reference
+      });
+    }
+
+    expect(calls.filter((url) => url.includes("/get/plans"))).toHaveLength(1);
+    expect(calls.filter((url) => url.includes("/purchase/airtime"))).toHaveLength(3);
   });
 });

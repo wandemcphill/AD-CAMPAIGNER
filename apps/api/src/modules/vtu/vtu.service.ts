@@ -223,17 +223,21 @@ export class VtuService {
             : {})
         });
       case "swiftlink":
-        // subcategory_id is required on every Swiftlink purchase and is not
-        // discoverable via their API — it comes off the dashboard. Supplied as
-        // "MTN:1,GLO:2,AIRTEL:3,NINE_MOBILE:4".
+        // SWIFTLINK_API_KEY (static dashboard token) is the normal path; email +
+        // password fall back to POST /login. The subcategory_id every purchase
+        // needs is resolved from /get/plans — the *_SUBCATEGORIES maps are
+        // overrides for when the catalogue disagrees with the account, and are
+        // expected to be unset.
         return createSwiftlinkAdapter({
-          apiKey: process.env["SWIFTLINK_API_KEY"] ?? "",
           dataSubcategoryId: parseSwiftlinkSubcategoryMap(
             process.env["SWIFTLINK_DATA_SUBCATEGORIES"]
           ),
           airtimeSubcategoryId: parseSwiftlinkSubcategoryMap(
             process.env["SWIFTLINK_AIRTIME_SUBCATEGORIES"]
           ),
+          ...(process.env["SWIFTLINK_API_KEY"] ? { apiKey: process.env["SWIFTLINK_API_KEY"] } : {}),
+          ...(process.env["SWIFTLINK_EMAIL"] ? { email: process.env["SWIFTLINK_EMAIL"] } : {}),
+          ...(process.env["SWIFTLINK_PASSWORD"] ? { password: process.env["SWIFTLINK_PASSWORD"] } : {}),
           ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
         });
       case "ebills":

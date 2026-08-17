@@ -1833,24 +1833,84 @@ export function createMockVtuAdapter(
 //
 // Webhook/response status codes: 1 = success, 0 = pending, 4 = failed, 2 = manually reversed.
 //
-// JUDGMENT CALL: the docs never document how `subcategory_id` (required on both
-// purchase/airtime and purchase/data) maps to network/product — there is no
-// discovery endpoint for it, only a bare example ("subcategory_id 10" for
-// airtime, "subcategory_id 1" for data). Rather than guess IDs, this adapter
-// requires them to be supplied via `config.airtimeSubcategoryId` /
-// `config.dataSubcategoryId` (network → id), which should be populated from
-// values obtained directly from the Swiftlink dashboard once a credential exists.
+// `subcategory_id` is required on both purchase/airtime and purchase/data, and
+// the docs never explain how it maps to network or product — they only show a
+// bare example. It is discoverable all the same: /get/plans returns every
+// product family as a group carrying its own subcategory_id and a title that
+// names the network, for airtime and data alike.
 //
-// Required env vars: SWIFTLINK_API_KEY, SWIFTLINK_BASE_URL
+//   { subcategory_id: 8,  title: "MTN",      category: "Airtime" }
+//   { subcategory_id: 1,  title: "MTN SME",  category: "Data", plan: [...] }
+//
+// So neither map has to be configured by hand:
+//   - data    — listDataPlans encodes "<subcategory_id>:<plan label>" into
+//               providerPlanId, because subcategory is per FAMILY (MTN SME 1,
+//               MTN BETA 47, MTN HYNET 45) and one network spans several.
+//   - airtime — resolved from the same response on first use and cached, since
+//               there is exactly one airtime group per network.
+//
+// config.airtimeSubcategoryId / config.dataSubcategoryId remain as manual
+// overrides for when Swiftlink's catalogue disagrees with what an account can
+// actually buy. Leave them unset unless you have a reason.
+//
+// Required env vars: SWIFTLINK_API_KEY. Optional: SWIFTLINK_BASE_URL.
 
 export interface SwiftlinkConfig {
-  apiKey: string;
+  /** Static bearer token from the dashboard. Takes precedence over email/password. */
+  apiKey?: string;
+  /** Dashboard login, used only when no apiKey is set. See swiftlinkLogin. */
+  email?: string;
+  password?: string;
   baseUrl?: string;
-  /** Network → Swiftlink subcategory_id for airtime. Not documented/discoverable via API — obtain from dashboard. */
+  /** Network → subcategory_id override for airtime. Resolved from /get/plans when unset. */
   airtimeSubcategoryId?: Partial<Record<VtuNetwork, string>>;
-  /** Network → Swiftlink subcategory_id for data. Not documented/discoverable via API — obtain from dashboard. */
+  /** Network → subcategory_id override for data. Normally carried in providerPlanId instead. */
   dataSubcategoryId?: Partial<Record<VtuNetwork, string>>;
   fetcher?: typeof fetch;
+}
+
+interface SwiftlinkPlanGroup {
+  subcategory_id?: number | string;
+  title?: string;
+  category?: string;
+  plan?: Array<{ plan?: string; amount?: number | string }>;
+}
+
+/**
+ * Airtime subcategory ids, cached across adapter instances.
+ *
+ * VtuService.buildAdapter and the worker's buildAdapter both construct a fresh
+ * adapter per call, so an instance-level cache would mean re-pulling the entire
+ * catalogue on every airtime purchase — a large response on a money path. These
+ * ids are product families that effectively never change, so a process-wide
+ * cache with a generous TTL is the right shape.
+ *
+ * Keyed on base URL rather than credential: subcategory ids are global to
+ * Swiftlink's catalogue, not per-account, so two accounts may share an entry —
+ * and it keeps API keys out of a long-lived map.
+ */
+const swiftlinkAirtimeSubcategories = new Map<
+  string,
+  { resolvedAt: number; map: Partial<Record<VtuNetwork, string>> }
+>();
+const swiftlinkSubcategoryTtlMs = 30 * 60 * 1000;
+
+/**
+ * Tokens from POST /login, cached across adapter instances for the same reason
+ * the subcategories are. Keyed on base URL + email because unlike a subcategory
+ * id a token is per-account; the password is never part of the key.
+ *
+ * The docs do not state a lifetime, so this does not try to guess one: entries
+ * are held briefly and, more importantly, dropped and re-fetched on the first
+ * 401. Expiry is discovered rather than assumed.
+ */
+const swiftlinkTokens = new Map<string, { issuedAt: number; token: string }>();
+const swiftlinkTokenTtlMs = 30 * 60 * 1000;
+
+/** Test seam — both caches are process-wide and would otherwise leak between cases. */
+export function resetSwiftlinkCaches() {
+  swiftlinkAirtimeSubcategories.clear();
+  swiftlinkTokens.clear();
 }
 
 /**
@@ -1935,27 +1995,161 @@ function mapSwiftlinkStatus(status: unknown): VtuSubmitStatus {
 export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdapter {
   const base = (config.baseUrl ?? "https://swiftlinkng.com/api").replace(/\/$/, "");
   const f = config.fetcher ?? fetch;
-  const authHeaders = {
-    Authorization: `Bearer ${config.apiKey}`,
-    Accept: "application/json"
-  };
+  const tokenCacheKey = `${base}|${config.email ?? ""}`;
+
+  /**
+   * UNVERIFIED CONTRACT — no Swiftlink credential has been exercised against
+   * /login, and the docs are not in this repo. Assumed here: form-encoded
+   * { email, password } in, a token somewhere in the JSON out. The response is
+   * read tolerantly (token / access_token, bare or nested under data) so a
+   * plausible variation still works.
+   *
+   * Only reached when no apiKey is configured, so a wrong guess degrades to
+   * "login mode does not work" rather than affecting the static-token path.
+   * If Swiftlink rejects it, this function is the single place to correct.
+   */
+  async function swiftlinkLogin(email: string, password: string): Promise<string> {
+    const res = await f(`${base}/login`, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: new URLSearchParams({ email, password })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Swiftlink POST /login → HTTP ${res.status}`);
+    }
+
+    const body = (await res.json()) as {
+      token?: unknown;
+      access_token?: unknown;
+      data?: { token?: unknown; access_token?: unknown };
+    };
+    const token =
+      asString(body.token) ||
+      asString(body.access_token) ||
+      asString(body.data?.token) ||
+      asString(body.data?.access_token);
+
+    if (!token) {
+      throw new Error("Swiftlink /login returned no token");
+    }
+
+    return token;
+  }
+
+  async function bearerToken(forceRefresh = false): Promise<string> {
+    // A static dashboard token wins and never expires as far as we know.
+    if (config.apiKey) {
+      return config.apiKey;
+    }
+    if (!config.email || !config.password) {
+      throw new Error("Swiftlink needs SWIFTLINK_API_KEY, or SWIFTLINK_EMAIL and SWIFTLINK_PASSWORD");
+    }
+
+    const cached = swiftlinkTokens.get(tokenCacheKey);
+    if (!forceRefresh && cached && Date.now() - cached.issuedAt < swiftlinkTokenTtlMs) {
+      return cached.token;
+    }
+
+    const token = await swiftlinkLogin(config.email, config.password);
+    swiftlinkTokens.set(tokenCacheKey, { issuedAt: Date.now(), token });
+
+    return token;
+  }
+
+  async function authHeaders(forceRefresh = false) {
+    return {
+      Authorization: `Bearer ${await bearerToken(forceRefresh)}`,
+      Accept: "application/json"
+    };
+  }
+
+  /**
+   * Runs a request, and on a 401 discards the cached token and tries once more.
+   * That is what lets the unknown token lifetime be harmless — an expired token
+   * costs one retry rather than a failed purchase. Retrying a POST is safe here
+   * because a 401 means the request was rejected before it did anything, and
+   * every purchase carries the caller's customer_reference for idempotency.
+   */
+  async function withAuthRetry(send: (headers: Record<string, string>) => Promise<Response>) {
+    let res = await send(await authHeaders());
+
+    if (res.status === 401 && !config.apiKey) {
+      swiftlinkTokens.delete(tokenCacheKey);
+      res = await send(await authHeaders(true));
+    }
+
+    return res;
+  }
 
   async function swiftGet(path: string): Promise<unknown> {
-    const res = await f(`${base}${path}`, { headers: authHeaders });
+    const res = await withAuthRetry((headers) => f(`${base}${path}`, { headers }));
     if (!res.ok) throw new Error(`Swiftlink GET ${path} → HTTP ${res.status}`);
     return res.json();
   }
 
   // Swiftlink's docs specify "Body formdata" for POST requests, not JSON.
   async function swiftPost(path: string, body: Record<string, string>): Promise<unknown> {
-    const form = new URLSearchParams(body);
-    const res = await f(`${base}${path}`, {
-      method: "POST",
-      headers: authHeaders,
-      body: form
-    });
+    const res = await withAuthRetry((headers) =>
+      f(`${base}${path}`, {
+        method: "POST",
+        headers,
+        // Rebuilt per attempt: a URLSearchParams body is a stream that cannot be
+        // replayed once the first attempt has consumed it.
+        body: new URLSearchParams(body)
+      })
+    );
     if (!res.ok) throw new Error(`Swiftlink POST ${path} → HTTP ${res.status}`);
     return res.json();
+  }
+
+  async function fetchPlanGroups(): Promise<SwiftlinkPlanGroup[]> {
+    const res = (await swiftGet("/get/plans")) as { data?: SwiftlinkPlanGroup[] };
+
+    return res.data ?? [];
+  }
+
+  /**
+   * Airtime groups look like { subcategory_id: 8, title: "MTN", category: "Airtime" }
+   * — one per network, no nested plan list. First match wins; a network absent
+   * from the catalogue is a network this account cannot sell.
+   */
+  async function resolveAirtimeSubcategories() {
+    const map: Partial<Record<VtuNetwork, string>> = {};
+
+    for (const group of await fetchPlanGroups()) {
+      if (String(group.category ?? "").toLowerCase() !== "airtime") continue;
+
+      const network = swiftlinkNetworkFromTitle(asString(group.title).toUpperCase());
+      const subcategoryId = asString(group.subcategory_id);
+
+      if (network && subcategoryId && !map[network]) {
+        map[network] = subcategoryId;
+      }
+    }
+
+    return map;
+  }
+
+  async function airtimeSubcategoryFor(network: VtuNetwork) {
+    // An explicit override always wins — that is the point of configuring one.
+    const configured = config.airtimeSubcategoryId?.[network];
+    if (configured) {
+      return configured;
+    }
+
+    const cached = swiftlinkAirtimeSubcategories.get(base);
+    if (cached && Date.now() - cached.resolvedAt < swiftlinkSubcategoryTtlMs) {
+      return cached.map[network];
+    }
+
+    // A failure here propagates rather than resolving to FAILED: a catalogue
+    // fetch that times out is transient and worth a retry, whereas marking the
+    // order failed would refund a customer over a blip.
+    const map = await resolveAirtimeSubcategories();
+    swiftlinkAirtimeSubcategories.set(base, { resolvedAt: Date.now(), map });
+
+    return map[network];
   }
 
   // Researched discount bps per network (RESEARCHED_PUBLIC_PRICE — not verified via live API).
@@ -1995,18 +2189,11 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
       // (MTN SME = 1, MTN SPECIAL = 2, MTN DIRECT = 25 ...) and plan_id is the
       // plan's own label string ("1GB for 30 days"). Keying subcategory by
       // network alone cannot work — one network spans several families.
-      const res = (await swiftGet("/get/plans")) as {
-        data?: Array<{
-          subcategory_id?: number | string;
-          title?: string;
-          category?: string;
-          plan?: Array<{ plan?: string; amount?: number | string }>;
-        }>;
-      };
+      const groups = await fetchPlanGroups();
 
       const offers: VtuPlanOffer[] = [];
 
-      for (const group of res.data ?? []) {
+      for (const group of groups) {
         if (String(group.category ?? "").toLowerCase() !== "data") continue;
 
         const title = asString(group.title).toUpperCase();
@@ -2040,12 +2227,12 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
     },
 
     async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
-      const subcategoryId = config.airtimeSubcategoryId?.[network];
+      const subcategoryId = await airtimeSubcategoryFor(network);
       if (!subcategoryId) {
         return {
           providerReference: reference,
           status: "FAILED",
-          failureReason: `Swiftlink airtime subcategory_id not configured for ${network}`
+          failureReason: `Swiftlink does not offer airtime for ${network} on this account`
         };
       }
       const res = (await swiftPost("/purchase/airtime", {

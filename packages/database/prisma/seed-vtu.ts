@@ -631,8 +631,9 @@ const PROVIDER_CONFIGS: Array<{
     //
     // Status stays DISCOVERED: VtuRouterService only selects ACTIVE/PRODUCTION_READY/
     // SANDBOX, so cable/electricity resolve through the VtuProviderRoute table instead.
-    // SWIFTLINK_API_KEY is the only value that has to be supplied — the subcategory_id
-    // every purchase needs is resolved from /get/plans rather than configured.
+    // SWIFTLINK_API_KEY is the only value that has to be supplied (or SWIFTLINK_EMAIL +
+    // SWIFTLINK_PASSWORD, which log in for a token instead) — the subcategory_id every
+    // purchase needs is resolved from /get/plans rather than configured.
     status: "DISCOVERED",
     enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY"],
     priority: 60
