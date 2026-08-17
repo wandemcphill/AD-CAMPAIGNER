@@ -978,7 +978,7 @@ function payscribeDetails(payload: unknown): Record<string, unknown> {
   const message = envelope.message;
   if (message?.details && typeof message.details === "object") return message.details;
   if (message?.data && typeof message.data === "object") return message.data;
-  if (message && typeof message === "object") return message as Record<string, unknown>;
+  if (message && typeof message === "object") return message;
   return payload as Record<string, unknown>;
 }
 
