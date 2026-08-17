@@ -35,6 +35,7 @@ export type AuthCredentials = {
   password: string;
   confirmPassword?: string;
   displayName?: string;
+  email?: string;
   totpCode?: string;
 };
 

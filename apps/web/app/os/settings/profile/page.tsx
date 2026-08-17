@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarCheck, Save, Upload, UserCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CalendarCheck, Mail, Save, Upload, UserCircle } from "lucide-react";
 
 import { Button } from "@fliptrybe/ui";
 import { Input } from "@fliptrybe/ui/components";
@@ -9,7 +9,7 @@ import { apiRequest } from "../../../lib/api-client";
 import { useApiSession } from "../../../lib/use-session";
 
 export default function ProfileSettingsPage() {
-  const { session } = useApiSession();
+  const { refresh, session } = useApiSession();
   const [displayName, setDisplayName] = useState(session?.user.name ?? "");
   const [username, setUsername] = useState(session?.user.username ?? "");
   const [bio, setBio] = useState("");
@@ -17,6 +17,44 @@ export default function ProfileSettingsPage() {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [dobSaving, setDobSaving] = useState(false);
   const [dobMessage, setDobMessage] = useState<{ tone: "ok" | "error"; text: string }>();
+
+  const currentEmail = session?.user.email;
+  const [email, setEmail] = useState("");
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailMessage, setEmailMessage] = useState<{ tone: "ok" | "error"; text: string }>();
+
+  // The session arrives after first paint, so seed the field once it lands
+  // rather than leaving an existing address invisible in an empty input.
+  useEffect(() => {
+    if (currentEmail) {
+      setEmail(currentEmail);
+    }
+  }, [currentEmail]);
+
+  async function saveEmail() {
+    if (!email.trim()) {
+      setEmailMessage({ tone: "error", text: "Please enter an email address." });
+      return;
+    }
+    setEmailSaving(true);
+    setEmailMessage(undefined);
+    try {
+      await apiRequest("me/email", {
+        method: "PATCH",
+        body: JSON.stringify({ email: email.trim().toLowerCase() })
+      });
+      setEmailMessage({ tone: "ok", text: "Recovery email saved. You can now reset a forgotten password." });
+      // Pull the new address into the session so a reload shows it as current.
+      await refresh();
+    } catch (caught) {
+      setEmailMessage({
+        tone: "error",
+        text: caught instanceof Error ? caught.message : "Could not save your email address."
+      });
+    } finally {
+      setEmailSaving(false);
+    }
+  }
 
   async function saveDateOfBirth() {
     if (!dateOfBirth) {
@@ -81,6 +119,56 @@ export default function ProfileSettingsPage() {
         <div className="mt-6 flex justify-end">
           <Button><Save className="size-4" /> Save profile</Button>
         </div>
+      </div>
+
+      {/* Recovery email. Sign-in stays username-based — this address exists only so
+          /forgot-password has somewhere to send a reset link. Accounts created before
+          signup collected an email have none, and for them password reset silently
+          does nothing, so this card is the fix for those users. */}
+      <div className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-6">
+        <div className="flex items-center gap-2">
+          <Mail className="size-5 text-[var(--ft-accent)]" />
+          <h2 className="font-semibold">Recovery email</h2>
+        </div>
+        <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+          You sign in with your username, not this address. We use it only to send you a
+          password reset link — without one, a forgotten password cannot be recovered.
+        </p>
+
+        {!currentEmail ? (
+          <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-amber)]/30 bg-[var(--ft-amber-subtle)] px-4 py-3 text-sm text-[var(--ft-text-secondary)]">
+            No recovery email is set on this account yet.
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-wrap items-end gap-3">
+          <div className="w-full max-w-[320px]">
+            <Input
+              autoComplete="email"
+              id="recovery-email"
+              label="Email address"
+              onChange={(e) => setEmail(e.currentTarget.value)}
+              placeholder="you@example.com"
+              type="email"
+              value={email}
+            />
+          </div>
+          <Button disabled={emailSaving} onClick={() => void saveEmail()}>
+            <Save className="size-4" /> {emailSaving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+
+        {emailMessage ? (
+          <div
+            className={
+              emailMessage.tone === "ok"
+                ? "mt-3 text-sm text-[var(--ft-green)]"
+                : "mt-3 text-sm text-[var(--ft-red)]"
+            }
+          >
+            {emailMessage.text}
+          </div>
+        ) : null}
       </div>
 
       {/* Date of birth — required to unlock age-restricted features (18+) such as

@@ -79,6 +79,7 @@ interface RegistrationInput {
   password: string;
   confirmPassword: string;
   displayName?: string;
+  email?: string;
 }
 
 interface LoginInput {
@@ -265,6 +266,29 @@ function normalizePassword(value: unknown) {
   return value;
 }
 
+/**
+ * The account's recovery address. Sign-in is username-based and always will be,
+ * so this is never an identifier you log in with — it is the only channel by
+ * which requestPasswordReset can reach a locked-out customer, which is why an
+ * account without one has no recovery path at all.
+ *
+ * Deliberately permissive: one @, no whitespace, a dot in the domain. Anything
+ * stricter rejects addresses that are perfectly deliverable, and the real proof
+ * that an address works is the reset mail arriving, not a regex.
+ */
+export function normalizeEmail(value: string) {
+  const email = value.trim().toLowerCase();
+
+  if (email.length > 254) {
+    throw new BadRequestException("email must be 254 characters or fewer.");
+  }
+  if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(email)) {
+    throw new BadRequestException("email must be a valid email address.");
+  }
+
+  return email;
+}
+
 function normalizeDisplayName(value: string, field: string) {
   const trimmed = value.trim().replace(/\s+/g, " ");
 
@@ -307,12 +331,14 @@ function parseRegistrationInput(body: unknown): RegistrationInput {
   }
 
   const displayName = optionalString(record, "displayName");
+  const email = optionalString(record, "email");
 
   return {
     username,
     password,
     confirmPassword,
-    ...(displayName === undefined ? {} : { displayName: normalizeDisplayName(displayName, "displayName") })
+    ...(displayName === undefined ? {} : { displayName: normalizeDisplayName(displayName, "displayName") }),
+    ...(email === undefined ? {} : { email: normalizeEmail(email) })
   };
 }
 
@@ -336,7 +362,7 @@ function parseLoginInput(body: unknown): LoginInput {
   };
 }
 
-function isUniqueConstraintError(error: unknown) {
+export function isUniqueConstraintError(error: unknown) {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -401,7 +427,12 @@ export class AuthSessionService {
           data: {
             username: input.username,
             name: displayName,
-            email: null,
+            // Optional, and never pre-checked for uniqueness here: a "that email
+            // is taken" response on an unauthenticated endpoint tells an attacker
+            // who banks with us. A collision falls through to P2002 below and the
+            // deliberately vague conflict message; the signed-in setMyEmail can
+            // afford to be specific because the caller is already authenticated.
+            email: input.email ?? null,
             displayName,
             status: "ACTIVE",
             passwordHash,

@@ -14,6 +14,7 @@ import {
   Query,
   Req
 } from "@nestjs/common";
+import { Throttle } from "@nestjs/throttler";
 
 import { publicFeatureFlags } from "@fliptrybe/feature-flags";
 
@@ -91,14 +92,21 @@ export class AuthController {
     return this.auth.getSession(headers);
   }
 
+  // Credential endpoints get their own ceilings — the global 100/min is an
+  // availability guard, not brute-force protection. These are per client IP
+  // (see ClientIpThrottlerGuard) and deliberately loose enough to survive the
+  // carrier-grade NAT most Nigerian mobile customers sit behind, where many
+  // real people legitimately share one public address.
   @Post("register")
   @Public()
+  @Throttle({ short: { limit: 10, ttl: 60_000 } })
   register(@Body() body: unknown, @Headers() headers: HeaderBag) {
     return this.auth.register(body, headers);
   }
 
   @Post("login")
   @Public()
+  @Throttle({ short: { limit: 20, ttl: 60_000 } })
   login(@Body() body: unknown, @Headers() headers: HeaderBag) {
     return this.auth.login(body, headers);
   }
@@ -113,6 +121,7 @@ export class AuthController {
   // issuance limits and enumeration-safe responses live in the service.
   @Post("password/forgot")
   @Public()
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   forgotPassword(@Body() body: { identifier?: string }, @Headers() headers: HeaderBag) {
     const forwardedFor = headers["x-forwarded-for"];
     const requestIp = (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor)
@@ -124,6 +133,7 @@ export class AuthController {
 
   @Post("password/reset")
   @Public()
+  @Throttle({ short: { limit: 10, ttl: 60_000 } })
   resetPassword(@Body() body: { token?: string; password?: string }) {
     return this.auth.resetPassword(body?.token ?? "", body?.password ?? "");
   }
@@ -324,6 +334,15 @@ export class MeController {
       workspaceContextFromRequest(request),
       body?.dateOfBirth
     );
+  }
+
+  // The recovery address for an account that has none. Throttled tighter than the
+  // global default because repeated calls with different addresses are how an
+  // authenticated attacker would enumerate which emails already have accounts.
+  @Patch("email")
+  @Throttle({ short: { limit: 10, ttl: 60_000 } })
+  setEmail(@Body() body: { email?: string }, @Req() request: WorkspaceContextRequest) {
+    return this.platform.setMyEmail(workspaceContextFromRequest(request), body?.email ?? "");
   }
 }
 

@@ -294,6 +294,36 @@ export function optionalAuthenticatedContextFromHeaders(headers: HeaderBag) {
   }
 }
 
+/**
+ * Best available address for the client that actually made the request.
+ *
+ * Nothing enables Express `trust proxy`, so `req.ip` is whichever Render/
+ * Cloudflare front-end forwarded the request — a handful of rotating
+ * infrastructure addresses shared by every customer. Keying rate limits on that
+ * both fragments one attacker's attempts across several buckets and lets one
+ * abusive client exhaust the budget for everyone behind the same front-end.
+ *
+ * `cf-connecting-ip` is preferred and is the reliable one here: every host in
+ * this deployment resolves through Cloudflare, which overwrites the header at
+ * the edge, so a client cannot forge it. The `x-forwarded-for` fallback is only
+ * for a deployment that is not Cloudflare-fronted, where the leftmost entry is
+ * client-supplied and therefore spoofable — no worse than having no tracker at
+ * all, but do not treat it as a security boundary on its own.
+ */
+export function clientIpFromHeaders(headers: HeaderBag) {
+  const cloudflare = header(headers, "cf-connecting-ip") ?? header(headers, "true-client-ip");
+
+  if (cloudflare) {
+    return cloudflare;
+  }
+
+  const forwarded = header(headers, "x-forwarded-for")
+    ?.split(",")[0]
+    ?.trim();
+
+  return forwarded && forwarded.length > 0 ? forwarded : undefined;
+}
+
 export function metadataContextFromHeaders(headers: HeaderBag): RequestMetadataContext {
   const idempotencyKey = header(headers, "idempotency-key");
   const ipAddress = header(headers, "x-forwarded-for")?.split(",")[0]?.trim();

@@ -1,9 +1,9 @@
-import { ConflictException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ConflictException, UnauthorizedException } from "@nestjs/common";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { PrismaService } from "./prisma.service";
 import type { NotificationsService } from "./notifications/notifications.service";
-import { AuthSessionService } from "./auth-session.service";
+import { AuthSessionService, normalizeEmail } from "./auth-session.service";
 
 // AuthSessionService only reaches for notifications on the password-reset path,
 // which these session tests never exercise.
@@ -725,5 +725,81 @@ describe("AuthSessionService", () => {
     await expect(
       service.getWorkspaceContext({ authorization: `Bearer ${issued.token}` })
     ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  // Registration stored `email: null` unconditionally for a long time, which made
+  // requestPasswordReset a silent no-op for every account ever created — the
+  // reason these cases exist.
+  it("stores a normalized recovery email when registration supplies one", async () => {
+    const { prisma, users } = createPrisma({ seedDefault: false });
+    const service = new AuthSessionService(prisma, stubNotifications());
+
+    const registered = await service.register(
+      {
+        username: "recoverable",
+        password: "correct-password",
+        confirmPassword: "correct-password",
+        email: "  Ada@Example.COM  "
+      },
+      {}
+    );
+
+    expect([...users.values()][0]?.email).toBe("ada@example.com");
+    expect(registered.user).toMatchObject({ email: "ada@example.com" });
+  });
+
+  it("still registers without an email, leaving the account unrecoverable by design", async () => {
+    const { prisma, users } = createPrisma({ seedDefault: false });
+    const service = new AuthSessionService(prisma, stubNotifications());
+
+    await service.register(
+      {
+        username: "nomail",
+        password: "correct-password",
+        confirmPassword: "correct-password"
+      },
+      {}
+    );
+
+    expect([...users.values()][0]?.email).toBeNull();
+  });
+
+  it("rejects a malformed registration email rather than storing it", async () => {
+    const { prisma, users } = createPrisma({ seedDefault: false });
+    const service = new AuthSessionService(prisma, stubNotifications());
+
+    await expect(
+      service.register(
+        {
+          username: "badmail",
+          password: "correct-password",
+          confirmPassword: "correct-password",
+          email: "ada@localhost"
+        },
+        {}
+      )
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(users.size).toBe(0);
+  });
+});
+
+describe("normalizeEmail", () => {
+  it("lowercases and trims deliverable addresses", () => {
+    expect(normalizeEmail("  Tunde.Okoro+ads@Gmail.com ")).toBe("tunde.okoro+ads@gmail.com");
+    expect(normalizeEmail("a@b.co.uk")).toBe("a@b.co.uk");
+  });
+
+  it.each([
+    ["no at sign", "adaexample.com"],
+    ["no dot in the domain", "ada@localhost"],
+    ["two at signs", "ada@@example.com"],
+    ["embedded whitespace", "ada smith@example.com"],
+    ["empty", ""]
+  ])("rejects %s", (_label, value) => {
+    expect(() => normalizeEmail(value)).toThrow(BadRequestException);
+  });
+
+  it("rejects an address longer than the 254-character limit", () => {
+    expect(() => normalizeEmail(`${"a".repeat(250)}@example.com`)).toThrow(BadRequestException);
   });
 });
