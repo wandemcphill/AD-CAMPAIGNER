@@ -18,6 +18,9 @@ const USERNAME_MIN = 3;
 const USERNAME_MAX = 32;
 const PASSWORD_MIN = 8;
 
+// Mirrors normalizeEmail in the API's auth-session service.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
+
 const BENEFITS = [
   "Buy airtime, data and pay bills in seconds",
   "Send invoices and payment links",
@@ -45,6 +48,7 @@ export default function RegisterPage() {
   const [migrateContact, setMigrateContact] = useState<string | null>(null);
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -74,6 +78,12 @@ export default function RegisterPage() {
           ? undefined
           : "Letters, numbers, periods, underscores and hyphens only";
 
+  const normalizedEmail = email.trim().toLowerCase();
+  const emailError =
+    normalizedEmail.length === 0 || EMAIL_PATTERN.test(normalizedEmail)
+      ? undefined
+      : "Enter a valid email address";
+
   const passwordError =
     password.length === 0 || password.length >= PASSWORD_MIN
       ? undefined
@@ -89,6 +99,7 @@ export default function RegisterPage() {
     password.length > 0 &&
     confirmPassword.length > 0 &&
     !usernameError &&
+    !emailError &&
     !passwordError &&
     !confirmError;
 
@@ -102,7 +113,8 @@ export default function RegisterPage() {
         username: normalizedUsername,
         password,
         confirmPassword,
-        ...(displayName.trim() ? { displayName: displayName.trim() } : {})
+        ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+        ...(normalizedEmail ? { email: normalizedEmail } : {})
       });
 
       if (migrateContact) {
@@ -207,6 +219,21 @@ export default function RegisterPage() {
                   placeholder="Tunde Okoro"
                   type="text"
                   value={displayName}
+                />
+
+                {/* Not a sign-in identifier — you always sign in with your username.
+                    This is the only way we can reach you if you forget your password,
+                    so an account without one cannot be recovered. */}
+                <Input
+                  autoComplete="email"
+                  error={emailError}
+                  hint="Optional, but it's the only way to reset a forgotten password"
+                  id="email"
+                  label="Email"
+                  onChange={(e) => setEmail(e.currentTarget.value)}
+                  placeholder="tunde@example.com"
+                  type="email"
+                  value={email}
                 />
 
                 <div className="grid gap-1.5">

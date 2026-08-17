@@ -1,7 +1,7 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
-import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { ScheduleModule } from "@nestjs/schedule";
 
 import {
@@ -42,6 +42,7 @@ import { PlatformService } from "./platform.service";
 import { AuthSessionService } from "./auth-session.service";
 import { AgeGuard } from "./age.guard";
 import { AuthorizationGuard } from "./authorization.guard";
+import { ClientIpThrottlerGuard } from "./client-ip.throttler-guard";
 import { FeatureFlagGuard } from "./feature-flag.guard";
 import { RealtimeGateway } from "./realtime.gateway";
 import { PrismaModule } from "./prisma.module";
@@ -158,7 +159,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     RealtimeGateway,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard
+      useClass: ClientIpThrottlerGuard
     },
     {
       provide: APP_GUARD,

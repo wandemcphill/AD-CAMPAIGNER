@@ -534,6 +534,141 @@ async function checkApiHealth(config: SmokeConfig) {
   });
 }
 
+/**
+ * Verifies a browser loading the real site can actually reach /v1/auth/login.
+ *
+ * If the origin the web app is served from is missing from FRONTEND_URLS, the
+ * preflight comes back 204 with no Access-Control-Allow-Origin and every
+ * customer is locked out of both signup and login — while the API keeps
+ * answering 200 to curl, so every other check in this file still passes. That
+ * combination is why this needs its own check.
+ *
+ * The origin is resolved by following APP_URL's redirects instead of trusting
+ * APP_URL directly, because that redirect is exactly how this breaks: the apex
+ * 301s to www, so the Origin browsers send is not the one anybody configured.
+ */
+async function checkAuthCorsAllowsServedOrigin(config: SmokeConfig) {
+  const name = "Auth CORS allows the served web origin";
+  const url = withPath(config.apiUrl, "/v1/auth/login");
+  const appUrl = config.appUrl;
+
+  if (!appUrl) {
+    return skipResult(name, "APP_URL is not set.", url);
+  }
+
+  return runCheck(name, url, async () => {
+    const landing = await fetchWithTimeout(appUrl, { method: "GET", redirect: "follow" }, config.timeoutMs);
+    await readBody(landing);
+
+    const servedOrigin = new URL(landing.url).origin;
+    const preflight = await fetchWithTimeout(
+      url,
+      {
+        method: "OPTIONS",
+        redirect: "manual",
+        headers: {
+          origin: servedOrigin,
+          "access-control-request-method": "POST",
+          "access-control-request-headers": "content-type"
+        }
+      },
+      config.timeoutMs
+    );
+    await readBody(preflight);
+
+    const allowOrigin = preflight.headers.get("access-control-allow-origin");
+
+    if (!allowOrigin) {
+      throw new Error(
+        `Preflight from ${servedOrigin} returned no Access-Control-Allow-Origin — browsers will block signup and login. Add ${servedOrigin} to FRONTEND_URLS on the API service.`
+      );
+    }
+    if (allowOrigin !== "*" && allowOrigin !== servedOrigin) {
+      throw new Error(
+        `Preflight from ${servedOrigin} was allowed for ${allowOrigin} instead — browsers will block signup and login.`
+      );
+    }
+
+    return {
+      name,
+      status: "PASS",
+      detail: `Preflight from ${servedOrigin} is allowed.`,
+      httpStatus: preflight.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+async function readRemainingShort(url: URL, config: SmokeConfig) {
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      redirect: "manual",
+      // Load-bearing: the stock tracker keys on the Render front-end that
+      // forwarded the request, and a keep-alive socket pins every request to
+      // one front-end. Over a reused connection the broken tracker looks
+      // perfectly healthy — 99 → 98 → 97 → 96 → 95 — and this check passes
+      // against a deployment that has no working rate limiting at all. Forcing
+      // a fresh connection per request is what makes the bug observable.
+      headers: { connection: "close" }
+    },
+    config.timeoutMs
+  );
+  await readBody(response);
+
+  const header = response.headers.get("x-ratelimit-remaining-short");
+  const remaining = header === null ? Number.NaN : Number(header);
+
+  return Number.isFinite(remaining) ? remaining : undefined;
+}
+
+/**
+ * Proves the rate limiter is counting the caller, not the proxy in front of it.
+ *
+ * With the stock ThrottlerGuard tracker, six requests from one client over
+ * separate connections came back 93 → 99 → 94 → 92 → 91 → 99: each connection
+ * landed on a different Render front-end and got that front-end's bucket. An
+ * attacker who reconnects therefore gets a fresh allowance every time, while
+ * unrelated customers routed through one front-end share a budget. One client
+ * must burn down exactly one bucket no matter how it connects.
+ */
+async function checkRateLimitTracksClient(config: SmokeConfig) {
+  const name = "Rate limiter tracks the client, not the proxy";
+  const url = withPath(config.apiUrl, "/v1/health");
+
+  return runCheck(name, url, async () => {
+    // Two attempts: a burst that straddles the 60s window boundary legitimately
+    // sees the counter reset, and that is not the failure this is looking for.
+    let observed: Array<number | undefined> = [];
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      observed = [];
+      for (let request = 0; request < 5; request += 1) {
+        observed.push(await readRemainingShort(url, config));
+      }
+
+      if (observed.some((value) => value === undefined)) {
+        throw new Error(
+          "No x-ratelimit-remaining-short header — the global throttler is not applying to /v1/health."
+        );
+      }
+      if (observed.every((value, index) => index === 0 || Number(value) < Number(observed[index - 1]))) {
+        return {
+          name,
+          status: "PASS" as const,
+          detail: `Counter decremented per request (${observed.join(" → ")}).`,
+          target: displayUrl(url)
+        };
+      }
+    }
+
+    throw new Error(
+      `Counter did not decrement per request (${observed.join(" → ")}) — requests from one client are landing in different buckets, so /v1/auth/login is not actually rate limited per caller.`
+    );
+  });
+}
+
 async function checkJsonArrayRoute(config: SmokeConfig, name: string, path: string) {
   const url = withPath(config.apiUrl, path);
 
@@ -1347,6 +1482,8 @@ async function main() {
   const results: CheckResult[] = [];
 
   results.push(await checkApiHealth(config));
+  results.push(await checkAuthCorsAllowsServedOrigin(config));
+  results.push(await checkRateLimitTracksClient(config));
   results.push(await checkStaticApp("Web app availability", config.appUrl, config));
   results.push(await checkStaticApp("Admin app availability", config.adminUrl, config));
   for (const route of webRoutes) {

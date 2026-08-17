@@ -72,6 +72,7 @@ import type {
   UpdateGrowthServiceDto
 } from "./platform.dtos";
 import { AiBrainClient } from "./ai-brain.client";
+import { isUniqueConstraintError, normalizeEmail } from "./auth-session.service";
 import { PrismaService } from "./prisma.service";
 import { NotificationsService } from "./notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "./request-context";
@@ -482,6 +483,72 @@ export class PlatformService {
     });
 
     return { dateOfBirth: updated.dateOfBirth?.toISOString().slice(0, 10) ?? null };
+  }
+
+  /**
+   * Sets the signed-in user's recovery email. Accounts created before this
+   * existed have `email: null`, which makes requestPasswordReset a silent no-op
+   * — so for those users this endpoint is the only thing standing between a
+   * forgotten password and a support ticket.
+   *
+   * Audited, unlike date of birth: changing the recovery address changes who can
+   * take the account over, so it belongs in the trail next to suspensions.
+   */
+  async setMyEmail(context: AuthenticatedRequestContext, rawEmail: string) {
+    const userId = context.userId;
+    if (!userId) {
+      throw new BadRequestException("You must be signed in to update your profile.");
+    }
+
+    const email = normalizeEmail(rawEmail);
+    const existing = await this.db.user.findFirst({
+      where: { email, NOT: { id: userId } },
+      select: { id: true }
+    });
+
+    if (existing) {
+      throw new ConflictException("That email address is already linked to another account.");
+    }
+
+    const previous = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { email: true }
+    });
+
+    let updated: { email: string | null };
+    try {
+      updated = await this.db.user.update({
+        where: { id: userId },
+        data: {
+          email,
+          // Setting an address does not prove the customer owns it. Reset mail is
+          // still delivered there — that is the point — but nothing downstream may
+          // treat this as a verified address until a confirmation flow exists.
+          emailVerifiedAt: null
+        },
+        select: { email: true }
+      });
+    } catch (error) {
+      // Lost the race against a concurrent signup claiming the same address.
+      if (isUniqueConstraintError(error)) {
+        throw new ConflictException("That email address is already linked to another account.");
+      }
+
+      throw error;
+    }
+
+    await this.db.auditLog.create({
+      data: {
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+        actorUserId: userId,
+        action: "user.email_changed",
+        entityType: "User",
+        entityId: userId,
+        metadata: { hadPreviousEmail: Boolean(previous?.email) }
+      }
+    });
+
+    return { email: updated.email };
   }
 
   getHealth() {

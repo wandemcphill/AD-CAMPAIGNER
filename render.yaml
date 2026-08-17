@@ -33,8 +33,13 @@ services:
         value: https://ft-campaigner-api-fra.onrender.com
       - key: PUBLIC_APP_URL
         value: https://fliptrybe.xyz
+      # www.fliptrybe.xyz is the canonical host — the apex 301-redirects to it, so
+      # every real browser sends Origin: https://www.fliptrybe.xyz. Omitting it
+      # here fails CORS preflight on /v1/auth/*, which locks every customer out of
+      # signup and login. Keep the apex listed too: it is still a valid origin for
+      # any client that reaches it without following the redirect.
       - key: FRONTEND_URLS
-        value: https://fliptrybe.xyz,https://fliptrybe-ads-campaigner-web-g24r.onrender.com,https://fliptrybe-ads-campaigner-admin-umys.onrender.com
+        value: https://www.fliptrybe.xyz,https://fliptrybe.xyz,https://fliptrybe-ads-campaigner-web-g24r.onrender.com,https://fliptrybe-ads-campaigner-admin-umys.onrender.com
       - key: PORT
         value: "10000"
       - key: DATABASE_URL
