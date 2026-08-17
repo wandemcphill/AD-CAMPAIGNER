@@ -61,6 +61,14 @@ const MARKUP_BPS = 200;
 const VTU_NETWORKS: VtuNetwork[] = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
 const DEFAULT_VTU_PROVIDER = "clubkonnect";
 
+function isProductionRuntime() {
+  return process.env.NODE_ENV === "production";
+}
+
+function isMockProviderName(providerName: string) {
+  return providerName.trim().toLowerCase() === "mock";
+}
+
 // Verified against the live ClubKonnect (Nellobyte) account on 2026-08-05 via
 // /APIDatabundlePlansV2.asp — real PRODUCT_ID values, not invented placeholders.
 // The plan_catalog_sync worker job (apps/worker/src/vtu-processor.ts) refreshes and
@@ -278,6 +286,11 @@ export class VtuService {
           ...(process.env["IACAFE_BASE_URL"] ? { baseUrl: process.env["IACAFE_BASE_URL"] } : {})
         });
       default:
+        if (isProductionRuntime()) {
+          throw new BadRequestException(
+            `Unknown VTU provider "${providerName}" is not allowed in production.`
+          );
+        }
         return createMockVtuAdapter(providerName);
     }
   }
@@ -1197,8 +1210,17 @@ export class VtuService {
           return [];
         }
 
+        if (isProductionRuntime() && isMockProviderName(providerName)) {
+          return [];
+        }
+
         return this.db.vtuDataPlan.findMany({
-          where: { active: true, network: net, providerName },
+          where: {
+            active: true,
+            network: net,
+            providerName,
+            ...(isProductionRuntime() ? { displayName: { not: { contains: "Mock" } } } : {})
+          },
           orderBy: { costMinor: "asc" }
         });
       })
@@ -1366,6 +1388,9 @@ export class VtuService {
     });
 
     if (routes.length === 0) {
+      if (isProductionRuntime()) {
+        throw new BadRequestException(`No VTU provider route is configured for ${productType}.`);
+      }
       return this.buildAdapter(DEFAULT_VTU_PROVIDER);
     }
 
@@ -1380,6 +1405,10 @@ export class VtuService {
       const status = latestStatus.get(r.provider);
       return status !== "DOWN" && status !== "DISABLED";
     });
+
+    if (!healthy && isProductionRuntime()) {
+      throw new BadRequestException(`All VTU providers for ${productType} are currently unavailable.`);
+    }
 
     return this.buildAdapter(healthy?.provider ?? DEFAULT_VTU_PROVIDER);
   }
@@ -1545,8 +1574,23 @@ export class VtuService {
 
   async listCablePackages(cableProvider?: string) {
     await this.ensureDefaultCablePackages();
+    let providerName: string;
+    try {
+      providerName = (await this.selectBillsAdapter("CABLE")).name;
+    } catch {
+      return [];
+    }
+    if (isProductionRuntime() && isMockProviderName(providerName)) {
+      return [];
+    }
+
     return this.db.vtuCablePackage.findMany({
-      where: { active: true, ...(cableProvider ? { cableProvider } : {}) },
+      where: {
+        active: true,
+        providerName,
+        ...(cableProvider ? { cableProvider } : {}),
+        ...(isProductionRuntime() ? { displayName: { not: { contains: "Mock" } } } : {})
+      },
       orderBy: [{ cableProvider: "asc" }, { costMinor: "asc" }]
     });
   }
