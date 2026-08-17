@@ -13,6 +13,7 @@ import type { AuthenticatedRequestContext } from "../request-context";
 import type { CreateInvoiceDto, InvoiceLineItemInput, PayInvoiceDto } from "./invoices.dtos";
 
 type InvoiceWithLineItems = Prisma.InvoiceGetPayload<{ include: { lineItems: true } }>;
+const SUPPORTED_INVOICE_CURRENCIES = new Set<CurrencyCode>(["NGN", "USD"]);
 
 // Same pattern as payment-links.service.ts's getPaymentLinkGateway(): live Korapay when
 // configured for live mode, mock otherwise.
@@ -81,6 +82,14 @@ function sanitizeLineItems(items: InvoiceLineItemInput[] | undefined) {
   });
 }
 
+function normalizeInvoiceCurrency(input: string | undefined): CurrencyCode {
+  const currency = (input?.trim().toUpperCase() || "NGN") as CurrencyCode;
+  if (!SUPPORTED_INVOICE_CURRENCIES.has(currency)) {
+    throw new BadRequestException("Invoices can currently be issued in NGN or USD.");
+  }
+  return currency;
+}
+
 @Injectable()
 export class InvoicesService {
   private readonly paymentGateway = getInvoiceGateway();
@@ -122,7 +131,7 @@ export class InvoicesService {
     }
     const lineItems = sanitizeLineItems(input.lineItems);
     const subtotalMinor = lineItems.reduce((sum, item) => sum + item.amountMinor, 0);
-    const currency = input.currency?.trim() || "NGN";
+    const currency = normalizeInvoiceCurrency(input.currency);
 
     let dueAt: Date | null = null;
     if (input.dueAt) {
@@ -244,6 +253,7 @@ export class InvoicesService {
       amount: { amountMinor: invoice.totalMinor, currency: invoice.currency as CurrencyCode },
       workspaceId: `invoice:${invoice.workspaceId}`,
       customerEmail: payerEmail,
+      customerName: invoice.customerName,
       ...(redirectUrl ? { redirectUrl } : {}),
       ...(webhookUrl ? { webhookUrl } : {})
     });

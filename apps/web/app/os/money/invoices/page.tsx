@@ -166,7 +166,20 @@ export default function InvoicesPage() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Input id="customer-name" label="Customer name" onChange={(e) => setCustomerName(e.currentTarget.value)} type="text" value={customerName} />
             <Input id="customer-email" label="Customer email (optional)" onChange={(e) => setCustomerEmail(e.currentTarget.value)} type="email" value={customerEmail} />
-            <Input id="currency" label="Currency" onChange={(e) => setCurrency(e.currentTarget.value.toUpperCase())} type="text" value={currency} />
+            <div>
+              <label className="block text-sm font-medium text-[var(--ft-text-secondary)]" htmlFor="currency">
+                Currency
+              </label>
+              <select
+                className="mt-1 h-11 w-full rounded-md border border-[var(--ft-border)] bg-[var(--ft-surface)] px-3 text-sm text-[var(--ft-text-primary)]"
+                id="currency"
+                onChange={(event) => setCurrency(event.currentTarget.value)}
+                value={currency}
+              >
+                <option value="NGN">NGN</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
             <Input id="due-at" label="Due date (optional)" onChange={(e) => setDueAt(e.currentTarget.value)} type="date" value={dueAt} />
           </div>
 

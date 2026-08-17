@@ -17,6 +17,9 @@ interface CapabilityGrantSeed {
   providerName: string; // must match ProviderConfig.name exactly — that's the join key select() uses
   capability:
     | "NGN_VIRTUAL_ACCOUNT"
+    | "USD_VIRTUAL_ACCOUNT"
+    | "NGN_COLLECTION"
+    | "INTERNATIONAL_COLLECTION"
     | "VIRTUAL_CARD"
     | "REMITTANCE";
   domain: "VIRTUAL_ACCOUNT" | "VIRTUAL_CARD" | "REMITTANCE";
@@ -53,6 +56,33 @@ const SEEDS: CapabilityGrantSeed[] = [
     implemented: true,
     sandboxVerified: false, // no Payscribe sandbox credentials in this environment
     notes: "Payscribe API collection PDF mapped 2026-08-08b; not yet sandbox-tested."
+  },
+  {
+    providerName: "korapay-collection",
+    capability: "NGN_COLLECTION",
+    domain: "VIRTUAL_ACCOUNT",
+    documented: true,
+    implemented: true,
+    sandboxVerified: true,
+    notes: "Korapay checkout collection supports NGN invoice checkout; routed through invoices/payment-links gateway."
+  },
+  {
+    providerName: "korapay-collection",
+    capability: "INTERNATIONAL_COLLECTION",
+    domain: "VIRTUAL_ACCOUNT",
+    documented: true,
+    implemented: true,
+    sandboxVerified: false,
+    notes: "Enables explicit USD invoice collection capability tracking; production enablement remains operator-gated."
+  },
+  {
+    providerName: "payscribe-virtual-account",
+    capability: "USD_VIRTUAL_ACCOUNT",
+    domain: "VIRTUAL_ACCOUNT",
+    documented: true,
+    implemented: true,
+    sandboxVerified: false,
+    notes: "Payscribe USD wallet/account capability for customer USD collections; requires provider-customer/KYC before production enablement."
   },
   {
     providerName: "yativo-remittance",
