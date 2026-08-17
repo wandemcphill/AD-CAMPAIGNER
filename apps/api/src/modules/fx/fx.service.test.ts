@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PrismaService } from "../prisma.service";
 import { FxService } from "./fx.service";
@@ -43,6 +43,13 @@ function buildDb(
 function buildService(db: unknown) {
   return new FxService({ client: db } as unknown as PrismaService);
 }
+
+afterEach(() => {
+  delete process.env.FX_LIVE_PROVIDER_REFRESH;
+  delete process.env.FINCRA_API_KEY;
+  delete process.env.FINCRA_BUSINESS_ID;
+  delete process.env.SWAPPR_SECRET_KEY;
+});
 
 describe("FxService.createQuote", () => {
   const quoteRequest = {
@@ -135,6 +142,29 @@ describe("FxService.createQuote", () => {
     await buildService(db).createQuote({ workspaceId: "ws_1" } as never, quoteRequest);
 
     expect(created[0]?.["workspaceId"]).toBe("ws_1");
+  });
+});
+
+describe("FxService provider initialization", () => {
+  it("does not call live FX providers unless live refresh is explicitly enabled", async () => {
+    process.env.FINCRA_API_KEY = "live-ish-key";
+    process.env.FINCRA_BUSINESS_ID = "live-ish-business";
+    process.env.SWAPPR_SECRET_KEY = "live-ish-swappr";
+
+    const { db } = buildDb(null, null);
+    const upsert = vi.fn(() => Promise.resolve({}));
+    const service = buildService({
+      ...db,
+      fxRateCache: {
+        ...db.fxRateCache,
+        findUnique: vi.fn(() => Promise.resolve(null)),
+        upsert
+      }
+    });
+
+    await service.refreshRateCache({ forceRefresh: true });
+
+    expect(upsert).toHaveBeenCalled();
   });
 });
 

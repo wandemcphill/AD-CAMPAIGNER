@@ -251,6 +251,11 @@ services:
         sync: false
       - key: FINCRA_ENV
         value: production
+      # Live FX cache refresh calls provider quote endpoints every 5 minutes.
+      # Keep disabled until FINCRA/SWAPPR/MAPLERAD credentials and base URLs are
+      # verified; manual/bootstrap rates still serve quotes without noisy 401s.
+      - key: FX_LIVE_PROVIDER_REFRESH
+        value: "false"
       - key: SETTLEMENT_ALERTS_WEBHOOK_URL
         sync: false
       - key: SETTLEMENT_KYC_THRESHOLD_MINOR

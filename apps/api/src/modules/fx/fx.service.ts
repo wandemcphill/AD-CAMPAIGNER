@@ -48,6 +48,16 @@ const FX_MAX_AGE_HOURS = 72;
 const FX_RATE_CACHE_TTL_MINUTES = 5;
 const QUOTE_EXPIRY_SECONDS = 60;
 
+function envEnabled(name: string) {
+  return ["1", "true", "yes", "on"].includes((process.env[name] ?? "").trim().toLowerCase());
+}
+
+function isConfiguredSecret(value: string | undefined): value is string {
+  const normalized = value?.trim();
+  if (!normalized) return false;
+  return !/^(changeme|change-me|placeholder|todo|test|dummy|example|your_|sk_test_x)$/i.test(normalized);
+}
+
 function toMicros(rate: number): bigint {
   return BigInt(Math.round(rate * 1_000_000));
 }
@@ -67,41 +77,45 @@ export class FxService implements OnModuleInit {
   private cacheRefreshInProgress = false;
 
   constructor(private readonly prismaService: PrismaService) {
+    const liveRefreshEnabled = envEnabled("FX_LIVE_PROVIDER_REFRESH");
     const fincraApiKey = process.env["FINCRA_API_KEY"];
     const fincraBusinessId = process.env["FINCRA_BUSINESS_ID"];
 
-    if (fincraApiKey && fincraBusinessId) {
+    if (liveRefreshEnabled && isConfiguredSecret(fincraApiKey) && isConfiguredSecret(fincraBusinessId)) {
       const isProduction = process.env["FINCRA_ENV"] === "production";
       this.fxProviders.push(
         createFincraFxProvider({
-          apiKey: fincraApiKey,
-          businessId: fincraBusinessId,
+          apiKey: fincraApiKey.trim(),
+          businessId: fincraBusinessId.trim(),
           ...(isProduction ? { baseUrl: "https://api.fincra.com" } : {}),
         })
       );
     }
 
     const swapprSecretKey = process.env["SWAPPR_SECRET_KEY"];
-    if (swapprSecretKey) {
+    if (liveRefreshEnabled && isConfiguredSecret(swapprSecretKey)) {
       this.fxProviders.push(
         createSwapprFxProvider({
-          secretKey: swapprSecretKey,
+          secretKey: swapprSecretKey.trim(),
           ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {}),
         })
       );
     }
 
     const mapleradSecretKey = process.env["MAPLERAD_SECRET_KEY"];
-    if (mapleradSecretKey) {
+    if (liveRefreshEnabled && isConfiguredSecret(mapleradSecretKey)) {
       this.fxProviders.push(
         createMapleradFxProvider({
-          apiKey: mapleradSecretKey,
+          apiKey: mapleradSecretKey.trim(),
           ...(process.env["MAPLERAD_BASE_URL"] ? { baseUrl: process.env["MAPLERAD_BASE_URL"] } : {}),
         })
       );
     }
 
     if (this.fxProviders.length === 0) {
+      if (!liveRefreshEnabled && process.env.NODE_ENV === "production") {
+        this.logger.log("FX live provider refresh is disabled; using manual/bootstrap rates until FX_LIVE_PROVIDER_REFRESH=true.");
+      }
       this.fxProviders.push(createMockFxProvider());
     }
   }
