@@ -281,10 +281,23 @@ services:
         value: "true"
       # Financial products: flip to "true" per-vertical only after that
       # provider's sandbox verification has signed off.
+      #
+      # VIRTUAL_CARDS is on: Payscribe is one of only two money providers that
+      # have fully verified FlipTrybe, it leads USD_CARD, and the issue / top-up /
+      # withdraw / freeze / terminate paths plus NGN->USD funding conversion are
+      # implemented and unit-tested.
+      #
+      # Known risk, accepted deliberately: the checklist in
+      # docs/providers/payscribe.md is still unticked, so none of those calls has
+      # been exercised against Payscribe's own sandbox, and PAYSCRIBE_API_KEY is a
+      # LIVE key — the first real issuance is also the first integration test.
+      # A card still cannot be issued unless the payscribe-virtual-card
+      # ProviderConfig row is ENABLED and its capability grant flipped on, so this
+      # flag opens the surface rather than the money path.
       - key: FEATURE_VIRTUAL_ACCOUNTS
         sync: false
       - key: FEATURE_VIRTUAL_CARDS
-        sync: false
+        value: "true"
       - key: FEATURE_REMITTANCE
         sync: false
       - key: FEATURE_WALLET_WITHDRAWALS
@@ -682,8 +695,12 @@ services:
         value: "true"
       - key: FEATURE_VIRTUAL_ACCOUNTS
         sync: false
+      # Kept in step with the API service above so flag-gated queue registration
+      # agrees with the surface the API exposes. The browser does not read this:
+      # it fetches the resolved set from GET /v1/platform/feature-flags, so the
+      # API service's value is what decides whether the Cards tab renders.
       - key: FEATURE_VIRTUAL_CARDS
-        sync: false
+        value: "true"
       - key: FEATURE_REMITTANCE
         sync: false
       - key: FEATURE_WALLET_WITHDRAWALS
