@@ -1876,6 +1876,53 @@ export function parseSwiftlinkSubcategoryMap(
   return out;
 }
 
+/** Swiftlink group titles carry the network: "MTN SME", "9MOBILE SPECIAL", ... */
+function swiftlinkNetworkFromTitle(title: string): VtuNetwork | undefined {
+  if (title.startsWith("MTN")) return "MTN";
+  if (title.startsWith("AIRTEL")) return "AIRTEL";
+  if (title.startsWith("GLO")) return "GLO";
+  if (title.startsWith("9MOBILE")) return "NINE_MOBILE";
+  return undefined;
+}
+
+/**
+ * Swiftlink's own family names do not map cleanly onto VtuPlanType, which only
+ * has SME | CG | GIFTING | CORPORATE. "[CG]" in a plan label is authoritative;
+ * SPECIAL and BETA families are CG-priced. DIRECT/HYNET/AWOOOF are retail-style
+ * products with no closer bucket than GIFTING — the real family name is kept in
+ * displayName so nothing is lost.
+ */
+function swiftlinkPlanType(title: string, label: string): VtuPlanType {
+  if (/\[CG\]/i.test(label)) return "CG";
+  if (/SME/.test(title)) return "SME";
+  if (/SPECIAL|BETA/.test(title)) return "CG";
+  if (/CORPORATE/.test(title)) return "CORPORATE";
+  return "GIFTING";
+}
+
+/** "1GB for 30 days" -> 1024. "1GB/1.8GB" takes the main bucket, not the total. */
+function parseSwiftlinkSizeMb(label: string): number {
+  const tb = label.match(/(\d+(?:\.\d+)?)\s*TB/i);
+  if (tb) return Math.round(parseFloat(tb[1]!) * 1024 * 1024);
+  const gb = label.match(/(\d+(?:\.\d+)?)\s*GB/i);
+  if (gb) return Math.round(parseFloat(gb[1]!) * 1024);
+  const mb = label.match(/(\d+(?:\.\d+)?)\s*MB/i);
+  if (mb) return Math.round(parseFloat(mb[1]!));
+  return 0;
+}
+
+/** "for 30 days" / "2 Days plan" / "Daily" / "weekly" / "6 Months" / "365days". */
+function parseSwiftlinkValidityDays(label: string): number {
+  const months = label.match(/(\d+)\s*Month/i);
+  if (months) return parseInt(months[1]!, 10) * 30;
+  const days = label.match(/(\d+)\s*day/i);
+  if (days) return parseInt(days[1]!, 10);
+  if (/daily/i.test(label)) return 1;
+  if (/weekly/i.test(label)) return 7;
+  if (/yearly/i.test(label)) return 365;
+  return 30;
+}
+
 function mapSwiftlinkStatus(status: unknown): VtuSubmitStatus {
   const code = typeof status === "string" ? parseInt(status, 10) : status;
   if (code === 1) return "DELIVERED";
@@ -1935,28 +1982,61 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
     },
 
     async listDataPlans(_network) {
-      // GET /get/plans — matches the official docs. Response shape isn't shown in
-      // the docs beyond the endpoint existing, so parse defensively.
-      const res = (await swiftGet("/get/plans")) as
-        | { data?: Array<Record<string, unknown>> }
-        | Array<Record<string, unknown>>;
-      const rows = Array.isArray(res) ? res : (res.data ?? []);
-      return rows.map((p) => {
-        const network = asString(p["network"], "MTN").toUpperCase() as VtuNetwork;
-        const size = asString(p["size"] ?? p["data"]);
-        const validity = asString(p["validity"]);
-        const name = asString(p["plan"] ?? p["name"], `${network} ${size} ${validity}`);
-        return {
-          providerPlanId: asString(p["plan_id"] ?? p["id"]),
-          network,
-          planType: "SME" as const,
-          displayName: name,
-          sizeMb: 0,
-          validityDays: 30,
-          costMinor: Math.round(parseFloat(asString(p["price"] ?? p["amount"], "0")) * 100),
-          currency: "NGN"
-        };
-      });
+      // GET /get/plans returns GROUPS, not a flat plan list:
+      //   data[] -> { subcategory_id, title, category, plan[] -> { plan, amount } }
+      //
+      // This previously read a flat array looking for network/plan_id/price, none
+      // of which exist at any level. Every row came back network "MTN", an empty
+      // plan id and costMinor 0 — the catalog sync would have written free data
+      // plans. Parsed against the real response now.
+      //
+      // providerPlanId encodes "<subcategory_id>:<plan>" because a Swiftlink
+      // purchase needs BOTH: subcategory_id identifies the product family
+      // (MTN SME = 1, MTN SPECIAL = 2, MTN DIRECT = 25 ...) and plan_id is the
+      // plan's own label string ("1GB for 30 days"). Keying subcategory by
+      // network alone cannot work — one network spans several families.
+      const res = (await swiftGet("/get/plans")) as {
+        data?: Array<{
+          subcategory_id?: number | string;
+          title?: string;
+          category?: string;
+          plan?: Array<{ plan?: string; amount?: number | string }>;
+        }>;
+      };
+
+      const offers: VtuPlanOffer[] = [];
+
+      for (const group of res.data ?? []) {
+        if (String(group.category ?? "").toLowerCase() !== "data") continue;
+
+        const title = asString(group.title).toUpperCase();
+        const network = swiftlinkNetworkFromTitle(title);
+        if (!network) continue;
+
+        const subcategoryId = asString(group.subcategory_id);
+        if (!subcategoryId) continue;
+
+        for (const entry of group.plan ?? []) {
+          const label = asString(entry.plan);
+          const costMinor = Math.round(parseFloat(asString(entry.amount, "0")) * 100);
+          // A zero or unparseable amount is not a free plan — skip rather than
+          // publish something that would sell data for nothing.
+          if (!label || !Number.isFinite(costMinor) || costMinor <= 0) continue;
+
+          offers.push({
+            providerPlanId: `${subcategoryId}:${label}`,
+            network,
+            planType: swiftlinkPlanType(title, label),
+            displayName: `${group.title} ${label}`.trim(),
+            sizeMb: parseSwiftlinkSizeMb(label),
+            validityDays: parseSwiftlinkValidityDays(label),
+            costMinor,
+            currency: "NGN"
+          });
+        }
+      }
+
+      return offers;
     },
 
     async purchaseAirtime({ network, msisdn, faceValueMinor, reference }) {
@@ -1983,16 +2063,24 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
     },
 
     async purchaseData({ network, msisdn, providerPlanId, reference }) {
-      const subcategoryId = config.dataSubcategoryId?.[network];
+      // listDataPlans encodes "<subcategory_id>:<plan label>". Prefer that, since
+      // subcategory is per product FAMILY (MTN SME 1, MTN SPECIAL 2, MTN DIRECT
+      // 25) and cannot be derived from the network. The configured per-network
+      // map remains a fallback for plans that predate the encoding.
+      const separator = providerPlanId.indexOf(":");
+      const encodedSubcategory = separator > 0 ? providerPlanId.slice(0, separator) : undefined;
+      const planLabel = separator > 0 ? providerPlanId.slice(separator + 1) : providerPlanId;
+      const subcategoryId = encodedSubcategory ?? config.dataSubcategoryId?.[network];
+
       if (!subcategoryId) {
         return {
           providerReference: reference,
           status: "FAILED",
-          failureReason: `Swiftlink data subcategory_id not configured for ${network}`
+          failureReason: `Swiftlink data subcategory_id not resolvable for ${network}`
         };
       }
       const res = (await swiftPost("/purchase/data", {
-        plan_id: providerPlanId,
+        plan_id: planLabel,
         phonenumber: msisdn,
         subcategory_id: subcategoryId,
         customer_reference: reference
