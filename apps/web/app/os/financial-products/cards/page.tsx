@@ -33,7 +33,7 @@ const CARD_STATUS_TONE: Record<VirtualCardStatus, "success" | "warning" | "dange
   TERMINATED: "danger"
 };
 
-const CARD_CURRENCIES: CardCurrency[] = ["NGN", "USD"];
+const CARD_CURRENCIES: CardCurrency[] = ["USD", "NGN"];
 
 export default function CardsTabPage() {
   const [cards, setCards] = useState<VirtualCard[]>([]);
@@ -46,7 +46,7 @@ export default function CardsTabPage() {
   const [forbidden, setForbidden] = useState(false);
 
   const [cardAmountInput, setCardAmountInput] = useState<Record<string, string>>({});
-  const [currency, setCurrency] = useState<CardCurrency>("NGN");
+  const [currency, setCurrency] = useState<CardCurrency>("USD");
   const [enrollment, setEnrollment] = useState<CardEnrollment>();
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [costPreview, setCostPreview] = useState<CardCostPreview | null>(null);
@@ -61,8 +61,10 @@ export default function CardsTabPage() {
     city: "",
     state: "",
     country: "NG",
+    postalCode: "",
     idType: "BVN",
-    idNumber: ""
+    idNumber: "",
+    idImageBase64: ""
   });
 
   const refreshCards = useCallback(async () => {
@@ -158,12 +160,14 @@ export default function CardsTabPage() {
                 street: enrollForm.street.trim(),
                 city: enrollForm.city.trim(),
                 state: enrollForm.state.trim(),
-                country: enrollForm.country.trim() || "NG"
+                country: enrollForm.country.trim() || "NG",
+                ...(enrollForm.postalCode.trim() ? { postalCode: enrollForm.postalCode.trim() } : {})
               }
             }
           : {}),
         ...(enrollForm.idType ? { idType: enrollForm.idType } : {}),
-        ...(enrollForm.idNumber.trim() ? { idNumber: enrollForm.idNumber.trim() } : {})
+        ...(enrollForm.idNumber.trim() ? { idNumber: enrollForm.idNumber.trim() } : {}),
+        ...(enrollForm.idImageBase64.trim() ? { idImageBase64: enrollForm.idImageBase64.trim() } : {})
       });
       await refreshEnrollment(currency);
     } catch (caught) {
@@ -313,7 +317,9 @@ export default function CardsTabPage() {
                   ["city", "City", "Lekki"],
                   ["state", "State", "Lagos"],
                   ["country", "Country code", "NG"],
-                  ["idNumber", "ID number", "22200000000"]
+                  ["postalCode", "Postal code", "100001"],
+                  ["idNumber", "ID number", "22200000000"],
+                  ["idImageBase64", "ID image URL or base64", "https://..."]
                 ] as const
               ).map(([field, label, placeholder]) => (
                 <label className="block" key={field}>

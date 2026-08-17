@@ -56,7 +56,7 @@ export type DestinationKind = (typeof destinationKinds)[number];
 export const providerKinds = ["MOCK", "META", "TIKTOK", "SMM", "MANUAL"] as const;
 export type ProviderKind = (typeof providerKinds)[number];
 
-export const paymentGatewayKinds = ["MOCK", "KORAPAY", "PAYSTACK", "STRIPE", "MANUAL"] as const;
+export const paymentGatewayKinds = ["MOCK", "KORAPAY", "PAYSTACK", "PAYSCRIBE", "STRIPE", "MANUAL"] as const;
 export type PaymentGatewayKind = (typeof paymentGatewayKinds)[number];
 
 export const ledgerEntryKinds = ["CREDIT", "DEBIT", "HOLD", "RELEASE", "REVERSAL"] as const;

@@ -4,6 +4,8 @@ import { Prisma } from "@fliptrybe/database";
 import {
   createKorapayPaymentGateway,
   createMockPaymentGateway,
+  createPayscribePaymentGateway,
+  verifyPayscribeWebhook,
   type PaymentGatewayAdapter
 } from "@fliptrybe/providers";
 import type { CurrencyCode } from "@fliptrybe/types";
@@ -17,7 +19,16 @@ const SUPPORTED_INVOICE_CURRENCIES = new Set<CurrencyCode>(["NGN", "USD"]);
 
 // Same pattern as payment-links.service.ts's getPaymentLinkGateway(): live Korapay when
 // configured for live mode, mock otherwise.
-function getInvoiceGateway(): PaymentGatewayAdapter {
+function getInvoiceGateway(currency: CurrencyCode = "NGN"): PaymentGatewayAdapter {
+  const payscribeKey = process.env.PAYSCRIBE_API_KEY;
+  if (process.env.PAYMENT_PROVIDER === "live" && currency === "USD" && payscribeKey) {
+    return createPayscribePaymentGateway({
+      apiKey: payscribeKey,
+      baseUrl: process.env.PAYSCRIBE_BASE_URL,
+      defaultRedirectUrl: process.env.PAYSCRIBE_REDIRECT_URL ?? process.env.APP_URL
+    });
+  }
+
   const korapaySecret = process.env.KORAPAY_SECRET_KEY;
   if (process.env.PAYMENT_PROVIDER === "live" && korapaySecret) {
     return createKorapayPaymentGateway({
@@ -92,8 +103,6 @@ function normalizeInvoiceCurrency(input: string | undefined): CurrencyCode {
 
 @Injectable()
 export class InvoicesService {
-  private readonly paymentGateway = getInvoiceGateway();
-
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   private get db() {
@@ -249,7 +258,8 @@ export class InvoicesService {
         ? undefined
         : `${process.env.API_URL ?? "http://localhost:4000"}/api/webhooks/korapay-invoice`;
 
-    const intent = await this.paymentGateway.createPaymentIntent({
+    const paymentGateway = getInvoiceGateway(invoice.currency as CurrencyCode);
+    const intent = await paymentGateway.createPaymentIntent({
       amount: { amountMinor: invoice.totalMinor, currency: invoice.currency as CurrencyCode },
       workspaceId: `invoice:${invoice.workspaceId}`,
       customerEmail: payerEmail,
@@ -323,12 +333,84 @@ export class InvoicesService {
 
     // Never trust the webhook payload status alone — re-verify against the gateway
     // before marking the invoice paid (same rule as guest-checkout/payment-links).
-    const verified = await this.paymentGateway.verifyPayment(providerReference);
+    const verified = await getInvoiceGateway(invoice.currency as CurrencyCode).verifyPayment(providerReference);
 
     if (verified.status === "COMPLETED" && invoice.status !== "PAID") {
       await this.db.invoice.update({
         where: { id: invoice.id },
         data: { status: "PAID", paidAt: new Date(), amountPaidMinor: invoice.totalMinor, paidVia: "online" }
+      });
+    }
+
+    await this.db.eventOutbox.update({
+      where: { idempotencyKey: replayKey },
+      data: { status: "PROCESSED", processedAt: new Date() }
+    });
+
+    return { accepted: true, matched: true, reference: providerReference };
+  }
+
+  async handlePayscribeWebhook(
+    body: unknown,
+    rawBody: string,
+    headers: { signature?: string; eventId?: string; timestamp?: string; event?: string }
+  ) {
+    const secret = process.env.PAYSCRIBE_WEBHOOK_SECRET ?? process.env.PAYSCRIBE_API_KEY;
+    if (!secret || !headers.signature) {
+      throw new BadRequestException("Invalid webhook signature.");
+    }
+    const verified = verifyPayscribeWebhook({
+      rawBody,
+      signatureHeader: headers.signature,
+      secret,
+      ...(headers.eventId ? { eventId: headers.eventId } : {}),
+      ...(headers.timestamp ? { timestamp: headers.timestamp } : {})
+    });
+    if (!verified) {
+      throw new BadRequestException("Invalid webhook signature.");
+    }
+
+    const eventBody = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+    const event = String(eventBody["event"] ?? eventBody["event_type"] ?? headers.event ?? "");
+    const providerReference =
+      typeof eventBody["ref"] === "string"
+        ? eventBody["ref"]
+        : typeof eventBody["invoice_id"] === "string"
+          ? eventBody["invoice_id"]
+          : typeof eventBody["trans_id"] === "string"
+            ? eventBody["trans_id"]
+            : undefined;
+    if (!providerReference) {
+      throw new BadRequestException("Webhook is missing a payment reference.");
+    }
+
+    const replayKey = `invoice:payscribe:${headers.eventId ?? event}:${providerReference}`;
+    const existingReceipt = await this.db.eventOutbox.findUnique({ where: { idempotencyKey: replayKey } });
+    if (existingReceipt?.processedAt) {
+      return { accepted: true, duplicate: true, reference: providerReference };
+    }
+    await this.db.eventOutbox.upsert({
+      where: { idempotencyKey: replayKey },
+      update: {},
+      create: {
+        workspaceId: null,
+        name: "InvoicePayscribeWebhookReceived",
+        entityType: "Invoice",
+        entityId: providerReference,
+        payload: { providerReference, event },
+        idempotencyKey: replayKey
+      }
+    });
+
+    const invoice = await this.db.invoice.findFirst({ where: { paymentReference: providerReference } });
+    if (!invoice) {
+      return { accepted: true, matched: false, reference: providerReference };
+    }
+
+    if (/invoice\.paid|payment_link\.paid/.test(event) && invoice.status !== "PAID") {
+      await this.db.invoice.update({
+        where: { id: invoice.id },
+        data: { status: "PAID", paidAt: new Date(), amountPaidMinor: invoice.totalMinor, paidVia: "payscribe" }
       });
     }
 

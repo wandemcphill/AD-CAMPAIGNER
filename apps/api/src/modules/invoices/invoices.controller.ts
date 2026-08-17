@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Inject, Param, Post, Req } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Param, Post, Req, type RawBodyRequest } from "@nestjs/common";
 
 import { Public, RequirePermissions } from "../authorization.decorators";
 import { RequireFeature } from "../feature-flag.decorators";
@@ -32,6 +32,23 @@ export class InvoicesWebhookController {
   @Post("korapay-invoice")
   korapay(@Body() body: unknown, @Headers("x-korapay-signature") signature?: string) {
     return this.invoices.handleKorapayWebhook(body, signature);
+  }
+
+  @Post("payscribe-invoice")
+  payscribe(
+    @Body() body: unknown,
+    @Req() request: RawBodyRequest<unknown>,
+    @Headers("x-payscribe-signature") signature?: string,
+    @Headers("x-payscribe-event-id") eventId?: string,
+    @Headers("x-payscribe-timestamp") timestamp?: string,
+    @Headers("x-payscribe-event") event?: string
+  ) {
+    return this.invoices.handlePayscribeWebhook(body, request.rawBody?.toString() ?? "", {
+      ...(signature ? { signature } : {}),
+      ...(eventId ? { eventId } : {}),
+      ...(timestamp ? { timestamp } : {}),
+      ...(event ? { event } : {})
+    });
   }
 }
 

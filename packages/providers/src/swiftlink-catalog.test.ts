@@ -450,3 +450,110 @@ describe("Swiftlink purchaseAirtime", () => {
     expect(calls.filter((url) => url.includes("/purchase/airtime"))).toHaveLength(3);
   });
 });
+
+describe("Swiftlink cable, electricity, and exam contracts", () => {
+  it("reads cable package prices from variation_amount", async () => {
+    const fetcher = vi.fn((url: string) => {
+      const target = String(url);
+      if (target.includes("/fetch/bouquet?plan=gotv")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  variation_code: "gotv-lite",
+                  name: "GOtv Lite N410",
+                  variation_amount: "410.00",
+                  fixedPrice: "Yes"
+                }
+              ]
+            }),
+            { status: 200 }
+          )
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify({ data: [] }), { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    const packages = await createSwiftlinkAdapter({ apiKey: "token", fetcher }).listCablePackages!();
+
+    expect(packages).toEqual([
+      {
+        cableProvider: "gotv",
+        packageCode: "gotv-lite",
+        displayName: "GOtv Lite N410",
+        costMinor: 41_000,
+        currency: "NGN"
+      }
+    ]);
+  });
+
+  it("sends Swiftlink's electricity title and serviceID as separate fields", async () => {
+    const purchases: URLSearchParams[] = [];
+    const fetcher = vi.fn((url: string, init?: RequestInit) => {
+      const target = String(url);
+      if (target.includes("/get/plans")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              data: [
+                {
+                  subcategory_id: 16,
+                  title: "Eko-Electric",
+                  serviceID: "EKEDC - Eko Electric",
+                  category: "Electricity",
+                  status: 1
+                }
+              ]
+            }),
+            { status: 200 }
+          )
+        );
+      }
+
+      purchases.push(new URLSearchParams(init?.body instanceof URLSearchParams ? init.body.toString() : ""));
+      return Promise.resolve(new Response(JSON.stringify({ status: 1 }), { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    await createSwiftlinkAdapter({ apiKey: "token", fetcher }).purchaseElectricity!({
+      disco: "Eko-Electric",
+      meterNumber: "1111111111111",
+      meterType: "PREPAID",
+      amountMinor: 100_000,
+      phoneNumber: "08140003288",
+      reference: "SWLELEC1"
+    });
+
+    expect(purchases[0]?.get("plan")).toBe("Eko-Electric");
+    expect(purchases[0]?.get("serviceID")).toBe("EKEDC - Eko Electric");
+    expect(purchases[0]?.get("customer_reference")).toBe("SWLELEC1");
+  });
+
+  it("posts the documented JAMB exam purchase form", async () => {
+    const capture: { body: string | undefined } = { body: undefined };
+    const fetcher = vi.fn((_url: string, init?: RequestInit) => {
+      capture.body =
+        init?.body instanceof URLSearchParams
+          ? init.body.toString()
+          : typeof init?.body === "string"
+            ? init.body
+            : undefined;
+      return Promise.resolve(new Response(JSON.stringify({ status: 1, pin: "1234567890" }), { status: 200 }));
+    }) as unknown as typeof fetch;
+
+    const result = await createSwiftlinkAdapter({ apiKey: "token", fetcher }).purchaseEducation!({
+      examType: "jamb",
+      phoneNumber: "08140003288",
+      profileId: "1212121212",
+      reference: "SWLEXAM1"
+    });
+
+    const sent = new URLSearchParams(capture.body ?? "");
+    expect(sent.get("plan")).toBe("Jamb");
+    expect(sent.get("phonenumber")).toBe("08140003288");
+    expect(sent.get("cardno")).toBe("1212121212");
+    expect(sent.get("variation_code")).toBe("jamb");
+    expect(sent.get("customer_reference")).toBe("SWLEXAM1");
+    expect(result.pin).toBe("1234567890");
+  });
+});

@@ -16,6 +16,7 @@ import { createPrismaClient, type Prisma } from "../src/index";
 interface ProviderConfigSeed {
   name: string;
   domain: "VIRTUAL_ACCOUNT" | "VIRTUAL_CARD" | "REMITTANCE";
+  status?: "DISABLED" | "HEALTHY";
   priority: number;
   enabledCountries: string[];
   // Scopes the row to what the provider can actually issue. The router only
@@ -100,6 +101,7 @@ const SEEDS: ProviderConfigSeed[] = [
     // DISABLED and ungranted regardless, so this only decides ordering once an
     // operator turns one on.
     priority: 10,
+    status: "HEALTHY",
     enabledCountries: ["NG"],
     // USD only — Payscribe does not issue NGN cards.
     enabledProductTypes: ["USD_CARD"],
@@ -213,7 +215,7 @@ async function main() {
         name: seed.name,
         domain: seed.domain,
         tier: "BUDGET",
-        status: "DISABLED",
+        status: seed.status ?? "DISABLED",
         priority: seed.priority,
         enabledCountries: seed.enabledCountries,
         enabledNetworks: [],

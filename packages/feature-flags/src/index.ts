@@ -22,7 +22,7 @@
  * lookups are not available to client components.
  */
 export const featureFlagDefaults = {
-  liveProviderIntegrations: false,
+  liveProviderIntegrations: true,
   manualPaymentReview: true,
   aiCampaignAssistant: true,
   globalSearch: true,
@@ -56,7 +56,7 @@ export const featureFlagDefaults = {
   // flag only opens the API surface: a request still needs an ENABLED
   // ProviderConfig row for its domain or it fails with 503.
   virtualAccounts: false,
-  virtualCards: false,
+  virtualCards: true,
   remittance: false,
   // Wallet withdrawal (bank-only, NGN) reuses the same NGN payout adapters as
   // `remittance` — same sandbox-verification gate applies.

@@ -232,6 +232,13 @@ export interface PaystackPaymentGatewayConfig {
   fetcher?: typeof fetch | undefined;
 }
 
+export interface PayscribePaymentGatewayConfig {
+  apiKey?: string | undefined;
+  baseUrl?: string | undefined;
+  defaultRedirectUrl?: string | undefined;
+  fetcher?: typeof fetch | undefined;
+}
+
 interface KorapayInitializeResponse {
   status?: boolean;
   message?: string;
@@ -273,6 +280,17 @@ interface PaystackVerifyResponse {
     status?: string;
     amount?: number;
     currency?: string;
+  };
+}
+
+interface PayscribeEnvelope {
+  status?: boolean;
+  description?: string;
+  message?: {
+    description?: string;
+    status?: string;
+    details?: Record<string, unknown>;
+    data?: Record<string, unknown>;
   };
 }
 
@@ -428,6 +446,10 @@ function getPaystackBaseUrl(config: PaystackPaymentGatewayConfig) {
   return (config.baseUrl ?? "https://api.paystack.co").replace(/\/+$/, "");
 }
 
+function getPayscribeBaseUrl(config: PayscribePaymentGatewayConfig) {
+  return (config.baseUrl ?? "https://api.payscribe.ng/api/v1").replace(/\/+$/, "");
+}
+
 function mapPaystackPaymentStatus(status?: string): PaymentIntent["status"] {
   const normalizedStatus = status?.toLowerCase().trim();
 
@@ -477,6 +499,41 @@ async function callPaystackApi(
   }
   if (!response.ok) {
     throw new Error(`Paystack API returned HTTP ${response.status}.`);
+  }
+
+  return data;
+}
+
+async function callPayscribeGatewayApi(
+  config: PayscribePaymentGatewayConfig,
+  path: string,
+  options?: {
+    method?: "GET" | "POST";
+    body?: Record<string, unknown>;
+  }
+) {
+  if (!config.apiKey) {
+    throw new Error("Payscribe requires PAYSCRIBE_API_KEY.");
+  }
+
+  const response = await (config.fetcher ?? fetch)(`${getPayscribeBaseUrl(config)}${path}`, {
+    method: options?.method ?? "GET",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "content-type": "application/json"
+    },
+    ...(options?.body === undefined ? {} : { body: JSON.stringify(options.body) })
+  });
+  const data: unknown = await response.json();
+
+  if (typeof data === "object" && data !== null && "status" in data && data.status === false) {
+    const envelope = data as PayscribeEnvelope;
+    throw new Error(
+      envelope.message?.description ?? envelope.description ?? "Payscribe API error."
+    );
+  }
+  if (!response.ok) {
+    throw new Error(`Payscribe API returned HTTP ${response.status}.`);
   }
 
   return data;
@@ -910,6 +967,130 @@ export function createPaystackPaymentGateway(
       return {
         status: mapPaystackPaymentStatus(response.data?.status),
         providerReference: response.data?.reference ?? reference
+      };
+    }
+  };
+}
+
+function payscribeDetails(payload: unknown): Record<string, unknown> {
+  if (typeof payload !== "object" || payload === null) return {};
+  const envelope = payload as PayscribeEnvelope;
+  const message = envelope.message;
+  if (message?.details && typeof message.details === "object") return message.details;
+  if (message?.data && typeof message.data === "object") return message.data;
+  if (message && typeof message === "object") return message as Record<string, unknown>;
+  return payload as Record<string, unknown>;
+}
+
+function stringValue(value: unknown, fallback = "") {
+  return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
+}
+
+function mapPayscribePaymentStatus(status?: string): PaymentIntent["status"] {
+  const normalizedStatus = status?.toLowerCase().trim();
+
+  switch (normalizedStatus) {
+    case "success":
+    case "successful":
+    case "completed":
+    case "paid":
+      return "COMPLETED";
+    case "pending":
+    case "processing":
+    case "partially_paid":
+      return "PENDING";
+    case "cancelled":
+    case "canceled":
+    case "expired":
+    case "inactive":
+      return "CANCELLED";
+    case "requires_action":
+    case "requires action":
+      return "REQUIRES_ACTION";
+    default:
+      return "FAILED";
+  }
+}
+
+// Payscribe checkout for USD invoices. The Payscribe invoice API requires a
+// provider-side customer_id, which FlipTrybe's public invoice model does not
+// carry. Payment Links accept an email/name payer flow and still settle through
+// Payscribe, so they fit the existing /public/invoices/:id/pay contract.
+export function createPayscribePaymentGateway(
+  config: PayscribePaymentGatewayConfig
+): PaymentGatewayAdapter {
+  return {
+    name: "payscribe",
+    async createPaymentIntent(input) {
+      const now = new Date().toISOString();
+      const reference = getKorapayReference("ft_psc");
+      const response = await callPayscribeGatewayApi(config, "/links/", {
+        method: "POST",
+        body: {
+          title: `FlipTrybe invoice ${reference.slice(-8)}`,
+          description: `Invoice payment for ${input.customerName ?? "FlipTrybe Customer"}`,
+          currency: input.amount.currency,
+          amount: input.amount.amountMinor,
+          ref: reference,
+          redirect: input.redirectUrl ?? config.defaultRedirectUrl,
+          customer: {
+            name: input.customerName ?? "FlipTrybe Customer",
+            email: input.customerEmail ?? "billing@fliptrybe.com"
+          },
+          metadata: {
+            workspaceId: input.workspaceId
+          }
+        }
+      });
+
+      const details = payscribeDetails(response);
+      const providerReference =
+        stringValue(details["ref"]) ||
+        stringValue(details["reference"]) ||
+        stringValue(details["id"]) ||
+        reference;
+      const checkoutUrl =
+        stringValue(details["url"]) ||
+        stringValue(details["link"]) ||
+        stringValue(details["payment_url"]) ||
+        stringValue(details["checkout_url"]) ||
+        stringValue(details["custom_link"]);
+
+      const intent: PaymentIntent = {
+        id: makeId("pay"),
+        workspaceId: input.workspaceId,
+        gateway: "PAYSCRIBE",
+        amount: input.amount,
+        status: mapPayscribePaymentStatus(stringValue(details["status"], "pending")),
+        providerReference,
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+          providerReference,
+          payscribeLinkId: stringValue(details["id"]) || null
+        }
+      };
+
+      return checkoutUrl ? { ...intent, checkoutUrl } : intent;
+    },
+    async verifyPayment(reference) {
+      const response = await callPayscribeGatewayApi(
+        config,
+        `/requery/?trans_id=${encodeURIComponent(reference)}`
+      );
+      const details = payscribeDetails(response);
+      const status =
+        stringValue(details["status"]) ||
+        stringValue(details["payment_status"]) ||
+        stringValue(details["state"]);
+
+      return {
+        status: mapPayscribePaymentStatus(status),
+        providerReference:
+          stringValue(details["ref"]) ||
+          stringValue(details["trans_id"]) ||
+          stringValue(details["invoice_id"]) ||
+          reference
       };
     }
   };

@@ -1893,6 +1893,10 @@ const swiftlinkAirtimeSubcategories = new Map<
   string,
   { resolvedAt: number; map: Partial<Record<VtuNetwork, string>> }
 >();
+const swiftlinkElectricityServices = new Map<
+  string,
+  { resolvedAt: number; map: Record<string, { title: string; serviceID: string }> }
+>();
 const swiftlinkSubcategoryTtlMs = 30 * 60 * 1000;
 
 /**
@@ -1910,6 +1914,7 @@ const swiftlinkTokenTtlMs = 30 * 60 * 1000;
 /** Test seam — both caches are process-wide and would otherwise leak between cases. */
 export function resetSwiftlinkCaches() {
   swiftlinkAirtimeSubcategories.clear();
+  swiftlinkElectricityServices.clear();
   swiftlinkTokens.clear();
 }
 
@@ -2152,6 +2157,33 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
     return map[network];
   }
 
+  async function resolveElectricityServices() {
+    const map: Record<string, { title: string; serviceID: string }> = {};
+
+    for (const group of await fetchPlanGroups()) {
+      if (String(group.category ?? "").toLowerCase() !== "electricity") continue;
+      const title = asString(group.title);
+      const serviceID = asString((group as SwiftlinkPlanGroup & { serviceID?: unknown }).serviceID);
+      if (!title) continue;
+      map[title.toLowerCase()] = { title, serviceID: serviceID || title };
+      if (serviceID) map[serviceID.toLowerCase()] = { title, serviceID };
+    }
+
+    return map;
+  }
+
+  async function electricityServiceFor(disco: string) {
+    const cached = swiftlinkElectricityServices.get(base);
+    if (cached && Date.now() - cached.resolvedAt < swiftlinkSubcategoryTtlMs) {
+      return cached.map[disco.toLowerCase()] ?? { title: disco, serviceID: disco };
+    }
+
+    const map = await resolveElectricityServices();
+    swiftlinkElectricityServices.set(base, { resolvedAt: Date.now(), map });
+
+    return map[disco.toLowerCase()] ?? { title: disco, serviceID: disco };
+  }
+
   // Researched discount bps per network (RESEARCHED_PUBLIC_PRICE — not verified via live API).
   const AIRTIME_DISCOUNT_BPS: Record<string, number> = {
     MTN: 380,
@@ -2165,7 +2197,7 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
     interfaceVersion: CURRENT_INTERFACE_VERSION,
     domain: "VTU" as const,
     getCapabilities: () =>
-      vtuCapabilities("weak", ["AIRTIME", "DATA", "CABLE", "ELECTRICITY"]),
+      vtuCapabilities("weak", ["AIRTIME", "DATA", "CABLE", "ELECTRICITY", "EDUCATION"]),
 
     buildReference(order) {
       return `SWL${order.id.replace(/[^a-z0-9]/gi, "").slice(0, 16).toUpperCase()}`;
@@ -2316,8 +2348,9 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
 
     async validateMeter(input): Promise<VtuMeterValidation> {
       try {
+        const service = await electricityServiceFor(input.disco);
         const res = (await swiftPost("/verify/card", {
-          plan: input.disco,
+          plan: service.serviceID,
           cardno: input.meterNumber,
           type: input.meterType === "PREPAID" ? "Prepaid" : "Postpaid"
         })) as { customer_name?: string; name?: string; address?: string };
@@ -2331,13 +2364,15 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
 
     async purchaseElectricity(input): Promise<VtuSubmitResult & { token?: string; units?: string }> {
       try {
+        const service = await electricityServiceFor(input.disco);
         const res = (await swiftPost("/purchase/electricity", {
-          plan: input.disco,
+          plan: service.title,
           phonenumber: input.phoneNumber,
           amount: (input.amountMinor / 100).toFixed(2),
           cardno: input.meterNumber,
           variation_code: input.meterType === "PREPAID" ? "Prepaid" : "Postpaid",
-          serviceID: input.disco
+          serviceID: service.serviceID,
+          customer_reference: input.reference
         })) as { status?: number | string; response?: string; token?: string; units?: string };
         const status = mapSwiftlinkStatus(res.status);
         return {
@@ -2384,7 +2419,9 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
               cableProvider: provider,
               packageCode: asString(p["variation_code"] ?? p["code"]),
               displayName: asString(p["name"] ?? p["package"]),
-              costMinor: Math.round(parseFloat(asString(p["price"] ?? p["amount"], "0")) * 100),
+              costMinor: Math.round(
+                parseFloat(asString(p["variation_amount"] ?? p["price"] ?? p["amount"], "0")) * 100
+              ),
               currency: "NGN"
             });
           }
@@ -2416,6 +2453,67 @@ export function createSwiftlinkAdapter(config: SwiftlinkConfig): VtuProviderAdap
           providerReference: input.reference,
           status: "FAILED" as const,
           failureReason: err instanceof Error ? err.message : "Swiftlink cable error"
+        };
+      }
+    },
+
+    verifyJambProfile(input): Promise<VtuMeterValidation> {
+      return swiftPost("/verify/card", {
+        plan: "JAMB",
+        cardno: input.profileId
+      })
+        .then((res) => {
+          const body = res as { customer_name?: string; name?: string; response?: string };
+          const name = body.customer_name ?? body.name;
+          return {
+            valid: true,
+            ...(name ? { customerName: name } : {}),
+            ...(body.response ? { address: body.response } : {})
+          };
+        })
+        .catch(() => ({ valid: false }));
+    },
+
+    listEducationPlans(): Promise<VtuEducationPlanOffer[]> {
+      // Swiftlink's /get/plans advertises exam categories but does not include
+      // a cost in the documented payload. Do not publish an unpriced plan.
+      return Promise.resolve([]);
+    },
+
+    async purchaseEducation(input): Promise<VtuSubmitResult & { pin?: string; serialNumber?: string }> {
+      try {
+        const exam = input.examType.toLowerCase();
+        const plan = exam === "jamb" || exam === "utme" || exam === "utme_pin" ? "Jamb" : input.examType;
+        const variationCode = exam === "jamb" || exam === "utme" || exam === "utme_pin" ? "jamb" : exam;
+        const res = (await swiftPost("/purchase/exam", {
+          plan,
+          phonenumber: input.phoneNumber,
+          cardno: input.profileId ?? "",
+          variation_code: variationCode,
+          customer_reference: input.reference
+        })) as {
+          status?: number | string;
+          response?: string;
+          pin?: string;
+          serial?: string;
+          serialNumber?: string;
+          data?: { pin?: string; serial?: string; serialNumber?: string };
+        };
+        const status = mapSwiftlinkStatus(res.status);
+        const pin = res.pin ?? res.data?.pin;
+        const serialNumber = res.serialNumber ?? res.serial ?? res.data?.serialNumber ?? res.data?.serial;
+        return {
+          providerReference: input.reference,
+          status,
+          ...(pin ? { pin } : {}),
+          ...(serialNumber ? { serialNumber } : {}),
+          ...(status === "FAILED" ? { failureReason: res.response ?? "Swiftlink exam purchase failed" } : {})
+        };
+      } catch (err) {
+        return {
+          providerReference: input.reference,
+          status: "FAILED" as const,
+          failureReason: err instanceof Error ? err.message : "Swiftlink exam purchase error"
         };
       }
     }
