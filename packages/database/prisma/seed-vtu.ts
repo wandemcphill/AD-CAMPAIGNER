@@ -24,12 +24,16 @@ const ROUTE_PRIORITY = {
   clubkonnect: 10
 };
 
-// DATA goes to Swiftlink: its live catalogue is materially cheaper across every
-// network (MTN 1GB SME ₦268 and 9mobile 1GB ₦180 against ClubKonnect's ₦563 for
-// MTN 1GB SME). ClubKonnect stays behind it so a Swiftlink outage degrades to a
-// dearer route rather than taking data down.
+// DATA is a three-deep ladder, cheapest first, on published catalogue prices for
+// MTN 1GB SME: Swiftlink ₦268, TopupWizard ₦505, ClubKonnect ₦563. Swiftlink is
+// cheaper still on other networks (9mobile 1GB ₦180).
+//
+// Two fallbacks rather than one because data is the highest-volume vertical and
+// ClubKonnect is nearly twice Swiftlink's price — putting TopupWizard in the
+// middle means a Swiftlink outage costs ~88% more rather than ~110%.
 const DATA_ROUTE_PRIORITY = {
   swiftlink: 10,
+  topupwizard: 15,
   clubkonnect: 20
 };
 
