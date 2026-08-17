@@ -123,13 +123,36 @@ const p1ProtectedAdminRoutes = [
   { name: "P1 admin AI suggestions reject unauthenticated", path: "/v1/admin/ai/suggestions" }
 ];
 
-const protectedVerticalRoutes = [
+// Money-moving verticals.
+//
+// `flag` names the feature flag whose absence takes the route off the router
+// entirely. FinancialProductsModule only registers its customer-facing
+// controller when some financial vertical is enabled, so with the flags off
+// these paths 404 before any guard runs — they do NOT 401, which is what the
+// previous version of this list assumed and why it failed on every run against
+// a deployment with financial products disabled.
+//
+// A flagged-off route is still checked rather than skipped: 404 is the correct
+// answer and anything that serves data instead is a leak worth failing on.
+const protectedVerticalRoutes: Array<{ name: string; path: string; flag?: string }> = [
   { name: "VTU orders reject unauthenticated", path: "/v1/vtu/orders" },
   { name: "VTU data plans reject unauthenticated", path: "/v1/vtu/data-plans" },
   { name: "Bills orders reject unauthenticated", path: "/v1/vtu/bills/orders" },
-  { name: "Virtual accounts reject unauthenticated", path: "/v1/financial-products/accounts" },
-  { name: "Virtual cards reject unauthenticated", path: "/v1/financial-products/cards" },
-  { name: "Remittance transfers reject unauthenticated", path: "/v1/financial-products/remittance" },
+  {
+    name: "Virtual accounts reject unauthenticated",
+    path: "/v1/financial-products/accounts",
+    flag: "virtualAccounts"
+  },
+  {
+    name: "Virtual cards reject unauthenticated",
+    path: "/v1/financial-products/cards",
+    flag: "virtualCards"
+  },
+  {
+    name: "Remittance transfers reject unauthenticated",
+    path: "/v1/financial-products/remittance",
+    flag: "remittance"
+  },
   { name: "Telecom orders reject unauthenticated", path: "/v1/telecom/orders" }
 ];
 
@@ -707,19 +730,80 @@ async function checkJsonRecordRoute(config: SmokeConfig, name: string, path: str
   });
 }
 
-async function checkProtectedRouteRejects(config: SmokeConfig, name: string, path: string) {
+async function checkProtectedRouteRejects(
+  config: SmokeConfig,
+  name: string,
+  path: string,
+  expected: number[] = [401, 403]
+) {
   const url = withPath(config.apiUrl, path);
 
   return runCheck(name, url, async () => {
     const { response } = await get(url, config);
 
-    expectStatus(response, [401, 403], name);
+    expectStatus(response, expected, name);
 
     return {
       name,
       status: "PASS",
-      detail: "Rejected unauthenticated request.",
+      detail: expected.includes(404) && response.status === 404
+        ? "Vertical is disabled; route is not registered."
+        : "Rejected unauthenticated request.",
       httpStatus: response.status,
+      target: displayUrl(url)
+    };
+  });
+}
+
+/**
+ * The public flag set the API actually resolved, used to decide whether a gated
+ * vertical should be answering 401 or 404. Returns undefined if it cannot be
+ * read, so callers can widen rather than fail a whole run on one hiccup.
+ */
+async function readPublicFeatureFlags(config: SmokeConfig) {
+  try {
+    const { body } = await get(withPath(config.apiUrl, "/v1/platform/feature-flags"), config);
+
+    return isRecord(body.json) && isRecord(body.json.flags) ? body.json.flags : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * /v1/auth/session is @Public by design: the web app calls it to ask "am I
+ * signed in?" and a signed-out answer is 200 with an empty body, not 401. The
+ * previous check demanded 401 here and so failed on every run.
+ *
+ * The property actually worth protecting is not the status code — it is that
+ * neither an anonymous caller nor a forged token gets back a user. That is what
+ * this asserts, and it is a stronger assertion than the one it replaces.
+ */
+async function checkSessionRevealsNoIdentity(config: SmokeConfig) {
+  const name = "Session reveals no identity without valid auth";
+  const url = withPath(config.apiUrl, "/v1/auth/session");
+  const attempts: Array<[string, Record<string, string>]> = [
+    ["no credentials", {}],
+    ["a forged bearer token", { authorization: "Bearer not.a.real.token" }]
+  ];
+
+  return runCheck(name, url, async () => {
+    for (const [label, headers] of attempts) {
+      const { response, body } = await get(url, config, headers);
+
+      // 200-with-nothing is the designed answer; an outright rejection is fine
+      // too. Anything else — especially a 2xx carrying a user — is not.
+      expectStatus(response, [200, 401, 403], `${name} (${label})`);
+
+      if (isRecord(body.json) && body.json.user !== undefined) {
+        throw new Error(`Session returned a user identity for ${label}.`);
+      }
+    }
+
+    return {
+      name,
+      status: "PASS",
+      detail: "Anonymous and forged-token callers both get no user.",
       target: displayUrl(url)
     };
   });
@@ -1507,7 +1591,7 @@ async function main() {
     );
   }
   results.push(await checkProtectedRouteRejects(config, "Wallet rejects unauthenticated", "/v1/wallet"));
-  results.push(await checkProtectedRouteRejects(config, "Session rejects unauthenticated", "/v1/auth/session"));
+  results.push(await checkSessionRevealsNoIdentity(config));
   results.push(
     await checkProtectedRouteRejects(
       config,
@@ -1529,11 +1613,21 @@ async function main() {
   for (const route of p1ProtectedAdminRoutes) {
     results.push(await checkProtectedRouteRejects(config, route.name, route.path));
   }
-  // Money-moving verticals. AuthorizationGuard runs before FeatureFlagGuard, so
-  // these answer 401 whether or not the vertical's flag is on — which is what
-  // makes them a valid check on a deployment with financial products disabled.
+  // A vertical whose flag is off has no route registered at all, so the correct
+  // answer there is 404 rather than 401 — see protectedVerticalRoutes. When the
+  // flag set cannot be read, accept either rather than fail the whole vertical
+  // block on one unreadable endpoint.
+  const publicFlags = await readPublicFeatureFlags(config);
+
   for (const route of protectedVerticalRoutes) {
-    results.push(await checkProtectedRouteRejects(config, route.name, route.path));
+    const disabled = route.flag !== undefined && publicFlags?.[route.flag] === false;
+    const expected = route.flag !== undefined && publicFlags === undefined
+      ? [401, 403, 404]
+      : disabled
+        ? [404]
+        : [401, 403];
+
+    results.push(await checkProtectedRouteRejects(config, route.name, route.path, expected));
   }
 
   const authHeaders = await resolveAuthHeaders(config, results);

@@ -244,7 +244,17 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     return undefined as T;
   }
 
-  return (await response.json()) as T;
+  // A handler that returns null — /auth/session does this for a signed-out
+  // caller — sends 200 with a zero-length body, and response.json() throws a
+  // SyntaxError on that. Treat "no body" as "no value" instead, so an empty
+  // success does not surface to the user as a parse error.
+  const raw = await response.text();
+
+  if (raw.trim().length === 0) {
+    return undefined as T;
+  }
+
+  return JSON.parse(raw) as T;
 }
 
 function normalizeAuthPayload(payload: AuthEnvelope): AuthResult {
@@ -335,10 +345,25 @@ export async function logout() {
   }
 }
 
+/**
+ * Resolves to undefined when the caller is not signed in. The API answers that
+ * case with 200 and an empty body rather than a 401, so "no session" is a
+ * normal outcome here and not an error — callers must treat undefined as
+ * signed-out and drop any token they were holding.
+ */
 export async function fetchCurrentSession() {
-  const result = normalizeAuthPayload(await apiRequest<AuthEnvelope>("/auth/session"));
+  const payload = await apiRequest<AuthEnvelope | undefined>("/auth/session");
 
-  return result.session;
+  if (!payload) {
+    return undefined;
+  }
+
+  const { session } = normalizeAuthPayload(payload);
+
+  // A payload that carries no user id is the same "not signed in" answer in a
+  // different shape; normalizeAuthPayload fills in a placeholder user rather
+  // than failing, so check the id instead of trusting the object's presence.
+  return session.user.id ? session : undefined;
 }
 
 export function formatMoney(money?: ApiMoney) {

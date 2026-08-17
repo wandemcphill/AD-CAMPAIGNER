@@ -32,7 +32,16 @@ export function useApiSession() {
 
     setLoading(true);
     try {
-      setSession(await fetchCurrentSession());
+      const current = await fetchCurrentSession();
+
+      // A stored token the API no longer honours comes back as "no session"
+      // with a 200, not a 401. Without dropping it here the dead token would
+      // sit in localStorage forever, re-failing this call on every mount.
+      if (!current) {
+        clearStoredToken();
+      }
+
+      setSession(current);
       setError(undefined);
     } catch (caught) {
       if (caught instanceof ApiClientError && caught.status === 401) {
