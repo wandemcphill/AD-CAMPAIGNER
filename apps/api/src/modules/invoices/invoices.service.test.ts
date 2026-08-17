@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/unbound-method -- expect(mock.method) is the vitest pattern used in API service tests. */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment -- Vitest asymmetric matchers are typed as any. */
 import { BadRequestException } from "@nestjs/common";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

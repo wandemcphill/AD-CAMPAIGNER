@@ -101,6 +101,13 @@ function normalizeInvoiceCurrency(input: string | undefined): CurrencyCode {
   return currency;
 }
 
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string") return value;
+  }
+  return "";
+}
+
 @Injectable()
 export class InvoicesService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -371,7 +378,7 @@ export class InvoicesService {
     }
 
     const eventBody = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
-    const event = String(eventBody["event"] ?? eventBody["event_type"] ?? headers.event ?? "");
+    const event = firstString(eventBody["event"], eventBody["event_type"], headers.event);
     const providerReference =
       typeof eventBody["ref"] === "string"
         ? eventBody["ref"]
