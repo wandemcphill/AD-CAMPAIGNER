@@ -3,7 +3,8 @@ import { createPrismaClient } from "../src/index";
 // Seeds VtuProviderRoute (routing priority table) and VtuDataPlan (data plan catalog).
 //
 // Supplier split:
-//   AIRTIME + DATA + BETTING  -> ClubKonnect (funded, live-verified)
+//   AIRTIME + BETTING         -> ClubKonnect (funded, live-verified)
+//   DATA                      -> Swiftlink (cheapest), ClubKonnect as fallback
 //   CABLE + ELECTRICITY       -> Swiftlink (cheapest), ClubKonnect as fallback
 //   EDUCATION                 -> SirpData, then TopupWizard
 //   DATA (international)      -> Reloadly, via the telecom gateway
@@ -17,10 +18,19 @@ const PRODUCT_TYPES = ["AIRTIME", "DATA"] as const;
 const BILLS_PRODUCT_TYPES = ["ELECTRICITY", "CABLE"] as const;
 const CLUBKONNECT_ONLY_BILLS_PRODUCT_TYPES = ["BETTING"] as const;
 
-// ClubKonnect serves AIRTIME and DATA — it is the funded, live-verified account.
+// AIRTIME stays with ClubKonnect — the funded, live-verified account.
 // VTpass has been removed from the platform entirely.
 const ROUTE_PRIORITY = {
   clubkonnect: 10
+};
+
+// DATA goes to Swiftlink: its live catalogue is materially cheaper across every
+// network (MTN 1GB SME ₦268 and 9mobile 1GB ₦180 against ClubKonnect's ₦563 for
+// MTN 1GB SME). ClubKonnect stays behind it so a Swiftlink outage degrades to a
+// dearer route rather than taking data down.
+const DATA_ROUTE_PRIORITY = {
+  swiftlink: 10,
+  clubkonnect: 20
 };
 
 // CABLE and ELECTRICITY go to Swiftlink first: it is the cheapest source for
@@ -104,8 +114,11 @@ async function seedRoutes(db: ReturnType<typeof createPrismaClient>) {
   let skipped = 0;
 
   for (const productType of PRODUCT_TYPES) {
+    // DATA is Swiftlink-led; AIRTIME stays ClubKonnect-only.
+    const priorities = productType === "DATA" ? DATA_ROUTE_PRIORITY : ROUTE_PRIORITY;
+
     for (const network of NETWORKS) {
-      for (const [provider, priority] of Object.entries(ROUTE_PRIORITY)) {
+      for (const [provider, priority] of Object.entries(priorities)) {
         const existing = await db.vtuProviderRoute.findFirst({
           where: { productType, network, provider }
         });
@@ -614,8 +627,8 @@ const PROVIDER_CONFIGS: Array<{
     //
     // Status stays DISCOVERED: VtuRouterService only selects ACTIVE/PRODUCTION_READY/
     // SANDBOX, so cable/electricity resolve through the VtuProviderRoute table instead.
-    // Purchases also need SWIFTLINK_DATA_SUBCATEGORIES / SWIFTLINK_AIRTIME_SUBCATEGORIES
-    // from the Swiftlink dashboard — without them the adapter refuses before sending.
+    // SWIFTLINK_API_KEY is the only value that has to be supplied — the subcategory_id
+    // every purchase needs is resolved from /get/plans rather than configured.
     status: "DISCOVERED",
     enabledServices: ["AIRTIME", "DATA", "CABLE", "ELECTRICITY"],
     priority: 60
