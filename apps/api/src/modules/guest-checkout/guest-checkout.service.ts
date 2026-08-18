@@ -29,6 +29,7 @@ const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2,
 // Same 2% wholesale markup used by the authenticated VTU flow (vtu.service.ts) —
 // guest checkout resells the same wholesale product, keep pricing consistent.
 const MARKUP_BPS = 200;
+const GUEST_CATALOG_PROVIDER = "clubkonnect";
 
 // Fraud controls. Deliberately conservative for an unauthenticated flow — a
 // registered account can request higher limits through the wallet/VTU path instead.
@@ -106,6 +107,37 @@ interface StoredGuestMetadata {
   };
 }
 
+type GuestCatalogDataPlan = {
+  providerPlanId: string;
+  network: VtuNetwork;
+  displayName: string;
+  sizeMb: number;
+  validityDays: number;
+  costMinor: number;
+};
+
+type GuestCatalogCablePackage = {
+  id: string;
+  cableProvider: string;
+  packageCode: string;
+  displayName: string;
+  costMinor: number;
+};
+
+interface GuestCatalogDataPlanTable {
+  findMany(args: {
+    where: { active: boolean; providerName: string; network?: VtuNetwork };
+    orderBy: Array<{ network: "asc" | "desc" } | { costMinor: "asc" | "desc" }>;
+  }): Promise<GuestCatalogDataPlan[]>;
+}
+
+interface GuestCatalogCablePackageTable {
+  findMany(args: {
+    where: { active: boolean; providerName: string; cableProvider?: string };
+    orderBy: Array<{ cableProvider: "asc" | "desc" } | { costMinor: "asc" | "desc" }>;
+  }): Promise<GuestCatalogCablePackage[]>;
+}
+
 function storedMetadata(transaction: Pick<GuestTransaction, "metadata">): StoredGuestMetadata {
   return (transaction.metadata ?? {}) as StoredGuestMetadata;
 }
@@ -133,6 +165,34 @@ export class GuestCheckoutService {
         ? { baseUrl: process.env["CLUBKONNECT_BASE_URL"] ?? process.env["CLUBKONNECT_API_URL"] }
         : {}),
       ...(process.env["CLUBKONNECT_CALLBACK_URL"] ? { callbackUrl: process.env["CLUBKONNECT_CALLBACK_URL"] } : {})
+    });
+  }
+
+  private async readGuestCatalogDataPlans(network?: VtuNetwork): Promise<GuestCatalogDataPlan[]> {
+    const table = (this.db as unknown as { vtuDataPlan?: GuestCatalogDataPlanTable }).vtuDataPlan;
+    if (!table) return [];
+
+    return table.findMany({
+      where: {
+        active: true,
+        providerName: GUEST_CATALOG_PROVIDER,
+        ...(network ? { network } : {})
+      },
+      orderBy: [{ network: "asc" }, { costMinor: "asc" }]
+    });
+  }
+
+  private async readGuestCatalogCablePackages(provider?: string): Promise<GuestCatalogCablePackage[]> {
+    const table = (this.db as unknown as { vtuCablePackage?: GuestCatalogCablePackageTable }).vtuCablePackage;
+    if (!table) return [];
+
+    return table.findMany({
+      where: {
+        active: true,
+        providerName: GUEST_CATALOG_PROVIDER,
+        ...(provider ? { cableProvider: provider } : {})
+      },
+      orderBy: [{ cableProvider: "asc" }, { costMinor: "asc" }]
     });
   }
 
@@ -227,11 +287,19 @@ export class GuestCheckoutService {
   // free-type a disco/provider slug.
   async listDataPlans(network?: string) {
     const normalized = network && VTU_NETWORKS.includes(network as VtuNetwork) ? (network as VtuNetwork) : undefined;
-    return (await this.vtu?.listDataPlans(normalized)) ?? [];
+    const catalogPlans = await this.readGuestCatalogDataPlans(normalized);
+    if (catalogPlans.length > 0) return catalogPlans;
+    const vtu = this.vtu;
+    if (!vtu) return [];
+    return vtu.listDataPlans(normalized);
   }
 
   async listCablePackages(provider?: string) {
-    return (await this.vtu?.listCablePackages(provider)) ?? [];
+    const catalogPackages = await this.readGuestCatalogCablePackages(provider);
+    if (catalogPackages.length > 0) return catalogPackages;
+    const vtu = this.vtu;
+    if (!vtu) return [];
+    return vtu.listCablePackages(provider);
   }
 
   async listEducationPlans() {
@@ -244,6 +312,12 @@ export class GuestCheckoutService {
   }
 
   async verifyCable(input: { provider: string; smartCardNumber: string }) {
+    if (process.env.CLUBKONNECT_USER_ID && process.env.CLUBKONNECT_API_KEY) {
+      const adapter = this.buildFulfilmentAdapter();
+      if (adapter.verifyCableCustomer) {
+        return adapter.verifyCableCustomer(input);
+      }
+    }
     if (!this.vtu) throw new BadRequestException("Smartcard verification is temporarily unavailable.");
     return this.vtu.verifyCable(input);
   }
@@ -283,7 +357,7 @@ export class GuestCheckoutService {
         if (!VTU_NETWORKS.includes(input.network as VtuNetwork)) {
           throw new BadRequestException("Unsupported network.");
         }
-        const plans = (await this.vtu?.listDataPlans(input.network as VtuNetwork)) ?? [];
+        const plans = await this.listDataPlans(input.network);
         const plan = plans.find((p) => p.providerPlanId === input.bundleId);
         if (!plan) throw new BadRequestException("Data bundle not found or unavailable.");
         return {
@@ -306,7 +380,7 @@ export class GuestCheckoutService {
         if (!input.cableProvider || !input.smartCardNumber || !input.packageCode) {
           throw new BadRequestException("cableProvider, smartCardNumber and packageCode are required.");
         }
-        const packages = (await this.vtu?.listCablePackages(input.cableProvider)) ?? [];
+        const packages = await this.listCablePackages(input.cableProvider);
         const pkg = packages.find((p) => p.packageCode === input.packageCode);
         if (!pkg) throw new BadRequestException("Cable package not found or unavailable.");
         return {
