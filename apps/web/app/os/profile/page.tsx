@@ -72,10 +72,10 @@ export default function ProfilePage() {
   const completionItems = [
     {
       detail:
-        session?.workspace.name ??
+        session?.workspace?.name ??
         "Your workspace will be created automatically when you sign in.",
       href: "/os/campaigns",
-      ready: Boolean(session?.workspace.name),
+      ready: Boolean(session?.workspace?.name),
       title: "Workspace identity"
     },
     {
@@ -175,7 +175,7 @@ export default function ProfilePage() {
                   </Badge>
                 </div>
                 <h2 className="mt-3 text-xl font-medium text-[var(--ft-text-primary)]">
-                  {session?.workspace.name ?? "Complete your business profile"}
+                  {session?.workspace?.name ?? "Complete your business profile"}
                 </h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
                   Fliptrybe uses this profile to understand the business, prepare campaign plans,

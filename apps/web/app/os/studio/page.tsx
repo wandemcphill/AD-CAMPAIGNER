@@ -281,7 +281,7 @@ export default function StudioPage() {
         <SummaryStatStrip
           items={[
             { label: "generation cost", value: "15 credits" },
-            { label: "workspace", value: session?.workspace.name ?? "Attached" },
+            { label: "workspace", value: session?.workspace?.name ?? "Attached" },
             { label: "launch mode", value: "Managed desk review" }
           ]}
         />

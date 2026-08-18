@@ -35,6 +35,9 @@ const onboardingStepCopy: Record<string, string> = {
 };
 
 function destinationPlatform(destinationKind: string) {
+  if (typeof destinationKind !== "string") {
+    return "Web";
+  }
   if (destinationKind.startsWith("TIKTOK")) {
     return "TikTok";
   }
@@ -60,7 +63,7 @@ function destinationPlatform(destinationKind: string) {
 export default function OnboardingPage() {
   const { destinations, error, forbidden, health, loading, refresh, source } = useOnboardingData();
   const { loading: sessionLoading, session } = useApiSession();
-  const providers = health ? Object.entries(health.providers) : [];
+  const providers = health?.providers ? Object.entries(health.providers) : [];
 
   function stepReady(label: string) {
     if (label === "Workspace session") {
@@ -289,7 +292,9 @@ export default function OnboardingPage() {
             <div className="mt-5 border-y border-[var(--ft-border)] py-4">
             {session ? (
               <div className="grid gap-2 text-sm">
-                <div className="font-medium text-[var(--ft-text-primary)]">{session.workspace.name}</div>
+                <div className="font-medium text-[var(--ft-text-primary)]">
+                  {session.workspace?.name ?? "Workspace"}
+                </div>
                 <div className="text-[var(--ft-text-secondary)]">{session.user.name}</div>
                 <div className="text-xs text-[var(--ft-text-muted)]">@{session.user.username}</div>
                 <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
@@ -376,7 +381,7 @@ export default function OnboardingPage() {
                 >
                   <PlatformChip platform={destinationPlatform(destination)} />
                   <span className="font-medium text-[var(--ft-text-primary)]">
-                    {destinationLabels[destination]}
+                    {destinationLabels[destination] ?? destination}
                   </span>
                 </div>
               ))

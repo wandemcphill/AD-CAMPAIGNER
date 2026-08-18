@@ -164,6 +164,7 @@ export function StatusBadge({ status }: { status: CampaignStatus }) {
 }
 
 export function destinationPlatform(destinationKind: string) {
+  if (typeof destinationKind !== "string") return "Web";
   if (destinationKind.startsWith("TIKTOK")) return "TikTok";
   if (destinationKind.startsWith("INSTAGRAM")) return "Instagram";
   if (destinationKind.startsWith("FACEBOOK")) return "Facebook";

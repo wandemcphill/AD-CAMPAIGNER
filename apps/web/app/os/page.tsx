@@ -64,7 +64,11 @@ export default function DashboardPage() {
   const impressions = metricValue(analytics, "impressions");
   const clicks = metricValue(analytics, "clicks");
   const recentCampaigns = [...campaigns]
-    .sort((a, b) => new Date(b.schedule.startsAt).getTime() - new Date(a.schedule.startsAt).getTime())
+    .sort(
+      (a, b) =>
+        new Date(b.schedule?.startsAt ?? b.createdAt ?? 0).getTime() -
+        new Date(a.schedule?.startsAt ?? a.createdAt ?? 0).getTime()
+    )
     .slice(0, 3);
   const insights = aiInsights?.items.slice(0, 3) ?? [];
   const unreadNotifications = notifications.filter((n) => !n.readAt).slice(0, 3);
@@ -173,7 +177,7 @@ export default function DashboardPage() {
                         </Badge>
                       </div>
                       <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
-                        {formatCampaignMoney(campaign.budget)} · Starts {formatDateTime(campaign.schedule.startsAt)}
+                        {formatCampaignMoney(campaign.budget)} · Starts {formatDateTime(campaign.schedule?.startsAt ?? campaign.createdAt)}
                       </div>
                     </div>
                     <ArrowRight className="size-4 text-[var(--ft-text-muted)]" />

@@ -17,7 +17,7 @@ export function SessionPanel({ title = "Workspace status" }: { title?: string })
           <Badge tone="success">Connected</Badge>
         </div>
         <div className="mt-4 grid gap-2 text-[var(--ft-text-secondary)]">
-          <div className="truncate font-medium text-[var(--ft-text-primary)]">{session.workspace.name}</div>
+          <div className="truncate font-medium text-[var(--ft-text-primary)]">{session.workspace?.name ?? "Workspace"}</div>
           <div className="truncate">{session.user.name}</div>
           <div className="truncate text-xs text-[var(--ft-text-muted)]">@{session.user.username}</div>
           <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
