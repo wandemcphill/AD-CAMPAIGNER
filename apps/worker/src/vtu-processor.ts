@@ -183,79 +183,9 @@ export async function processReconcile(): Promise<string> {
   return `reconcile: ${staleOrders.length} stale orders scanned, ${resolved} resolved, ${stillPending} still pending, ${errored} errored`;
 }
 
-// ─── plan_catalog_sync ─────────────────────────────────────────────────────────
-// Refreshes VtuDataPlan from a live provider adapter. Marks plans the provider no
-// longer returns as inactive rather than deleting them (order history references
-// providerPlanId and shouldn't dangle).
-
-export async function processPlanCatalogSync(job: Job<VtuFulfilmentJob>): Promise<string> {
-  const providerName = job.data.providerName;
-  if (!providerName) return "plan_catalog_sync skipped: no providerName";
-
-  const db = getDb();
-  const adapter = buildAdapter(providerName);
-  const offers = await adapter.listDataPlans();
-
-  const seenPlanIds = new Set<string>();
-
-  for (const offer of offers) {
-    seenPlanIds.add(offer.providerPlanId);
-
-    await db.vtuDataPlan.upsert({
-      where: {
-        providerName_providerPlanId: {
-          providerName,
-          providerPlanId: offer.providerPlanId
-        }
-      },
-      create: {
-        providerName,
-        providerPlanId: offer.providerPlanId,
-        network: offer.network,
-        planType: offer.planType,
-        displayName: offer.displayName,
-        sizeMb: offer.sizeMb,
-        validityDays: offer.validityDays,
-        costMinor: offer.costMinor,
-        currency: offer.currency,
-        active: true,
-        lastSyncedAt: new Date()
-      },
-      update: {
-        network: offer.network,
-        planType: offer.planType,
-        displayName: offer.displayName,
-        sizeMb: offer.sizeMb,
-        validityDays: offer.validityDays,
-        costMinor: offer.costMinor,
-        currency: offer.currency,
-        active: true,
-        lastSyncedAt: new Date()
-      }
-    });
-  }
-
-  const existing = await db.vtuDataPlan.findMany({
-    where: { providerName, active: true },
-    select: { id: true, providerPlanId: true }
-  });
-  const staleIds = existing
-    .filter((p) => !seenPlanIds.has(p.providerPlanId))
-    .map((p) => p.id);
-
-  if (staleIds.length > 0) {
-    await db.vtuDataPlan.updateMany({
-      where: { id: { in: staleIds } },
-      data: { active: false }
-    });
-  }
-
-  return `plan_catalog_sync: ${providerName} synced ${offers.length} plans, ${staleIds.length} deactivated`;
-}
-
 // ─── cable_catalog_sync ────────────────────────────────────────────────────────
 // Refreshes VtuCablePackage from a live provider adapter. Same stale-marking pattern
-// as plan_catalog_sync: packages the provider no longer lists are deactivated, not
+// as the other catalog sync jobs: packages the provider no longer lists are deactivated, not
 // deleted, since VtuOrder.metadata references packageCode and shouldn't dangle.
 
 export async function processCableCatalogSync(job: Job<VtuFulfilmentJob>): Promise<string> {
@@ -649,8 +579,6 @@ export async function processVtuFulfilmentJob(job: Job<VtuFulfilmentJob>): Promi
       return processPollStatus(job);
     case "reconcile":
       return processReconcile();
-    case "plan_catalog_sync":
-      return processPlanCatalogSync(job);
     case "cable_catalog_sync":
       return processCableCatalogSync(job);
     case "betting_catalog_sync":
