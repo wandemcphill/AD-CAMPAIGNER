@@ -4,7 +4,6 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
-  Logger,
   NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
@@ -18,16 +17,9 @@ import {
   createMockAdsProvider,
   createMockAiProvider,
   createMockPaymentGateway,
-  createMockSmmSupplier,
   createMockStorageProvider,
   createPaystackPaymentGateway,
-  createPerfectPanelSmmSupplier,
-  createRoutedSmmSupplier,
-  parseSmmServiceMap
-} from "@fliptrybe/providers";
-import type {
-  PerfectPanelSmmSupplierConfig,
-  RoutedSmmSupplierOptions
+  createRoutedSmmSupplier
 } from "@fliptrybe/providers";
 import {
   applyGrowthServiceAdminControls,
@@ -43,7 +35,6 @@ import {
   mapSmmOrderStatusToGrowthStatus,
   summarizeSmmSupplierHealth
 } from "@fliptrybe/service-smm";
-import type { SmmSupplierAuditProvider } from "@fliptrybe/service-smm";
 import {
   currencies,
   type AnalyticsMetric,
@@ -58,7 +49,6 @@ import {
   type NotificationMessage,
   type PromotionDestination,
   type SmmOrder,
-  type SmmServiceKind,
   type SupportTicket,
   type Wallet
 } from "@fliptrybe/types";
@@ -182,10 +172,6 @@ function rejectLegacyMockProvider(operation: string): never {
   );
 }
 
-function getCurrency(value: string | undefined, fallback: CurrencyCode): CurrencyCode {
-  return currencies.includes(value as CurrencyCode) ? (value as CurrencyCode) : fallback;
-}
-
 function getSecret(value: string | undefined) {
   const trimmed = value?.trim();
 
@@ -194,26 +180,6 @@ function getSecret(value: string | undefined) {
   }
 
   return trimmed;
-}
-
-function getPanelEndpoint(value: string | undefined) {
-  return value?.replace(/^(GET|POST|PUT|PATCH|DELETE)\s+/iu, "").trim();
-}
-
-function getApiHost(apiUrl: string) {
-  try {
-    return new URL(apiUrl).hostname;
-  } catch {
-    return apiUrl;
-  }
-}
-
-function getServiceMapCoverage(serviceMap?: Partial<Record<SmmServiceKind, string>>) {
-  return Object.keys(serviceMap ?? {}) as SmmServiceKind[];
-}
-
-function getAllSmmServiceKinds() {
-  return defaultSmmPricingRules.map((rule) => rule.serviceKind);
 }
 
 function getGrowthPricingRules(service: GrowthServiceCatalogItem) {
@@ -275,143 +241,11 @@ function normalizeGrowthOrderStatus(status?: string) {
 }
 
 function createSmmSupplierBundle() {
-  if (process.env.SMM_PROVIDER !== "live") {
-    if (isProductionRuntime() && process.env.ALLOW_MOCK_PROVIDERS !== "true") {
-      const providerAudit: SmmSupplierAuditProvider[] = [
-        {
-          name: "live-smm",
-          mode: "perfect-panel",
-          configured: false,
-          supportedCategories: getAllSmmServiceKinds(),
-          pricingModel: "per-1000-rate-card",
-          routingRole: "disabled",
-          serviceMapCoverage: []
-        }
-      ];
-
-      return {
-        providerAudit,
-        supplier: createRoutedSmmSupplier([]),
-        suppliers: []
-      };
-    }
-
-    const supplier = createMockSmmSupplier();
-    const providerAudit: SmmSupplierAuditProvider[] = [
-      {
-        name: supplier.name,
-        mode: "mock",
-        configured: true,
-        supportedCategories: getAllSmmServiceKinds(),
-        pricingModel: "per-1000-rate-card",
-        routingRole: "primary",
-        serviceMapCoverage: []
-      }
-    ];
-
-    return { providerAudit, supplier, suppliers: [supplier] };
-  }
-
-  const supplierConfigs = [
-    {
-      name: "smdpanel",
-      apiUrl:
-        getPanelEndpoint(process.env.SMDPANEL_ENDPOINT) ??
-        process.env.SMDPANEL_API_URL ??
-        "https://smdpanel.com/api/v2",
-      apiKey: getSecret(process.env.SMDPANEL_API_KEY),
-      currency: getCurrency(process.env.SMDPANEL_CURRENCY, "USD"),
-      serviceMap: parseSmmServiceMap(process.env.SMDPANEL_SERVICE_MAP)
-    },
-    {
-      name: "smmraja",
-      apiUrl: process.env.SMMRAJA_API_URL ?? "https://www.smmraja.com/api/v3",
-      apiKey: getSecret(process.env.SMMRAJA_API_KEY),
-      currency: getCurrency(process.env.SMMRAJA_CURRENCY, "USD"),
-      serviceMap: parseSmmServiceMap(process.env.SMMRAJA_SERVICE_MAP),
-      bulkStatusParam: "order",
-      cancelMode: "single-order"
-    },
-    {
-      name: "justanotherpanel",
-      apiUrl: process.env.JAP_API_URL ?? "https://justanotherpanel.com/api/v2",
-      apiKey: getSecret(process.env.JAP_API_KEY),
-      currency: getCurrency(process.env.JAP_CURRENCY, "USD"),
-      serviceMap: parseSmmServiceMap(process.env.JAP_SERVICE_MAP)
-    },
-    {
-      name: "sizzle",
-      apiUrl: process.env.SIZZLE_API_URL ?? "https://app.sizzlesocial.ng/api/v1",
-      apiKey: getSecret(process.env.SIZZLE_API_KEY),
-      currency: getCurrency(process.env.SIZZLE_CURRENCY, "NGN"),
-      serviceMap: parseSmmServiceMap(process.env.SIZZLE_SERVICE_MAP)
-    },
-    {
-      name: "peakerr",
-      apiUrl: process.env.PEAKERR_API_URL ?? "https://peakerr.com/api/v2",
-      apiKey: getSecret(process.env.PEAKERR_API_KEY),
-      currency: getCurrency(process.env.PEAKERR_CURRENCY, "USD"),
-      serviceMap: parseSmmServiceMap(process.env.PEAKERR_SERVICE_MAP)
-    }
-  ] satisfies PerfectPanelSmmSupplierConfig[];
-
-  const configured = supplierConfigs.filter((config) => Boolean(config.apiKey));
-  const suppliers = configured.map((config) => createPerfectPanelSmmSupplier(config));
-  const firstConfiguredSupplier = supplierConfigs.find((config) => Boolean(config.apiKey))?.name;
-  const providerAudit: SmmSupplierAuditProvider[] = supplierConfigs.map((config) => ({
-    name: config.name,
-    mode: "perfect-panel",
-    configured: Boolean(config.apiKey),
-    apiHost: getApiHost(config.apiUrl),
-    supportedCategories: getAllSmmServiceKinds(),
-    pricingModel: "per-1000-rate-card",
-    routingRole: !config.apiKey
-      ? "disabled"
-      : config.name === firstConfiguredSupplier
-        ? "primary"
-        : "fallback",
-    serviceMapCoverage: getServiceMapCoverage(config.serviceMap)
-  }));
-
   return {
-    providerAudit,
-    supplier: createRoutedSmmSupplier(suppliers, buildSmmRoutingOptions(configured)),
-    suppliers
+    providerAudit: [],
+    supplier: createRoutedSmmSupplier([]),
+    suppliers: []
   };
-}
-
-const smmRoutingLogger = new Logger("SmmRouting");
-
-/**
- * Cheapest-quote routing can only rank panels whose quotes share a currency, and
- * the configured set is mixed by default: Sizzle quotes NGN, SMDPanel / SMMRaja
- * / JAP / Peakerr quote USD. SMM_USD_NGN_RATE (naira per dollar) is what makes
- * those comparable.
- *
- * No default rate on purpose — a hardcoded one would silently drift and quietly
- * change which panel wins. Unset, a mixed set falls back to a stable non-price
- * ordering, and this warns once at startup so that is visible rather than
- * looking like a working price comparison.
- */
-function buildSmmRoutingOptions(
-  configured: Array<{ name: string; currency: string }>
-): RoutedSmmSupplierOptions {
-  const currencies = new Set(configured.map((config) => config.currency));
-  if (currencies.size <= 1) return {};
-
-  const usdNgn = Number(process.env.SMM_USD_NGN_RATE ?? "");
-  if (!Number.isFinite(usdNgn) || usdNgn <= 0) {
-    smmRoutingLogger.warn(
-      `Configured SMM panels quote in mixed currencies (${[...currencies].join(", ")}) but ` +
-        `SMM_USD_NGN_RATE is not set. Quotes cannot be compared on price across currencies — ` +
-        `routing will order them by supplier name instead. Set SMM_USD_NGN_RATE to restore ` +
-        `cheapest-quote routing.`
-    );
-    return {};
-  }
-
-  // rates are expressed as comparison-currency units per one unit of the key.
-  return { comparisonCurrency: "USD", rates: { NGN: 1 / usdNgn } };
 }
 
 @Injectable()
@@ -422,11 +256,7 @@ export class PlatformService {
   private readonly paymentGateway = createPaymentGateway();
   private readonly smmSupplierBundle = createSmmSupplierBundle();
   private readonly smmSupplier = this.smmSupplierBundle.supplier;
-  private readonly smmHealthMonitor = createSmmServiceHealthMonitor(
-    this.smmSupplierBundle.suppliers.length > 0
-      ? this.smmSupplierBundle.suppliers
-      : [this.smmSupplier]
-  );
+  private readonly smmHealthMonitor = createSmmServiceHealthMonitor(this.smmSupplierBundle.suppliers);
   private readonly storageProvider = createStorageProvider();
   private readonly events: PlatformEvent[] = [];
   private readonly campaigns: Campaign[] = [];

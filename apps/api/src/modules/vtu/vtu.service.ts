@@ -12,15 +12,8 @@ import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
   createMockVtuAdapter,
   createClubKonnectAdapter,
-  createSwiftlinkAdapter,
-  parseSwiftlinkSubcategoryMap,
-  createEBillsFullAdapter,
   createTopupWizardAdapter,
   createSirpDataAdapter,
-  createISquareDataAdapter,
-  createInlomaxAdapter,
-  createVTUGateAdapter,
-  createIACafeAdapter,
   type VtuProviderAdapter,
   type VtuNetwork
 } from "@fliptrybe/providers";
@@ -60,6 +53,13 @@ export const AIRTIME_EPIN_DENOMINATIONS_MINOR = [10_000, 20_000, 50_000];
 const MARKUP_BPS = 200;
 const VTU_NETWORKS: VtuNetwork[] = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
 const DEFAULT_VTU_PROVIDER = "clubkonnect";
+const BILLS_ROUTE_PRIORITY = {
+  clubkonnect: 10
+};
+const EDUCATION_ROUTE_PRIORITY = {
+  topupwizard: 10,
+  sirpdata: 20
+};
 
 function isProductionRuntime() {
   return process.env.NODE_ENV === "production";
@@ -68,39 +68,6 @@ function isProductionRuntime() {
 function isMockProviderName(providerName: string) {
   return providerName.trim().toLowerCase() === "mock";
 }
-
-// Verified against the live ClubKonnect (Nellobyte) account on 2026-08-05 via
-// /APIDatabundlePlansV2.asp — real PRODUCT_ID values, not invented placeholders.
-// The plan_catalog_sync worker job (apps/worker/src/vtu-processor.ts) refreshes and
-// supersedes this on the account's schedule; this is only the immediate bootstrap set.
-const DEFAULT_DATA_PLANS: Array<{
-  network: VtuNetwork;
-  providerPlanId: string;
-  displayName: string;
-  sizeMb: number;
-  validityDays: number;
-  costMinor: number;
-}> = [
-  { network: "MTN", providerPlanId: "500", displayName: "MTN 500MB - Weekly (SME)", sizeMb: 500, validityDays: 7, costMinor: 30700 },
-  { network: "MTN", providerPlanId: "1000", displayName: "MTN 1GB - Weekly (SME)", sizeMb: 1024, validityDays: 7, costMinor: 41000 },
-  { network: "MTN", providerPlanId: "1000.00", displayName: "MTN 1GB - Monthly (SME)", sizeMb: 1024, validityDays: 30, costMinor: 56300 },
-  { network: "MTN", providerPlanId: "2000.00", displayName: "MTN 2GB - Monthly (SME)", sizeMb: 2048, validityDays: 30, costMinor: 111700 },
-  { network: "MTN", providerPlanId: "3000.00", displayName: "MTN 3GB - Monthly (SME)", sizeMb: 3072, validityDays: 30, costMinor: 162900 },
-  { network: "MTN", providerPlanId: "5000.00", displayName: "MTN 5GB - Monthly (SME)", sizeMb: 5120, validityDays: 30, costMinor: 251100 },
-  { network: "GLO", providerPlanId: "1000", displayName: "Glo 1GB - 30 days (SME)", sizeMb: 1024, validityDays: 30, costMinor: 46100 },
-  { network: "GLO", providerPlanId: "2000", displayName: "Glo 2GB - 30 days (SME)", sizeMb: 2048, validityDays: 30, costMinor: 92200 },
-  { network: "GLO", providerPlanId: "3000", displayName: "Glo 3GB - 30 days (SME)", sizeMb: 3072, validityDays: 30, costMinor: 138300 },
-  { network: "GLO", providerPlanId: "5000", displayName: "Glo 5GB - 30 days (SME)", sizeMb: 5120, validityDays: 30, costMinor: 230600 },
-  { network: "GLO", providerPlanId: "10000", displayName: "Glo 10GB - 30 days (SME)", sizeMb: 10240, validityDays: 30, costMinor: 461200 },
-  { network: "AIRTEL", providerPlanId: "1499.93", displayName: "Airtel 2GB - 30 days (Direct Data)", sizeMb: 2048, validityDays: 30, costMinor: 145493 },
-  { network: "AIRTEL", providerPlanId: "1999.91", displayName: "Airtel 3GB - 30 days (Direct Data)", sizeMb: 3072, validityDays: 30, costMinor: 193991 },
-  { network: "AIRTEL", providerPlanId: "2999.92", displayName: "Airtel 8GB - 30 days (Direct Data)", sizeMb: 8192, validityDays: 30, costMinor: 290992 },
-  { network: "AIRTEL", providerPlanId: "3999.91", displayName: "Airtel 10GB - 30 days (Direct Data)", sizeMb: 10240, validityDays: 30, costMinor: 387991 },
-  { network: "NINE_MOBILE", providerPlanId: "1000", displayName: "9mobile 1GB - 30 days (SME)", sizeMb: 1024, validityDays: 30, costMinor: 49200 },
-  { network: "NINE_MOBILE", providerPlanId: "2000", displayName: "9mobile 2GB - 30 days (SME)", sizeMb: 2048, validityDays: 30, costMinor: 98400 },
-  { network: "NINE_MOBILE", providerPlanId: "5000", displayName: "9mobile 5GB - 30 days (SME)", sizeMb: 5120, validityDays: 30, costMinor: 246000 },
-  { network: "NINE_MOBILE", providerPlanId: "10000", displayName: "9mobile 10GB - 30 days (SME)", sizeMb: 10240, validityDays: 30, costMinor: 492000 }
-];
 
 // Verified DStv package list from ClubKonnect docs (2026-08-05). GOtv/StarTimes/Showmax
 // packages are populated live by the cable_catalog_sync worker job — not hand-verified
@@ -154,11 +121,6 @@ const PROVIDER_EDUCATION_CODES: Record<string, string[]> = {
   // 'nabteb_pin'". Matches the examMap in createSirpDataAdapter.
   sirpdata: ["waec_pin", "neco_pin", "utme_pin", "nabteb_pin"]
 };
-
-const EDUCATION_PLANS: Array<{ examType: string; displayName: string; costMinor: number }> = [
-  { examType: "waecdirect", displayName: "WAEC Result Checker PIN", costMinor: 535000 },
-  { examType: "waec-registraion", displayName: "WAEC Registration PIN", costMinor: 3750000 }
-];
 
 interface DbLedgerEntryRow {
   id: string;
@@ -230,29 +192,6 @@ export class VtuService {
             ? { callbackUrl: process.env["CLUBKONNECT_CALLBACK_URL"] }
             : {})
         });
-      case "swiftlink":
-        // SWIFTLINK_API_KEY (static dashboard token) is the normal path; email +
-        // password fall back to POST /login. The subcategory_id every purchase
-        // needs is resolved from /get/plans — the *_SUBCATEGORIES maps are
-        // overrides for when the catalogue disagrees with the account, and are
-        // expected to be unset.
-        return createSwiftlinkAdapter({
-          dataSubcategoryId: parseSwiftlinkSubcategoryMap(
-            process.env["SWIFTLINK_DATA_SUBCATEGORIES"]
-          ),
-          airtimeSubcategoryId: parseSwiftlinkSubcategoryMap(
-            process.env["SWIFTLINK_AIRTIME_SUBCATEGORIES"]
-          ),
-          ...(process.env["SWIFTLINK_API_KEY"] ? { apiKey: process.env["SWIFTLINK_API_KEY"] } : {}),
-          ...(process.env["SWIFTLINK_EMAIL"] ? { email: process.env["SWIFTLINK_EMAIL"] } : {}),
-          ...(process.env["SWIFTLINK_PASSWORD"] ? { password: process.env["SWIFTLINK_PASSWORD"] } : {}),
-          ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
-        });
-      case "ebills":
-        return createEBillsFullAdapter({
-          apiKey: process.env["EBILLS_API_KEY"] ?? "",
-          ...(process.env["EBILLS_BASE_URL"] ? { baseUrl: process.env["EBILLS_BASE_URL"] } : {})
-        });
       case "topupwizard":
         return createTopupWizardAdapter({
           apiKey: process.env["TOPUPWIZARD_API_KEY"] ?? "",
@@ -262,28 +201,6 @@ export class VtuService {
         return createSirpDataAdapter({
           apiKey: process.env["SIRPDATA_API_KEY"] ?? "",
           ...(process.env["SIRPDATA_BASE_URL"] ? { baseUrl: process.env["SIRPDATA_BASE_URL"] } : {})
-        });
-      case "isquaredata":
-        return createISquareDataAdapter({
-          apiKey: process.env["ISQUAREDATA_API_KEY"] ?? "",
-          ...(process.env["ISQUAREDATA_BASE_URL"] ? { baseUrl: process.env["ISQUAREDATA_BASE_URL"] } : {})
-        });
-      case "inlomax":
-        return createInlomaxAdapter({
-          apiKey: process.env["INLOMAX_API_KEY"] ?? "",
-          ...(process.env["INLOMAX_BASE_URL"] ? { baseUrl: process.env["INLOMAX_BASE_URL"] } : {})
-        });
-      case "vtugate":
-        return createVTUGateAdapter({
-          apiKey: process.env["VTUGATE_API_KEY"] ?? "",
-          ...(process.env["VTUGATE_BASE_URL"] ? { baseUrl: process.env["VTUGATE_BASE_URL"] } : {})
-        });
-      case "iacafe":
-        // LIVE credential — see the LIVE CREDENTIAL WARNING comment on
-        // createIACafeAdapter in @fliptrybe/providers before enabling real traffic.
-        return createIACafeAdapter({
-          apiKey: process.env["IACAFE_API_KEY"] ?? "",
-          ...(process.env["IACAFE_BASE_URL"] ? { baseUrl: process.env["IACAFE_BASE_URL"] } : {})
         });
       default:
         if (isProductionRuntime()) {
@@ -605,6 +522,8 @@ export class VtuService {
       throw new BadRequestException("Invalid MSISDN format.");
     }
 
+    throw new BadRequestException("Data services are not available right now.");
+
     const orderId = uid("vtu");
     let adapter: VtuProviderAdapter;
     let chargeMinor: number;
@@ -875,6 +794,8 @@ export class VtuService {
       throw new BadRequestException("quantity must be between 1 and 100.");
     }
 
+    throw new BadRequestException("Data services are not available right now.");
+
     const adapter = await this.selectAdapter("DATA", dto.network);
     if (!adapter.purchaseDataEpin) {
       throw new BadRequestException("Selected provider does not support data EPIN issuance.");
@@ -988,7 +909,7 @@ export class VtuService {
     }
   }
 
-  // `actorUserId` is null for system-initiated reversals (e.g. the IACafe webhook
+  // `actorUserId` is null for system-initiated reversals (e.g. the VTU webhook
   // handler, which has no authenticated user in the request). This method is
   // idempotent by construction: it only acts when a CHARGED VtuWalletCharge still
   // exists for the order, so calling it twice for the same order (poll-based
@@ -1036,18 +957,18 @@ export class VtuService {
     });
   }
 
-  // ─── IACafe inbound webhook ──────────────────────────────────────────────────
-  // IACafe's dashboard is configured to POST both `transaction.created` and
+  // ─── VTU inbound webhook ─────────────────────────────────────────────────────
+  // The provider's dashboard is configured to POST both `transaction.created` and
   // `transaction.status_changed` events to /webhooks/vtu (see VtuWebhookController).
   // This is additive to — not a replacement for — the existing poll/requery path:
   // whichever of (webhook, poll) resolves an order first wins, and the other is a
   // safe no-op because every state transition here is guarded to be idempotent.
   //
-  // `request_id` in the payload is IACafe's own request_id, which is exactly the
-  // `providerReference` we generated via IACafeAdapter.buildReference() and sent
+  // `request_id` in the payload is the provider's own request_id, which is exactly the
+  // `providerReference` we generated via the outbound purchase call and sent
   // on the outbound purchase call — so we look the order up by providerReference,
   // not by re-deriving the `vtu_order_<id>` idempotencyKey.
-  async handleIACafeWebhook(payload: Record<string, unknown>): Promise<{
+  async handleVtuWebhook(payload: Record<string, unknown>): Promise<{
     received: true;
     matched: boolean;
     processed: boolean;
@@ -1060,7 +981,7 @@ export class VtuService {
       typeof orderIdRaw === "string" || typeof orderIdRaw === "number" ? String(orderIdRaw) : "unknown";
 
     // ProviderWebhookEvent is unique on (provider, domain, providerEventId).
-    // IACafe retries deliveries, and `transaction.status_changed` can legitimately
+    // The provider may retry deliveries, and `transaction.status_changed` can legitimately
     // fire more than once for the same order_id with different `status` values, so
     // the dedup key includes both the order id and the status/event so a genuine
     // status transition is still recorded, while an exact retry upserts in place.
@@ -1069,19 +990,19 @@ export class VtuService {
     const webhookEvent = await this.db.providerWebhookEvent.upsert({
       where: {
         provider_domain_providerEventId: {
-          provider: "iacafe",
+          provider: "clubkonnect",
           domain: "VTU",
           providerEventId
         }
       },
       create: {
-        provider: "iacafe",
+        provider: "clubkonnect",
         domain: "VTU",
         providerEventId,
         eventType: event,
         // Signature verification for this endpoint is an interim shared-secret
         // check at the controller layer (see VtuWebhookController), not a
-        // per-payload signature from IACafe — there is nothing to record here
+        // per-payload signature from the provider — there is nothing to record here
         // that corresponds to `signature`/`signatureValid` on other providers'
         // rows, so this is left at its default (no signature, signatureValid=false)
         // and authenticity for this row is really vouched for by the fact the
@@ -1095,12 +1016,12 @@ export class VtuService {
     });
 
     if (webhookEvent.processed) {
-      this.logger.log(`IACafe webhook ${providerEventId} already processed — acknowledging.`);
+      this.logger.log(`VTU webhook ${providerEventId} already processed — acknowledging.`);
       return { received: true, matched: true, processed: true };
     }
 
     if (!requestId) {
-      this.logger.warn(`IACafe webhook ${providerEventId} had no request_id — cannot match an order.`);
+      this.logger.warn(`VTU webhook ${providerEventId} had no request_id — cannot match an order.`);
       await this.db.providerWebhookEvent.update({
         where: { id: webhookEvent.id },
         data: { processed: true, processedAt: new Date(), processError: "Missing request_id" }
@@ -1110,7 +1031,7 @@ export class VtuService {
 
     const order = await this.db.vtuOrder.findFirst({ where: { providerReference: requestId } });
     if (!order) {
-      this.logger.warn(`IACafe webhook ${providerEventId}: no VtuOrder for providerReference=${requestId}.`);
+      this.logger.warn(`VTU webhook ${providerEventId}: no VtuOrder for providerReference=${requestId}.`);
       await this.db.providerWebhookEvent.update({
         where: { id: webhookEvent.id },
         data: { processed: true, processedAt: new Date(), processError: "No matching VtuOrder" }
@@ -1122,17 +1043,17 @@ export class VtuService {
       if (event === "transaction.created") {
         // The order already exists — it was created by the initiating purchase
         // request. Nothing to mutate; this event is audit-only.
-        this.logger.log(`IACafe transaction.created for order ${order.id} (request_id=${requestId}).`);
+        this.logger.log(`VTU transaction.created for order ${order.id} (request_id=${requestId}).`);
       } else if (event === "transaction.status_changed") {
         if (status === "completed-api") {
           if (order.status !== "DELIVERED") {
             await this.db.vtuOrder.update({
               where: { id: order.id },
-              data: { status: "DELIVERED", providerName: order.providerName ?? "iacafe" }
+              data: { status: "DELIVERED", providerName: order.providerName ?? DEFAULT_VTU_PROVIDER }
             });
           }
         } else if (status === "refunded-api") {
-          // Double-refund risk: IACafe auto-refunds on ITS side when a transaction
+          // Double-refund risk: the provider may auto-refund on ITS side when a transaction
           // fails, and our own poll/requery path may already have reversed this
           // order's charge (see reverseVtuCharge / adminResolveOrder). Reuse the
           // exact same reversal method the poll path uses rather than a second
@@ -1148,17 +1069,17 @@ export class VtuService {
                 failureReason:
                   typeof payload["refund_reason"] === "string"
                     ? payload["refund_reason"]
-                    : (order.failureReason ?? "IACafe reported refunded-api via webhook.")
+                    : (order.failureReason ?? "Provider reported refunded-api via webhook.")
               }
             });
           }
         } else if (status === "processing-api") {
-          this.logger.log(`IACafe order ${order.id} still processing-api.`);
+          this.logger.log(`VTU order ${order.id} still processing-api.`);
         } else {
-          this.logger.warn(`IACafe webhook: unrecognized status "${String(status)}" for order ${order.id}.`);
+          this.logger.warn(`VTU webhook: unrecognized status "${String(status)}" for order ${order.id}.`);
         }
       } else {
-        this.logger.warn(`IACafe webhook: unrecognized event "${event}" for order ${order.id}.`);
+        this.logger.warn(`VTU webhook: unrecognized event "${event}" for order ${order.id}.`);
       }
 
       await this.db.providerWebhookEvent.update({
@@ -1167,12 +1088,12 @@ export class VtuService {
       });
       return { received: true, matched: true, processed: true };
     } catch (err) {
-      this.logger.error(`IACafe webhook ${providerEventId} processing failed: ${String(err)}`);
+      this.logger.error(`VTU webhook ${providerEventId} processing failed: ${String(err)}`);
       await this.db.providerWebhookEvent.update({
         where: { id: webhookEvent.id },
         data: { processError: err instanceof Error ? err.message : String(err), relatedOrderId: order.id }
       });
-      // Acknowledge with 200 regardless — IACafe may add products/event shapes we
+      // Acknowledge with 200 regardless — the provider may add products/event shapes we
       // don't recognize yet, and this must never 500 into a retry storm. Genuine
       // failures are captured in ProviderWebhookEvent.processError for ops review.
       return { received: true, matched: true, processed: false };
@@ -1195,38 +1116,8 @@ export class VtuService {
    * Selection uses the same path as purchase, so the list and the buy agree even
    * as health or priority moves traffic between providers.
    */
-  async listDataPlans(network?: VtuNetwork) {
-    await this.ensureDefaultCatalog();
-
-    const networks: VtuNetwork[] = network ? [network] : [...VTU_NETWORKS];
-    const plansByNetwork = await Promise.all(
-      networks.map(async (net) => {
-        let providerName: string;
-        try {
-          providerName = (await this.selectAdapter("DATA", net)).name;
-        } catch {
-          // No routable provider for this network — nothing is buyable, so
-          // return nothing rather than listing plans that cannot be fulfilled.
-          return [];
-        }
-
-        if (isProductionRuntime() && isMockProviderName(providerName)) {
-          return [];
-        }
-
-        return this.db.vtuDataPlan.findMany({
-          where: {
-            active: true,
-            network: net,
-            providerName,
-            ...(isProductionRuntime() ? { displayName: { not: { contains: "Mock" } } } : {})
-          },
-          orderBy: { costMinor: "asc" }
-        });
-      })
-    );
-
-    return plansByNetwork.flat();
+  listDataPlans() {
+    return [];
   }
 
   // ─── Order history ───────────────────────────────────────────────────────────
@@ -1265,7 +1156,7 @@ export class VtuService {
 
   private async ensureDefaultCatalog(db: DbClient = this.db) {
     for (const network of VTU_NETWORKS) {
-      for (const productType of ["AIRTIME", "DATA"] as const) {
+      for (const productType of ["AIRTIME"] as const) {
         const existing = await db.vtuProviderRoute.findFirst({
           where: { productType, network, provider: DEFAULT_VTU_PROVIDER }
         });
@@ -1291,40 +1182,56 @@ export class VtuService {
       }
     }
 
-    await Promise.all(
-      DEFAULT_DATA_PLANS.map((plan) =>
-        db.vtuDataPlan.upsert({
-          where: {
-            providerName_providerPlanId: {
-              providerName: DEFAULT_VTU_PROVIDER,
-              providerPlanId: plan.providerPlanId
-            }
-          },
-          update: {
-            network: plan.network,
-            displayName: plan.displayName,
-            sizeMb: plan.sizeMb,
-            validityDays: plan.validityDays,
-            costMinor: plan.costMinor,
-            active: true,
-            lastSyncedAt: new Date()
-          },
-          create: {
-            id: uid("vplan"),
-            providerName: DEFAULT_VTU_PROVIDER,
-            providerPlanId: plan.providerPlanId,
-            network: plan.network,
-            planType: "SME",
-            displayName: plan.displayName,
-            sizeMb: plan.sizeMb,
-            validityDays: plan.validityDays,
-            costMinor: plan.costMinor,
-            currency: "NGN",
-            active: true
+    for (const [provider, priority] of Object.entries(BILLS_ROUTE_PRIORITY)) {
+      for (const productType of ["CABLE", "ELECTRICITY", "BETTING"] as const) {
+        const existing = await db.vtuProviderRoute.findFirst({
+          where: { productType, network: null, provider }
+        });
+
+        if (existing) {
+          if (existing.priority !== priority) {
+            await db.vtuProviderRoute.update({ where: { id: existing.id }, data: { priority } });
           }
-        })
-      )
-    );
+          await db.vtuProviderRoute.update({ where: { id: existing.id }, data: { active: true } });
+        } else {
+          await db.vtuProviderRoute.create({
+            data: {
+              id: uid("vroute"),
+              productType,
+              network: null,
+              provider,
+              priority,
+              active: true,
+              note: "Default production route"
+            }
+          });
+        }
+      }
+    }
+
+    for (const [provider, priority] of Object.entries(EDUCATION_ROUTE_PRIORITY)) {
+      const existing = await db.vtuProviderRoute.findFirst({
+        where: { productType: "EDUCATION", network: null, provider }
+      });
+
+      if (existing) {
+        if (existing.priority !== priority) {
+          await db.vtuProviderRoute.update({ where: { id: existing.id }, data: { priority } });
+        }
+      } else {
+        await db.vtuProviderRoute.create({
+          data: {
+            id: uid("vroute"),
+            productType: "EDUCATION",
+            network: null,
+            provider,
+            priority,
+            active: true,
+            note: `Default education route (${provider})`
+          }
+        });
+      }
+    }
   }
 
   async adminUpdateRoute(
@@ -1945,9 +1852,8 @@ export class VtuService {
     if (!plan) {
       // Deliberately specific: "not found" here nearly always means the exam
       // type is real and supported by the adapter but has no price yet — either
-      // education_catalog_sync has not run for this provider, or the provider
-      // returns no priced rows for it at the current account tier (JAMB on
-      // ClubKonnect). Both are operator-actionable; the old message was not.
+      // education_catalog_sync has not run for TopupWizard, or the provider
+      // requires a manual price entry (SirpData). Both are operator-actionable.
       throw new NotFoundException(
         `No price is available for exam type "${dto.examType}" from ${adapter.name}. ` +
           `Run education_catalog_sync for this provider, or select a different exam type.`
@@ -2064,7 +1970,7 @@ export class VtuService {
   async listEducationPlans() {
     await this.ensureDefaultEducationPlans();
     const plans = await this.db.vtuEducationPlan.findMany({
-      where: { active: true },
+      where: { active: true, providerName: { in: ["topupwizard", "sirpdata"] } },
       orderBy: { costMinor: "asc" }
     });
     const bps = await this.pricingRules.resolveMarkupBps("VTU", { productType: "EDUCATION" }, MARKUP_BPS);
@@ -2101,28 +2007,39 @@ export class VtuService {
 
   private async ensureDefaultEducationPlans(db: DbClient = this.db) {
     const existing = await db.vtuEducationPlan.count({
-      where: { providerName: DEFAULT_VTU_PROVIDER }
+      where: { providerName: "topupwizard" }
     });
     if (existing > 0) return;
 
+    const adapter = this.buildAdapter("topupwizard");
+    if (!adapter.listEducationPlans) return;
+
+    const offers = await adapter.listEducationPlans();
     await Promise.all(
-      EDUCATION_PLANS.map((plan) =>
+      offers.map((plan) =>
         db.vtuEducationPlan.upsert({
           where: {
             providerName_productCode: {
-              providerName: DEFAULT_VTU_PROVIDER,
-              productCode: plan.examType
+              providerName: "topupwizard",
+              productCode: plan.productCode
             }
           },
-          update: {},
-          create: {
-            id: uid("vedu"),
-            providerName: DEFAULT_VTU_PROVIDER,
-            productCode: plan.examType,
+          update: {
             displayName: plan.displayName,
             costMinor: plan.costMinor,
-            currency: "NGN",
-            active: true
+            currency: plan.currency,
+            active: true,
+            pricingSource: "SYNC"
+          },
+          create: {
+            id: uid("vedu"),
+            providerName: "topupwizard",
+            productCode: plan.productCode,
+            displayName: plan.displayName,
+            costMinor: plan.costMinor,
+            currency: plan.currency,
+            active: true,
+            pricingSource: "SYNC"
           }
         })
       )

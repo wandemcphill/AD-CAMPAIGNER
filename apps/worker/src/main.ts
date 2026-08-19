@@ -22,7 +22,7 @@ const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379"
 // (seed-vtu.ts EDUCATION_ROUTE_PRIORITY) — without a scheduled
 // education_catalog_sync neither ever gets a VtuEducationPlan row, and every
 // exam-PIN purchase routed to them fails on "no price available".
-const VTU_LIVE_PROVIDERS = ["clubkonnect", "swiftlink", "sirpdata", "topupwizard"];
+const VTU_LIVE_PROVIDERS = ["clubkonnect", "sirpdata", "topupwizard"];
 
 // Virtual Number providers wired to real adapters (see virtual-numbers-processor.ts).
 const VIRTUAL_NUMBER_LIVE_PROVIDERS = ["smspool", "5sim", "smspva"];
@@ -86,12 +86,6 @@ async function scheduleVtuRecurringJobs() {
   );
 
   for (const providerName of VTU_LIVE_PROVIDERS) {
-    await queue.upsertJobScheduler(
-      `vtu-plan-sync-${providerName}`,
-      { every: 24 * 60 * 60_000 }, // daily
-      { name: "plan_catalog_sync", data: { providerName } }
-    );
-
     await queue.upsertJobScheduler(
       `vtu-cable-sync-${providerName}`,
       { every: 24 * 60 * 60_000 }, // daily

@@ -28,10 +28,10 @@ type EducationPlan = {
 // Providers whose exam-PIN catalog cannot be discovered automatically. SirpData
 // has no pricing endpoint at all — its documented API returns cost only as
 // `amountCharged` on the purchase response, after the money is spent — so its
-// plans exist ONLY if entered here. TopupWizard and ClubKonnect are listed as
-// suggestions for the provider field but their prices normally come from
+// plans exist ONLY if entered here. TopupWizard is listed as a suggestion for
+// the provider field but its prices normally come from
 // education_catalog_sync; a MANUAL row here still overrides that going forward.
-const SUGGESTED_PROVIDERS = ["sirpdata", "topupwizard", "clubkonnect"];
+const SUGGESTED_PROVIDERS = ["sirpdata", "topupwizard"];
 
 // SirpData's documented examType values (Native API Documentation | SIRP DATA,
 // Educational PINs, retrieved 2026-08-15). Kept here only to prefill the form —

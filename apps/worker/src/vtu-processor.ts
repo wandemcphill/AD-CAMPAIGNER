@@ -4,15 +4,8 @@ import { createPrismaClient, type DatabaseClient } from "@fliptrybe/database";
 import {
   createMockVtuAdapter,
   createClubKonnectAdapter,
-  createSwiftlinkAdapter,
-  parseSwiftlinkSubcategoryMap,
-  createEBillsFullAdapter,
   createTopupWizardAdapter,
   createSirpDataAdapter,
-  createISquareDataAdapter,
-  createInlomaxAdapter,
-  createVTUGateAdapter,
-  createIACafeAdapter,
   type VtuProviderAdapter
 } from "@fliptrybe/providers";
 
@@ -48,63 +41,15 @@ function buildAdapter(providerName: string): VtuProviderAdapter {
           ? { callbackUrl: process.env["CLUBKONNECT_CALLBACK_URL"] }
           : {})
       });
-    case "swiftlink":
-      // Must stay in step with VtuService.buildAdapter — the worker processes
-      // the same orders and had no SWIFTLINK_* vars at all until now, so it
-      // built this adapter with an empty key.
-      return createSwiftlinkAdapter({
-        dataSubcategoryId: parseSwiftlinkSubcategoryMap(
-          process.env["SWIFTLINK_DATA_SUBCATEGORIES"]
-        ),
-        airtimeSubcategoryId: parseSwiftlinkSubcategoryMap(
-          process.env["SWIFTLINK_AIRTIME_SUBCATEGORIES"]
-        ),
-        ...(process.env["SWIFTLINK_API_KEY"] ? { apiKey: process.env["SWIFTLINK_API_KEY"] } : {}),
-        ...(process.env["SWIFTLINK_EMAIL"] ? { email: process.env["SWIFTLINK_EMAIL"] } : {}),
-        ...(process.env["SWIFTLINK_PASSWORD"] ? { password: process.env["SWIFTLINK_PASSWORD"] } : {}),
-        ...(process.env["SWIFTLINK_BASE_URL"] ? { baseUrl: process.env["SWIFTLINK_BASE_URL"] } : {})
-      });
-    case "ebills":
-      return createEBillsFullAdapter({
-        apiKey: process.env["EBILLS_API_KEY"] ?? "",
-        ...(process.env["EBILLS_BASE_URL"] ? { baseUrl: process.env["EBILLS_BASE_URL"] } : {})
-      });
     case "topupwizard":
       return createTopupWizardAdapter({
         apiKey: process.env["TOPUPWIZARD_API_KEY"] ?? "",
         ...(process.env["TOPUPWIZARD_BASE_URL"] ? { baseUrl: process.env["TOPUPWIZARD_BASE_URL"] } : {})
       });
-    // sirpdata and iacafe were missing here while present in the API's own
-    // buildAdapter, so every background job for them — education_catalog_sync,
-    // poll_status, reconcile — silently fell through to `default:` and was
-    // served by a MOCK adapter. This switch must stay in step with
-    // VtuService.buildAdapter; the two are the same table.
     case "sirpdata":
       return createSirpDataAdapter({
         apiKey: process.env["SIRPDATA_API_KEY"] ?? "",
         ...(process.env["SIRPDATA_BASE_URL"] ? { baseUrl: process.env["SIRPDATA_BASE_URL"] } : {})
-      });
-    case "iacafe":
-      // LIVE credential — see the LIVE CREDENTIAL WARNING comment on
-      // createIACafeAdapter in @fliptrybe/providers before enabling real traffic.
-      return createIACafeAdapter({
-        apiKey: process.env["IACAFE_API_KEY"] ?? "",
-        ...(process.env["IACAFE_BASE_URL"] ? { baseUrl: process.env["IACAFE_BASE_URL"] } : {})
-      });
-    case "isquaredata":
-      return createISquareDataAdapter({
-        apiKey: process.env["ISQUAREDATA_API_KEY"] ?? "",
-        ...(process.env["ISQUAREDATA_BASE_URL"] ? { baseUrl: process.env["ISQUAREDATA_BASE_URL"] } : {})
-      });
-    case "inlomax":
-      return createInlomaxAdapter({
-        apiKey: process.env["INLOMAX_API_KEY"] ?? "",
-        ...(process.env["INLOMAX_BASE_URL"] ? { baseUrl: process.env["INLOMAX_BASE_URL"] } : {})
-      });
-    case "vtugate":
-      return createVTUGateAdapter({
-        apiKey: process.env["VTUGATE_API_KEY"] ?? "",
-        ...(process.env["VTUGATE_BASE_URL"] ? { baseUrl: process.env["VTUGATE_BASE_URL"] } : {})
       });
     default:
       return createMockVtuAdapter(providerName);
