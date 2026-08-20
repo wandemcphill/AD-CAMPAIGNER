@@ -58,8 +58,10 @@ describe("processNotificationDispatchJob", () => {
     sendMock.mockReset();
     isConfiguredMock.mockReset();
     isConfiguredMock.mockReturnValue(true);
+    process.env.NODE_ENV = "test";
     process.env.NOTIFICATION_PROVIDER = "termii";
     process.env.TERMII_API_KEY = "test-key";
+    delete process.env.EMAIL_PROVIDER;
     delete process.env.RESEND_API_KEY;
     delete process.env.RESEND_FROM_EMAIL;
     delete process.env.EMAIL_FROM;
@@ -67,7 +69,9 @@ describe("processNotificationDispatchJob", () => {
   });
 
   afterEach(() => {
+    delete process.env.NODE_ENV;
     delete process.env.NOTIFICATION_PROVIDER;
+    delete process.env.EMAIL_PROVIDER;
     delete process.env.TERMII_API_KEY;
     delete process.env.RESEND_API_KEY;
     delete process.env.RESEND_FROM_EMAIL;
@@ -95,8 +99,9 @@ describe("processNotificationDispatchJob", () => {
     expect(lastCallData(notificationUpdate)).toMatchObject({ status: "SENT" });
   });
 
-  it("sends email through Resend with a stable Idempotency-Key", async () => {
-    process.env.NOTIFICATION_PROVIDER = "resend";
+  it("uses Resend for email while keeping Termii available for SMS", async () => {
+    process.env.NOTIFICATION_PROVIDER = "live";
+    process.env.EMAIL_PROVIDER = "resend";
     process.env.RESEND_API_KEY = "re_test_key";
     process.env.RESEND_FROM_EMAIL = "FlipTrybe <noreply@example.com>";
 
@@ -140,6 +145,35 @@ describe("processNotificationDispatchJob", () => {
       provider: "resend",
       providerMessageId: "re_msg_1"
     });
+  });
+
+  it("fails closed instead of using a mock provider in production when live credentials are missing", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.NOTIFICATION_PROVIDER = "live";
+    delete process.env.TERMII_API_KEY;
+    delete process.env.EMAIL_PROVIDER;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+
+    const { processNotificationDispatchJob } = await import("./notifications-processor");
+    notificationFindUnique.mockResolvedValue({
+      id: "ntf_1",
+      idempotencyKey: "evt_prod_missing_provider",
+      title: "Update",
+      body: "text",
+      guestPhone: null,
+      guestEmail: null,
+      recipient: { email: null, phone: "+2348011112222" }
+    });
+
+    const result = await processNotificationDispatchJob(fakeJob("SMS"));
+
+    expect(result.outcome).toBe("pending:provider_not_configured");
+    expect(notificationDeliveryAttemptCreate).toHaveBeenCalledTimes(1);
+    expect(lastCallData(notificationDeliveryAttemptCreate)).toMatchObject({
+      status: "PENDING_CONFIGURATION"
+    });
+    expect(lastCallData(notificationDeliveryAttemptCreate).provider).toBe("live");
   });
 
   it("marks a delivery attempt FAILED when the provider rejects the send but does not mark the Notification FAILED before retries are exhausted", async () => {
