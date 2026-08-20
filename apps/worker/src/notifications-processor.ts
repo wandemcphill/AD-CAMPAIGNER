@@ -1,5 +1,4 @@
 import type { Job } from "bullmq";
-
 import { createPrismaClient, type DatabaseClient } from "@fliptrybe/database";
 import {
   createTermiiEmailAdapter,
@@ -89,15 +88,20 @@ function createResendEmailAdapter(
   };
 }
 
-// NOTIFICATION_PROVIDER=mock (or unset with no TERMII_API_KEY/RESEND_API_KEY)
-// uses the mock adapter so dev/test environments never attempt real delivery.
-// Set NOTIFICATION_PROVIDER=termii or resend with the matching provider vars
-// populated to go live.
+// EMAIL_PROVIDER can override only the email transport, allowing Resend to
+// coexist with Termii for SMS/WhatsApp. When omitted, email keeps following
+// NOTIFICATION_PROVIDER for backwards compatibility.
 function adapterForChannel(
   channel: "EMAIL" | "SMS" | "WHATSAPP",
   idempotencyKey: string
 ): NotificationProviderAdapter {
-  if (channel === "EMAIL" && process.env.NOTIFICATION_PROVIDER === "resend") {
+  const provider = (
+    channel === "EMAIL"
+      ? process.env.EMAIL_PROVIDER ?? process.env.NOTIFICATION_PROVIDER
+      : process.env.NOTIFICATION_PROVIDER
+  )?.trim().toLowerCase();
+
+  if (channel === "EMAIL" && provider === "resend") {
     return createResendEmailAdapter(
       {
         apiKey: process.env.RESEND_API_KEY,
@@ -107,8 +111,7 @@ function adapterForChannel(
     );
   }
 
-  const useTermii =
-    process.env.NOTIFICATION_PROVIDER === "termii" && Boolean(process.env.TERMII_API_KEY);
+  const useTermii = provider === "termii" && Boolean(process.env.TERMII_API_KEY);
 
   if (!useTermii) {
     return createMockNotificationProvider();
