@@ -88,6 +88,16 @@ function createResendEmailAdapter(
   };
 }
 
+function createUnavailableProductionProvider(name: string): NotificationProviderAdapter {
+  return {
+    name,
+    isConfigured: () => false,
+    async send() {
+      throw new Error(`${name} notification provider is not configured for production.`);
+    }
+  };
+}
+
 // EMAIL_PROVIDER can override only the email transport, allowing Resend to
 // coexist with Termii for SMS/WhatsApp. When omitted, email keeps following
 // NOTIFICATION_PROVIDER for backwards compatibility.
@@ -101,7 +111,9 @@ function adapterForChannel(
       : process.env.NOTIFICATION_PROVIDER
   )?.trim().toLowerCase();
 
-  if (channel === "EMAIL" && provider === "resend") {
+  if (channel === "EMAIL" && (provider === "resend" || provider === "live")) {
+    // "live" is retained as a backwards-compatible production value, but the
+    // actual email transport remains Resend when its credentials are present.
     return createResendEmailAdapter(
       {
         apiKey: process.env.RESEND_API_KEY,
@@ -111,9 +123,12 @@ function adapterForChannel(
     );
   }
 
-  const useTermii = provider === "termii" && Boolean(process.env.TERMII_API_KEY);
+  const useTermii = (provider === "termii" || provider === "live") && Boolean(process.env.TERMII_API_KEY);
 
   if (!useTermii) {
+    if ((process.env.NODE_ENV || "").trim().toLowerCase() === "production") {
+      return createUnavailableProductionProvider(provider || "notification");
+    }
     return createMockNotificationProvider();
   }
 
