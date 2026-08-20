@@ -70,6 +70,7 @@ export type VtuFulfilmentJobName =
   | "submit"
   | "poll_status"
   | "reconcile"
+  | "plan_catalog_sync"
   | "cable_catalog_sync"
   | "betting_catalog_sync"
   | "education_catalog_sync"

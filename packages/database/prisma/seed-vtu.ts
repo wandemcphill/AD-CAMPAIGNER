@@ -1,4 +1,4 @@
-import { createTopupWizardAdapter } from "@fliptrybe/providers";
+import { createGsubzAdapter, createTopupWizardAdapter } from "@fliptrybe/providers";
 
 import { createPrismaClient } from "../src/index";
 
@@ -9,6 +9,13 @@ const ALLOWED_PROVIDER_CONFIGS = [
     status: "ACTIVE",
     enabledServices: ["AIRTIME", "CABLE", "ELECTRICITY", "BETTING"],
     priority: 10
+  },
+  {
+    providerName: "gsubz",
+    displayName: "GSUBZ",
+    status: "ACTIVE",
+    enabledServices: ["DATA"],
+    priority: 15
   },
   {
     providerName: "topupwizard",
@@ -59,7 +66,7 @@ async function purgeLegacyVtuState(db: ReturnType<typeof createPrismaClient>) {
     where: {
       OR: [
         { productType: "DATA" },
-        { provider: { notIn: ["clubkonnect", "topupwizard", "sirpdata"] } },
+        { provider: { notIn: ["clubkonnect", "gsubz", "topupwizard", "sirpdata"] } },
         {
           AND: [{ productType: "EDUCATION" }, { provider: "clubkonnect" }]
         }
@@ -76,7 +83,7 @@ async function purgeLegacyVtuState(db: ReturnType<typeof createPrismaClient>) {
     where: { providerName: { notIn: ["topupwizard", "sirpdata"] } }
   });
   await db.vtuProviderConfig.deleteMany({
-    where: { providerName: { notIn: ["clubkonnect", "topupwizard", "sirpdata"] } }
+    where: { providerName: { notIn: ["clubkonnect", "gsubz", "topupwizard", "sirpdata"] } }
   });
 }
 
@@ -102,6 +109,30 @@ async function seedRoutes(db: ReturnType<typeof createPrismaClient>) {
           priority: 10,
           active: true,
           note: "Default airtime route"
+        }
+      });
+      created++;
+    }
+  }
+
+  for (const network of ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"] as const) {
+    const existing = await db.vtuProviderRoute.findFirst({
+      where: { productType: "DATA", network, provider: "gsubz" }
+    });
+    if (existing) {
+      if (existing.priority !== 10) {
+        await db.vtuProviderRoute.update({ where: { id: existing.id }, data: { priority: 10, active: true } });
+        updated++;
+      }
+    } else {
+      await db.vtuProviderRoute.create({
+        data: {
+          productType: "DATA",
+          network,
+          provider: "gsubz",
+          priority: 10,
+          active: true,
+          note: "Default data route"
         }
       });
       created++;
@@ -245,6 +276,57 @@ async function seedProviderConfigs(db: ReturnType<typeof createPrismaClient>) {
   console.log(`VtuProviderConfig: ${ALLOWED_PROVIDER_CONFIGS.length} rows ensured`);
 }
 
+async function seedGsubzDataPlans(db: ReturnType<typeof createPrismaClient>) {
+  const apiKey = process.env.GSUBZ_API_KEY?.trim();
+  if (!apiKey) {
+    console.log("VtuDataPlan: skipped GSUBZ sync (missing GSUBZ_API_KEY)");
+    return;
+  }
+
+  const adapter = createGsubzAdapter({
+    apiKey,
+    ...(process.env.GSUBZ_BASE_URL ? { baseUrl: process.env.GSUBZ_BASE_URL } : {})
+  });
+
+  const offers = await adapter.listDataPlans();
+  for (const plan of offers) {
+    await db.vtuDataPlan.upsert({
+      where: {
+        providerName_providerPlanId: {
+          providerName: "gsubz",
+          providerPlanId: plan.providerPlanId
+        }
+      },
+      create: {
+        id: `vdata_${Math.random().toString(36).slice(2, 12)}`,
+        providerName: "gsubz",
+        providerPlanId: plan.providerPlanId,
+        network: plan.network,
+        planType: plan.planType,
+        displayName: plan.displayName,
+        sizeMb: plan.sizeMb,
+        validityDays: plan.validityDays,
+        costMinor: plan.costMinor,
+        currency: plan.currency,
+        active: true
+      },
+      update: {
+        network: plan.network,
+        planType: plan.planType,
+        displayName: plan.displayName,
+        sizeMb: plan.sizeMb,
+        validityDays: plan.validityDays,
+        costMinor: plan.costMinor,
+        currency: plan.currency,
+        active: true,
+        lastSyncedAt: new Date()
+      }
+    });
+  }
+
+  console.log(`VtuDataPlan: ${offers.length} gsubz rows upserted`);
+}
+
 async function seedTopupWizardEducation(db: ReturnType<typeof createPrismaClient>) {
   const apiKey = process.env.TOPUPWIZARD_API_KEY?.trim();
   if (!apiKey) {
@@ -256,6 +338,11 @@ async function seedTopupWizardEducation(db: ReturnType<typeof createPrismaClient
     apiKey,
     ...(process.env.TOPUPWIZARD_BASE_URL ? { baseUrl: process.env.TOPUPWIZARD_BASE_URL } : {})
   });
+
+  if (!adapter.listEducationPlans) {
+    console.log("VtuEducationPlan: skipped topupwizard sync (adapter has no education catalog)");
+    return;
+  }
 
   const offers = await adapter.listEducationPlans();
   for (const plan of offers) {
@@ -299,6 +386,7 @@ async function main() {
     await seedCablePackages(db);
     await seedBettingCompanies(db);
     await seedProviderConfigs(db);
+    await seedGsubzDataPlans(db);
     await seedTopupWizardEducation(db);
   } finally {
     await db.$disconnect();

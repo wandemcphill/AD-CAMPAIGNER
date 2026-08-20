@@ -15,14 +15,14 @@ const connection = new IORedis(process.env.REDIS_URL ?? "redis://localhost:6379"
   maxRetriesPerRequest: null
 });
 
-// VTU providers wired to real adapters (see apps/worker/src/vtu-processor.ts). Extend this
-// when a new adapter goes live so its catalog/health jobs get scheduled automatically.
-//
-// sirpdata and topupwizard are here because they are the education route
-// (seed-vtu.ts EDUCATION_ROUTE_PRIORITY) — without a scheduled
-// education_catalog_sync neither ever gets a VtuEducationPlan row, and every
-// exam-PIN purchase routed to them fails on "no price available".
-const VTU_LIVE_PROVIDERS = ["clubkonnect", "sirpdata", "topupwizard"];
+// VTU providers wired to real adapters (see apps/worker/src/vtu-processor.ts).
+// Keep catalog jobs product-specific so education-only providers never sync
+// data plans and GSUBZ never becomes a bills supplier by scheduler accident.
+const VTU_LIVE_PROVIDERS = ["clubkonnect", "gsubz", "sirpdata", "topupwizard"];
+const VTU_DATA_CATALOG_PROVIDERS = ["gsubz"];
+const VTU_CABLE_CATALOG_PROVIDERS = ["clubkonnect"];
+const VTU_BETTING_CATALOG_PROVIDERS = ["clubkonnect"];
+const VTU_EDUCATION_CATALOG_PROVIDERS = ["sirpdata", "topupwizard"];
 
 // Virtual Number providers wired to real adapters (see virtual-numbers-processor.ts).
 const VIRTUAL_NUMBER_LIVE_PROVIDERS = ["smspool", "5sim", "smspva"];
@@ -85,25 +85,39 @@ async function scheduleVtuRecurringJobs() {
     { name: "reconcile", data: {} }
   );
 
-  for (const providerName of VTU_LIVE_PROVIDERS) {
+  for (const providerName of VTU_DATA_CATALOG_PROVIDERS) {
+    await queue.upsertJobScheduler(
+      `vtu-plan-sync-${providerName}`,
+      { every: 24 * 60 * 60_000 }, // daily
+      { name: "plan_catalog_sync", data: { providerName } }
+    );
+  }
+
+  for (const providerName of VTU_CABLE_CATALOG_PROVIDERS) {
     await queue.upsertJobScheduler(
       `vtu-cable-sync-${providerName}`,
       { every: 24 * 60 * 60_000 }, // daily
       { name: "cable_catalog_sync", data: { providerName } }
     );
+  }
 
+  for (const providerName of VTU_BETTING_CATALOG_PROVIDERS) {
     await queue.upsertJobScheduler(
       `vtu-betting-sync-${providerName}`,
       { every: 24 * 60 * 60_000 }, // daily
       { name: "betting_catalog_sync", data: { providerName } }
     );
+  }
 
+  for (const providerName of VTU_EDUCATION_CATALOG_PROVIDERS) {
     await queue.upsertJobScheduler(
       `vtu-education-sync-${providerName}`,
       { every: 24 * 60 * 60_000 }, // daily
       { name: "education_catalog_sync", data: { providerName } }
     );
+  }
 
+  for (const providerName of VTU_LIVE_PROVIDERS) {
     await queue.upsertJobScheduler(
       `vtu-health-${providerName}`,
       { every: 5 * 60_000 }, // every 5 minutes

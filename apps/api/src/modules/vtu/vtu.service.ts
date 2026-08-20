@@ -12,6 +12,7 @@ import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
 import {
   createMockVtuAdapter,
   createClubKonnectAdapter,
+  createGsubzAdapter,
   createTopupWizardAdapter,
   createSirpDataAdapter,
   type VtuProviderAdapter,
@@ -53,6 +54,7 @@ export const AIRTIME_EPIN_DENOMINATIONS_MINOR = [10_000, 20_000, 50_000];
 const MARKUP_BPS = 200;
 const VTU_NETWORKS: VtuNetwork[] = ["MTN", "GLO", "AIRTEL", "NINE_MOBILE"];
 const DEFAULT_VTU_PROVIDER = "clubkonnect";
+const DEFAULT_DATA_PROVIDER = "gsubz";
 const BILLS_ROUTE_PRIORITY = {
   clubkonnect: 10
 };
@@ -201,6 +203,11 @@ export class VtuService {
         return createSirpDataAdapter({
           apiKey: process.env["SIRPDATA_API_KEY"] ?? "",
           ...(process.env["SIRPDATA_BASE_URL"] ? { baseUrl: process.env["SIRPDATA_BASE_URL"] } : {})
+        });
+      case "gsubz":
+        return createGsubzAdapter({
+          apiKey: process.env["GSUBZ_API_KEY"] ?? "",
+          ...(process.env["GSUBZ_BASE_URL"] ? { baseUrl: process.env["GSUBZ_BASE_URL"] } : {})
         });
       default:
         if (isProductionRuntime()) {
@@ -522,8 +529,6 @@ export class VtuService {
       throw new BadRequestException("Invalid MSISDN format.");
     }
 
-    throw new BadRequestException("Data services are not available right now.");
-
     const orderId = uid("vtu");
     let adapter: VtuProviderAdapter;
     let chargeMinor: number;
@@ -793,8 +798,6 @@ export class VtuService {
     if (!Number.isInteger(dto.quantity) || dto.quantity < 1 || dto.quantity > 100) {
       throw new BadRequestException("quantity must be between 1 and 100.");
     }
-
-    throw new BadRequestException("Data services are not available right now.");
 
     const adapter = await this.selectAdapter("DATA", dto.network);
     if (!adapter.purchaseDataEpin) {
@@ -1116,8 +1119,36 @@ export class VtuService {
    * Selection uses the same path as purchase, so the list and the buy agree even
    * as health or priority moves traffic between providers.
    */
-  listDataPlans() {
-    return [];
+  async listDataPlans(network?: VtuNetwork) {
+    await this.ensureDefaultCatalog();
+
+    const networks: VtuNetwork[] = network ? [network] : [...VTU_NETWORKS];
+    const plansByNetwork = await Promise.all(
+      networks.map(async (net) => {
+        let providerName: string;
+        try {
+          providerName = (await this.selectAdapter("DATA", net)).name;
+        } catch {
+          return [];
+        }
+
+        if (isProductionRuntime() && isMockProviderName(providerName)) {
+          return [];
+        }
+
+        return this.db.vtuDataPlan.findMany({
+          where: {
+            active: true,
+            network: net,
+            providerName,
+            ...(isProductionRuntime() ? { displayName: { not: { contains: "Mock" } } } : {})
+          },
+          orderBy: { costMinor: "asc" }
+        });
+      })
+    );
+
+    return plansByNetwork.flat();
   }
 
   // ─── Order history ───────────────────────────────────────────────────────────
@@ -1156,9 +1187,12 @@ export class VtuService {
 
   private async ensureDefaultCatalog(db: DbClient = this.db) {
     for (const network of VTU_NETWORKS) {
-      for (const productType of ["AIRTIME"] as const) {
+      for (const [productType, provider] of [
+        ["AIRTIME", DEFAULT_VTU_PROVIDER],
+        ["DATA", DEFAULT_DATA_PROVIDER]
+      ] as const) {
         const existing = await db.vtuProviderRoute.findFirst({
-          where: { productType, network, provider: DEFAULT_VTU_PROVIDER }
+          where: { productType, network, provider }
         });
 
         if (existing) {
@@ -1172,7 +1206,7 @@ export class VtuService {
               id: uid("vroute"),
               productType,
               network,
-              provider: DEFAULT_VTU_PROVIDER,
+              provider,
               priority: 10,
               active: true,
               note: "Default production route"

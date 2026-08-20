@@ -91,7 +91,7 @@ export interface SmmServiceHealthMonitor {
 
 export interface SmmSupplierAuditProvider {
   name: string;
-  mode: "mock" | "perfect-panel";
+  mode: "mock" | "perfect-panel" | "gsubz-api" | "catalog";
   configured: boolean;
   apiHost?: string;
   supportedCategories: SmmServiceKind[];

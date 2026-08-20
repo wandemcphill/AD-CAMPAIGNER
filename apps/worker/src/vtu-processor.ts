@@ -4,6 +4,7 @@ import { createPrismaClient, type DatabaseClient } from "@fliptrybe/database";
 import {
   createMockVtuAdapter,
   createClubKonnectAdapter,
+  createGsubzAdapter,
   createTopupWizardAdapter,
   createSirpDataAdapter,
   type VtuProviderAdapter
@@ -50,6 +51,11 @@ function buildAdapter(providerName: string): VtuProviderAdapter {
       return createSirpDataAdapter({
         apiKey: process.env["SIRPDATA_API_KEY"] ?? "",
         ...(process.env["SIRPDATA_BASE_URL"] ? { baseUrl: process.env["SIRPDATA_BASE_URL"] } : {})
+      });
+    case "gsubz":
+      return createGsubzAdapter({
+        apiKey: process.env["GSUBZ_API_KEY"] ?? "",
+        ...(process.env["GSUBZ_BASE_URL"] ? { baseUrl: process.env["GSUBZ_BASE_URL"] } : {})
       });
     default:
       return createMockVtuAdapter(providerName);
@@ -181,6 +187,79 @@ export async function processReconcile(): Promise<string> {
   }
 
   return `reconcile: ${staleOrders.length} stale orders scanned, ${resolved} resolved, ${stillPending} still pending, ${errored} errored`;
+}
+
+// ─── plan_catalog_sync ────────────────────────────────────────────────────────
+// Refreshes VtuDataPlan from a live provider adapter. Rows the provider no
+// longer lists are deactivated, not deleted, because orders can still reference
+// their providerPlanId historically.
+
+export async function processPlanCatalogSync(job: Job<VtuFulfilmentJob>): Promise<string> {
+  const providerName = job.data.providerName;
+  if (!providerName) return "plan_catalog_sync skipped: no providerName";
+
+  const db = getDb();
+  const providerConfig = await db.vtuProviderConfig.findUnique({ where: { providerName } });
+  if (providerConfig && !providerConfig.enabledServices.includes("DATA")) {
+    return `plan_catalog_sync skipped: ${providerName} is not enabled for DATA`;
+  }
+
+  const adapter = buildAdapter(providerName);
+  const offers = await adapter.listDataPlans();
+
+  const seenPlanIds = new Set<string>();
+
+  for (const offer of offers) {
+    seenPlanIds.add(offer.providerPlanId);
+
+    await db.vtuDataPlan.upsert({
+      where: {
+        providerName_providerPlanId: {
+          providerName,
+          providerPlanId: offer.providerPlanId
+        }
+      },
+      create: {
+        providerName,
+        providerPlanId: offer.providerPlanId,
+        network: offer.network,
+        planType: offer.planType,
+        displayName: offer.displayName,
+        sizeMb: offer.sizeMb,
+        validityDays: offer.validityDays,
+        costMinor: offer.costMinor,
+        currency: offer.currency,
+        active: true,
+        lastSyncedAt: new Date()
+      },
+      update: {
+        network: offer.network,
+        planType: offer.planType,
+        displayName: offer.displayName,
+        sizeMb: offer.sizeMb,
+        validityDays: offer.validityDays,
+        costMinor: offer.costMinor,
+        currency: offer.currency,
+        active: true,
+        lastSyncedAt: new Date()
+      }
+    });
+  }
+
+  const existing = await db.vtuDataPlan.findMany({
+    where: { providerName, active: true },
+    select: { id: true, providerPlanId: true }
+  });
+  const staleIds = existing.filter((plan) => !seenPlanIds.has(plan.providerPlanId)).map((plan) => plan.id);
+
+  if (staleIds.length > 0) {
+    await db.vtuDataPlan.updateMany({
+      where: { id: { in: staleIds } },
+      data: { active: false }
+    });
+  }
+
+  return `plan_catalog_sync: ${providerName} synced ${offers.length} plans, ${staleIds.length} deactivated`;
 }
 
 // ─── cable_catalog_sync ────────────────────────────────────────────────────────
@@ -579,6 +658,8 @@ export async function processVtuFulfilmentJob(job: Job<VtuFulfilmentJob>): Promi
       return processPollStatus(job);
     case "reconcile":
       return processReconcile();
+    case "plan_catalog_sync":
+      return processPlanCatalogSync(job);
     case "cable_catalog_sync":
       return processCableCatalogSync(job);
     case "betting_catalog_sync":

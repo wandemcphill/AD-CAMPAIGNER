@@ -384,6 +384,7 @@ describe("PlatformService", () => {
   it("reserves Growth funds and prevents duplicate active supplier submissions", async () => {
     const { service, db } = createTestService();
     await fundWallet(db, workspaceA.workspaceId, 10000000);
+    replaceSmmSupplier(service, createTestSupplier());
     const walletBefore = await service.getWallet(workspaceA);
     const destinationUrl = "https://www.tiktok.com/@fliptrybe/video/101";
 
@@ -462,6 +463,7 @@ describe("PlatformService", () => {
   it("captures completed Growth funds and records refund reversals", async () => {
     const { service, db } = createTestService();
     await fundWallet(db, workspaceA.workspaceId, 10000000);
+    replaceSmmSupplier(service, createTestSupplier());
     const walletBefore = await service.getWallet(workspaceA);
     const created = await service.createGrowthOrder(workspaceA, {
       serviceCode: "tiktok-views",

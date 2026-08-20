@@ -14,9 +14,11 @@ import { calculateAvailableBalance } from "@fliptrybe/payments";
 import {
   createCloudinaryStorageProvider,
   createKorapayPaymentGateway,
+  createGsubzSocialSupplier,
   createMockAdsProvider,
   createMockAiProvider,
   createMockPaymentGateway,
+  createMockSmmSupplier,
   createMockStorageProvider,
   createPaystackPaymentGateway,
   createRoutedSmmSupplier
@@ -33,7 +35,8 @@ import {
   getGrowthExpectedCompletionAt,
   getGrowthServiceRiskReport,
   mapSmmOrderStatusToGrowthStatus,
-  summarizeSmmSupplierHealth
+  summarizeSmmSupplierHealth,
+  type SmmSupplierAuditProvider
 } from "@fliptrybe/service-smm";
 import {
   currencies,
@@ -49,6 +52,7 @@ import {
   type NotificationMessage,
   type PromotionDestination,
   type SmmOrder,
+  type SmmServiceKind,
   type SupportTicket,
   type Wallet
 } from "@fliptrybe/types";
@@ -240,11 +244,71 @@ function normalizeGrowthOrderStatus(status?: string) {
   return allowed.includes(status as GrowthOrderStatus) ? (status as GrowthOrderStatus) : undefined;
 }
 
+const ALL_SMM_CATEGORIES: SmmServiceKind[] = [
+  "FOLLOWERS",
+  "LIKES",
+  "VIEWS",
+  "COMMENTS",
+  "SHARES",
+  "LIVE_VIEWERS",
+  "CHANNEL_MEMBERS",
+  "ACCOUNT_SALE",
+  "VPN_SUBSCRIPTION",
+  "STREAMING_SUBSCRIPTION"
+];
+
 function createSmmSupplierBundle() {
+  const gsubzApiKey = process.env.GSUBZ_API_KEY?.trim();
+  const gsubzSocialSupplier = createGsubzSocialSupplier({
+    ...(gsubzApiKey ? { apiKey: gsubzApiKey } : {}),
+    ...(process.env.GSUBZ_BASE_URL ? { baseUrl: process.env.GSUBZ_BASE_URL } : {})
+  });
+
+  const gsubzAudit: SmmSupplierAuditProvider = {
+    name: gsubzSocialSupplier.name,
+    configured: Boolean(gsubzApiKey),
+    mode: gsubzApiKey ? "gsubz-api" : "catalog",
+    apiHost: process.env.GSUBZ_BASE_URL ?? "https://api.gsubz.com/api",
+    supportedCategories: [...ALL_SMM_CATEGORIES],
+    pricingModel: "per-1000-rate-card",
+    routingRole: gsubzApiKey ? "primary" : "disabled",
+    serviceMapCoverage: [...ALL_SMM_CATEGORIES]
+  };
+
+  if (gsubzApiKey) {
+    return {
+      providerAudit: [gsubzAudit],
+      supplier: createRoutedSmmSupplier([gsubzSocialSupplier]),
+      suppliers: [gsubzSocialSupplier]
+    };
+  }
+
+  // Without a GSUBZ key there is no live rate card, so nothing can quote. Dev and test
+  // fall back to the mock supplier and Growth pricing still resolves; production stays
+  // unquotable rather than inventing prices, matching every other legacy mock provider.
+  if (!legacyMockProvidersAllowed()) {
+    return {
+      providerAudit: [gsubzAudit],
+      supplier: createRoutedSmmSupplier([]),
+      suppliers: []
+    };
+  }
+
+  const mockSupplier = createMockSmmSupplier();
+  const mockAudit: SmmSupplierAuditProvider = {
+    name: mockSupplier.name,
+    configured: true,
+    mode: "mock",
+    supportedCategories: [...ALL_SMM_CATEGORIES],
+    pricingModel: "per-1000-rate-card",
+    routingRole: "primary",
+    serviceMapCoverage: [...ALL_SMM_CATEGORIES]
+  };
+
   return {
-    providerAudit: [],
-    supplier: createRoutedSmmSupplier([]),
-    suppliers: []
+    providerAudit: [gsubzAudit, mockAudit],
+    supplier: createRoutedSmmSupplier([mockSupplier]),
+    suppliers: [mockSupplier]
   };
 }
 

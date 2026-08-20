@@ -5,7 +5,7 @@ import type { ProviderDomain } from "@fliptrybe/providers";
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 
-const VTU_PROVIDERS = ["clubkonnect", "sirpdata", "topupwizard"];
+const VTU_PROVIDERS = ["clubkonnect", "gsubz", "sirpdata", "topupwizard"];
 const VIRTUAL_NUMBER_PROVIDERS = ["smspool", "5sim", "smspva"];
 
 /**
