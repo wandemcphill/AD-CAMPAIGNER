@@ -60,17 +60,26 @@ describe("processNotificationDispatchJob", () => {
     isConfiguredMock.mockReturnValue(true);
     process.env.NOTIFICATION_PROVIDER = "termii";
     process.env.TERMII_API_KEY = "test-key";
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+    delete process.env.EMAIL_FROM;
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
     delete process.env.NOTIFICATION_PROVIDER;
     delete process.env.TERMII_API_KEY;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.RESEND_FROM_EMAIL;
+    delete process.env.EMAIL_FROM;
+    vi.unstubAllGlobals();
   });
 
   it("sends SMS successfully and marks the notification SENT", async () => {
     const { processNotificationDispatchJob } = await import("./notifications-processor");
     notificationFindUnique.mockResolvedValue({
       id: "ntf_1",
+      idempotencyKey: "evt_sms",
       title: "OTP",
       body: "123456",
       guestPhone: null,
@@ -86,10 +95,58 @@ describe("processNotificationDispatchJob", () => {
     expect(lastCallData(notificationUpdate)).toMatchObject({ status: "SENT" });
   });
 
+  it("sends email through Resend with a stable Idempotency-Key", async () => {
+    process.env.NOTIFICATION_PROVIDER = "resend";
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.RESEND_FROM_EMAIL = "FlipTrybe <noreply@example.com>";
+
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ data: { id: "re_msg_1" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { processNotificationDispatchJob } = await import("./notifications-processor");
+    notificationFindUnique.mockResolvedValue({
+      id: "ntf_1",
+      idempotencyKey: "payment_success#order_123",
+      title: "Payment successful",
+      body: "<p>Paid</p>",
+      guestEmail: "guest@example.com",
+      guestPhone: null,
+      recipient: null
+    });
+
+    const result = await processNotificationDispatchJob(fakeJob("EMAIL"));
+
+    expect(result.outcome).toBe("sent");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((requestInit.headers as Record<string, string>)["Idempotency-Key"]).toBe(
+      "payment_success#order_123:EMAIL"
+    );
+    expect(JSON.parse(String(requestInit.body))).toMatchObject({
+      from: "FlipTrybe <noreply@example.com>",
+      to: ["guest@example.com"],
+      subject: "Payment successful",
+      html: "<p>Paid</p>"
+    });
+    expect(lastCallData(notificationUpdate)).toMatchObject({
+      status: "SENT",
+      provider: "resend",
+      providerMessageId: "re_msg_1"
+    });
+  });
+
   it("marks a delivery attempt FAILED when the provider rejects the send but does not mark the Notification FAILED before retries are exhausted", async () => {
     const { processNotificationDispatchJob } = await import("./notifications-processor");
     notificationFindUnique.mockResolvedValue({
       id: "ntf_1",
+      idempotencyKey: "evt_email",
       title: "Receipt",
       body: "Your order",
       guestEmail: "guest@example.com",
@@ -111,6 +168,7 @@ describe("processNotificationDispatchJob", () => {
     const { processNotificationDispatchJob } = await import("./notifications-processor");
     notificationFindUnique.mockResolvedValue({
       id: "ntf_1",
+      idempotencyKey: "evt_email_final",
       title: "Receipt",
       body: "Your order",
       guestEmail: "guest@example.com",
@@ -130,6 +188,7 @@ describe("processNotificationDispatchJob", () => {
     const { processNotificationDispatchJob } = await import("./notifications-processor");
     notificationFindUnique.mockResolvedValue({
       id: "ntf_1",
+      idempotencyKey: "evt_wa_pending",
       title: "Update",
       body: "text",
       guestPhone: null,
@@ -150,6 +209,7 @@ describe("processNotificationDispatchJob", () => {
     const { processNotificationDispatchJob } = await import("./notifications-processor");
     notificationFindUnique.mockResolvedValue({
       id: "ntf_1",
+      idempotencyKey: "evt_no_destination",
       title: "OTP",
       body: "123456",
       guestPhone: null,
@@ -169,6 +229,7 @@ describe("processNotificationDispatchJob", () => {
     const { processNotificationDispatchJob } = await import("./notifications-processor");
     notificationFindUnique.mockResolvedValue({
       id: "ntf_1",
+      idempotencyKey: "evt_sms_timeout",
       title: "OTP",
       body: "123456",
       guestPhone: null,
