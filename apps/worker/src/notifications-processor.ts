@@ -18,10 +18,95 @@ function getDb(): DatabaseClient {
   return dbSingleton;
 }
 
-// NOTIFICATION_PROVIDER=mock (or unset with no TERMII_API_KEY) uses the mock
-// adapter so dev/test environments never attempt a real Termii call. Set
-// NOTIFICATION_PROVIDER=termii with the TERMII_* vars populated to go live.
-function adapterForChannel(channel: "EMAIL" | "SMS" | "WHATSAPP"): NotificationProviderAdapter {
+interface ResendConfig {
+  apiKey?: string;
+  from?: string;
+  fetcher?: typeof fetch;
+}
+
+interface ResendEmailResponse {
+  data?: { id?: string };
+  error?: { message?: string; name?: string };
+}
+
+function createResendEmailAdapter(
+  config: ResendConfig,
+  idempotencyKey: string
+): NotificationProviderAdapter {
+  return {
+    name: "resend",
+    isConfigured() {
+      return Boolean(config.apiKey && config.from);
+    },
+    async send(input) {
+      if (!config.apiKey || !config.from) {
+        throw new Error("Resend Email is not configured (missing RESEND_API_KEY or RESEND_FROM_EMAIL).");
+      }
+
+      const response = await (config.fetcher ?? fetch)("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey.slice(0, 256)
+        },
+        body: JSON.stringify({
+          from: config.from,
+          to: [input.to],
+          subject: input.title,
+          html: input.body
+        })
+      });
+
+      let payload: ResendEmailResponse = {};
+      try {
+        payload = (await response.json()) as ResendEmailResponse;
+      } catch {
+        // Preserve the transport status as the useful diagnostic when the
+        // provider returns non-JSON content.
+      }
+
+      if (!response.ok || payload.error) {
+        throw new Error(
+          `Resend Email send failed (HTTP ${response.status}): ${
+            payload.error?.message ?? payload.error?.name ?? JSON.stringify(payload)
+          }`
+        );
+      }
+
+      const messageId = payload.data?.id;
+      if (!messageId) {
+        throw new Error("Resend Email send failed: provider returned no message id.");
+      }
+
+      return {
+        id: messageId,
+        accepted: true,
+        providerStatus: "sent",
+        raw: payload
+      };
+    }
+  };
+}
+
+// NOTIFICATION_PROVIDER=mock (or unset with no TERMII_API_KEY/RESEND_API_KEY)
+// uses the mock adapter so dev/test environments never attempt real delivery.
+// Set NOTIFICATION_PROVIDER=termii or resend with the matching provider vars
+// populated to go live.
+function adapterForChannel(
+  channel: "EMAIL" | "SMS" | "WHATSAPP",
+  idempotencyKey: string
+): NotificationProviderAdapter {
+  if (channel === "EMAIL" && process.env.NOTIFICATION_PROVIDER === "resend") {
+    return createResendEmailAdapter(
+      {
+        apiKey: process.env.RESEND_API_KEY,
+        from: process.env.RESEND_FROM_EMAIL ?? process.env.EMAIL_FROM
+      },
+      idempotencyKey
+    );
+  }
+
   const useTermii =
     process.env.NOTIFICATION_PROVIDER === "termii" && Boolean(process.env.TERMII_API_KEY);
 
@@ -88,7 +173,8 @@ export async function processNotificationDispatchJob(
     return { notificationId, channel, outcome: "failed:no_destination" };
   }
 
-  const adapter = adapterForChannel(channel);
+  const idempotencyKey = `${notification.idempotencyKey}:${channel}`;
+  const adapter = adapterForChannel(channel, idempotencyKey);
 
   if (!adapter.isConfigured()) {
     // Credentials/configuration genuinely absent — record as pending, not a
