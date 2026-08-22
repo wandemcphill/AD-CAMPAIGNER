@@ -27,10 +27,16 @@ function mockNotificationsAllowed(): boolean {
   return process.env.NODE_ENV !== "production" || process.env.ALLOW_MOCK_PROVIDERS === "true";
 }
 
-// "live" is the platform-wide provider sentinel — PAYMENT_PROVIDER,
-// ADS_PROVIDER, and SMM_PROVIDER in render.yaml all use it. NOTIFICATION_PROVIDER
-// now matches that convention. "termii" is still accepted so any existing
-// local .env files keep working without an edit.
+// "live" is the one canonical provider sentinel — PAYMENT_PROVIDER,
+// ADS_PROVIDER, and SMM_PROVIDER in render.yaml all use it, and it's the only
+// value packages/config/src/index.ts's NOTIFICATION_PROVIDER schema accepts
+// besides "mock"/"sandbox". "termii" was never a schema-valid value and no
+// deployed environment sets it — it was this file's own unvalidated,
+// out-of-band check, and the mismatch with the "live" every real deploy
+// actually sends is what let the mock provider run in production unnoticed
+// (see the production-sealing report, F-01). Anything other than exactly
+// "live" must fall through to the mock/PENDING_CONFIGURATION path below,
+// never select Termii.
 //
 // Returns undefined when no live transport is configured and the mock is not
 // permitted — the caller records that as PENDING_CONFIGURATION rather than
@@ -38,8 +44,7 @@ function mockNotificationsAllowed(): boolean {
 function adapterForChannel(
   channel: "EMAIL" | "SMS" | "WHATSAPP"
 ): NotificationProviderAdapter | undefined {
-  const configured = process.env.NOTIFICATION_PROVIDER;
-  const liveRequested = configured === "live" || configured === "termii";
+  const liveRequested = process.env.NOTIFICATION_PROVIDER === "live";
 
   if (!liveRequested || !process.env.TERMII_API_KEY) {
     return mockNotificationsAllowed() ? createMockNotificationProvider() : undefined;

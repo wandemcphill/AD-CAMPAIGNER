@@ -306,6 +306,37 @@ describe("PlatformService", () => {
     }
   });
 
+  it('reports "not-configured", never "termii", when NOTIFICATION_PROVIDER=termii in production with mocks disabled', () => {
+    // "termii" is not a valid live sentinel — see notifications-processor.ts.
+    // Health must reflect that: a legacy/typo'd value must never read as a
+    // configured, healthy provider.
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousAllowMockProviders = process.env.ALLOW_MOCK_PROVIDERS;
+    const previousNotificationProvider = process.env.NOTIFICATION_PROVIDER;
+    const previousTermiiApiKey = process.env.TERMII_API_KEY;
+
+    process.env.NODE_ENV = "production";
+    delete process.env.ALLOW_MOCK_PROVIDERS;
+    process.env.NOTIFICATION_PROVIDER = "termii";
+    process.env.TERMII_API_KEY = "test-key";
+
+    try {
+      const { service } = createTestService();
+
+      expect(service.getHealth().providers.notifications).toBe("not-configured");
+      expect(service.getAdminOverview().queueHealth.notifications).toBe("not-configured");
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousAllowMockProviders === undefined) delete process.env.ALLOW_MOCK_PROVIDERS;
+      else process.env.ALLOW_MOCK_PROVIDERS = previousAllowMockProviders;
+      if (previousNotificationProvider === undefined) delete process.env.NOTIFICATION_PROVIDER;
+      else process.env.NOTIFICATION_PROVIDER = previousNotificationProvider;
+      if (previousTermiiApiKey === undefined) delete process.env.TERMII_API_KEY;
+      else process.env.TERMII_API_KEY = previousTermiiApiKey;
+    }
+  });
+
   it("creates campaigns through the provider boundary", async () => {
     const { service } = createTestService();
     const campaign = await service.createCampaign(workspaceA, {

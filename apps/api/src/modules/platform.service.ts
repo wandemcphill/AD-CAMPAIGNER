@@ -103,13 +103,13 @@ const legacyMockProvidersAllowed = () =>
  * with their own dependency graphs; the two must be changed together. That
  * exact kind of drift — this file already used PAYMENT_PROVIDER/ADS_PROVIDER's
  * "live" convention while the worker alone checked NOTIFICATION_PROVIDER
- * === "termii" — is what let a mock provider silently stand in for
- * production email/SMS delivery (see F-01 in the production audit). Keep
- * both in sync on any future change to either.
+ * === "termii", a value no deployed environment has ever set — is what let a
+ * mock provider silently stand in for production email/SMS delivery (see
+ * F-01 in the production audit). "live" is the only canonical sentinel now;
+ * keep both files in sync on any future change to either.
  */
 function notificationProviderStatus(): "termii" | "mock" | "not-configured" {
-  const configured = process.env.NOTIFICATION_PROVIDER;
-  const liveRequested = configured === "live" || configured === "termii";
+  const liveRequested = process.env.NOTIFICATION_PROVIDER === "live";
   const hasCredentials = Boolean(process.env.TERMII_API_KEY);
 
   if (liveRequested && hasCredentials) {

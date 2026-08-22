@@ -126,20 +126,43 @@ describe("processNotificationDispatchJob", () => {
       expect(lastCallData(notificationUpdate)).toMatchObject({ status: "SENT", provider: "termii-sms" });
     });
 
-    it("still accepts the legacy NOTIFICATION_PROVIDER=termii value for existing local .env files", async () => {
+    it('2. NOTIFICATION_PROVIDER="termii" is not a valid live sentinel — falls back to mock, never selects Termii', async () => {
+      // "termii" was this file's own unvalidated, out-of-band check before
+      // this fix — never a value packages/config/src/index.ts's schema
+      // accepted, and never a value any deployed environment set (render.yaml
+      // has always used "live"). It must not select the live provider now.
       process.env.NOTIFICATION_PROVIDER = "termii";
       process.env.TERMII_API_KEY = "test-key";
       const { processNotificationDispatchJob } = await import("./notifications-processor");
       mockRecipient();
-      sendMock.mockResolvedValue({ id: "msg_1", accepted: true, providerStatus: "sent" });
 
       const result = await processNotificationDispatchJob(fakeJob("SMS"));
 
       expect(result.outcome).toBe("sent");
-      expect(sendMock).toHaveBeenCalledTimes(1);
+      expect(sendMock).not.toHaveBeenCalled();
+      expect(mockProviderSendMock).toHaveBeenCalledTimes(1);
+      expect(lastCallData(notificationUpdate)).toMatchObject({ status: "SENT", provider: "mock" });
     });
 
-    it("2. missing credentials in a non-production environment fall back to the mock, not a fabricated Termii success", async () => {
+    it('production with NOTIFICATION_PROVIDER="termii" and mocks disabled produces PENDING_CONFIGURATION, not a live Termii send', async () => {
+      process.env.NODE_ENV = "production";
+      process.env.NOTIFICATION_PROVIDER = "termii";
+      process.env.TERMII_API_KEY = "test-key";
+      const { processNotificationDispatchJob } = await import("./notifications-processor");
+      mockEmailRecipient();
+
+      const result = await processNotificationDispatchJob(fakeJob("EMAIL"));
+
+      expect(result.outcome).toBe("pending:provider_not_configured");
+      expect(sendMock).not.toHaveBeenCalled();
+      expect(mockProviderSendMock).not.toHaveBeenCalled();
+      expect(lastCallData(notificationDeliveryAttemptCreate)).toMatchObject({
+        provider: "none",
+        status: "PENDING_CONFIGURATION"
+      });
+    });
+
+    it("missing credentials in a non-production environment fall back to the mock, not a fabricated Termii success", async () => {
       process.env.NOTIFICATION_PROVIDER = "live";
       // No TERMII_API_KEY set — this is the local/dev/test default.
       const { processNotificationDispatchJob } = await import("./notifications-processor");
@@ -257,6 +280,29 @@ describe("processNotificationDispatchJob", () => {
       expect(updateData.deliveredAt).toBeUndefined();
       const attempt = lastCallData(notificationDeliveryAttemptCreate);
       expect(attempt.status).toBe("FAILED");
+    });
+
+    it("6/7. a malformed/empty provider response (no id, accepted:false) is recorded FAILED with no fabricated provider message id treated as proof of delivery", async () => {
+      // Models the Termii email adapter's own handling of a fully empty
+      // HTTP-200 body (see packages/providers/src/notifications.ts): no
+      // message_id, so accepted is false and only a synthetic correlation id
+      // is returned — the worker must not treat that id's mere presence as
+      // acceptance.
+      const { processNotificationDispatchJob } = await import("./notifications-processor");
+      mockRecipient();
+      sendMock.mockResolvedValue({
+        id: "termii_email_synthetic_abc123",
+        accepted: false,
+        providerStatus: "no_message_id_returned"
+      });
+
+      const result = await processNotificationDispatchJob(fakeJob("SMS"));
+
+      expect(result.outcome).toBe("failed:not_accepted");
+      const notificationUpdateData = lastCallData(notificationUpdate);
+      expect(notificationUpdateData.status).toBe("FAILED");
+      expect(notificationUpdateData.providerMessageId).toBeUndefined();
+      expect(notificationUpdateData.deliveredAt).toBeUndefined();
     });
 
     it("marks a delivery attempt FAILED when the provider rejects the send, and does not mark the Notification FAILED before retries are exhausted", async () => {
