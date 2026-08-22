@@ -1,6 +1,9 @@
 import { Queue, Worker } from "bullmq";
 import IORedis from "ioredis";
 
+import { createPrismaClient } from "@fliptrybe/database";
+import { createClubKonnectAdapter } from "@fliptrybe/providers";
+
 import { processQueueJob, shouldStartQueueWorker } from "./processors";
 import { type QueueName, type QueuePayloads, queueNames, queueRuntimePolicies } from "./queues";
 import { processVtuFulfilmentJob } from "./vtu-processor";
@@ -21,6 +24,124 @@ const VTU_CABLE_CATALOG_PROVIDERS = ["clubkonnect"];
 const VTU_BETTING_CATALOG_PROVIDERS = ["clubkonnect"];
 const VTU_EDUCATION_CATALOG_PROVIDERS = ["sirpdata", "topupwizard"];
 const VIRTUAL_NUMBER_LIVE_PROVIDERS = ["smspool", "5sim", "smspva"];
+
+async function warmGuestClubKonnectCatalog() {
+  const userId = process.env.CLUBKONNECT_USER_ID?.trim();
+  const apiKey = process.env.CLUBKONNECT_API_KEY?.trim();
+  if (!userId || !apiKey) {
+    console.warn("Guest VTU catalog warmup skipped: ClubKonnect credentials are not configured");
+    return;
+  }
+
+  const db = createPrismaClient();
+  try {
+    const adapter = createClubKonnectAdapter({
+      userId,
+      apiKey,
+      ...(process.env.CLUBKONNECT_BASE_URL ? { baseUrl: process.env.CLUBKONNECT_BASE_URL } : {})
+    });
+
+    const dataPlans = await adapter.listDataPlans();
+    if (dataPlans.length === 0) {
+      throw new Error("Guest DATA catalog warmup refused: ClubKonnect returned zero plans");
+    }
+
+    for (const plan of dataPlans) {
+      await db.vtuDataPlan.upsert({
+        where: {
+          providerName_providerPlanId: {
+            providerName: "clubkonnect",
+            providerPlanId: plan.providerPlanId
+          }
+        },
+        create: {
+          id: `vdata_ck_${Math.random().toString(36).slice(2, 12)}`,
+          providerName: "clubkonnect",
+          providerPlanId: plan.providerPlanId,
+          network: plan.network,
+          planType: plan.planType,
+          displayName: plan.displayName,
+          sizeMb: plan.sizeMb,
+          validityDays: plan.validityDays,
+          costMinor: plan.costMinor,
+          currency: plan.currency,
+          active: true
+        },
+        update: {
+          network: plan.network,
+          planType: plan.planType,
+          displayName: plan.displayName,
+          sizeMb: plan.sizeMb,
+          validityDays: plan.validityDays,
+          costMinor: plan.costMinor,
+          currency: plan.currency,
+          active: true,
+          lastSyncedAt: new Date()
+        }
+      });
+    }
+
+    const cablePackages = await adapter.listCablePackages?.();
+    if (!cablePackages || cablePackages.length === 0) {
+      throw new Error("Guest CABLE catalog warmup refused: ClubKonnect returned zero packages");
+    }
+
+    for (const pkg of cablePackages) {
+      await db.vtuCablePackage.upsert({
+        where: {
+          providerName_packageCode: {
+            providerName: "clubkonnect",
+            packageCode: pkg.packageCode
+          }
+        },
+        create: {
+          providerName: "clubkonnect",
+          cableProvider: pkg.cableProvider,
+          packageCode: pkg.packageCode,
+          displayName: pkg.displayName,
+          costMinor: pkg.costMinor,
+          currency: pkg.currency,
+          active: true
+        },
+        update: {
+          cableProvider: pkg.cableProvider,
+          displayName: pkg.displayName,
+          costMinor: pkg.costMinor,
+          currency: pkg.currency,
+          active: true,
+          lastSyncedAt: new Date()
+        }
+      });
+    }
+
+    const activePlanIds = new Set(dataPlans.map((plan) => plan.providerPlanId));
+    const activeCableCodes = new Set(cablePackages.map((pkg) => pkg.packageCode));
+
+    await db.vtuDataPlan.updateMany({
+      where: { providerName: "clubkonnect", active: true },
+      data: { active: false }
+    });
+    await db.vtuDataPlan.updateMany({
+      where: { providerName: "clubkonnect", providerPlanId: { in: [...activePlanIds] } },
+      data: { active: true }
+    });
+    await db.vtuCablePackage.updateMany({
+      where: { providerName: "clubkonnect", active: true },
+      data: { active: false }
+    });
+    await db.vtuCablePackage.updateMany({
+      where: { providerName: "clubkonnect", packageCode: { in: [...activeCableCodes] } },
+      data: { active: true }
+    });
+
+    console.log("Guest VTU catalog warmup complete", {
+      dataPlans: dataPlans.length,
+      cablePackages: cablePackages.length
+    });
+  } finally {
+    await db.$disconnect();
+  }
+}
 
 async function scheduleManagedAdsRecurringJobs() {
   if (!shouldStartQueueWorker("managed-ads-automation")) return;
@@ -54,9 +175,17 @@ async function scheduleVtuRecurringJobs() {
 
   await queue.upsertJobScheduler("vtu-reconcile-sweep", { every: 10 * 60_000 }, { name: "reconcile", data: {} });
 
-  // Warm the production DATA/CABLE catalogs immediately after worker startup.
-  // The recurring schedulers below keep them fresh daily. This removes the
-  // first-deploy window where the database can remain empty until the first tick.
+  // Keep the customer-facing guest catalogue warm immediately on deploy and once daily.
+  void warmGuestClubKonnectCatalog().catch((error: unknown) => {
+    console.error("Guest VTU catalog warmup failed", { error });
+  });
+  setInterval(() => {
+    void warmGuestClubKonnectCatalog().catch((error: unknown) => {
+      console.error("Guest VTU catalog refresh failed", { error });
+    });
+  }, 24 * 60 * 60_000).unref?.();
+
+  // Warm the routed production DATA/CABLE catalogs immediately after startup.
   for (const providerName of VTU_DATA_CATALOG_PROVIDERS) {
     await queue.add(
       "plan_catalog_sync",
@@ -74,55 +203,22 @@ async function scheduleVtuRecurringJobs() {
   }
 
   for (const providerName of VTU_DATA_CATALOG_PROVIDERS) {
-    await queue.upsertJobScheduler(
-      `vtu-plan-sync-${providerName}`,
-      { every: 24 * 60 * 60_000 },
-      { name: "plan_catalog_sync", data: { providerName } }
-    );
+    await queue.upsertJobScheduler(`vtu-plan-sync-${providerName}`, { every: 24 * 60 * 60_000 }, { name: "plan_catalog_sync", data: { providerName } });
   }
-
   for (const providerName of VTU_CABLE_CATALOG_PROVIDERS) {
-    await queue.upsertJobScheduler(
-      `vtu-cable-sync-${providerName}`,
-      { every: 24 * 60 * 60_000 },
-      { name: "cable_catalog_sync", data: { providerName } }
-    );
+    await queue.upsertJobScheduler(`vtu-cable-sync-${providerName}`, { every: 24 * 60 * 60_000 }, { name: "cable_catalog_sync", data: { providerName } });
   }
-
   for (const providerName of VTU_BETTING_CATALOG_PROVIDERS) {
-    await queue.upsertJobScheduler(
-      `vtu-betting-sync-${providerName}`,
-      { every: 24 * 60 * 60_000 },
-      { name: "betting_catalog_sync", data: { providerName } }
-    );
+    await queue.upsertJobScheduler(`vtu-betting-sync-${providerName}`, { every: 24 * 60 * 60_000 }, { name: "betting_catalog_sync", data: { providerName } });
   }
-
   for (const providerName of VTU_EDUCATION_CATALOG_PROVIDERS) {
-    await queue.upsertJobScheduler(
-      `vtu-education-sync-${providerName}`,
-      { every: 24 * 60 * 60_000 },
-      { name: "education_catalog_sync", data: { providerName } }
-    );
+    await queue.upsertJobScheduler(`vtu-education-sync-${providerName}`, { every: 24 * 60 * 60_000 }, { name: "education_catalog_sync", data: { providerName } });
   }
-
   for (const providerName of VTU_LIVE_PROVIDERS) {
-    await queue.upsertJobScheduler(
-      `vtu-health-${providerName}`,
-      { every: 5 * 60_000 },
-      { name: "provider_health", data: { providerName } }
-    );
-    await queue.upsertJobScheduler(
-      `vtu-balance-${providerName}`,
-      { every: 30 * 60_000 },
-      { name: "provider_balance_check", data: { providerName } }
-    );
-    await queue.upsertJobScheduler(
-      `vtu-price-sync-${providerName}`,
-      { every: 6 * 60 * 60_000 },
-      { name: "price_sync", data: { providerName } }
-    );
+    await queue.upsertJobScheduler(`vtu-health-${providerName}`, { every: 5 * 60_000 }, { name: "provider_health", data: { providerName } });
+    await queue.upsertJobScheduler(`vtu-balance-${providerName}`, { every: 30 * 60_000 }, { name: "provider_balance_check", data: { providerName } });
+    await queue.upsertJobScheduler(`vtu-price-sync-${providerName}`, { every: 6 * 60 * 60_000 }, { name: "price_sync", data: { providerName } });
   }
-
   return queue;
 }
 
@@ -145,51 +241,27 @@ const enabledQueues = queueNames.filter((queueName) => shouldStartQueueWorker(qu
 const disabledQueues = queueNames.filter((queueName) => !shouldStartQueueWorker(queueName));
 const workers = enabledQueues.map((queueName) => {
   if (queueName === "vtu-fulfilment") {
-    return new Worker<QueuePayloads["vtu-fulfilment"]>(queueName, processVtuFulfilmentJob, {
-      connection,
-      concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-    });
+    return new Worker<QueuePayloads["vtu-fulfilment"]>(queueName, processVtuFulfilmentJob, { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
   }
   if (queueName === "virtual-numbers") {
-    return new Worker<QueuePayloads["virtual-numbers"]>(queueName, processVirtualNumbersJob, {
-      connection,
-      concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-    });
+    return new Worker<QueuePayloads["virtual-numbers"]>(queueName, processVirtualNumbersJob, { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
   }
   if (queueName === "workflow-automation") {
-    return new Worker<QueuePayloads["workflow-automation"]>(queueName, processWorkflowAutomationJob, {
-      connection,
-      concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-    });
+    return new Worker<QueuePayloads["workflow-automation"]>(queueName, processWorkflowAutomationJob, { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
   }
   if (queueName === "reward-engine") {
-    return new Worker<QueuePayloads["reward-engine"]>(queueName, processRewardEngineJob, {
-      connection,
-      concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-    });
+    return new Worker<QueuePayloads["reward-engine"]>(queueName, processRewardEngineJob, { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
   }
   if (queueName === "trust-engine") {
-    return new Worker<QueuePayloads["trust-engine"]>(queueName, processTrustEngineJob, {
-      connection,
-      concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-    });
+    return new Worker<QueuePayloads["trust-engine"]>(queueName, processTrustEngineJob, { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
   }
   if (queueName === "notifications") {
-    return new Worker<QueuePayloads["notifications"]>(queueName, processNotificationDispatchJob, {
-      connection,
-      concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-    });
+    return new Worker<QueuePayloads["notifications"]>(queueName, processNotificationDispatchJob, { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
   }
   if (queueName === "managed-ads-automation") {
-    return new Worker<QueuePayloads["managed-ads-automation"]>(queueName, processManagedAdsAutomationJob, {
-      connection,
-      concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-    });
+    return new Worker<QueuePayloads["managed-ads-automation"]>(queueName, processManagedAdsAutomationJob, { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
   }
-  return new Worker<QueuePayloads[QueueName]>(queueName, (job) => Promise.resolve(processQueueJob(queueName, job)), {
-    connection,
-    concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency)
-  });
+  return new Worker<QueuePayloads[QueueName]>(queueName, (job) => Promise.resolve(processQueueJob(queueName, job)), { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? queueRuntimePolicies[queueName].concurrency) });
 });
 
 for (const worker of workers) {
@@ -202,33 +274,10 @@ let virtualNumbersSchedulerQueue: Queue<QueuePayloads["virtual-numbers"]> | unde
 let workflowAutomationSchedulerQueue: Queue<QueuePayloads["workflow-automation"]> | undefined;
 let managedAdsSchedulerQueue: Queue<QueuePayloads["managed-ads-automation"]> | undefined;
 
-scheduleVtuRecurringJobs()
-  .then((queue) => {
-    vtuSchedulerQueue = queue;
-    if (queue) console.log("VTU recurring jobs scheduled", { providers: VTU_LIVE_PROVIDERS });
-  })
-  .catch((error: unknown) => console.error("Failed to schedule VTU recurring jobs", { error }));
-
-scheduleVirtualNumbersRecurringJobs()
-  .then((queue) => {
-    virtualNumbersSchedulerQueue = queue;
-    if (queue) console.log("Virtual Numbers recurring jobs scheduled", { providers: VIRTUAL_NUMBER_LIVE_PROVIDERS });
-  })
-  .catch((error: unknown) => console.error("Failed to schedule Virtual Numbers recurring jobs", { error }));
-
-scheduleWorkflowAutomationJobs()
-  .then((queue) => {
-    workflowAutomationSchedulerQueue = queue;
-    if (queue) console.log("Workflow Automation recurring jobs scheduled");
-  })
-  .catch((error: unknown) => console.error("Failed to schedule Workflow Automation jobs", { error }));
-
-scheduleManagedAdsRecurringJobs()
-  .then((queue) => {
-    managedAdsSchedulerQueue = queue;
-    if (queue) console.log("Managed Ads recurring jobs scheduled");
-  })
-  .catch((error: unknown) => console.error("Failed to schedule Managed Ads jobs", { error }));
+scheduleVtuRecurringJobs().then((queue) => { vtuSchedulerQueue = queue; if (queue) console.log("VTU recurring jobs scheduled", { providers: VTU_LIVE_PROVIDERS }); }).catch((error: unknown) => console.error("Failed to schedule VTU recurring jobs", { error }));
+scheduleVirtualNumbersRecurringJobs().then((queue) => { virtualNumbersSchedulerQueue = queue; if (queue) console.log("Virtual Numbers recurring jobs scheduled", { providers: VIRTUAL_NUMBER_LIVE_PROVIDERS }); }).catch((error: unknown) => console.error("Failed to schedule Virtual Numbers recurring jobs", { error }));
+scheduleWorkflowAutomationJobs().then((queue) => { workflowAutomationSchedulerQueue = queue; if (queue) console.log("Workflow Automation recurring jobs scheduled"); }).catch((error: unknown) => console.error("Failed to schedule Workflow Automation jobs", { error }));
+scheduleManagedAdsRecurringJobs().then((queue) => { managedAdsSchedulerQueue = queue; if (queue) console.log("Managed Ads recurring jobs scheduled"); }).catch((error: unknown) => console.error("Failed to schedule Managed Ads jobs", { error }));
 
 async function shutdown() {
   await Promise.all(workers.map((worker) => worker.close()));
