@@ -219,9 +219,13 @@ describe("PlatformService", () => {
           ads: "managed-ads",
           ai: "anthropic",
           payments: "not-configured",
-          storage: "not-configured"
+          storage: "not-configured",
+          // F-05: production with no live Termii credentials must report
+          // "not-configured", never claim a mock provider is healthy delivery.
+          notifications: "not-configured"
         })
       );
+      expect(service.getAdminOverview().queueHealth.notifications).toBe("not-configured");
       expect(service.listCampaigns(workspaceA)).toEqual([]);
       expect(service.listLivePromotions(workspaceA)).toEqual([]);
       expect(service.listNotifications(workspaceA)).toEqual([]);
@@ -252,6 +256,53 @@ describe("PlatformService", () => {
       } else {
         process.env.AI_PROVIDER = previousAiProvider;
       }
+    }
+  });
+
+  it("reports the notification provider as mock outside production", () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousNotificationProvider = process.env.NOTIFICATION_PROVIDER;
+    delete process.env.NODE_ENV;
+    delete process.env.NOTIFICATION_PROVIDER;
+
+    try {
+      const { service } = createTestService();
+
+      expect(service.getHealth().providers.notifications).toBe("mock");
+      expect(service.getAdminOverview().queueHealth.notifications).toBe("healthy");
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousNotificationProvider === undefined) delete process.env.NOTIFICATION_PROVIDER;
+      else process.env.NOTIFICATION_PROVIDER = previousNotificationProvider;
+    }
+  });
+
+  it("reports the notification provider as termii in production once live credentials are configured", () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    const previousAllowMockProviders = process.env.ALLOW_MOCK_PROVIDERS;
+    const previousNotificationProvider = process.env.NOTIFICATION_PROVIDER;
+    const previousTermiiApiKey = process.env.TERMII_API_KEY;
+
+    process.env.NODE_ENV = "production";
+    delete process.env.ALLOW_MOCK_PROVIDERS;
+    process.env.NOTIFICATION_PROVIDER = "live";
+    process.env.TERMII_API_KEY = "test-key";
+
+    try {
+      const { service } = createTestService();
+
+      expect(service.getHealth().providers.notifications).toBe("termii");
+      expect(service.getAdminOverview().queueHealth.notifications).toBe("healthy");
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+      if (previousAllowMockProviders === undefined) delete process.env.ALLOW_MOCK_PROVIDERS;
+      else process.env.ALLOW_MOCK_PROVIDERS = previousAllowMockProviders;
+      if (previousNotificationProvider === undefined) delete process.env.NOTIFICATION_PROVIDER;
+      else process.env.NOTIFICATION_PROVIDER = previousNotificationProvider;
+      if (previousTermiiApiKey === undefined) delete process.env.TERMII_API_KEY;
+      else process.env.TERMII_API_KEY = previousTermiiApiKey;
     }
   });
 

@@ -93,6 +93,32 @@ const isProductionRuntime = () => process.env.NODE_ENV === "production";
 const legacyMockProvidersAllowed = () =>
   !isProductionRuntime() || process.env.ALLOW_MOCK_PROVIDERS === "true";
 
+/**
+ * Mirrors apps/worker/src/notifications-processor.ts's adapterForChannel +
+ * mockNotificationsAllowed decision tree, without instantiating a real
+ * adapter (the API never dispatches notifications itself — the worker does).
+ *
+ * Kept as a second, independent implementation of the same decision rather
+ * than a shared import because the API and worker are separate deployables
+ * with their own dependency graphs; the two must be changed together. That
+ * exact kind of drift — this file already used PAYMENT_PROVIDER/ADS_PROVIDER's
+ * "live" convention while the worker alone checked NOTIFICATION_PROVIDER
+ * === "termii" — is what let a mock provider silently stand in for
+ * production email/SMS delivery (see F-01 in the production audit). Keep
+ * both in sync on any future change to either.
+ */
+function notificationProviderStatus(): "termii" | "mock" | "not-configured" {
+  const configured = process.env.NOTIFICATION_PROVIDER;
+  const liveRequested = configured === "live" || configured === "termii";
+  const hasCredentials = Boolean(process.env.TERMII_API_KEY);
+
+  if (liveRequested && hasCredentials) {
+    return "termii";
+  }
+
+  return legacyMockProvidersAllowed() ? "mock" : "not-configured";
+}
+
 interface GrowthMonitoringEvent {
   id: string;
   workspaceId: string;
@@ -459,7 +485,8 @@ export class PlatformService {
             : "not-configured",
         payments: productionProviderName(this.paymentGateway.name, "not-configured"),
         smm: this.smmSupplier.name,
-        storage: productionProviderName(this.storageProvider.name, "not-configured")
+        storage: productionProviderName(this.storageProvider.name, "not-configured"),
+        notifications: notificationProviderStatus()
       },
       operations: {
         smmSuppliers: this.smmSupplierBundle.suppliers.map((supplier) => supplier.name),
@@ -2050,6 +2077,14 @@ export class PlatformService {
   }
 
   getAdminOverview() {
+    // "healthy" here used to be a hardcoded literal regardless of whether a
+    // live notification provider was even configured — the same
+    // claim-healthy-because-a-mock-exists problem getHealth() had (F-05).
+    // "not-configured" surfaces the real state instead of asserting delivery
+    // is fine when nothing would actually be sent.
+    const notificationsQueueHealth =
+      notificationProviderStatus() === "not-configured" ? "not-configured" : "healthy";
+
     if (!legacyMockProvidersAllowed()) {
       return {
         users: 0,
@@ -2061,7 +2096,7 @@ export class PlatformService {
         queueHealth: {
           campaign: "managed-ads",
           smm: "healthy",
-          notifications: "healthy",
+          notifications: notificationsQueueHealth,
           analytics: "managed-ads"
         }
       };
@@ -2077,7 +2112,7 @@ export class PlatformService {
       queueHealth: {
         campaign: "healthy",
         smm: "healthy",
-        notifications: "healthy",
+        notifications: notificationsQueueHealth,
         analytics: "healthy"
       }
     };
