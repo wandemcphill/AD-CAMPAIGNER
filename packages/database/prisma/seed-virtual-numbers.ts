@@ -1,9 +1,10 @@
 import { createPrismaClient } from "../src/index";
 
-// Seeds NumberCountry and VirtualNumberProduct for the Phase 2 launch ladder (plan §4.4).
-// Prices are provisional — every figure must be re-derived from live provider APIs
-// before launch (plan §12 item 5). referenceCostMinorUsd in metadata is a display
-// estimate only; the actual charge always comes from a live searchNumbers() call.
+// Seeds NumberCountry and VirtualNumberProduct for the Phase 2 launch ladder.
+// Production verification-number routing is intentionally 5SIM-only. The live
+// provider adapter reads FIVESIM_API_TOKEN (or the legacy FIVESIM_API_KEY) from
+// the service environment. Other OTP suppliers remain documented only and are
+// not selected for customer number orders.
 
 interface CountrySeed {
   isoCode: string;
@@ -18,9 +19,7 @@ const COUNTRIES: CountrySeed[] = [
   { isoCode: "GB", name: "United Kingdom", dialPrefix: "+44", flagEmoji: "🇬🇧", enabled: true, sortOrder: 10 },
   { isoCode: "US", name: "United States", dialPrefix: "+1", flagEmoji: "🇺🇸", enabled: true, sortOrder: 20 },
   { isoCode: "CA", name: "Canada", dialPrefix: "+1", flagEmoji: "🇨🇦", enabled: true, sortOrder: 30 },
-  // Disabled until SMSPVA inventory is confirmed at integration (plan §4.4, §12 item 4).
   { isoCode: "DE", name: "Germany", dialPrefix: "+49", flagEmoji: "🇩🇪", enabled: false, sortOrder: 40 },
-  // No confirmed long-term rental inventory across the three providers (plan §12 item 3).
   { isoCode: "AU", name: "Australia", dialPrefix: "+61", flagEmoji: "🇦🇺", enabled: false, sortOrder: 50 }
 ];
 
@@ -35,20 +34,13 @@ interface ProductSeed {
 }
 
 const PRODUCTS: ProductSeed[] = [
-  // UK — hero SKU, SMSPool
-  { countryCode: "GB", rentalKind: "LONG_TERM", durationDays: 360, displayName: "UK Number — 360 days", active: true, preferredProviders: ["smspool"], referenceCostMinorUsd: 5500 },
-  // US — full ladder, SMSPool
-  { countryCode: "US", rentalKind: "STANDARD", durationDays: 30, displayName: "US Number — 30 days", active: true, preferredProviders: ["smspool"], referenceCostMinorUsd: 1800 },
-  { countryCode: "US", rentalKind: "EXTENDED", durationDays: 90, displayName: "US Number — 90 days", active: true, preferredProviders: ["smspool"], referenceCostMinorUsd: 4900 },
-  { countryCode: "US", rentalKind: "EXTENDED", durationDays: 180, displayName: "US Number — 180 days", active: true, preferredProviders: ["smspool"], referenceCostMinorUsd: 9200 },
-  { countryCode: "US", rentalKind: "LONG_TERM", durationDays: 360, displayName: "US Number — 360 days", active: true, preferredProviders: ["smspool"], referenceCostMinorUsd: 17500 },
-  // Canada — SMSPool
-  { countryCode: "CA", rentalKind: "STANDARD", durationDays: 30, displayName: "Canada Number — 30 days", active: true, preferredProviders: ["smspool"], referenceCostMinorUsd: 2000 },
-  // Germany — SMSPVA, inactive until inventory confirmed
-  { countryCode: "DE", rentalKind: "EXTENDED", durationDays: 30, displayName: "Germany Number — 30 days", active: false, preferredProviders: ["smspva"], referenceCostMinorUsd: 3500 },
-  // 5SIM short rentals — broad country coverage, temporary/1-hour to 1-month tier.
-  // Seeded against US as a representative short-rental SKU; expand per-country once
-  // catalog sync (Phase 3) replaces this manual seed.
+  { countryCode: "GB", rentalKind: "LONG_TERM", durationDays: 360, displayName: "UK Number — 360 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 5500 },
+  { countryCode: "US", rentalKind: "STANDARD", durationDays: 30, displayName: "US Number — 30 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 1800 },
+  { countryCode: "US", rentalKind: "EXTENDED", durationDays: 90, displayName: "US Number — 90 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 4900 },
+  { countryCode: "US", rentalKind: "EXTENDED", durationDays: 180, displayName: "US Number — 180 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 9200 },
+  { countryCode: "US", rentalKind: "LONG_TERM", durationDays: 360, displayName: "US Number — 360 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 17500 },
+  { countryCode: "CA", rentalKind: "STANDARD", durationDays: 30, displayName: "Canada Number — 30 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 2000 },
+  { countryCode: "DE", rentalKind: "EXTENDED", durationDays: 30, displayName: "Germany Number — 30 days", active: false, preferredProviders: ["5sim"], referenceCostMinorUsd: 3500 },
   { countryCode: "US", rentalKind: "TEMPORARY", durationDays: 1, displayName: "US Number — 24 hours (5SIM)", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 150 }
 ];
 
@@ -80,6 +72,13 @@ async function seedCountries(db: ReturnType<typeof createPrismaClient>) {
 }
 
 async function seedProducts(db: ReturnType<typeof createPrismaClient>) {
+  // Remove stale supplier affinity from any older product rows. This prevents a
+  // previous SMSPool/SMSPVA seed from remaining selectable after the launch policy
+  // changes to 5SIM-only.
+  await db.virtualNumberProduct.updateMany({
+    data: { preferredProviders: ["5sim"] }
+  });
+
   let created = 0;
   let updated = 0;
 
@@ -101,7 +100,7 @@ async function seedProducts(db: ReturnType<typeof createPrismaClient>) {
       durationDays: product.durationDays,
       displayName: product.displayName,
       active: product.active,
-      preferredProviders: product.preferredProviders,
+      preferredProviders: ["5sim"],
       metadata: { referenceCostMinorUsd: product.referenceCostMinorUsd }
     };
 
@@ -114,7 +113,7 @@ async function seedProducts(db: ReturnType<typeof createPrismaClient>) {
     }
   }
 
-  console.log(`VirtualNumberProduct: ${created} created, ${updated} updated`);
+  console.log(`VirtualNumberProduct: ${created} created, ${updated} updated (5SIM-only)`);
 }
 
 async function main() {
