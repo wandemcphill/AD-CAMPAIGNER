@@ -21,7 +21,10 @@ import {
   createMockSmmSupplier,
   createMockStorageProvider,
   createPaystackPaymentGateway,
-  createRoutedSmmSupplier
+  createPerfectPanelSmmSupplier,
+  createRoutedSmmSupplier,
+  parseSmmServiceMap,
+  type SmmSupplierAdapter
 } from "@fliptrybe/providers";
 import {
   applyGrowthServiceAdminControls,
@@ -283,6 +286,73 @@ const ALL_SMM_CATEGORIES: SmmServiceKind[] = [
   "STREAMING_SUBSCRIPTION"
 ];
 
+function createPrimaryFallbackSmmSupplier(
+  primary: SmmSupplierAdapter,
+  fallback: SmmSupplierAdapter
+): SmmSupplierAdapter {
+  const providerByReference = (reference: string) =>
+    reference.startsWith(`${fallback.name}:`) ? fallback : primary;
+
+  return {
+    name: `${primary.name}-primary-${fallback.name}-fallback`,
+    async listServices() {
+      try {
+        const services = await primary.listServices();
+        if (services.length > 0) return services;
+      } catch {
+        // Fall through to the configured fallback catalog.
+      }
+      return fallback.listServices();
+    },
+    async quoteService(input) {
+      try {
+        return await primary.quoteService(input);
+      } catch {
+        return fallback.quoteService(input);
+      }
+    },
+    async createOrder(order) {
+      const selected = order.destination.metadata?.supplier;
+      const supplier = selected === fallback.name ? fallback : primary;
+      return supplier.createOrder(order);
+    },
+    async getBalance() {
+      try {
+        return await primary.getBalance();
+      } catch {
+        return fallback.getBalance();
+      }
+    },
+    async getOrderStatus(reference) {
+      return providerByReference(reference).getOrderStatus(reference);
+    },
+    async getOrderStatuses(references) {
+      const grouped = new Map<SmmSupplierAdapter, string[]>();
+      for (const reference of references) {
+        const supplier = providerByReference(reference);
+        const list = grouped.get(supplier) ?? [];
+        list.push(reference);
+        grouped.set(supplier, list);
+      }
+      const snapshots = await Promise.all(
+        [...grouped.entries()].map(([supplier, refs]) => supplier.getOrderStatuses(refs))
+      );
+      return snapshots.flat();
+    },
+    requestRefill(reference) {
+      return providerByReference(reference).requestRefill(reference);
+    },
+    requestCancel(references) {
+      const primaryRefs = references.filter((reference) => providerByReference(reference) === primary);
+      const fallbackRefs = references.filter((reference) => providerByReference(reference) === fallback);
+      return Promise.all([
+        primaryRefs.length ? primary.requestCancel(primaryRefs) : Promise.resolve([]),
+        fallbackRefs.length ? fallback.requestCancel(fallbackRefs) : Promise.resolve([])
+      ]).then((parts) => parts.flat());
+    }
+  };
+}
+
 function createSmmSupplierBundle() {
   const gsubzApiKey = process.env.GSUBZ_API_KEY?.trim();
   const gsubzSocialSupplier = createGsubzSocialSupplier({
@@ -301,20 +371,46 @@ function createSmmSupplierBundle() {
     serviceMapCoverage: [...ALL_SMM_CATEGORIES]
   };
 
+  const sizzleApiKey = process.env.SIZZLE_API_KEY?.trim();
+  const sizzleSocialSupplier = createPerfectPanelSmmSupplier({
+    name: "sizzle",
+    apiKey: sizzleApiKey ?? "",
+    apiUrl: process.env.SIZZLE_API_URL ?? "https://app.sizzlesocial.ng/api/v1",
+    currency: "NGN",
+    serviceMap: parseSmmServiceMap(process.env.SIZZLE_SERVICE_MAP)
+  });
+
+  const sizzleAudit: SmmSupplierAuditProvider = {
+    name: "sizzle",
+    configured: Boolean(sizzleApiKey),
+    mode: "catalog",
+    apiHost: process.env.SIZZLE_API_URL ?? "https://app.sizzlesocial.ng/api/v1",
+    supportedCategories: [...ALL_SMM_CATEGORIES],
+    pricingModel: "per-1000-rate-card",
+    routingRole: sizzleApiKey ? "fallback" : "disabled",
+    serviceMapCoverage: [...ALL_SMM_CATEGORIES]
+  };
+
   if (gsubzApiKey) {
+    if (sizzleApiKey) {
+      const routed = createPrimaryFallbackSmmSupplier(gsubzSocialSupplier, sizzleSocialSupplier);
+      return {
+        providerAudit: [gsubzAudit, sizzleAudit],
+        supplier: routed,
+        suppliers: [gsubzSocialSupplier, sizzleSocialSupplier]
+      };
+    }
+
     return {
-      providerAudit: [gsubzAudit],
+      providerAudit: [gsubzAudit, sizzleAudit],
       supplier: createRoutedSmmSupplier([gsubzSocialSupplier]),
       suppliers: [gsubzSocialSupplier]
     };
   }
 
-  // Without a GSUBZ key there is no live rate card, so nothing can quote. Dev and test
-  // fall back to the mock supplier and Growth pricing still resolves; production stays
-  // unquotable rather than inventing prices, matching every other legacy mock provider.
   if (!legacyMockProvidersAllowed()) {
     return {
-      providerAudit: [gsubzAudit],
+      providerAudit: [gsubzAudit, sizzleAudit],
       supplier: createRoutedSmmSupplier([]),
       suppliers: []
     };
@@ -332,7 +428,7 @@ function createSmmSupplierBundle() {
   };
 
   return {
-    providerAudit: [gsubzAudit, mockAudit],
+    providerAudit: [gsubzAudit, sizzleAudit, mockAudit],
     supplier: createRoutedSmmSupplier([mockSupplier]),
     suppliers: [mockSupplier]
   };
@@ -1135,6 +1231,18 @@ export class PlatformService {
       quantity,
       destination: smmOrder.destination
     });
+    // Preserve the supplier selected at quote time on the in-memory destination
+    // metadata. createOrder uses this affinity so a successful GSUBZ quote is
+    // executed by GSUBZ, while a quote that fell back to Sizzle is executed by
+    // Sizzle. We never fail over an already-attempted provider order, avoiding
+    // duplicate charges when a provider times out after accepting an order.
+    smmOrder.destination = {
+      ...smmOrder.destination,
+      metadata: {
+        ...(smmOrder.destination.metadata ?? {}),
+        ...(quote.supplierName ? { supplier: quote.supplierName } : {})
+      }
+    };
     const pricedQuote = calculateSmmPrice({
       quote,
       serviceKind: service.serviceKind,
@@ -1931,8 +2039,6 @@ export class PlatformService {
     };
   }
 
-  // ─── Admin: users ─────────────────────────────────────────────────────────
-
   async adminSearchUsers(query: {
     q?: string;
     status?: "ACTIVE" | "SUSPENDED";
@@ -2004,15 +2110,6 @@ export class PlatformService {
     return user;
   }
 
-  /**
-   * Suspend or reactivate an account. Suspension is already enforced everywhere
-   * that matters — login rejects a non-ACTIVE user and session resolution
-   * filters on `status: ACTIVE`, so existing sessions stop working too.
-   *
-   * Restricted to ACTIVE/SUSPENDED on purpose: UserStatus also has DELETED,
-   * but that is account deletion rather than a moderation action and is not
-   * something this endpoint should perform.
-   */
   async adminSetUserStatus(
     userId: string,
     status: "ACTIVE" | "SUSPENDED",
@@ -2037,10 +2134,6 @@ export class PlatformService {
       throw new NotFoundException(`User ${userId} not found.`);
     }
 
-    // Two lockout guards: an operator cannot suspend themselves, and cannot
-    // suspend another platform admin. Admin status is granted by the
-    // PLATFORM_ADMIN_USERNAMES env var, so an admin locked out this way could
-    // not be restored from inside the product.
     if (status === "SUSPENDED") {
       if (context?.userId && context.userId === userId) {
         throw new BadRequestException("You cannot suspend your own account.");
@@ -2077,11 +2170,6 @@ export class PlatformService {
   }
 
   getAdminOverview() {
-    // "healthy" here used to be a hardcoded literal regardless of whether a
-    // live notification provider was even configured — the same
-    // claim-healthy-because-a-mock-exists problem getHealth() had (F-05).
-    // "not-configured" surfaces the real state instead of asserting delivery
-    // is fine when nothing would actually be sent.
     const notificationsQueueHealth =
       notificationProviderStatus() === "not-configured" ? "not-configured" : "healthy";
 
@@ -2118,12 +2206,6 @@ export class PlatformService {
     };
   }
 
-  /**
-   * Reads durable AuditLog rows first, falling back to (and merging with) the
-   * process-local list. Before this read the console only ever showed in-memory
-   * entries, so audit rows written straight to the database — provider changes,
-   * pricing rules, wallet adjustments, digital access — were invisible.
-   */
   async listAuditLogsFromStore(
     context?: AuthenticatedRequestContext,
     limit = 100
@@ -2213,11 +2295,6 @@ export class PlatformService {
       updatedAt: timestamp
     });
 
-    // The in-memory list above is process-local: it is lost on restart and not
-    // shared between API instances. Growth captures, releases and refunds are
-    // recorded through here, so without a durable row a money movement would
-    // have no audit trail. Fire-and-forget — an audit write must never fail the
-    // transaction that triggered it.
     void this.db.auditLog
       ?.create({
         data: {
@@ -2354,11 +2431,7 @@ export class PlatformService {
     return release;
   }
 
-  private async captureGrowthFundsDb(
-    tx: DbClient,
-    scope: AuthenticatedRequestContext,
-    order: any
-  ) {
+  private async captureGrowthFundsDb(tx: DbClient, scope: AuthenticatedRequestContext, order: any) {
     const release = await this.createGrowthLedgerEntry(tx, {
       walletId: order.walletId,
       kind: "RELEASE",
@@ -2474,13 +2547,9 @@ export class PlatformService {
     return {};
   }
 
-  private async requireGrowthService(
-    serviceCode?: string,
-    options?: { includeDisabled?: boolean }
-  ) {
+  private async requireGrowthService(serviceCode?: string, options?: { includeDisabled?: boolean }) {
     const services = await this.listGrowthServices({ includeDisabled: options?.includeDisabled ?? true });
-    const service =
-      services.find((item) => item.code === serviceCode) ?? services[0];
+    const service = services.find((item) => item.code === serviceCode) ?? services[0];
 
     if (!service) {
       throw new NotFoundException("Growth Services catalog is empty.");
@@ -2509,9 +2578,7 @@ export class PlatformService {
         ...(override.marginBps === null ? {} : { marginBps: override.marginBps }),
         preferredSupplier: override.preferredSupplier ?? "",
         ...(override.maximumQuantity === null ? {} : { maximumQuantity: override.maximumQuantity }),
-        ...(override.expectedCompletion === null
-          ? {}
-          : { expectedCompletion: override.expectedCompletion }),
+        ...(override.expectedCompletion === null ? {} : { expectedCompletion: override.expectedCompletion }),
         ...(override.adminNote === null ? {} : { adminNote: override.adminNote })
       };
 
@@ -2600,7 +2667,6 @@ export class PlatformService {
           detail: "Growth supplier status refresh failed; order retained its last known state."
         });
       }
-      // Status refresh is best-effort; order pages should keep their last known lifecycle state.
     }
   }
 
