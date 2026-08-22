@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - fix/os-runtime-and-catalog-sync
+  pull_request:
+    types: [opened, synchronize]
 
 permissions:
   contents: write
@@ -105,8 +107,6 @@ jobs:
               '      - key: SIRPDATA_BASE_URL\n        sync: false\n      - key: IACAFE_BASE_URL',
               '      - key: SIRPDATA_BASE_URL\n        sync: false\n      - key: GSUBZ_BASE_URL\n        value: https://api.gsubz.com/api\n      - key: GSUBZ_API_KEY\n        sync: false\n      - key: IACAFE_BASE_URL',
           )
-          # The replacement above can match the API block first and worker block second;
-          # guard against accidental duplicate declarations if this file evolves.
           text = Path('render.yaml').read_text()
           for service_name, segment_start in [
               ('api', '  - type: web\n    runtime: node\n    name: ft-campaigner-api-fra'),
