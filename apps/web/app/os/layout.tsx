@@ -2,12 +2,12 @@
 
 import type { ReactNode } from "react";
 import { FeatureFlagProvider } from "../lib/feature-flags";
-import { OsShell } from "./shell";
+import { OsShellFixed } from "./shell-fixed";
 
 export default function OsLayout({ children }: { children: ReactNode }) {
   return (
     <FeatureFlagProvider>
-      <OsShell>{children}</OsShell>
+      <OsShellFixed>{children}</OsShellFixed>
     </FeatureFlagProvider>
   );
 }
