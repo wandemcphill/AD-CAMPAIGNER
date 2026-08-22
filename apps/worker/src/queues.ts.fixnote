@@ -1,1 +1,0 @@
-Typecheck fix is implemented in queues.ts: VtuFulfilmentJob now permits the optional BullMQ job name payload used by startup warmup jobs.
