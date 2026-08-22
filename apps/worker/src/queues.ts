@@ -80,6 +80,8 @@ export type VtuFulfilmentJobName =
   | "ops_review";
 
 export interface VtuFulfilmentJob {
+  /** BullMQ job name is carried in the payload by startup warmup jobs. */
+  name?: VtuFulfilmentJobName;
   orderId?: string;
   providerName?: string;
 }
