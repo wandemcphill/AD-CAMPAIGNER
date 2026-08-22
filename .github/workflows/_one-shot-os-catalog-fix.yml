@@ -1,0 +1,134 @@
+name: One-shot OS and catalog repair
+
+on:
+  push:
+    branches:
+      - fix/os-runtime-and-catalog-sync
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Apply repairs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly 1 occurrence of {old!r}, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          def replace_all(path: str, old: str, new: str, expected: int):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'{path}: expected {expected} occurrences of {old!r}, found {count}')
+              p.write_text(text.replace(old, new))
+
+          # 1. /os runtime crash: Home has no children, but shell unconditionally
+          #    read section.children.length/map when Home is active.
+          replace_all(
+              'apps/web/app/os/shell.tsx',
+              'section.children.length > 0',
+              '(section.children?.length ?? 0) > 0',
+              2,
+          )
+          replace_all(
+              'apps/web/app/os/shell.tsx',
+              'section.children.map((child) => (',
+              'section.children?.map((child) => (',
+              2,
+          )
+
+          # 2. Guest DATA must read the same production catalog as the authenticated
+          #    DATA route. DATA is routed to GSUBZ; cable remains ClubKonnect.
+          replace_once(
+              'apps/api/src/modules/guest-checkout/guest-checkout.service.ts',
+              'const GUEST_CATALOG_PROVIDER = "clubkonnect";',
+              'const GUEST_DATA_CATALOG_PROVIDER = "gsubz";\nconst GUEST_CABLE_CATALOG_PROVIDER = "clubkonnect";',
+          )
+          replace_once(
+              'apps/api/src/modules/guest-checkout/guest-checkout.service.ts',
+              'providerName: GUEST_CATALOG_PROVIDER,\n        ...(network ? { network } : {})',
+              'providerName: GUEST_DATA_CATALOG_PROVIDER,\n        ...(network ? { network } : {})',
+          )
+          replace_once(
+              'apps/api/src/modules/guest-checkout/guest-checkout.service.ts',
+              'providerName: GUEST_CATALOG_PROVIDER,\n        ...(provider ? { cableProvider: provider } : {})',
+              'providerName: GUEST_CABLE_CATALOG_PROVIDER,\n        ...(provider ? { cableProvider: provider } : {})',
+          )
+
+          # 3. Warm the catalogs immediately on worker startup instead of waiting
+          #    up to 24h for the first recurring scheduler tick.
+          replace_once(
+              'apps/worker/src/main.ts',
+              '  for (const providerName of VTU_LIVE_PROVIDERS) {\n    await queue.upsertJobScheduler(',
+              '  // Warm production catalogs immediately after deploy/startup; the recurring\n  // scheduler below keeps them refreshed every 24h.\n  for (const providerName of VTU_DATA_CATALOG_PROVIDERS) {\n    await queue.add(\n      "plan_catalog_sync",\n      { name: "plan_catalog_sync", providerName },\n      { jobId: `vtu-plan-sync-warmup-${providerName}`, removeOnComplete: true, removeOnFail: 100 }\n    );\n  }\n  for (const providerName of VTU_CABLE_CATALOG_PROVIDERS) {\n    await queue.add(\n      "cable_catalog_sync",\n      { name: "cable_catalog_sync", providerName },\n      { jobId: `vtu-cable-sync-warmup-${providerName}`, removeOnComplete: true, removeOnFail: 100 }\n    );\n  }\n\n  for (const providerName of VTU_LIVE_PROVIDERS) {\n    await queue.upsertJobScheduler('
+          )
+
+          # 4. Fail closed on empty provider catalog responses so transient provider/API
+          #    failures cannot deactivate the entire last-known-good customer catalog.
+          replace_once(
+              'apps/worker/src/vtu-processor.ts',
+              '  const adapter = buildAdapter(providerName);\n  const offers = await adapter.listDataPlans();\n\n  const seenPlanIds',
+              '  const adapter = buildAdapter(providerName);\n  const offers = await adapter.listDataPlans();\n  if (offers.length === 0) {\n    throw new Error(`Catalog sync refused: ${providerName} returned an empty DATA catalog; existing rows were preserved`);\n  }\n\n  const seenPlanIds',
+          )
+          replace_once(
+              'apps/worker/src/vtu-processor.ts',
+              '  const offers = await adapter.listCablePackages();\n  const seenCodes',
+              '  const offers = await adapter.listCablePackages();\n  if (offers.length === 0) {\n    throw new Error(`Catalog sync refused: ${providerName} returned an empty CABLE catalog; existing rows were preserved`);\n  }\n  const seenCodes',
+          )
+
+          # 5. Production needs GSUBZ credentials in BOTH API and worker services.
+          replace_once(
+              'render.yaml',
+              '      - key: TOPUPWIZARD_API_KEY\n        sync: false\n      - key: VTUGATE_BASE_URL',
+              '      - key: TOPUPWIZARD_API_KEY\n        sync: false\n      - key: GSUBZ_BASE_URL\n        value: https://api.gsubz.com/api\n      - key: GSUBZ_API_KEY\n        sync: false\n      - key: VTUGATE_BASE_URL',
+          )
+          replace_once(
+              'render.yaml',
+              '      - key: SIRPDATA_BASE_URL\n        sync: false\n      - key: IACAFE_BASE_URL',
+              '      - key: SIRPDATA_BASE_URL\n        sync: false\n      - key: GSUBZ_BASE_URL\n        value: https://api.gsubz.com/api\n      - key: GSUBZ_API_KEY\n        sync: false\n      - key: IACAFE_BASE_URL',
+          )
+          # The replacement above can match the API block first and worker block second;
+          # guard against accidental duplicate declarations if this file evolves.
+          text = Path('render.yaml').read_text()
+          for service_name, segment_start in [
+              ('api', '  - type: web\n    runtime: node\n    name: ft-campaigner-api-fra'),
+              ('worker', '  - type: worker\n    runtime: node\n    name: fliptrybe-ads-campaigner-worker'),
+          ]:
+              section_start = text.find(segment_start)
+              section_end = text.find('\n  - type:', section_start + 1)
+              if section_end == -1:
+                  section_end = len(text)
+              section = text[section_start:section_end]
+              if section.count('key: GSUBZ_API_KEY') != 1 or section.count('key: GSUBZ_BASE_URL') != 1:
+                  raise SystemExit(f'render.yaml {service_name} service: expected exactly one GSUBZ env pair')
+
+          print('Repairs applied successfully')
+          PY
+
+      - name: Commit repairs and remove one-shot workflow
+        shell: bash
+        run: |
+          rm .github/workflows/_one-shot-os-catalog-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/web/app/os/shell.tsx apps/api/src/modules/guest-checkout/guest-checkout.service.ts apps/worker/src/main.ts apps/worker/src/vtu-processor.ts render.yaml .github/workflows/_one-shot-os-catalog-fix.yml
+          git commit -m "fix: recover OS runtime and repair VTU catalog sync"
+          git push origin HEAD:fix/os-runtime-and-catalog-sync
