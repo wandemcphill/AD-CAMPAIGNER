@@ -51,7 +51,7 @@ function adapterForChannel(
   }
 
   const termiiConfig = {
-    apiKey: process.env.TERMII_API_KEY!,
+    apiKey: process.env.TERMII_API_KEY,
     ...(process.env.TERMII_BASE_URL ? { baseUrl: process.env.TERMII_BASE_URL } : {}),
     ...(process.env.TERMII_SMS_SENDER_ID ? { smsSenderId: process.env.TERMII_SMS_SENDER_ID } : {}),
     ...(process.env.TERMII_EMAIL_CONFIGURATION_ID

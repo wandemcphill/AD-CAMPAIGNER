@@ -51,7 +51,9 @@ function sanitizeUrl(value: string): string {
   }
 
   // Control characters are how a scheme gets smuggled past a naive check
-  // ("java\tscript:..."), and browsers strip them before dispatching.
+  // ("java\tscript:..."), and browsers strip them before dispatching —
+  // matching them is the point here, not an accident.
+  // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1f\x7f]/.test(trimmed)) {
     return "#";
   }
