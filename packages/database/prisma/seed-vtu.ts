@@ -75,8 +75,10 @@ async function purgeLegacyVtuState(db: ReturnType<typeof createPrismaClient>) {
   });
 
   await db.vtuDataPlan.deleteMany({});
-  await db.vtuCanonicalSku.deleteMany({});
+  // Provider mappings must be removed before canonical SKUs because
+  // VtuProviderSkuMapping.canonicalSkuId has a required foreign key to VtuCanonicalSku.
   await db.vtuProviderSkuMapping.deleteMany({});
+  await db.vtuCanonicalSku.deleteMany({});
   await db.vtuCablePackage.deleteMany({ where: { providerName: { not: "clubkonnect" } } });
   await db.vtuBettingCompany.deleteMany({ where: { providerName: { not: "clubkonnect" } } });
   await db.vtuEducationPlan.deleteMany({
