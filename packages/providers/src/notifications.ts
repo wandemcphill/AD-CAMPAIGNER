@@ -181,10 +181,17 @@ export function createTermiiEmailAdapter(config: TermiiConfig): NotificationProv
         );
       }
 
+      // Termii can return HTTP 200 with an error body (insufficient balance, an
+      // unverified email_configuration_id, etc) and no message_id — treating
+      // that as accepted would record an undelivered email as SENT. Acceptance
+      // is keyed off the message ID exactly as the SMS and WhatsApp adapters
+      // above do, so a 200-with-no-id response is reported as not accepted
+      // rather than fabricated as a success.
+      const messageId = payload.message_id;
       return {
-        id: payload.message_id ?? uid('termii_email'),
-        accepted: true,
-        providerStatus: payload.message ?? 'sent',
+        id: messageId ?? uid('termii_email'),
+        accepted: Boolean(messageId),
+        providerStatus: payload.message ?? (messageId ? 'sent' : 'no_message_id_returned'),
         raw: payload
       };
     }
