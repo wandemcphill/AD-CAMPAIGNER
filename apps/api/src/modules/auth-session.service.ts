@@ -1055,7 +1055,7 @@ export class AuthSessionService {
     const passwordHash = await createPasswordHash(password);
     const now = new Date();
 
-    await this.db.$transaction(async (tx) => {
+    const user = await this.db.$transaction(async (tx) => {
       // Guarded update: if a concurrent request consumed this token first,
       // count is 0 and we abort rather than resetting twice.
       const claimed = await tx.passwordResetToken.updateMany({
@@ -1067,16 +1067,42 @@ export class AuthSessionService {
         throw new BadRequestException("This reset link is invalid or has expired.");
       }
 
-      await tx.user.update({
+      const updated = await tx.user.update({
         where: { id: record.userId },
-        data: { passwordHash }
+        data: { passwordHash },
+        select: { id: true, email: true, name: true, displayName: true }
       });
 
       await tx.session.updateMany({
         where: { userId: record.userId, revokedAt: null },
         data: { revokedAt: now }
       });
+
+      return updated;
     });
+
+    // Confirmation, not a request for action: the template exists for
+    // exactly this event (F-06), and every session was just revoked above,
+    // so this is the one channel left for the account owner to notice a
+    // change they didn't make. Dispatched after the transaction commits —
+    // never notify for a password change that didn't actually happen — and
+    // keyed on the (already consumed, single-use) reset token's own row id,
+    // so a retry of this request can't send it twice.
+    if (user.email) {
+      await this.notifications.send({
+        userId: user.id,
+        template: "security_alert",
+        channels: ["EMAIL"],
+        category: "security",
+        priority: "high",
+        idempotencyKey: `password_reset_completed:${record.id}`,
+        vars: {
+          first_name: user.displayName ?? user.name,
+          status: "Your password was changed",
+          date: now.toISOString()
+        }
+      });
+    }
 
     return { ok: true as const };
   }

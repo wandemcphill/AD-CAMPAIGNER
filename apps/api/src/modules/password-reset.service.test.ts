@@ -46,7 +46,9 @@ function createHarness({
     Promise.resolve({ count: 2 })
   );
   const userUpdate = vi.fn((_args: { where: { id: string }; data: { passwordHash: string } }) =>
-    Promise.resolve({})
+    Promise.resolve(
+      user ? { id: user.id, email: user.email, name: user.name, displayName: user.displayName } : {}
+    )
   );
   const invalidateMany = vi.fn((args: { where: { userId: string } }) => {
     for (const t of tokens) {
@@ -86,9 +88,17 @@ function createHarness({
       )
   };
 
+  // Broad enough to cover both calls this harness observes: the reset-request
+  // email (template "password_reset", vars.reference) and the post-reset
+  // confirmation (template "security_alert", userId + idempotencyKey).
   const send = vi.fn(
-    (_input: { template: string; channels: string[]; vars: { reference: string } }) =>
-      Promise.resolve([])
+    (_input: {
+      template: string;
+      channels: string[];
+      userId?: string;
+      idempotencyKey?: string;
+      vars: Record<string, string>;
+    }) => Promise.resolve([])
   );
   const notifications = { send } as unknown as NotificationsService;
   const service = new AuthSessionService({ client: db } as unknown as PrismaService, notifications);
@@ -192,6 +202,40 @@ describe("password reset — confirm", () => {
       | undefined;
     expect(revoke?.where.userId).toBe(USER.id);
     expect(revoke?.where.revokedAt).toBeNull();
+  });
+
+  it("sends a security_alert confirmation after a successful reset, keyed on the consumed token row", async () => {
+    const { h, token } = await issued();
+    // issued() already triggered one send() for the reset-request email —
+    // this asserts on the second call, the post-reset confirmation.
+    expect(h.send).toHaveBeenCalledTimes(1);
+
+    await h.service.resetPassword(token, "brand-new-password");
+
+    expect(h.send).toHaveBeenCalledTimes(2);
+    const confirmation = h.send.mock.calls[1]?.[0] as {
+      template: string;
+      channels: string[];
+      userId: string;
+      idempotencyKey: string;
+      vars: Record<string, string>;
+    };
+    expect(confirmation.template).toBe("security_alert");
+    expect(confirmation.channels).toEqual(["EMAIL"]);
+    expect(confirmation.userId).toBe(USER.id);
+    expect(confirmation.idempotencyKey).toBe(`password_reset_completed:${h.tokens[0]!.id}`);
+    expect(confirmation.vars.status).toMatch(/password was changed/i);
+  });
+
+  it("does not send a confirmation notification when the reset is rejected (reused token)", async () => {
+    const { h, token } = await issued();
+    await h.service.resetPassword(token, "brand-new-password");
+    expect(h.send).toHaveBeenCalledTimes(2);
+
+    await expect(h.service.resetPassword(token, "another-password")).rejects.toThrow(BadRequestException);
+
+    // The rejected second attempt must not add a third send() call.
+    expect(h.send).toHaveBeenCalledTimes(2);
   });
 
   it("never stores the new password in clear text", async () => {

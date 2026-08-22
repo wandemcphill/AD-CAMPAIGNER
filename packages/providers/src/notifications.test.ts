@@ -130,6 +130,58 @@ describe("createTermiiEmailAdapter", () => {
       adapter.send({ channel: "EMAIL", to: "guest@example.com", title: "Receipt", body: "body" })
     ).rejects.toThrow(/Termii Email send failed/);
   });
+
+  it("reports not accepted — never a fabricated success — on an HTTP-200 response with no message_id", async () => {
+    // Termii's documented failure shape for conditions like insufficient
+    // balance or an unverified sender: HTTP 200, an error message, and no
+    // message_id. This must not be recorded as SENT.
+    const fetcher = fetcherReturning({ message: "Insufficient balance" }, 200);
+    const adapter = createTermiiEmailAdapter({ apiKey: "key", emailConfigurationId: "cfg_abc", fetcher });
+
+    const result = await adapter.send({
+      channel: "EMAIL",
+      to: "guest@example.com",
+      title: "Receipt",
+      body: "body"
+    });
+
+    expect(result.accepted).toBe(false);
+    expect(result.id).not.toBe("");
+    expect(result.providerStatus).toBe("Insufficient balance");
+  });
+
+  it("does not fabricate a Math.random() message id when the provider returns none", async () => {
+    const fetcher = fetcherReturning({}, 200);
+    const adapter = createTermiiEmailAdapter({ apiKey: "key", emailConfigurationId: "cfg_abc", fetcher });
+
+    const result = await adapter.send({
+      channel: "EMAIL",
+      to: "guest@example.com",
+      title: "Receipt",
+      body: "body"
+    });
+
+    expect(result.accepted).toBe(false);
+    // A synthetic id is still returned for local bookkeeping/log correlation,
+    // but it is prefixed distinctly and never treated as provider proof —
+    // `accepted` is what callers must check, not the presence of `id`.
+    expect(result.id).toMatch(/^termii_email_/);
+  });
+
+  it("still accepts when Termii returns HTTP 200 with a genuine message_id", async () => {
+    const fetcher = fetcherReturning({ message_id: "email_456", message: "Successful" });
+    const adapter = createTermiiEmailAdapter({ apiKey: "key", emailConfigurationId: "cfg_abc", fetcher });
+
+    const result = await adapter.send({
+      channel: "EMAIL",
+      to: "guest@example.com",
+      title: "Receipt",
+      body: "body"
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.id).toBe("email_456");
+  });
 });
 
 describe("createTermiiWhatsappAdapter", () => {

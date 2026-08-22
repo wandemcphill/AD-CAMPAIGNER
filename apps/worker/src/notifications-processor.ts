@@ -18,19 +18,40 @@ function getDb(): DatabaseClient {
   return dbSingleton;
 }
 
-// NOTIFICATION_PROVIDER=mock (or unset with no TERMII_API_KEY) uses the mock
-// adapter so dev/test environments never attempt a real Termii call. Set
-// NOTIFICATION_PROVIDER=termii with the TERMII_* vars populated to go live.
-function adapterForChannel(channel: "EMAIL" | "SMS" | "WHATSAPP"): NotificationProviderAdapter {
-  const useTermii =
-    process.env.NOTIFICATION_PROVIDER === "termii" && Boolean(process.env.TERMII_API_KEY);
+// The mock adapter reports every send as accepted. Running it in production
+// would silently discard real password resets and security alerts while
+// recording them as SENT (see NotificationDeliveryAttempt), so it is gated
+// behind the same ALLOW_MOCK_PROVIDERS escape hatch platform.service.ts uses
+// for every other provider — the API's legacyMockProvidersAllowed().
+function mockNotificationsAllowed(): boolean {
+  return process.env.NODE_ENV !== "production" || process.env.ALLOW_MOCK_PROVIDERS === "true";
+}
 
-  if (!useTermii) {
-    return createMockNotificationProvider();
+// "live" is the one canonical provider sentinel — PAYMENT_PROVIDER,
+// ADS_PROVIDER, and SMM_PROVIDER in render.yaml all use it, and it's the only
+// value packages/config/src/index.ts's NOTIFICATION_PROVIDER schema accepts
+// besides "mock"/"sandbox". "termii" was never a schema-valid value and no
+// deployed environment sets it — it was this file's own unvalidated,
+// out-of-band check, and the mismatch with the "live" every real deploy
+// actually sends is what let the mock provider run in production unnoticed
+// (see the production-sealing report, F-01). Anything other than exactly
+// "live" must fall through to the mock/PENDING_CONFIGURATION path below,
+// never select Termii.
+//
+// Returns undefined when no live transport is configured and the mock is not
+// permitted — the caller records that as PENDING_CONFIGURATION rather than
+// fabricating a delivery.
+function adapterForChannel(
+  channel: "EMAIL" | "SMS" | "WHATSAPP"
+): NotificationProviderAdapter | undefined {
+  const liveRequested = process.env.NOTIFICATION_PROVIDER === "live";
+
+  if (!liveRequested || !process.env.TERMII_API_KEY) {
+    return mockNotificationsAllowed() ? createMockNotificationProvider() : undefined;
   }
 
   const termiiConfig = {
-    apiKey: process.env.TERMII_API_KEY!,
+    apiKey: process.env.TERMII_API_KEY,
     ...(process.env.TERMII_BASE_URL ? { baseUrl: process.env.TERMII_BASE_URL } : {}),
     ...(process.env.TERMII_SMS_SENDER_ID ? { smsSenderId: process.env.TERMII_SMS_SENDER_ID } : {}),
     ...(process.env.TERMII_EMAIL_CONFIGURATION_ID
@@ -90,16 +111,21 @@ export async function processNotificationDispatchJob(
 
   const adapter = adapterForChannel(channel);
 
-  if (!adapter.isConfigured()) {
-    // Credentials/configuration genuinely absent — record as pending, not a
-    // fabricated success. A later retry (once configured) can still succeed.
+  if (!adapter || !adapter.isConfigured()) {
+    // Credentials/configuration genuinely absent, or (in production, with
+    // ALLOW_MOCK_PROVIDERS unset) no live provider requested and the mock is
+    // not permitted to stand in. Either way: record as pending, not a
+    // fabricated success — the Notification row stays QUEUED so it reads as
+    // visibly undelivered. A later retry, once configured, can still succeed.
     await db.notificationDeliveryAttempt.create({
       data: {
         notificationId,
         channel,
-        provider: adapter.name,
+        provider: adapter?.name ?? "none",
         status: "PENDING_CONFIGURATION",
-        errorMessage: `${adapter.name} is not configured for this channel.`
+        errorMessage: adapter
+          ? `${adapter.name} is not configured for this channel.`
+          : "No live notification provider is configured, and the mock provider is not permitted in production."
       }
     });
     return { notificationId, channel, outcome: "pending:provider_not_configured" };

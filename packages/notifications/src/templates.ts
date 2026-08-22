@@ -17,10 +17,85 @@ export interface NotificationTemplateVars {
   [key: string]: string | undefined;
 }
 
-const DEFAULT_SUPPORT_URL = `${process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fliptrybe.xyz"}/support`;
+const APP_ORIGIN =
+  process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fliptrybe.xyz";
+const DEFAULT_SUPPORT_URL = `${APP_ORIGIN}/support`;
 
-export function renderTemplate(template: string, vars: NotificationTemplateVars): string {
-  return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, key: string) => vars[key] ?? "");
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;"
+};
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => HTML_ESCAPES[char] as string);
+}
+
+const SAFE_URL_SCHEMES = new Set(["http:", "https:"]);
+
+/**
+ * Sanitises a value that is about to land inside an href.
+ *
+ * Only http(s) survives, so `javascript:`, `data:`, and `vbscript:` payloads
+ * cannot become a live link. Relative values resolve against the app origin.
+ * Anything unsafe or unparseable collapses to "#" rather than rendering a
+ * working link to somewhere unexpected.
+ */
+function sanitizeUrl(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "#";
+  }
+
+  // Control characters are how a scheme gets smuggled past a naive check
+  // ("java\tscript:..."), and browsers strip them before dispatching —
+  // matching them is the point here, not an accident.
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(trimmed)) {
+    return "#";
+  }
+
+  try {
+    const parsed = new URL(trimmed, APP_ORIGIN);
+
+    return SAFE_URL_SCHEMES.has(parsed.protocol) ? parsed.toString() : "#";
+  } catch {
+    return "#";
+  }
+}
+
+/**
+ * `{{name}}` interpolates a value; `{{url:name}}` marks the one context where
+ * the value is an href, which needs scheme validation on top of escaping.
+ *
+ * The marker is per-placeholder rather than per-variable because the same
+ * variable changes context between templates — `reference` is a reset URL in
+ * password_reset and a plain payment reference everywhere else.
+ */
+const PLACEHOLDER_PATTERN = /\{\{\s*(url:)?(\w+)\s*\}\}/g;
+
+export function renderTemplate(
+  template: string,
+  vars: NotificationTemplateVars,
+  context: "html" | "text" = "text"
+): string {
+  return template.replace(
+    PLACEHOLDER_PATTERN,
+    (_match, urlMarker: string | undefined, key: string) => {
+      const raw = vars[key] ?? "";
+
+      if (context !== "html") {
+        // Subjects and SMS bodies are plain text: escaping them would surface
+        // literal &amp; to the reader, and neither can execute markup.
+        return raw;
+      }
+
+      return urlMarker ? escapeHtml(sanitizeUrl(raw)) : escapeHtml(raw);
+    }
+  );
 }
 
 export interface NotificationTemplate {
@@ -34,7 +109,7 @@ const EMAIL_WRAPPER = (bodyHtml: string) => `
   <p>Hi {{first_name}},</p>
   ${bodyHtml}
   <p style="margin-top: 24px; font-size: 13px; color: #666;">
-    Need help? Visit <a href="{{support_url}}">{{support_url}}</a>.
+    Need help? Visit <a href="{{url:support_url}}">{{support_url}}</a>.
   </p>
 </div>
 `.trim();
@@ -112,7 +187,7 @@ export const notificationTemplates = {
     emailBody: EMAIL_WRAPPER(`
       <p>We received a request to reset your password.</p>
       <p style="margin: 24px 0;">
-        <a href="{{reference}}" style="background: #d97706; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">Reset password</a>
+        <a href="{{url:reference}}" style="background: #d97706; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">Reset password</a>
       </p>
       <p style="font-size: 13px; color: #666;">
         Or paste this link into your browser:<br />
@@ -139,8 +214,11 @@ export function renderNotificationTemplate(
   const merged: NotificationTemplateVars = { support_url: DEFAULT_SUPPORT_URL, ...vars };
 
   return {
+    // Only emailBody is HTML — subject is a plain mail header and smsBody is
+    // plain text, neither can render markup, so escaping either would just
+    // show the reader literal "&amp;" instead of "&".
     subject: renderTemplate(template.subject, merged),
-    emailBody: renderTemplate(template.emailBody, merged),
+    emailBody: renderTemplate(template.emailBody, merged, "html"),
     smsBody: renderTemplate(template.smsBody, merged)
   };
 }
