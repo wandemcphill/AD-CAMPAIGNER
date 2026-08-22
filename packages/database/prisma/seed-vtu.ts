@@ -22,14 +22,14 @@ const ALLOWED_PROVIDER_CONFIGS = [
     displayName: "TopupWizard",
     status: "CONFIGURED",
     enabledServices: ["EDUCATION"],
-    priority: 20
+    priority: 10
   },
   {
     providerName: "sirpdata",
     displayName: "SIRP Data",
     status: "CONFIGURED",
     enabledServices: ["EDUCATION"],
-    priority: 30
+    priority: 20
   }
 ] as const;
 
@@ -37,6 +37,16 @@ const EDUCATION_ROUTE_PRIORITY = {
   topupwizard: 10,
   sirpdata: 20
 } as const;
+
+// SIRP DATA does not expose a read-only education price endpoint in its native
+// API. These are the provider's current public API prices and are therefore
+// maintained as MANUAL catalog rows rather than pretending to be live-synced.
+const SIRP_EDUCATION_PLANS = [
+  { productCode: "waec_pin", displayName: "WAEC Result Checker", costMinor: 360000 },
+  { productCode: "neco_pin", displayName: "NECO Result Token", costMinor: 130000 },
+  { productCode: "utme_pin", displayName: "UTME Result Checker", costMinor: 780000 },
+  { productCode: "nabteb_pin", displayName: "NABTEB Result Token", costMinor: 90000 }
+] as const;
 
 const CLUBKONNECT_CABLE_PACKAGES = [
   { cableProvider: "dstv", packageCode: "dstv-padi", displayName: "DStv Padi", costMinor: 440000 },
@@ -379,6 +389,45 @@ async function seedTopupWizardEducation(db: ReturnType<typeof createPrismaClient
   console.log(`VtuEducationPlan: ${offers.length} topupwizard rows upserted`);
 }
 
+async function seedSirpDataEducation(db: ReturnType<typeof createPrismaClient>) {
+  const apiKey = process.env.SIRPDATA_API_KEY?.trim();
+  if (!apiKey) {
+    console.log("VtuEducationPlan: skipped SIRP DATA education seed (missing SIRPDATA_API_KEY)");
+    return;
+  }
+
+  for (const plan of SIRP_EDUCATION_PLANS) {
+    await db.vtuEducationPlan.upsert({
+      where: {
+        providerName_productCode: {
+          providerName: "sirpdata",
+          productCode: plan.productCode
+        }
+      },
+      create: {
+        id: `vedu_${Math.random().toString(36).slice(2, 12)}`,
+        providerName: "sirpdata",
+        productCode: plan.productCode,
+        displayName: plan.displayName,
+        costMinor: plan.costMinor,
+        currency: "NGN",
+        active: true,
+        pricingSource: "MANUAL"
+      },
+      update: {
+        displayName: plan.displayName,
+        costMinor: plan.costMinor,
+        currency: "NGN",
+        active: true,
+        pricingSource: "MANUAL",
+        lastSyncedAt: new Date()
+      }
+    });
+  }
+
+  console.log(`VtuEducationPlan: ${SIRP_EDUCATION_PLANS.length} sirpdata manual-price rows ensured`);
+}
+
 async function main() {
   const db = createPrismaClient();
 
@@ -390,6 +439,7 @@ async function main() {
     await seedProviderConfigs(db);
     await seedGsubzDataPlans(db);
     await seedTopupWizardEducation(db);
+    await seedSirpDataEducation(db);
   } finally {
     await db.$disconnect();
   }
