@@ -38,6 +38,8 @@ import {
 } from "./platform.controllers";
 import { AdminCommandCenterController } from "./admin-command-center.controller";
 import { AdminCommandCenterService } from "./admin-command-center.service";
+import { AdminOperationsControlTowerController } from "./admin-operations-control-tower.controller";
+import { AdminOperationsControlTowerService } from "./admin-operations-control-tower.service";
 import { AdminAuditModule } from "./admin-audit/admin-audit.module";
 import { AdminFinanceModule } from "./admin-finance/admin-finance.module";
 import { AdminIdentityModule } from "./admin-identity/admin-identity.module";
@@ -147,6 +149,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     SearchController,
     AdminController,
     AdminCommandCenterController,
+    AdminOperationsControlTowerController,
     AdminUsersController,
     AdminWalletsController,
     AdminGrowthController,
@@ -157,6 +160,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     AuthSessionService,
     PlatformService,
     AdminCommandCenterService,
+    AdminOperationsControlTowerService,
     ManagedAdsService,
     RealtimeGateway,
     {
