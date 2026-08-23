@@ -21,7 +21,6 @@ import {
   MeController,
   GrowthController,
   HealthController,
-  InvoicesController,
   LiveController,
   MediaController,
   NotificationsController,
