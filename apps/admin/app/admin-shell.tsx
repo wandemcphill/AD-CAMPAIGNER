@@ -38,7 +38,7 @@ export type AdminNavItem = { label: string; href: string; icon: LucideIcon };
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Overview", href: "/", icon: Radar },
   { label: "Moderation", href: "/campaign-ops/", icon: ShieldCheck },
-  { label: "Payments", href: "/campaign-ops/reports/", icon: Banknote },
+  { label: "Payments", href: "/payments/", icon: Banknote },
   { label: "Wallets", href: "/wallets/", icon: Wallet },
   { label: "Users", href: "/users/", icon: Users },
   { label: "Reconciliation", href: "/reconciliation/", icon: Scale },
