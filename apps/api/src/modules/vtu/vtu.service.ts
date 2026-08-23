@@ -24,6 +24,7 @@ import { QueueProducerService } from "../queue-producer.service";
 import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing-rule.service";
 import { VtuRouterService } from "./vtu-router.service";
 import { VtuQuoteService } from "./vtu-quote.service";
+import { normalizeNigerianMsisdn } from "./msisdn";
 import { featureFlags } from "@fliptrybe/feature-flags";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
@@ -385,7 +386,12 @@ export class VtuService {
   async buyAirtime(ctx: AuthenticatedRequestContext, dto: BuyAirtimeDto) {
     const { workspaceId } = ctx;
 
-    if (!dto.msisdn.match(/^\+?[1-9]\d{6,14}$/)) {
+    // Users type the local dialing format (0XXXXXXXXXX); every provider and
+    // stored record downstream expects the international format (234...), so
+    // normalize before validating rather than rejecting the local format
+    // outright. See msisdn.ts for the recognized shapes.
+    const msisdn = normalizeNigerianMsisdn(dto.msisdn);
+    if (!msisdn.match(/^\+?[1-9]\d{6,14}$/)) {
       throw new BadRequestException("Invalid MSISDN format.");
     }
     if (!Number.isInteger(dto.faceValueMinor) || dto.faceValueMinor <= 0) {
@@ -420,7 +426,7 @@ export class VtuService {
     }
 
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
-    const msisdnMasked = dto.msisdn.slice(0, 4) + "****" + dto.msisdn.slice(-3);
+    const msisdnMasked = msisdn.slice(0, 4) + "****" + msisdn.slice(-3);
 
     const outcome = await runChargeSaga({
       debit: async () => {
@@ -444,7 +450,7 @@ export class VtuService {
               productType: "AIRTIME",
               network: dto.network,
               msisdnMasked,
-              msisdnEncrypted: dto.msisdn,
+              msisdnEncrypted: msisdn,
               faceValueMinor: dto.faceValueMinor,
               amountMinor: chargeMinor,
               costMinor: wholesaleCost,
@@ -479,7 +485,7 @@ export class VtuService {
       execute: async (order) => {
         const result = await adapter.purchaseAirtime({
           network: dto.network,
-          msisdn: dto.msisdn,
+          msisdn,
           faceValueMinor: dto.faceValueMinor,
           reference: order.providerReference!
         });
@@ -525,7 +531,8 @@ export class VtuService {
   async buyData(ctx: AuthenticatedRequestContext, dto: BuyDataDto) {
     const { workspaceId } = ctx;
 
-    if (!dto.msisdn.match(/^\+?[1-9]\d{6,14}$/)) {
+    const msisdn = normalizeNigerianMsisdn(dto.msisdn);
+    if (!msisdn.match(/^\+?[1-9]\d{6,14}$/)) {
       throw new BadRequestException("Invalid MSISDN format.");
     }
 
@@ -571,7 +578,7 @@ export class VtuService {
     }
 
     const reference = adapter.buildReference({ id: orderId, createdAt: new Date() });
-    const msisdnMasked = dto.msisdn.slice(0, 4) + "****" + dto.msisdn.slice(-3);
+    const msisdnMasked = msisdn.slice(0, 4) + "****" + msisdn.slice(-3);
 
     const outcome = await runChargeSaga({
       debit: async () => {
@@ -595,7 +602,7 @@ export class VtuService {
               productType: "DATA",
               network: dto.network,
               msisdnMasked,
-              msisdnEncrypted: dto.msisdn,
+              msisdnEncrypted: msisdn,
               ...(planId ? { planId } : {}),
               amountMinor: chargeMinor,
               costMinor: planCostMinor,
@@ -630,7 +637,7 @@ export class VtuService {
       execute: async (order) => {
         const result = await adapter.purchaseData({
           network: dto.network,
-          msisdn: dto.msisdn,
+          msisdn,
           providerPlanId,
           reference: order.providerReference!
         });
