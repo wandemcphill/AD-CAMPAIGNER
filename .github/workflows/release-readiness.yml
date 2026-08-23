@@ -13,6 +13,9 @@ on:
         required: false
         default: false
         type: boolean
+  pull_request:
+    branches: ["codex/ad-campaigner-production-sealing"]
+    types: [opened, synchronize, reopened]
   push:
     branches: ["main"]
 
