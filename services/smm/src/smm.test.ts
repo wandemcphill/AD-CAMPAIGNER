@@ -12,6 +12,7 @@ import {
   createSmmFulfillmentQueueJob,
   createSmmServiceHealthMonitor,
   defaultGrowthServicesCatalog,
+  defaultSmmPricingRules,
   defaultSmmRetryPolicy,
   getGrowthServiceRiskReport,
   mapSmmOrderStatusToGrowthStatus,
@@ -26,7 +27,7 @@ describe("SMM operations", () => {
       quote: {
         amount: { amountMinor: 1000, currency: "NGN" },
         estimatedDeliveryMinutes: 120,
-        supplierName: "smdpanel"
+        supplierName: "gsubz"
       },
       serviceKind: "FOLLOWERS"
     });
@@ -34,7 +35,7 @@ describe("SMM operations", () => {
     expect(priced.customerPrice.amountMinor).toBeGreaterThan(priced.supplierCost.amountMinor);
     expect(priced.grossMargin.amountMinor).toBeGreaterThanOrEqual(150);
     expect(priced.marginBps).toBeGreaterThan(0);
-    expect(priced.supplierName).toBe("smdpanel");
+    expect(priced.supplierName).toBe("gsubz");
   });
 
   it("calculates raw margin for same-currency money values", () => {
@@ -70,7 +71,7 @@ describe("SMM operations", () => {
       quote: {
         amount: { amountMinor: 500, currency: "NGN" },
         estimatedDeliveryMinutes: 120,
-        supplierName: "justanotherpanel"
+        supplierName: "gsubz"
       },
       serviceKind: "VIEWS"
     });
@@ -91,7 +92,7 @@ describe("SMM operations", () => {
     });
 
     expect(job.retryPolicy.attempts).toBe(defaultSmmRetryPolicy.attempts);
-    expect(job.supplierName).toBe("justanotherpanel");
+    expect(job.supplierName).toBe("gsubz");
     expect(job.fraudRiskLevel).toBe("LOW");
   });
 
@@ -112,22 +113,35 @@ describe("SMM operations", () => {
     expect(summarizeSmmSupplierHealth(results)).toBe("healthy");
   });
 
-  it("defines a Growth Services catalog with customer-facing service families", () => {
-    expect(defaultGrowthServicesCatalog.map((service) => service.code)).toEqual([
-      "tiktok-views",
-      "tiktok-likes",
-      "tiktok-followers",
-      "instagram-followers",
-      "instagram-likes",
-      "youtube-views",
-      "youtube-subscribers",
-      "telegram-members",
-      "website-traffic",
-      "social-account-instagram"
-    ]);
+  it("exposes the original catalogue plus Nigeria-specific service families", () => {
+    expect(defaultGrowthServicesCatalog.length).toBeGreaterThan(30);
+    expect(defaultGrowthServicesCatalog.some((service) => service.code === "tiktok-views")).toBe(true);
+    expect(defaultGrowthServicesCatalog.some((service) => service.code === "tiktok-live-viewers-ng")).toBe(true);
+    expect(defaultGrowthServicesCatalog.some((service) => service.code === "instagram-live-viewers-ng")).toBe(true);
+    expect(defaultGrowthServicesCatalog.some((service) => service.code === "youtube-subscribers-ng")).toBe(true);
+    expect(defaultGrowthServicesCatalog.some((service) => service.code === "telegram-members-ng")).toBe(true);
+
+    const liveNg = defaultGrowthServicesCatalog.find((service) => service.code === "tiktok-live-viewers-ng");
+    expect(liveNg?.supplierRouting.preferredSupplier).toBe("gsubz");
+    expect(liveNg?.supplierRouting.fallbackSuppliers).toEqual(["sizzle"]);
+  });
+
+  it("keeps the website traffic service disabled until a provider path is approved", () => {
     expect(
       defaultGrowthServicesCatalog.find((service) => service.code === "website-traffic")?.enabled
     ).toBe(false);
+  });
+
+  it("keeps the service-kind pricing rules complete", () => {
+    expect(defaultSmmPricingRules.map((rule) => rule.serviceKind)).toEqual([
+      "FOLLOWERS",
+      "LIKES",
+      "VIEWS",
+      "COMMENTS",
+      "SHARES",
+      "LIVE_VIEWERS",
+      "CHANNEL_MEMBERS"
+    ]);
   });
 
   it("maps supplier order states into the Growth lifecycle", () => {
@@ -154,11 +168,11 @@ describe("SMM operations", () => {
   });
 
   it("applies admin controls to Growth services", () => {
-    const service = defaultGrowthServicesCatalog[0]!;
+    const service = defaultGrowthServicesCatalog.find((item) => item.code === "tiktok-views")!;
     const updated = applyGrowthServiceAdminControls(service, {
       enabled: false,
       marginBps: 9000,
-      preferredSupplier: "smdpanel",
+      preferredSupplier: "gsubz",
       maximumQuantity: 2000
     });
 
@@ -166,25 +180,34 @@ describe("SMM operations", () => {
     expect(updated.marginBps).toBe(9000);
     expect(updated.maximumQuantity).toBe(2000);
     expect(updated.supplierRouting.strategy).toBe("PREFERRED_FIRST");
-    expect(updated.supplierRouting.preferredSupplier).toBe("smdpanel");
+    expect(updated.supplierRouting.preferredSupplier).toBe("gsubz");
   });
 
   it("produces supplier audit and risk report artifacts", () => {
     const audit = createSmmSupplierAudit({
       providers: [
         {
-          name: "mock-smm",
-          mode: "mock",
+          name: "gsubz",
+          mode: "gsubz-api",
           configured: true,
           supportedCategories: ["FOLLOWERS"],
           pricingModel: "per-1000-rate-card",
           routingRole: "primary",
-          serviceMapCoverage: []
+          serviceMapCoverage: ["FOLLOWERS"]
+        },
+        {
+          name: "sizzle",
+          mode: "perfect-panel",
+          configured: true,
+          supportedCategories: ["FOLLOWERS"],
+          pricingModel: "per-1000-rate-card",
+          routingRole: "fallback",
+          serviceMapCoverage: ["FOLLOWERS"]
         }
       ],
       reliability: [
         {
-          supplierName: "mock-smm",
+          supplierName: "gsubz",
           status: "healthy",
           latencyMs: 12,
           checkedAt: timestamp
@@ -193,10 +216,10 @@ describe("SMM operations", () => {
     });
     const risk = getGrowthServiceRiskReport(defaultGrowthServicesCatalog);
 
-    expect(audit.supportedProviders[0]?.name).toBe("mock-smm");
+    expect(audit.supportedProviders.map((provider) => provider.name)).toEqual(["gsubz", "sizzle"]);
     expect(audit.pricingModels.length).toBeGreaterThan(0);
     expect(
-      risk.find((service) => service.serviceCode === "youtube-subscribers")?.risk.accountRisk
+      risk.find((service) => service.serviceCode === "youtube-subscribers-ng")?.risk.accountRisk
     ).toBe("HIGH");
   });
 });
