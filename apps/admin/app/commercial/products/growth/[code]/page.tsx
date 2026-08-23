@@ -5,10 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, RefreshCw, Save, ShieldCheck } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
-import { AdminShell } from "../../../admin-shell";
-import { apiRequest } from "../../../lib/api-client";
-import { useApiSession } from "../../../lib/use-session";
-import { AdminAuthState } from "../../../ui/admin-auth-state";
+import { AdminShell } from "../../../../admin-shell";
+import { apiRequest } from "../../../../lib/api-client";
+import { useApiSession } from "../../../../lib/use-session";
+import { AdminAuthState } from "../../../../ui/admin-auth-state";
 
 type GrowthService = {
   code: string;
