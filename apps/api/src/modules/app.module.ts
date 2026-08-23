@@ -38,6 +38,7 @@ import {
 } from "./platform.controllers";
 import { AdminCommandCenterController } from "./admin-command-center.controller";
 import { AdminCommandCenterService } from "./admin-command-center.service";
+import { AdminFinanceModule } from "./admin-finance/admin-finance.module";
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { AuthSessionService } from "./auth-session.service";
@@ -91,6 +92,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
       }
     ]),
     PrismaModule,
+    AdminFinanceModule,
     ApprovalsModule,
     DigitalAccessModule,
     InvoicesModule,
