@@ -38,6 +38,7 @@ import {
 } from "./platform.controllers";
 import { AdminCommandCenterController } from "./admin-command-center.controller";
 import { AdminCommandCenterService } from "./admin-command-center.service";
+import { AdminAuditModule } from "./admin-audit/admin-audit.module";
 import { AdminFinanceModule } from "./admin-finance/admin-finance.module";
 import { AdminIdentityModule } from "./admin-identity/admin-identity.module";
 import { AdminReconciliationModule } from "./admin-reconciliation/admin-reconciliation.module";
@@ -87,6 +88,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
       { name: "long", ttl: 900000, limit: 1000 }
     ]),
     PrismaModule,
+    AdminAuditModule,
     AdminFinanceModule,
     AdminIdentityModule,
     AdminReconciliationModule,
