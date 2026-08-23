@@ -1,8 +1,18 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException
+} from "@nestjs/common";
 
 import { calculateAvailableBalance } from "@fliptrybe/payments";
 import type { CurrencyCode, LedgerEntry } from "@fliptrybe/types";
-import { createSogoRmbAdapter, type RmbBuyProvider } from "@fliptrybe/providers";
+import {
+  createSogoRmbAdapter,
+  SogoRmbProviderError,
+  type RmbBuyProvider
+} from "@fliptrybe/providers";
 import type { RmbOrderStatus } from "@fliptrybe/database";
 import { featureFlags } from "@fliptrybe/feature-flags";
 
@@ -50,12 +60,7 @@ export class RmbService {
   private readonly provider: RmbBuyProvider;
 
   constructor(private readonly prismaService: PrismaService) {
-    const apiKey = process.env["SOGO_API_KEY"] ?? process.env["SOGO_SECRET_KEY"];
-    if (!apiKey) {
-      throw new Error(
-        "SOGO_API_KEY is required to initialize the RMB buy provider — no mock fallback in this build"
-      );
-    }
+    const apiKey = process.env["SOGO_SECRET_KEY"] ?? process.env["SOGO_API_KEY"] ?? "";
     this.provider = createSogoRmbAdapter({
       apiKey,
       sandbox: process.env["SOGO_SANDBOX"] === "true",
@@ -63,11 +68,24 @@ export class RmbService {
     });
   }
 
+  private assertProviderConfigured() {
+    const apiKey = process.env["SOGO_SECRET_KEY"] ?? process.env["SOGO_API_KEY"];
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        "RMB is temporarily unavailable because the Sogo secret key is not configured."
+      );
+    }
+  }
+
   private get db() {
     return this.prismaService.client;
   }
 
   async getRates() {
+    if (!featureFlags.rmbBuy) {
+      throw new BadRequestException("RMB buy is not yet available.");
+    }
+    this.assertProviderConfigured();
     return this.provider.getRates();
   }
 
@@ -83,24 +101,28 @@ export class RmbService {
     if (!featureFlags.rmbBuy) {
       throw new BadRequestException("RMB buy is not yet available.");
     }
+    this.assertProviderConfigured();
+
     if (!dto.rmbAmount || dto.rmbAmount <= 0) {
       throw new BadRequestException("rmbAmount must be a positive number.");
     }
-    if (!dto.recipientName.trim()) throw new BadRequestException("recipientName is required.");
+    if (!dto.recipientName.trim()) {
+      throw new BadRequestException("recipientName is required.");
+    }
     if (!dto.description || dto.description.trim().length < 5) {
       throw new BadRequestException("description must be at least 5 characters.");
     }
-    if (dto.channel === "bank") {
-      if (!dto.recipientBankName || !dto.recipientBankAccountNumber) {
-        throw new BadRequestException(
-          "recipientBankName and recipientBankAccountNumber are required for bank transfers."
-        );
+
+    if (dto.channel === "alipay" || dto.channel === "wechat") {
+      if (!dto.accountType) {
+        throw new BadRequestException(`${dto.channel} account type is required.`);
       }
-    } else if (!dto.recipientIdentifier && !dto.qrCodeUrl) {
-      // Per Sogo's spec, alipay/wechat orders need either a QR code (the primary
-      // routing instrument) or a recipient identifier as a fallback — at least one.
+      if (!dto.qrCodeUrl) {
+        throw new BadRequestException("A recipient QR code is required for Alipay and WeChat orders.");
+      }
+    } else if (!dto.recipientBankName || !dto.recipientBankAccountNumber) {
       throw new BadRequestException(
-        "Either qrCodeUrl or recipientIdentifier is required for alipay/wechat orders."
+        "recipientBankName and recipientBankAccountNumber are required for bank transfers."
       );
     }
 
@@ -119,14 +141,17 @@ export class RmbService {
     if (!channelRates || !channelRates.isAvailable) {
       throw new BadRequestException(`RMB channel ${dto.channel} is not currently available.`);
     }
+
     const tierSource =
       dto.accountType && channelRates.accountTypes.length > 0
-        ? channelRates.accountTypes.find((a) => a.type === dto.accountType)?.rates
+        ? channelRates.accountTypes.find((a) => a.type === dto.accountType && a.isAvailable)?.rates
         : channelRates.rates;
     const tier = (tierSource ?? channelRates.rates).find(
       (t) => dto.rmbAmount >= t.minRmb && (t.maxRmb === null || dto.rmbAmount <= t.maxRmb)
     );
-    if (!tier) throw new BadRequestException("No matching rate tier for this amount.");
+    if (!tier) {
+      throw new BadRequestException("No matching rate tier for this amount.");
+    }
 
     const ngnAmountMinor = Math.round(dto.rmbAmount * tier.ngnPerRmb * 100);
     const orderId = uid("rmb");
@@ -209,8 +234,41 @@ export class RmbService {
       });
     } catch (err) {
       this.logger.error(`RMB submit error for ${order.id}: ${String(err)}`);
-      // Provider submission failed after the debit — leave PROCESSING for ops review
-      // rather than guessing; refund is handled via admin action or the refund webhook.
+
+      // A deterministic client/configuration rejection cannot have created a
+      // provider transaction. Reverse our local debit immediately. Network
+      // errors, 429s and 5xx responses remain PROCESSING because the provider
+      // outcome is ambiguous and must be reconciled before retrying.
+      if (err instanceof SogoRmbProviderError && err.statusCode >= 400 && err.statusCode < 500 && err.statusCode !== 409 && err.statusCode !== 429) {
+        const refundKey = `rmb_cancel_${order.id}`;
+        await this.db.$transaction(async (tx) => {
+          const existingRefund = await tx.ledgerEntry.findUnique({
+            where: { idempotencyKey: refundKey }
+          });
+          if (!existingRefund) {
+            await tx.ledgerEntry.create({
+              data: {
+                id: uid("led"),
+                walletId: order.walletId,
+                kind: "REVERSAL",
+                amountMinor: order.ngnAmountMinor,
+                currency: "NGN",
+                reference: refundKey,
+                description: `RMB order cancelled before provider acceptance → ${order.recipientName}`,
+                idempotencyKey: refundKey,
+                sourceType: "RmbOrder",
+                sourceId: order.id
+              }
+            });
+          }
+          await tx.rmbOrder.update({
+            where: { id: order.id },
+            data: { status: "CANCELLED" }
+          });
+        });
+        return this.db.rmbOrder.findUniqueOrThrow({ where: { id: order.id } });
+      }
+
       return order;
     }
   }
