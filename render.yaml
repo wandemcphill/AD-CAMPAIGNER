@@ -123,18 +123,57 @@ services:
         sync: false
       - key: RESEND_FROM_EMAIL
         sync: false
+      # Production safety defaults: staged OTP and automation remain off until explicitly rolled out.
       - key: ENABLE_OTP_MODULE
-        value: "true"
+        value: "false"
       - key: ENABLE_PREMIUM_OTP
-        value: "true"
+        value: "false"
       - key: ENABLE_BUDGET_OTP
-        value: "true"
+        value: "false"
       - key: ENABLE_OTP_ADMIN
-        value: "true"
+        value: "false"
       - key: ENABLE_DIGITAL_ACCESS
         value: "true"
       - key: ENABLE_DIGITAL_ACCESS_ADMIN
         value: "true"
+      - key: TRUST_PROXY_AUTH_HEADERS
+        value: "false"
+      - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
+        value: "false"
+      - key: DIGITAL_ACCESS_WORKER_ENABLED
+        value: "false"
+      - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
+        value: "false"
+      - key: OTP_PROVIDER_HEALTH_WORKER_ENABLED
+        value: "false"
+      - key: OTP_PROVIDER_MODE
+        value: mock
+      - key: OTP_BETA_WORKSPACE_IDS
+        sync: false
+      - key: SMSACTIVATE_COMPATIBLE_ENABLED
+        value: "false"
+      - key: FX_LIVE_PROVIDER_REFRESH
+        value: "false"
+      - key: KORAPAY_BASE_URL
+        value: https://api.korapay.com
+      - key: KORAPAY_PUBLIC_KEY
+        sync: false
+      - key: KORAPAY_SECRET_KEY
+        sync: false
+      - key: KORAPAY_ENCRYPTION_KEY
+        sync: false
+      - key: KORAPAY_WEBHOOK_URL
+        value: https://ft-campaigner-api-fra.onrender.com/api/webhooks/korapay
+      - key: KORAPAY_WEBHOOK_SECRET
+        sync: false
+      - key: KORAPAY_REDIRECT_URL
+        value: https://fliptrybe.xyz
+      - key: TREASURY_BANK_NAME
+        sync: false
+      - key: TREASURY_ACCOUNT_NAME
+        sync: false
+      - key: TREASURY_ACCOUNT_NUMBER
+        sync: false
       - key: FEATURE_VTU
         value: "true"
       - key: FEATURE_BILLS_ELECTRICITY
@@ -152,9 +191,9 @@ services:
       - key: FEATURE_VIRTUAL_ACCOUNTS
         sync: false
       - key: FEATURE_VIRTUAL_CARDS
-        value: "true"
+        value: "false"
       - key: FINANCIAL_PROVIDER_SIGNOFF
-        value: "true"
+        value: "false"
       - key: FEATURE_REMITTANCE
         sync: false
       - key: FEATURE_WALLET_WITHDRAWALS
@@ -336,6 +375,24 @@ services:
         sync: false
       - key: NOTIFICATION_PROVIDER
         value: live
+      - key: ENABLE_OTP_MODULE
+        value: "false"
+      - key: ENABLE_PREMIUM_OTP
+        value: "false"
+      - key: ENABLE_BUDGET_OTP
+        value: "false"
+      - key: ENABLE_OTP_ADMIN
+        value: "false"
+      - key: DIGITAL_ACCESS_WORKER_ENABLED
+        value: "false"
+      - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
+        value: "false"
+      - key: OTP_PROVIDER_HEALTH_WORKER_ENABLED
+        value: "false"
+      - key: OTP_PROVIDER_MODE
+        value: mock
+      - key: SMSACTIVATE_COMPATIBLE_ENABLED
+        value: "false"
       - key: FEATURE_VTU
         value: "true"
       - key: FEATURE_BILLS_ELECTRICITY
@@ -353,9 +410,9 @@ services:
       - key: FEATURE_VIRTUAL_ACCOUNTS
         sync: false
       - key: FEATURE_VIRTUAL_CARDS
-        value: "true"
+        value: "false"
       - key: FINANCIAL_PROVIDER_SIGNOFF
-        value: "true"
+        value: "false"
       - key: FEATURE_REMITTANCE
         sync: false
       - key: FEATURE_WALLET_WITHDRAWALS
