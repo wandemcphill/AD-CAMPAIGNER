@@ -18,8 +18,9 @@
     "seed:digital-access": "tsx prisma/seed-digital-access.ts",
     "seed:marketplace": "tsx prisma/seed-marketplace.ts",
     "seed:virtual-numbers": "tsx prisma/seed-virtual-numbers.ts",
-    "seed:financial-products": "tsx prisma/seed-financial-products.ts",
+    "seed:financial-products": "tsx prisma/seed-financial-products.ts && tsx prisma/seed-payscribe-convergence.ts",
     "seed:provider-capability-grants": "tsx prisma/seed-provider-capability-grants.ts",
+    "seed:payscribe-convergence": "tsx prisma/seed-payscribe-convergence.ts",
     "backfill:provider-mapping": "tsx prisma/backfill-provider-mapping.ts"
   },
   "dependencies": {

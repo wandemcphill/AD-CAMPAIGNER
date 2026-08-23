@@ -2,14 +2,8 @@ import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleIni
 import { Cron, CronExpression } from "@nestjs/schedule";
 
 import type { DatabaseClient, Prisma } from "@fliptrybe/database";
-import {
-  createMockFxProvider,
-  createFincraFxProvider,
-  createSwapprFxProvider,
-  createMapleradFxProvider,
-  type FxProvider,
-  type FxRate
-} from "@fliptrybe/providers";
+import { type FxProvider, type FxRate } from "@fliptrybe/providers";
+import { createPayscribeFxProvider } from "@fliptrybe/providers/payscribe-fx";
 
 import { PrismaService } from "../prisma.service";
 import type { AuthenticatedRequestContext } from "../request-context";
@@ -23,27 +17,11 @@ import type {
 } from "./fx.dtos";
 
 const uid = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 12)}`;
-
-// Bootstrap fallback only — used when no FxRate row has ever been set for this pair.
-const BOOTSTRAP_RATE_MICROS = 1_450_000_000n; // ₦1,450/USD
-
-// Launch corridor pairs refreshed by the scheduled cache job and initial
-// warm-up — all quoted directly against NGN, since createQuote() only ever
-// looks up a cached direct pair (it does not compose crosses through USD).
-// A pair the active provider doesn't serve just fails its own fetch and gets
-// skipped (see the Promise.allSettled loop below) — this list is provider-
-// agnostic on purpose so it keeps working as more providers are added.
-const DEFAULT_RATE_PAIRS: Array<{ baseCurrency: string; quoteCurrency: string }> = [
-  { baseCurrency: "USD", quoteCurrency: "NGN" },
-  { baseCurrency: "GBP", quoteCurrency: "NGN" },
-  { baseCurrency: "EUR", quoteCurrency: "NGN" }
-];
-
-const DEFAULT_SPREAD_BPS = 150; // 1.5% — fallback when no FxRate row sets one
-// Ceiling for an admin-set customer spread. 20% is far above any legitimate FX
-// margin and exists to catch a typo, not to express policy.
+const BOOTSTRAP_RATE_MICROS = 1_450_000_000n;
+const DEFAULT_RATE_PAIRS: Array<{ baseCurrency: string; quoteCurrency: string }> = [{ baseCurrency: "USD", quoteCurrency: "NGN" }];
+const DEFAULT_SPREAD_BPS = 150;
 const MAX_SPREAD_BPS = 2_000;
-const DEFAULT_BUFFER_BPS = 100; // 1% buffer
+const DEFAULT_BUFFER_BPS = 100;
 const FX_MAX_AGE_HOURS = 72;
 const FX_RATE_CACHE_TTL_MINUTES = 5;
 const QUOTE_EXPIRY_SECONDS = 60;
@@ -69,60 +47,29 @@ function fromMicros(micros: bigint): number {
 @Injectable()
 export class FxService implements OnModuleInit {
   private readonly logger = new Logger(FxService.name);
-  // Every configured provider is queried for every pair; the best (highest)
-  // rate wins. A provider that doesn't serve a pair (e.g. Fincra has no CAD
-  // corridor) just fails its own getRate() call and is excluded from that
-  // pair's comparison — see getBestRate().
   private fxProviders: FxProvider[] = [];
   private cacheRefreshInProgress = false;
 
   constructor(private readonly prismaService: PrismaService) {
     const liveRefreshEnabled = envEnabled("FX_LIVE_PROVIDER_REFRESH");
-    const fincraApiKey = process.env["FINCRA_API_KEY"];
-    const fincraBusinessId = process.env["FINCRA_BUSINESS_ID"];
+    const payscribeApiKey = process.env["PAYSCRIBE_API_KEY"];
 
-    if (liveRefreshEnabled && isConfiguredSecret(fincraApiKey) && isConfiguredSecret(fincraBusinessId)) {
-      const isProduction = process.env["FINCRA_ENV"] === "production";
+    if (liveRefreshEnabled && isConfiguredSecret(payscribeApiKey)) {
       this.fxProviders.push(
-        createFincraFxProvider({
-          apiKey: fincraApiKey.trim(),
-          businessId: fincraBusinessId.trim(),
-          ...(isProduction ? { baseUrl: "https://api.fincra.com" } : {}),
+        createPayscribeFxProvider({
+          apiKey: payscribeApiKey.trim(),
+          ...(process.env["PAYSCRIBE_BASE_URL"] ? { baseUrl: process.env["PAYSCRIBE_BASE_URL"] } : {})
         })
       );
     }
 
-    const swapprSecretKey = process.env["SWAPPR_SECRET_KEY"];
-    if (liveRefreshEnabled && isConfiguredSecret(swapprSecretKey)) {
-      this.fxProviders.push(
-        createSwapprFxProvider({
-          secretKey: swapprSecretKey.trim(),
-          ...(process.env["SWAPPR_BASE_URL"] ? { baseUrl: process.env["SWAPPR_BASE_URL"] } : {}),
-        })
-      );
-    }
-
-    const mapleradSecretKey = process.env["MAPLERAD_SECRET_KEY"];
-    if (liveRefreshEnabled && isConfiguredSecret(mapleradSecretKey)) {
-      this.fxProviders.push(
-        createMapleradFxProvider({
-          apiKey: mapleradSecretKey.trim(),
-          ...(process.env["MAPLERAD_BASE_URL"] ? { baseUrl: process.env["MAPLERAD_BASE_URL"] } : {}),
-        })
-      );
-    }
-
-    if (this.fxProviders.length === 0) {
-      if (!liveRefreshEnabled && process.env.NODE_ENV === "production") {
-        this.logger.log("FX live provider refresh is disabled; using manual/bootstrap rates until FX_LIVE_PROVIDER_REFRESH=true.");
-      }
-      this.fxProviders.push(createMockFxProvider());
+    if (!liveRefreshEnabled && process.env.NODE_ENV === "production") {
+      this.logger.log("FX live provider refresh is disabled; using manual/bootstrap rates only.");
     }
   }
 
   async onModuleInit() {
-    this.logger.log(`Initialized FX service with providers: ${this.fxProviders.map((p) => p.name).join(", ")}`);
-    // Trigger initial cache warm-up
+    this.logger.log(`Initialized FX service with providers: ${this.fxProviders.map((p) => p.name).join(", ") || "none"}`);
     try {
       await this.refreshRateCache({ forceRefresh: true });
     } catch (err) {
@@ -130,344 +77,115 @@ export class FxService implements OnModuleInit {
     }
   }
 
-  // Queries every configured provider for the same pair and keeps the best
-  // (highest) rate — more destination currency per unit of source currency
-  // is strictly better for a diaspora-payout recipient. A provider that
-  // doesn't serve the pair is excluded rather than failing the whole lookup.
   private async getBestRate(baseCurrency: string, quoteCurrency: string): Promise<FxRate> {
     const attempts = await Promise.allSettled(
-      this.fxProviders.map(async (provider) => {
-        try {
-          return await provider.getRate(baseCurrency, quoteCurrency);
-        } catch (err) {
-          throw new Error(
-            `${provider.name} has no rate for ${baseCurrency}/${quoteCurrency}: ` +
-              `${err instanceof Error ? err.message : String(err)}`
-          );
-        }
-      })
+      this.fxProviders.map(async (provider) => provider.getRate(baseCurrency, quoteCurrency))
     );
-
-    const rates: FxRate[] = [];
-    attempts.forEach((attempt) => {
-      if (attempt.status === "fulfilled") {
-        rates.push(attempt.value);
-      } else {
-        this.logger.debug(attempt.reason instanceof Error ? attempt.reason.message : String(attempt.reason));
-      }
-    });
-
-    if (rates.length === 0) {
-      throw new Error(`No configured provider returned a rate for ${baseCurrency}/${quoteCurrency}`);
-    }
-
-    const best = rates.reduce((a, b) => (b.rateMicros > a.rateMicros ? b : a));
-
-    if (rates.length > 1) {
-      this.logger.debug(
-        `Best rate for ${baseCurrency}/${quoteCurrency}: ${best.provider} ` +
-          `(${rates.map((r) => `${r.provider}=${fromMicros(r.rateMicros)}`).join(", ")})`
-      );
-    }
-
-    return best;
+    const rates = attempts.flatMap((attempt) => (attempt.status === "fulfilled" ? [attempt.value] : []));
+    if (rates.length === 0) throw new Error(`No configured provider returned a rate for ${baseCurrency}/${quoteCurrency}`);
+    return rates.reduce((best, candidate) => (candidate.rateMicros > best.rateMicros ? candidate : best));
   }
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
   }
 
-  // ─── Scheduled Rate Refresh ────────────────────────────────────────────────
-
   @Cron(CronExpression.EVERY_5_MINUTES)
   async scheduleRefreshRateCache() {
-    if (this.cacheRefreshInProgress) {
-      this.logger.debug("Cache refresh already in progress, skipping scheduled run");
-      return;
-    }
-
+    if (this.cacheRefreshInProgress) return;
     try {
       await this.refreshRateCache();
     } catch (err) {
-      this.logger.error(`Scheduled rate cache refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`Scheduled FX refresh failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  // ─── Rate Cache Management ─────────────────────────────────────────────────
-
   async refreshRateCache(dto?: RefreshRatesDto): Promise<void> {
     this.cacheRefreshInProgress = true;
-
     try {
       const forceRefresh = dto?.forceRefresh ?? false;
-
-      // Explicit dto.baseCurrency/quoteCurrencies (manual admin refresh) keeps
-      // the single-base-against-many-quotes shape. With no dto, refresh every
-      // pair in DEFAULT_RATE_PAIRS, including the direct non-USD crosses.
       const pairs =
         dto?.baseCurrency || dto?.quoteCurrencies
-          ? (dto.quoteCurrencies ?? ["NGN", "GBP", "EUR"]).map((qc) => ({
-              baseCurrency: dto.baseCurrency ?? "USD",
-              quoteCurrency: qc
-            }))
+          ? (dto.quoteCurrencies ?? ["NGN"]).map((quoteCurrency) => ({ baseCurrency: dto.baseCurrency ?? "USD", quoteCurrency }))
           : DEFAULT_RATE_PAIRS;
-
-      this.logger.log(`Refreshing FX rate cache for [${pairs.map((p) => `${p.baseCurrency}/${p.quoteCurrency}`).join(", ")}]`);
 
       const results = await Promise.allSettled(
         pairs.map(async ({ baseCurrency, quoteCurrency }) => {
           try {
-            const rate = await this.getBestRate(baseCurrency, quoteCurrency);
-            const cached = await this.validateAndCacheRate(rate, forceRefresh);
-            if (!cached) {
-              this.logger.warn(`Failed to fetch ${baseCurrency}/${quoteCurrency}: rate did not pass validation`);
-            }
-            return { success: cached, baseCurrency, quoteCurrency };
-          } catch (err) {
-            this.logger.warn(
-              `Failed to fetch ${baseCurrency}/${quoteCurrency}: ${err instanceof Error ? err.message : String(err)}`
-            );
-            return { success: false, baseCurrency, quoteCurrency, error: err };
+            const cached = await this.validateAndCacheRate(await this.getBestRate(baseCurrency, quoteCurrency), forceRefresh);
+            return cached;
+          } catch (error) {
+            this.logger.warn(`Failed to fetch ${baseCurrency}/${quoteCurrency}: ${error instanceof Error ? error.message : String(error)}`);
+            return false;
           }
         })
       );
-
-      const succeeded = results.filter((r) => r.status === "fulfilled" && r.value.success).length;
-      const failed = results.length - succeeded;
-
-      this.logger.log(`Rate cache refresh: ${succeeded}/${results.length} succeeded, ${failed} failed`);
+      const succeeded = results.filter((result) => result.status === "fulfilled" && result.value).length;
+      this.logger.log(`Rate cache refresh: ${succeeded}/${results.length} succeeded, ${results.length - succeeded} failed`);
     } finally {
       this.cacheRefreshInProgress = false;
     }
   }
 
-  // Returns whether the rate was actually cached — validation/sanity-check
-  // failures log a warning and return false rather than throwing, so callers
-  // must check the return value instead of assuming "didn't throw" means
-  // "got cached" (see refreshRateCache's success accounting).
   private async validateAndCacheRate(rate: { baseCurrency: string; quoteCurrency: string; rateMicros: bigint; timestamp: Date; provider: string }, forceRefresh = false): Promise<boolean> {
-    // Validation checks
-    const errors: string[] = [];
-
-    if (!rate.baseCurrency || !rate.quoteCurrency) {
-      errors.push("baseCurrency and quoteCurrency are required");
-    }
-
-    if (rate.rateMicros <= 0n) {
-      errors.push("rateMicros must be positive");
-    }
-
+    if (!rate.baseCurrency || !rate.quoteCurrency || rate.rateMicros <= 0n) return false;
     const ageMs = Date.now() - rate.timestamp.getTime();
-    const ageMinutes = Math.round(ageMs / (60 * 1000));
-    if (ageMinutes > 60) {
-      errors.push(`Provider timestamp is ${ageMinutes} minutes old (> 1 hour)`);
-    }
+    if (Math.round(ageMs / 60_000) > 60) return false;
 
-    if (errors.length > 0) {
-      this.logger.warn(`Rate validation failed for ${rate.baseCurrency}/${rate.quoteCurrency}: ${errors.join("; ")}`);
-      return false;
-    }
-
-    // Check for rate sanity (< 50% change from current)
     const existing = await this.db.fxRateCache.findUnique({
-      where: {
-        baseCurrency_quoteCurrency_providerName: {
-          baseCurrency: rate.baseCurrency,
-          quoteCurrency: rate.quoteCurrency,
-          providerName: rate.provider
-        }
-      }
+      where: { baseCurrency_quoteCurrency_providerName: { baseCurrency: rate.baseCurrency, quoteCurrency: rate.quoteCurrency, providerName: rate.provider } }
     });
-
     if (existing && !forceRefresh) {
-      const existingRate = existing.providerRateMicros;
-      const changeBps = Math.abs(Number((rate.rateMicros - existingRate) * 10000n / existingRate));
-
-      if (changeBps > 5_000) { // > 50% change
-        this.logger.warn(`Rate sanity check failed: ${changeBps / 100}% change for ${rate.baseCurrency}/${rate.quoteCurrency}`);
-        return false;
-      }
+      const changeBps = Math.abs(Number((rate.rateMicros - existing.providerRateMicros) * 10_000n / existing.providerRateMicros));
+      if (changeBps > 5_000) return false;
     }
 
-    // Cache the rate
     const ageSeconds = Math.round(ageMs / 1000);
-
     await this.db.fxRateCache.upsert({
-      where: {
-        baseCurrency_quoteCurrency_providerName: {
-          baseCurrency: rate.baseCurrency,
-          quoteCurrency: rate.quoteCurrency,
-          providerName: rate.provider
-        }
-      },
-      create: {
-        baseCurrency: rate.baseCurrency,
-        quoteCurrency: rate.quoteCurrency,
-        providerName: rate.provider,
-        providerRateMicros: rate.rateMicros,
-        providerTimestamp: rate.timestamp,
-        validationStatus: "VALID",
-        age_seconds: ageSeconds
-      },
-      update: {
-        providerRateMicros: rate.rateMicros,
-        providerTimestamp: rate.timestamp,
-        validationStatus: "VALID",
-        age_seconds: ageSeconds,
-        lastUpdatedAt: new Date(),
-        lastSuccessAt: new Date()
-      }
+      where: { baseCurrency_quoteCurrency_providerName: { baseCurrency: rate.baseCurrency, quoteCurrency: rate.quoteCurrency, providerName: rate.provider } },
+      create: { baseCurrency: rate.baseCurrency, quoteCurrency: rate.quoteCurrency, providerName: rate.provider, providerRateMicros: rate.rateMicros, providerTimestamp: rate.timestamp, validationStatus: "VALID", age_seconds: ageSeconds },
+      update: { providerRateMicros: rate.rateMicros, providerTimestamp: rate.timestamp, validationStatus: "VALID", age_seconds: ageSeconds, lastUpdatedAt: new Date(), lastSuccessAt: new Date() }
     });
-
-    this.logger.debug(`Cached rate: ${rate.baseCurrency}/${rate.quoteCurrency} = ${fromMicros(rate.rateMicros).toFixed(2)}`);
     return true;
   }
 
-  private async getCachedRate(baseCurrency: string, quoteCurrency: string): Promise<{ rateMicros: bigint; ageSeconds: number } | null> {
-    const cached = await this.db.fxRateCache.findFirst({
-      where: {
-        baseCurrency,
-        quoteCurrency,
-        validationStatus: "VALID"
-      },
-      orderBy: { lastSuccessAt: "desc" }
-    });
-
-    if (!cached) {
-      return null;
-    }
-
-    const ageMs = Date.now() - cached.lastUpdatedAt.getTime();
-    const ageSeconds = Math.round(ageMs / 1000);
-    const maxAgeCacheSeconds = FX_RATE_CACHE_TTL_MINUTES * 60;
-
-    if (ageSeconds > maxAgeCacheSeconds) {
-      return null; // Cache expired
-    }
-
-    return { rateMicros: cached.providerRateMicros, ageSeconds };
+  private async getCachedRate(baseCurrency: string, quoteCurrency: string) {
+    const cached = await this.db.fxRateCache.findFirst({ where: { baseCurrency, quoteCurrency, validationStatus: "VALID" }, orderBy: { lastSuccessAt: "desc" } });
+    if (!cached) return null;
+    const ageSeconds = Math.round((Date.now() - cached.lastUpdatedAt.getTime()) / 1000);
+    return ageSeconds <= FX_RATE_CACHE_TTL_MINUTES * 60 ? { rateMicros: cached.providerRateMicros, ageSeconds } : null;
   }
 
-  // ─── Rate Resolution (Manual Fallback or Cache) ─────────────────────────────
-
-  /**
-   * The admin-set spread for a pair, independent of which source supplied the
-   * rate. A cached provider rate has no FxRate row of its own, but the operator
-   * still expects the spread they configured to apply.
-   */
-  private async configuredSpreadBps(
-    baseCurrency: string,
-    quoteCurrency: string
-  ): Promise<number | null> {
-    const active = await this.db.fxRate.findFirst({
-      where: { baseCurrency, quoteCurrency, effectiveTo: null },
-      orderBy: { effectiveFrom: "desc" },
-      select: { spreadBps: true }
-    });
-
+  private async configuredSpreadBps(baseCurrency: string, quoteCurrency: string) {
+    const active = await this.db.fxRate.findFirst({ where: { baseCurrency, quoteCurrency, effectiveTo: null }, orderBy: { effectiveFrom: "desc" }, select: { spreadBps: true } });
     return active?.spreadBps ?? null;
   }
 
-  async getActiveRate(
-    baseCurrency = "USD",
-    quoteCurrency = "NGN"
-  ): Promise<{
-    rateMicros: bigint;
-    fxRateId: string | null;
-    isBootstrap: boolean;
-    usingFallback: boolean;
-    // Margin already baked into `rateMicros`. Callers that add their own margin
-    // must subtract this or they will charge it twice.
-    bufferBpsApplied: number;
-    // Admin-configured customer spread for this pair, when an FxRate row sets one.
-    spreadBps: number | null;
-  }> {
-    // First try cached rate
+  async getActiveRate(baseCurrency = "USD", quoteCurrency = "NGN") {
     const cached = await this.getCachedRate(baseCurrency, quoteCurrency);
-    if (cached) {
-      return {
-        rateMicros: cached.rateMicros,
-        fxRateId: null,
-        isBootstrap: false,
-        usingFallback: false,
-        bufferBpsApplied: 0,
-        // A cached provider rate has no FxRate row, so the spread still comes
-        // from the pair's configured rate when one exists.
-        spreadBps: await this.configuredSpreadBps(baseCurrency, quoteCurrency)
-      };
-    }
+    if (cached) return { rateMicros: cached.rateMicros, fxRateId: null, isBootstrap: false, usingFallback: false, bufferBpsApplied: 0, spreadBps: await this.configuredSpreadBps(baseCurrency, quoteCurrency) };
 
-    // Fall back to manual rate
-    const active = await this.db.fxRate.findFirst({
-      where: { baseCurrency, quoteCurrency, effectiveTo: null },
-      orderBy: { effectiveFrom: "desc" }
-    });
-
+    const active = await this.db.fxRate.findFirst({ where: { baseCurrency, quoteCurrency, effectiveTo: null }, orderBy: { effectiveFrom: "desc" } });
     if (!active) {
-      if (baseCurrency === "USD" && quoteCurrency === "NGN") {
-        return {
-          rateMicros: BOOTSTRAP_RATE_MICROS,
-          fxRateId: null,
-          isBootstrap: true,
-          usingFallback: true,
-          bufferBpsApplied: 0,
-          spreadBps: null
-        };
-      }
-
-      throw new BadRequestException(
-        `No FX rate configured for ${baseCurrency}/${quoteCurrency}. This pair is not in the scheduled rate cache ` +
-          `and has no manual admin rate set — refusing to quote off the USD/NGN bootstrap rate for a different pair.`
-      );
+      if (baseCurrency === "USD" && quoteCurrency === "NGN") return { rateMicros: BOOTSTRAP_RATE_MICROS, fxRateId: null, isBootstrap: true, usingFallback: true, bufferBpsApplied: 0, spreadBps: null };
+      throw new BadRequestException(`No FX rate configured for ${baseCurrency}/${quoteCurrency}; refusing to synthesize a cross.`);
     }
 
-    const maxAgeHours = FX_MAX_AGE_HOURS;
-    const ageHours = (Date.now() - active.effectiveFrom.getTime()) / (60 * 60 * 1000);
-
-    if (ageHours > maxAgeHours) {
-      throw new BadRequestException(
-        `The active FX rate is ${Math.round(ageHours)}h old, past the ${maxAgeHours}h freshness limit. An admin must refresh it.`
-      );
-    }
-
+    const ageHours = (Date.now() - active.effectiveFrom.getTime()) / 3_600_000;
+    if (ageHours > FX_MAX_AGE_HOURS) throw new BadRequestException(`The active FX rate is ${Math.round(ageHours)}h old, past the ${FX_MAX_AGE_HOURS}h freshness limit.`);
     const bufferedMicros = (active.rateMicros * BigInt(10_000 + active.bufferBps)) / 10_000n;
-
-    return {
-      rateMicros: bufferedMicros,
-      fxRateId: active.id,
-      isBootstrap: false,
-      usingFallback: true,
-      bufferBpsApplied: active.bufferBps,
-      spreadBps: active.spreadBps
-    };
+    return { rateMicros: bufferedMicros, fxRateId: active.id, isBootstrap: false, usingFallback: true, bufferBpsApplied: active.bufferBps, spreadBps: active.spreadBps };
   }
-
-  // ─── Quote Locking ────────────────────────────────────────────────────────
 
   async createQuote(ctx: AuthenticatedRequestContext, dto: FxQuoteRequestDto): Promise<FxQuoteResponseDto> {
     const { baseCurrency, quoteCurrency, sourceAmountMinor } = dto;
-    const expirySeconds = dto.quoteExpirySeconds ?? QUOTE_EXPIRY_SECONDS;
-
-    if (sourceAmountMinor <= 0) {
-      throw new BadRequestException("sourceAmountMinor must be positive");
-    }
-
+    if (sourceAmountMinor <= 0) throw new BadRequestException("sourceAmountMinor must be positive");
     const rate = await this.getActiveRate(baseCurrency, quoteCurrency);
     const spreadBps = rate.spreadBps ?? DEFAULT_SPREAD_BPS;
-    const bufferBps = DEFAULT_BUFFER_BPS;
-
-    // Customer rate = provider rate + spread + buffer, where the total buffer is
-    // the target minus whatever getActiveRate already baked in (the manual-rate
-    // path applies the FxRate row's own bufferBps). Without this the manual path
-    // charges the buffer twice.
-    const remainingBufferBps = Math.max(0, bufferBps - rate.bufferBpsApplied);
-    const totalBps = spreadBps + remainingBufferBps;
-    const customerRateMicros = (rate.rateMicros * BigInt(10_000 + totalBps)) / 10_000n;
-
-    // Calculate result amount
+    const remainingBufferBps = Math.max(0, DEFAULT_BUFFER_BPS - rate.bufferBpsApplied);
+    const customerRateMicros = (rate.rateMicros * BigInt(10_000 + spreadBps + remainingBufferBps)) / 10_000n;
     const resultAmountMinor = Math.round((sourceAmountMinor * Number(customerRateMicros)) / 1_000_000);
-
-    const expiresAt = new Date(Date.now() + expirySeconds * 1000);
+    const expiresAt = new Date(Date.now() + (dto.quoteExpirySeconds ?? QUOTE_EXPIRY_SECONDS) * 1000);
 
     const quote = await this.db.fxQuote.create({
       data: {
@@ -479,8 +197,6 @@ export class FxService implements OnModuleInit {
         providerRateMicros: rate.rateMicros,
         customerRateMicros,
         spreadBps,
-        // Buffer applied on top of the stored providerRateMicros, which on the
-        // manual path already carries the FxRate row's own buffer.
         bufferBps: remainingBufferBps,
         resultAmountMinor: BigInt(resultAmountMinor),
         status: "ACTIVE",
@@ -488,212 +204,73 @@ export class FxService implements OnModuleInit {
       }
     });
 
-    return {
-      quoteId: quote.id,
-      baseCurrency,
-      quoteCurrency,
-      sourceAmountMinor,
-      providerRateMicros: rate.rateMicros,
-      customerRateMicros,
-      spreadBps,
-      resultAmountMinor,
-      expiresAt,
-      status: "ACTIVE",
-      rateProvenance: rate.isBootstrap ? "bootstrap" : rate.usingFallback ? "manual" : "live"
-    };
+    return { quoteId: quote.id, baseCurrency, quoteCurrency, sourceAmountMinor, providerRateMicros: rate.rateMicros, customerRateMicros, spreadBps, resultAmountMinor, expiresAt, status: "ACTIVE", rateProvenance: rate.isBootstrap ? "bootstrap" : rate.usingFallback ? "manual" : "live" };
   }
 
   async useQuote(quoteId: string, transactionId: string, workspaceId?: string): Promise<void> {
     const quote = await this.db.fxQuote.findUnique({ where: { id: quoteId } });
-
-    if (!quote) {
-      throw new NotFoundException(`Quote ${quoteId} not found`);
-    }
-
-    // Quote ids are guessable enough that ownership must be checked rather than
-    // assumed. Reported as not-found so a foreign id can't be probed.
-    if (quote.workspaceId && workspaceId && quote.workspaceId !== workspaceId) {
-      throw new NotFoundException(`Quote ${quoteId} not found`);
-    }
-
-    if (quote.status !== "ACTIVE") {
-      throw new BadRequestException(`Quote is ${quote.status}, cannot be used`);
-    }
-
-    if (quote.expiresAt < new Date()) {
-      throw new BadRequestException("Quote has expired");
-    }
-
-    await this.db.fxQuote.update({
-      where: { id: quoteId },
-      data: { status: "USED", usedAt: new Date(), transactionId }
-    });
+    if (!quote) throw new NotFoundException(`Quote ${quoteId} not found`);
+    if (quote.workspaceId && workspaceId && quote.workspaceId !== workspaceId) throw new NotFoundException(`Quote ${quoteId} not found`);
+    if (quote.status !== "ACTIVE") throw new BadRequestException(`Quote is ${quote.status}, cannot be used`);
+    if (quote.expiresAt < new Date()) throw new BadRequestException("Quote has expired");
+    await this.db.fxQuote.update({ where: { id: quoteId }, data: { status: "USED", usedAt: new Date(), transactionId } });
   }
 
-  // ─── Admin Management ──────────────────────────────────────────────────────
-
   async getHistory(baseCurrency = "USD", quoteCurrency = "NGN") {
-    return this.db.fxRate.findMany({
-      where: { baseCurrency, quoteCurrency },
-      orderBy: { effectiveFrom: "desc" },
-      take: 20
-    });
+    return this.db.fxRate.findMany({ where: { baseCurrency, quoteCurrency }, orderBy: { effectiveFrom: "desc" }, take: 20 });
   }
 
   async setRate(ctx: AuthenticatedRequestContext, dto: SetFxRateDto) {
-    if (!Number.isFinite(dto.rate) || dto.rate <= 0) {
-      throw new BadRequestException("rate must be a positive number.");
-    }
-
+    if (!Number.isFinite(dto.rate) || dto.rate <= 0) throw new BadRequestException("rate must be a positive number.");
     const min = Number(process.env["FX_NGN_MIN"] ?? "500");
     const max = Number(process.env["FX_NGN_MAX"] ?? "5000");
-    if (dto.rate < min || dto.rate > max) {
-      throw new BadRequestException(
-        `Rate ₦${dto.rate} is outside the allowed band (₦${min}–₦${max}). Update FX_NGN_MIN/FX_NGN_MAX if intentional.`
-      );
-    }
+    if (dto.rate < min || dto.rate > max) throw new BadRequestException(`Rate ₦${dto.rate} is outside the allowed band (₦${min}–₦${max}).`);
 
-    const current = await this.db.fxRate.findFirst({
-      where: { baseCurrency: "USD", quoteCurrency: "NGN", effectiveTo: null },
-      orderBy: { effectiveFrom: "desc" }
-    });
-
+    const current = await this.db.fxRate.findFirst({ where: { baseCurrency: "USD", quoteCurrency: "NGN", effectiveTo: null }, orderBy: { effectiveFrom: "desc" } });
     if (current) {
       const currentRate = fromMicros(current.rateMicros);
       const deltaBps = Math.abs((dto.rate - currentRate) / currentRate) * 10_000;
-      if (deltaBps > 1_000 && !dto.confirmLargeChange) {
-        throw new BadRequestException(
-          `New rate ₦${dto.rate} is a ${(deltaBps / 100).toFixed(1)}% change. Pass confirmLargeChange: true.`
-        );
-      }
+      if (deltaBps > 1_000 && !dto.confirmLargeChange) throw new BadRequestException(`New rate ₦${dto.rate} is a ${(deltaBps / 100).toFixed(1)}% change. Pass confirmLargeChange: true.`);
     }
 
-    // Carry the existing spread forward when the caller does not set one, so
-    // updating a rate never silently resets the margin to the code default.
     const spreadBps = dto.spreadBps ?? current?.spreadBps ?? DEFAULT_SPREAD_BPS;
-    if (!Number.isInteger(spreadBps) || spreadBps < 0 || spreadBps > MAX_SPREAD_BPS) {
-      throw new BadRequestException(
-        `spreadBps must be a whole number between 0 and ${MAX_SPREAD_BPS}.`
-      );
-    }
+    if (!Number.isInteger(spreadBps) || spreadBps < 0 || spreadBps > MAX_SPREAD_BPS) throw new BadRequestException(`spreadBps must be a whole number between 0 and ${MAX_SPREAD_BPS}.`);
 
     const now = new Date();
-    const newRate = await this.db.$transaction(async (tx: Prisma.TransactionClient) => {
-      if (current) {
-        await tx.fxRate.update({ where: { id: current.id }, data: { effectiveTo: now } });
-      }
-
-      const created = await tx.fxRate.create({
-        data: {
-          id: uid("fx"),
-          baseCurrency: "USD",
-          quoteCurrency: "NGN",
-          rateMicros: toMicros(dto.rate),
-          bufferBps: dto.bufferBps ?? 0,
-          spreadBps,
-          source: "MANUAL",
-          effectiveFrom: now,
-          setByUserId: ctx.userId,
-          ...(dto.note ? { note: dto.note } : {})
-        }
-      });
-
-      await tx.auditLog.create({
-        data: {
-          id: uid("aud"),
-          action: "fx_rate.updated",
-          actorUserId: ctx.userId,
-          entityType: "FxRate",
-          entityId: created.id,
-          metadata: {
-            oldRate: current ? fromMicros(current.rateMicros) : null,
-            newRate: dto.rate,
-            bufferBps: dto.bufferBps ?? 0,
-            spreadBps
-          }
-        }
-      });
-
+    return this.db.$transaction(async (tx: Prisma.TransactionClient) => {
+      if (current) await tx.fxRate.update({ where: { id: current.id }, data: { effectiveTo: now } });
+      const created = await tx.fxRate.create({ data: { id: uid("fx"), baseCurrency: "USD", quoteCurrency: "NGN", rateMicros: toMicros(dto.rate), bufferBps: dto.bufferBps ?? 0, spreadBps, source: "MANUAL", effectiveFrom: now, setByUserId: ctx.userId, ...(dto.note ? { note: dto.note } : {}) } });
+      await tx.auditLog.create({ data: { id: uid("aud"), action: "fx_rate.updated", actorUserId: ctx.userId, entityType: "FxRate", entityId: created.id, metadata: { oldRate: current ? fromMicros(current.rateMicros) : null, newRate: dto.rate, bufferBps: dto.bufferBps ?? 0, spreadBps } } });
       return created;
     });
-
-    return newRate;
   }
 
   async getCurrent(baseCurrency = "USD", quoteCurrency = "NGN") {
-    const active = await this.db.fxRate.findFirst({
-      where: { baseCurrency, quoteCurrency, effectiveTo: null },
-      orderBy: { effectiveFrom: "desc" }
-    });
-    if (!active) {
-      throw new NotFoundException("No FX rate has been set yet");
-    }
+    const active = await this.db.fxRate.findFirst({ where: { baseCurrency, quoteCurrency, effectiveTo: null }, orderBy: { effectiveFrom: "desc" } });
+    if (!active) throw new NotFoundException("No FX rate has been set yet");
     return active;
   }
 
-  // ─── Health & Status ───────────────────────────────────────────────────────
-
   async getHealth(): Promise<FxHealthDto> {
-    const healthChecks = await Promise.all(
-      this.fxProviders.map(async (provider) => ({
-        name: provider.name,
-        result: await provider.healthCheck()
-      }))
-    );
-    const providerHealth = {
-      healthy: healthChecks.some((h) => h.result.healthy),
-      message: healthChecks
-        .map((h) => `${h.name}: ${h.result.healthy ? "ok" : (h.result.message ?? "unhealthy")}`)
-        .join("; ")
-    };
-
-    const caches = await this.db.fxRateCache.findMany({
-      where: { validationStatus: "VALID" }
-    });
-
+    const healthChecks = await Promise.all(this.fxProviders.map(async (provider) => ({ name: provider.name, result: await provider.healthCheck() })));
+    const caches = await this.db.fxRateCache.findMany({ where: { validationStatus: "VALID" } });
     const cacheStatus: FxRateCacheStatusDto[] = caches.map((cache) => {
       const ageSeconds = Math.round((Date.now() - cache.lastUpdatedAt.getTime()) / 1000);
-      const isFresh = ageSeconds < FX_RATE_CACHE_TTL_MINUTES * 60;
-
-      // Get customer rate (with spread/buffer applied)
       const totalBps = DEFAULT_SPREAD_BPS + DEFAULT_BUFFER_BPS;
       const customerRateMicros = (cache.providerRateMicros * BigInt(10_000 + totalBps)) / 10_000n;
-
-      return {
-        baseCurrency: cache.baseCurrency,
-        quoteCurrency: cache.quoteCurrency,
-        providerName: cache.providerName,
-        providerRateMicros: cache.providerRateMicros,
-        customerRateMicros,
-        ageSeconds,
-        validationStatus: cache.validationStatus,
-        lastUpdatedAt: cache.lastUpdatedAt,
-        isFresh
-      };
+      return { baseCurrency: cache.baseCurrency, quoteCurrency: cache.quoteCurrency, providerName: cache.providerName, providerRateMicros: cache.providerRateMicros, customerRateMicros, ageSeconds, validationStatus: cache.validationStatus, lastUpdatedAt: cache.lastUpdatedAt, isFresh: ageSeconds < FX_RATE_CACHE_TTL_MINUTES * 60 };
     });
 
-    const lastManualRate = await this.db.fxRate.findFirst({
-      where: { effectiveTo: null },
-      orderBy: { effectiveFrom: "desc" }
-    });
-
-    const manualRateAgeMinutes = lastManualRate
-      ? Math.round((Date.now() - lastManualRate.effectiveFrom.getTime()) / (60 * 1000))
-      : -1;
+    const lastManualRate = await this.db.fxRate.findFirst({ where: { effectiveTo: null }, orderBy: { effectiveFrom: "desc" } });
+    const manualRateAgeMinutes = lastManualRate ? Math.round((Date.now() - lastManualRate.effectiveFrom.getTime()) / 60_000) : -1;
+    const providerHealthy = this.fxProviders.length > 0 && healthChecks.some((health) => health.result.healthy);
 
     return {
-      provider: this.fxProviders.map((p) => p.name).join(", "),
-      healthy: providerHealth.healthy,
-      message: providerHealth.message,
-      cacheStatus: {
-        pairs: cacheStatus,
-        lastRefreshAt: new Date()
-      },
-      fallbackStatus: {
-        usingFallback: cacheStatus.length === 0,
-        ...(cacheStatus.length === 0 ? { reason: "No valid cached rates; using manual rates" } : {}),
-        manualRateAge: manualRateAgeMinutes
-      }
+      provider: this.fxProviders.map((provider) => provider.name).join(", ") || "none",
+      healthy: providerHealthy,
+      message: healthChecks.map((health) => `${health.name}: ${health.result.healthy ? "ok" : (health.result.message ?? "unhealthy")}`).join("; ") || "No live FX provider configured",
+      cacheStatus: { pairs: cacheStatus, lastRefreshAt: new Date() },
+      fallbackStatus: { usingFallback: cacheStatus.length === 0, ...(cacheStatus.length === 0 ? { reason: "No valid cached rates; using manual/bootstrap rates" } : {}), manualRateAge: manualRateAgeMinutes }
     };
   }
 }
