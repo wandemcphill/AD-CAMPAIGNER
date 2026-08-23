@@ -18,10 +18,10 @@ import {
 import { apiRequest } from "../../lib/api-client";
 import { formatCampaignMoney, formatCompact, metricValue } from "../../campaigns/api";
 import {
+  CampaignSummaryCard,
   ErrorNotice,
   LoadingBlock,
   PageHeader,
-  ReportCard,
   SourceBadge,
   destinationPlatform,
   secondaryLinkButtonClass
@@ -240,7 +240,11 @@ export default function CampaignAnalyticsPage() {
         ) : (
           <div className="grid gap-4">
             {campaigns.slice(0, 3).map((campaign) => (
-              <ReportCard campaign={campaign} key={campaign.id} metrics={analytics?.metrics} />
+              <CampaignSummaryCard
+                campaign={campaign}
+                key={campaign.id}
+                metrics={analytics?.metrics}
+              />
             ))}
           </div>
         )}

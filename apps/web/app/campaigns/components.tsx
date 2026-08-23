@@ -433,7 +433,17 @@ export function PaymentSummaryPanel({ campaign }: { campaign: Campaign }) {
   );
 }
 
-export function ReportCard({
+/**
+ * A dense 6-metric KPI grid for one campaign. Despite the old name this is
+ * not the same component as @fliptrybe/ui's ReportCard -- that one renders a
+ * printable report with up to 3 metrics and a status-tinted border; this one
+ * takes a full Campaign, always shows 6 metrics, and has its own header with
+ * StatusBadge + PlatformChip. Renamed rather than merged: forcing one API
+ * over both would mean either dropping metrics from this component or adding
+ * campaign-shaped props to the design system's, for a shared name that was
+ * never doing the same job.
+ */
+export function CampaignSummaryCard({
   campaign,
   metrics
 }: {
