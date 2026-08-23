@@ -13,6 +13,7 @@ import {
   VirtualNumbersWebhookController
 } from "./virtual-numbers.controller";
 import { VirtualNumbersService } from "./virtual-numbers.service";
+import { ProductionVirtualNumbersService } from "./production-virtual-numbers.service";
 
 @Module({
   imports: [FxModule, PrismaModule, NotificationsModule, ProvidersModule],
@@ -25,7 +26,10 @@ import { VirtualNumbersService } from "./virtual-numbers.service";
     QueueProducerService,
     AuthSessionService,
     WorkspaceContextMiddleware,
-    VirtualNumbersService
+    {
+      provide: VirtualNumbersService,
+      useClass: ProductionVirtualNumbersService
+    }
   ],
   exports: [VirtualNumbersService]
 })
