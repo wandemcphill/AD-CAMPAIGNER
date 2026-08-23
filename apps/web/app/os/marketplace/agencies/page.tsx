@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { Briefcase, CheckCircle2, MapPin, RefreshCw, Search, Star } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, EmptyState } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import {
   formatRating,
   loadMarketplaceAgencies,
@@ -21,7 +21,7 @@ const SPEC_TABS = [
   { id: "PPC / Google", label: "PPC / Google" },
   { id: "SEO", label: "SEO" },
   { id: "Video Production", label: "Video" },
-  { id: "Influencer Marketing", label: "Influencer" },
+  { id: "Influencer Marketing", label: "Influencer" }
 ];
 
 export default function AgencyMarketplacePage() {
@@ -60,7 +60,9 @@ export default function AgencyMarketplacePage() {
             <Briefcase className="size-5 text-[var(--ft-accent)]" />
             <h1 className="text-xl font-bold">Agency Marketplace</h1>
           </div>
-          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Verified agencies with transparent pricing and proven results</p>
+          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+            Verified agencies with transparent pricing and proven results
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/os/marketplace/applications">
@@ -80,9 +82,9 @@ export default function AgencyMarketplacePage() {
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <TabBar items={SPEC_TABS} onChange={setSpec} value={spec} />
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ft-text-muted)]" />
+          <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-[var(--ft-text-muted)]" />
           <input
-            className="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pl-9 pr-3 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+            className="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pr-3 pl-9 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search agencies..."
             value={search}
@@ -102,10 +104,12 @@ export default function AgencyMarketplacePage() {
                 <Button variant="secondary">Apply as Agency</Button>
               </Link>
             }
-            copy="No agencies have been listed in this marketplace yet. This catalog is curated separately and hasn't been seeded."
             icon={Briefcase}
             title="No agencies listed yet"
-          />
+          >
+            No agencies have been listed in this marketplace yet. This catalog is curated separately
+            and hasn't been seeded.
+          </EmptyState>
         </div>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -124,7 +128,9 @@ export default function AgencyMarketplacePage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold">{agency.name}</span>
-                    {agency.verified && <CheckCircle2 className="size-3.5 text-[var(--ft-accent)]" />}
+                    {agency.verified && (
+                      <CheckCircle2 className="size-3.5 text-[var(--ft-accent)]" />
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-xs text-[var(--ft-text-muted)]">
                     <MapPin className="size-3" /> {agency.location}
@@ -149,10 +155,12 @@ export default function AgencyMarketplacePage() {
 
               {agency.packages.length > 0 ? (
                 <div className="mt-3">
-                  <div className="mb-1 text-micro text-[var(--ft-text-muted)]">Packages</div>
+                  <div className="text-micro mb-1 text-[var(--ft-text-muted)]">Packages</div>
                   <div className="flex flex-wrap gap-1">
                     {agency.packages.map((p) => (
-                      <Badge key={p} tone="neutral">{p}</Badge>
+                      <Badge key={p} tone="neutral">
+                        {p}
+                      </Badge>
                     ))}
                   </div>
                 </div>

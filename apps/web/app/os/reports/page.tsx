@@ -6,6 +6,7 @@ import {
   Badge,
   CampaignCard,
   ContextualHelpCard,
+  EmptyState,
   Panel,
   PermissionDenied,
   ReportCard,
@@ -16,7 +17,6 @@ import {
 import type { Campaign, Money } from "@fliptrybe/types";
 
 import {
-  EmptyState,
   ErrorNotice,
   PageHeader,
   SourceBadge,
@@ -210,8 +210,8 @@ export default function ReportsPage() {
   if (forbidden) {
     return (
       <PermissionDenied>
-        You do not have permission to view reports for this workspace. Contact your workspace
-        owner if you believe this is a mistake.
+        You do not have permission to view reports for this workspace. Contact your workspace owner
+        if you believe this is a mistake.
       </PermissionDenied>
     );
   }
@@ -244,20 +244,25 @@ export default function ReportsPage() {
       <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.16),transparent_40%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-micro uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+            <div className="text-micro inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono tracking-[0.18em] text-[var(--ft-text-muted)] uppercase">
               Report library
             </div>
             <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
               Final reports, live snapshots, and locked debriefs in one view.
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
-              Track what is published, what is still in progress, and what is waiting for operator review.
+              Track what is published, what is still in progress, and what is waiting for operator
+              review.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="success">{loading ? "Syncing" : `${publishedReports} published`}</Badge>
-            <Badge tone="info">{loading ? <ValueSkeleton width="w-16" /> : `${liveReports} live`}</Badge>
-            <Badge tone="neutral">{loading ? <ValueSkeleton width="w-16" /> : `${lockedReports} locked`}</Badge>
+            <Badge tone="info">
+              {loading ? <ValueSkeleton width="w-16" /> : `${liveReports} live`}
+            </Badge>
+            <Badge tone="neutral">
+              {loading ? <ValueSkeleton width="w-16" /> : `${lockedReports} locked`}
+            </Badge>
           </div>
         </div>
       </section>
@@ -265,9 +270,18 @@ export default function ReportsPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            { label: "campaigns tracked", value: loading ? <ValueSkeleton width="w-10" /> : campaigns.length },
-            { label: "published reports", value: loading ? <ValueSkeleton width="w-10" /> : publishedReports },
-            { label: "live snapshots", value: loading ? <ValueSkeleton width="w-10" /> : liveReports }
+            {
+              label: "campaigns tracked",
+              value: loading ? <ValueSkeleton width="w-10" /> : campaigns.length
+            },
+            {
+              label: "published reports",
+              value: loading ? <ValueSkeleton width="w-10" /> : publishedReports
+            },
+            {
+              label: "live snapshots",
+              value: loading ? <ValueSkeleton width="w-10" /> : liveReports
+            }
           ]}
         />
       </section>
@@ -284,10 +298,12 @@ export default function ReportsPage() {
                   <ArrowRight className="size-4 stroke-[1.5]" />
                 </Link>
               }
-              copy="Reports are published by the Fliptrybe team at key campaign milestones, usually halfway through and at the end."
               icon={FileText}
               title="Your reports will appear here."
-            />
+            >
+              Reports are published by the Fliptrybe team at key campaign milestones, usually
+              halfway through and at the end.
+            </EmptyState>
           ) : null}
 
           {!loading

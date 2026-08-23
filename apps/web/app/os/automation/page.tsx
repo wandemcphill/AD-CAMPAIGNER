@@ -15,10 +15,16 @@ import {
   Zap
 } from "lucide-react";
 
-import { Badge, Button, cn, humanizeStatus } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  cn,
+  humanizeStatus
+} from "@fliptrybe/ui";
 import { Drawer, Input } from "@fliptrybe/ui/components";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import {
   createAutomationWorkflow,
   deleteAutomationWorkflow,
@@ -175,15 +181,20 @@ export default function AutomationPage() {
             <h1 className="text-xl font-bold">Automation</h1>
           </div>
           <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-            Active workflows are evaluated automatically — schedule triggers every 5 minutes,
-            budget and wallet thresholds every 15 minutes.
+            Active workflows are evaluated automatically — schedule triggers every 5 minutes, budget
+            and wallet thresholds every 15 minutes.
           </p>
         </div>
         <div className="flex gap-2">
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
             <RefreshCw className="size-4" /> Refresh
           </Button>
-          <Button onClick={() => { setForm(emptyForm); setShowCreate(true); }}>
+          <Button
+            onClick={() => {
+              setForm(emptyForm);
+              setShowCreate(true);
+            }}
+          >
             <Plus className="size-4" /> Create workflow
           </Button>
         </div>
@@ -217,39 +228,78 @@ export default function AutomationPage() {
         ) : workflows.length === 0 ? (
           <div className="p-4">
             <EmptyState
-              action={<Button onClick={() => { setForm(emptyForm); setShowCreate(true); }}><Plus className="size-4" /> Create workflow</Button>}
-              copy="Use a template above or create a workflow from scratch."
+              action={
+                <Button
+                  onClick={() => {
+                    setForm(emptyForm);
+                    setShowCreate(true);
+                  }}
+                >
+                  <Plus className="size-4" /> Create workflow
+                </Button>
+              }
               icon={Workflow}
               title="No workflows yet"
-            />
+            >
+              Use a template above or create a workflow from scratch.
+            </EmptyState>
           </div>
         ) : (
           workflows.map((wf) => (
-            <div className="flex items-center gap-4 border-b border-[var(--ft-border)] p-4 last:border-0" key={wf.id}>
-              <div className={cn(
-                "grid size-9 place-items-center rounded-full",
-                wf.status === "ACTIVE" ? "bg-[var(--ft-green)]/10" : wf.status === "PAUSED" ? "bg-[var(--ft-yellow)]/10" : "bg-[var(--ft-bg-muted)]"
-              )}>
-                {wf.status === "ACTIVE" ? <Play className="size-4 text-[var(--ft-green)]" /> :
-                 wf.status === "PAUSED" ? <Pause className="size-4 text-[var(--ft-yellow)]" /> :
-                 <GitBranch className="size-4 text-[var(--ft-text-muted)]" />}
+            <div
+              className="flex items-center gap-4 border-b border-[var(--ft-border)] p-4 last:border-0"
+              key={wf.id}
+            >
+              <div
+                className={cn(
+                  "grid size-9 place-items-center rounded-full",
+                  wf.status === "ACTIVE"
+                    ? "bg-[var(--ft-green)]/10"
+                    : wf.status === "PAUSED"
+                      ? "bg-[var(--ft-yellow)]/10"
+                      : "bg-[var(--ft-bg-muted)]"
+                )}
+              >
+                {wf.status === "ACTIVE" ? (
+                  <Play className="size-4 text-[var(--ft-green)]" />
+                ) : wf.status === "PAUSED" ? (
+                  <Pause className="size-4 text-[var(--ft-yellow)]" />
+                ) : (
+                  <GitBranch className="size-4 text-[var(--ft-text-muted)]" />
+                )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium">{wf.name}</div>
                 <div className="text-xs text-[var(--ft-text-muted)]">
                   {triggerKindLabel[wf.triggerKind]}: {wf.triggerSummary} → {wf.actionSummary}
                 </div>
-                <div className="mt-1 text-micro text-[var(--ft-text-muted)]">
+                <div className="text-micro mt-1 text-[var(--ft-text-muted)]">
                   {wf.runCount} runs · {formatLastRun(wf.lastRunAt)}
                 </div>
               </div>
-              <Badge tone={wf.status === "ACTIVE" ? "success" : wf.status === "PAUSED" ? "warning" : "neutral"}>
+              <Badge
+                tone={
+                  wf.status === "ACTIVE"
+                    ? "success"
+                    : wf.status === "PAUSED"
+                      ? "warning"
+                      : "neutral"
+                }
+              >
                 {humanizeStatus(wf.status)}
               </Badge>
-              <Button disabled={busy === wf.id} onClick={() => void onToggle(wf)} variant="secondary">
+              <Button
+                disabled={busy === wf.id}
+                onClick={() => void onToggle(wf)}
+                variant="secondary"
+              >
                 {wf.status === "ACTIVE" ? "Pause" : "Activate"}
               </Button>
-              <Button disabled={busy === wf.id} onClick={() => void onDelete(wf)} variant="secondary">
+              <Button
+                disabled={busy === wf.id}
+                onClick={() => void onDelete(wf)}
+                variant="secondary"
+              >
                 <Trash2 className="size-4" />
               </Button>
             </div>
@@ -267,15 +317,21 @@ export default function AutomationPage() {
             value={form.name}
           />
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="workflow-trigger-kind">Trigger type</label>
+            <label className="text-sm font-medium" htmlFor="workflow-trigger-kind">
+              Trigger type
+            </label>
             <select
               className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
               id="workflow-trigger-kind"
-              onChange={(e) => setForm((f) => ({ ...f, triggerKind: e.target.value as AutomationTriggerKind }))}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, triggerKind: e.target.value as AutomationTriggerKind }))
+              }
               value={form.triggerKind}
             >
               {(Object.keys(triggerKindLabel) as AutomationTriggerKind[]).map((kind) => (
-                <option key={kind} value={kind}>{triggerKindLabel[kind]}</option>
+                <option key={kind} value={kind}>
+                  {triggerKindLabel[kind]}
+                </option>
               ))}
             </select>
           </div>
@@ -295,7 +351,12 @@ export default function AutomationPage() {
           />
           <Button
             className="w-full justify-center"
-            disabled={!form.name.trim() || !form.triggerSummary.trim() || !form.actionSummary.trim() || busy === "create"}
+            disabled={
+              !form.name.trim() ||
+              !form.triggerSummary.trim() ||
+              !form.actionSummary.trim() ||
+              busy === "create"
+            }
             onClick={() => void onCreate()}
           >
             {busy === "create" ? "Creating..." : "Create workflow"}

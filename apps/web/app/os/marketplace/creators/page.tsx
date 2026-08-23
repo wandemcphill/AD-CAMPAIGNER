@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Globe, RefreshCw, Search } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, EmptyState } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import {
   formatEngagement,
   formatFollowers,
@@ -23,11 +23,15 @@ const NICHE_TABS = [
   { id: "Fashion", label: "Fashion" },
   { id: "Food", label: "Food" },
   { id: "Fitness", label: "Fitness" },
-  { id: "Lifestyle", label: "Lifestyle" },
+  { id: "Lifestyle", label: "Lifestyle" }
 ];
 
 function formatRate(rateMinor: number, currency: string) {
-  return new Intl.NumberFormat("en-NG", { style: "currency", currency, maximumFractionDigits: 0 }).format(rateMinor / 100);
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0
+  }).format(rateMinor / 100);
 }
 
 export default function CreatorMarketplacePage() {
@@ -66,7 +70,9 @@ export default function CreatorMarketplacePage() {
             <Globe className="size-5 text-[var(--ft-accent)]" />
             <h1 className="text-xl font-bold">Creator Marketplace</h1>
           </div>
-          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Discover creators with real audiences and proven engagement</p>
+          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
+            Discover creators with real audiences and proven engagement
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/os/marketplace/applications">
@@ -86,9 +92,9 @@ export default function CreatorMarketplacePage() {
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <TabBar items={NICHE_TABS} onChange={setNiche} value={niche} />
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ft-text-muted)]" />
+          <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-[var(--ft-text-muted)]" />
           <input
-            className="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pl-9 pr-3 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+            className="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pr-3 pl-9 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search creators..."
             value={search}
@@ -108,10 +114,12 @@ export default function CreatorMarketplacePage() {
                 <Button variant="secondary">Apply as Creator</Button>
               </Link>
             }
-            copy="No creators have been listed in this marketplace yet. This catalog is curated separately and hasn't been seeded."
             icon={Globe}
             title="No creators listed yet"
-          />
+          >
+            No creators have been listed in this marketplace yet. This catalog is curated separately
+            and hasn't been seeded.
+          </EmptyState>
         </div>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -130,7 +138,9 @@ export default function CreatorMarketplacePage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold">{creator.name}</span>
-                    {creator.verified && <CheckCircle2 className="size-3.5 text-[var(--ft-accent)]" />}
+                    {creator.verified && (
+                      <CheckCircle2 className="size-3.5 text-[var(--ft-accent)]" />
+                    )}
                   </div>
                   <p className="text-xs text-[var(--ft-text-muted)]">{creator.bio}</p>
                 </div>
@@ -142,7 +152,9 @@ export default function CreatorMarketplacePage() {
                   <div className="text-micro text-[var(--ft-text-muted)]">Followers</div>
                 </div>
                 <div className="rounded-[var(--radius-md)] bg-[var(--ft-bg-surface)] p-2 text-center">
-                  <div className="text-sm font-bold text-[var(--ft-green)]">{formatEngagement(creator.engagementBps)}</div>
+                  <div className="text-sm font-bold text-[var(--ft-green)]">
+                    {formatEngagement(creator.engagementBps)}
+                  </div>
                   <div className="text-micro text-[var(--ft-text-muted)]">Engagement</div>
                 </div>
                 <div className="rounded-[var(--radius-md)] bg-[var(--ft-bg-surface)] p-2 text-center">
@@ -152,8 +164,16 @@ export default function CreatorMarketplacePage() {
               </div>
 
               <div className="mt-3 flex flex-wrap gap-1">
-                {creator.platforms.map((p) => <Badge key={p} tone="neutral">{p}</Badge>)}
-                {creator.languages.map((l) => <Badge key={l} tone="info">{l}</Badge>)}
+                {creator.platforms.map((p) => (
+                  <Badge key={p} tone="neutral">
+                    {p}
+                  </Badge>
+                ))}
+                {creator.languages.map((l) => (
+                  <Badge key={l} tone="info">
+                    {l}
+                  </Badge>
+                ))}
               </div>
 
               <div className="mt-4">

@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Globe, MessageSquare } from "lucide-react";
 
-import { Badge, Panel, PermissionDenied } from "@fliptrybe/ui";
+import { Badge, EmptyState, Panel, PermissionDenied } from "@fliptrybe/ui";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
 import { loadCountries, type NumberCountry } from "./api";
 import Link from "next/link";
@@ -62,11 +62,9 @@ export default function NumbersCountryGridPage() {
             </Panel>
           ) : countries.length === 0 ? (
             <Panel className="p-6">
-              <EmptyState
-                copy="No countries are available right now — check back shortly."
-                icon={Globe}
-                title="No countries available"
-              />
+              <EmptyState icon={Globe} title="No countries available">
+                No countries are available right now — check back shortly.
+              </EmptyState>
             </Panel>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -76,7 +74,9 @@ export default function NumbersCountryGridPage() {
                     <div className="text-3xl">{country.flagEmoji}</div>
                     <div className="flex-1">
                       <div className="text-sm font-semibold">{country.name}</div>
-                      <div className="text-xs text-[var(--ft-text-muted)]">{country.dialPrefix}</div>
+                      <div className="text-xs text-[var(--ft-text-muted)]">
+                        {country.dialPrefix}
+                      </div>
                     </div>
                     <Badge tone="info">
                       <MessageSquare className="size-3" />

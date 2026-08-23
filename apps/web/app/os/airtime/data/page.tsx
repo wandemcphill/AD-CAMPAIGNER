@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Signal, Sparkles, Wifi } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Button, Panel, cn } from "@fliptrybe/ui";
+import { Button, EmptyState, Panel, cn } from "@fliptrybe/ui";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import {
   buyData,
   buyDataEpin,
@@ -158,12 +158,13 @@ export default function DataTabPage() {
             {success.status === "DELIVERED" ? "Delivered" : "Order submitted"}
           </h2>
           <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-            {formatNaira(success.amountMinor)} charged for {success.network} → {success.msisdnMasked}.
+            {formatNaira(success.amountMinor)} charged for {success.network} →{" "}
+            {success.msisdnMasked}.
           </p>
           {success.status === "AMBIGUOUS" && (
             <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-left text-xs leading-5 text-[var(--ft-text-secondary)]">
-              Delivery could not be confirmed immediately. Our ops team is reviewing this order — you
-              won&apos;t be double-charged either way.
+              Delivery could not be confirmed immediately. Our ops team is reviewing this order —
+              you won&apos;t be double-charged either way.
             </div>
           )}
           <Button className="mt-4" onClick={() => setSuccess(undefined)} variant="secondary">
@@ -197,11 +198,9 @@ export default function DataTabPage() {
           {plansLoading ? (
             <LoadingBlock label="Loading plans" />
           ) : dataPlans.length === 0 ? (
-            <EmptyState
-              copy="No data plans are currently available for this network."
-              icon={Wifi}
-              title="No plans available"
-            />
+            <EmptyState icon={Wifi} title="No plans available">
+              No data plans are currently available for this network.
+            </EmptyState>
           ) : (
             <div className="grid gap-2">
               {dataPlans.map((plan) => (
@@ -218,7 +217,9 @@ export default function DataTabPage() {
                 >
                   <div>
                     <div className="text-sm font-medium">{plan.displayName}</div>
-                    <div className="text-xs text-[var(--ft-text-muted)]">{plan.validityDays} days</div>
+                    <div className="text-xs text-[var(--ft-text-muted)]">
+                      {plan.validityDays} days
+                    </div>
                   </div>
                   <div className="text-sm font-semibold">
                     {formatNaira(Math.ceil(plan.costMinor * 1.02))}
@@ -232,18 +233,24 @@ export default function DataTabPage() {
         {dataEpinMode ? (
           <>
             <div className="mt-4">
-              <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Quantity (1-100)</label>
+              <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
+                Quantity (1-100)
+              </label>
               <input
                 className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
                 max={100}
                 min={1}
-                onChange={(e) => setDataEpinQuantity(Math.min(100, Math.max(1, Number(e.target.value) || 1)))}
+                onChange={(e) =>
+                  setDataEpinQuantity(Math.min(100, Math.max(1, Number(e.target.value) || 1)))
+                }
                 type="number"
                 value={dataEpinQuantity}
               />
             </div>
 
-            {dataEpinError ? <div className="mt-3 text-sm text-[var(--ft-red)]">{dataEpinError}</div> : null}
+            {dataEpinError ? (
+              <div className="mt-3 text-sm text-[var(--ft-red)]">{dataEpinError}</div>
+            ) : null}
 
             <Button
               className="mt-4 w-full justify-center"

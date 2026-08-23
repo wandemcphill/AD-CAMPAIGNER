@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, RefreshCw, ShieldCheck, X } from "lucide-react";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, EmptyState } from "@fliptrybe/ui";
 
-import { EmptyState, ErrorNotice, Field, LoadingBlock, PageHeader } from "../../campaigns/components";
+import { ErrorNotice, Field, LoadingBlock, PageHeader } from "../../campaigns/components";
 import {
   loadSubmissionStages,
   loadSubmissions,
@@ -39,7 +39,9 @@ const assetClassFilters: Array<{ label: string; value: AssetClass | "all" }> = [
   { label: "Digital Coupon", value: "DIGITAL_COUPON" }
 ];
 
-function statusTone(status: SubmissionStatus): "neutral" | "success" | "warning" | "danger" | "info" {
+function statusTone(
+  status: SubmissionStatus
+): "neutral" | "success" | "warning" | "danger" | "info" {
   if (status === "ACCEPTED" || status === "COMPLETED") return "success";
   if (status === "REJECTED" || status === "DISPUTED") return "danger";
   if (status === "REVIEW") return "warning";
@@ -64,7 +66,9 @@ export default function TrustEnginePage() {
     try {
       setSubmissions(await loadSubmissions({ status, assetClass }));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load the Trust Engine review queue.");
+      setError(
+        caught instanceof Error ? caught.message : "Could not load the Trust Engine review queue."
+      );
     } finally {
       setLoading(false);
     }
@@ -88,7 +92,9 @@ export default function TrustEnginePage() {
     setStagesLoading(true);
     loadSubmissionStages(selectedId)
       .then(setStages)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load stage results."))
+      .catch((caught) =>
+        setError(caught instanceof Error ? caught.message : "Could not load stage results.")
+      )
       .finally(() => setStagesLoading(false));
   }, [selectedId]);
 
@@ -107,7 +113,9 @@ export default function TrustEnginePage() {
       setReason("");
       setSelectedId(undefined);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not record that moderation decision.");
+      setError(
+        caught instanceof Error ? caught.message : "Could not record that moderation decision."
+      );
     } finally {
       setDeciding(false);
     }
@@ -135,7 +143,7 @@ export default function TrustEnginePage() {
 
       <div className="mt-5 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
             Status
           </span>
           {statusFilters.map((filter) => (
@@ -154,7 +162,7 @@ export default function TrustEnginePage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
             Asset class
           </span>
           {assetClassFilters.map((filter) => (
@@ -175,7 +183,7 @@ export default function TrustEnginePage() {
       </div>
 
       <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
-        <div className="hidden grid-cols-[1fr_120px_160px_120px_220px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
+        <div className="text-micro hidden grid-cols-[1fr_120px_160px_120px_220px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
           <div>Submission</div>
           <div>Asset Class</div>
           <div>Verdict</div>
@@ -189,11 +197,10 @@ export default function TrustEnginePage() {
             </div>
           ) : submissions.length === 0 ? (
             <div className="p-4">
-              <EmptyState
-                copy="No submissions match this filter. Submissions that land in REVIEW status are waiting on a staff decision."
-                icon={ShieldCheck}
-                title="Nothing to review"
-              />
+              <EmptyState icon={ShieldCheck} title="Nothing to review">
+                No submissions match this filter. Submissions that land in REVIEW status are waiting
+                on a staff decision.
+              </EmptyState>
             </div>
           ) : (
             submissions.map((submission) => (
@@ -202,7 +209,9 @@ export default function TrustEnginePage() {
                 key={submission.id}
               >
                 <div>
-                  <div className="font-mono text-sm text-[var(--ft-text-primary)]">{submission.id}</div>
+                  <div className="font-mono text-sm text-[var(--ft-text-primary)]">
+                    {submission.id}
+                  </div>
                   <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
                     workspace {submission.workspaceId}
                   </div>
@@ -230,7 +239,11 @@ export default function TrustEnginePage() {
                     <X className="size-3.5" />
                     Reject
                   </Button>
-                  <Button onClick={() => setSelectedId(submission.id)} type="button" variant="secondary">
+                  <Button
+                    onClick={() => setSelectedId(submission.id)}
+                    type="button"
+                    variant="secondary"
+                  >
                     View Details
                   </Button>
                 </div>
@@ -251,10 +264,12 @@ export default function TrustEnginePage() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] p-5">
               <div>
-                <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   Submission detail
                 </div>
-                <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">{selected.id}</h2>
+                <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">
+                  {selected.id}
+                </h2>
               </div>
               <button
                 aria-label="Close submission detail"
@@ -271,16 +286,22 @@ export default function TrustEnginePage() {
 
               <Field label="Asset class" value={selected.assetClass} />
               <Field label="Latest verdict" value={selected.latestVerdict ?? "-"} />
-              <Field label="Verdict reasons" value={selected.latestVerdictReasons.join(", ") || "-"} />
+              <Field
+                label="Verdict reasons"
+                value={selected.latestVerdictReasons.join(", ") || "-"}
+              />
               {selected.moderation ? (
                 <>
                   <Field label="Previous decision" value={selected.moderation.decision ?? "-"} />
-                  <Field label="Previous decision reason" value={selected.moderation.decisionReason ?? "-"} />
+                  <Field
+                    label="Previous decision reason"
+                    value={selected.moderation.decisionReason ?? "-"}
+                  />
                 </>
               ) : null}
 
               <div>
-                <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   7-stage pipeline
                 </div>
                 {stagesLoading ? (
@@ -293,7 +314,15 @@ export default function TrustEnginePage() {
                         key={stage.stageKey}
                       >
                         <span className="text-[var(--ft-text-primary)]">{stage.stageKey}</span>
-                        <Badge tone={stage.status === "PASS" ? "success" : stage.status === "FAIL" ? "danger" : "warning"}>
+                        <Badge
+                          tone={
+                            stage.status === "PASS"
+                              ? "success"
+                              : stage.status === "FAIL"
+                                ? "danger"
+                                : "warning"
+                          }
+                        >
                           {stage.status}
                         </Badge>
                       </div>

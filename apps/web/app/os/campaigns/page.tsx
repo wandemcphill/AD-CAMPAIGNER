@@ -24,6 +24,7 @@ import {
 import {
   Badge,
   Button,
+  EmptyState,
   FulfillmentStrip,
   MetricStrip,
   Panel,
@@ -45,7 +46,6 @@ import {
   totalBudgetMinor
 } from "../../campaigns/api";
 import {
-  EmptyState,
   ErrorNotice,
   InlineEmptyNote,
   LoadingBlock,
@@ -72,7 +72,7 @@ const GROWTH_TABS_BASE: SectionTab[] = [
   { label: "Reports", href: "/os/reports", icon: FileText },
   { label: "Creative Library", href: "/os/library", icon: Folder },
   { label: "AI Personas", href: "/os/personas", icon: Bot },
-  { label: "AI Studio", href: "/os/studio", icon: Sparkles },
+  { label: "AI Studio", href: "/os/studio", icon: Sparkles }
 ];
 
 const filterControlClass =
@@ -108,10 +108,12 @@ function campaignStageLabel(status: string) {
 }
 
 function campaignNextAction(status: string) {
-  if (status === "ACTIVE" || status === "RUNNING") return "Monitor pacing and published team updates.";
+  if (status === "ACTIVE" || status === "RUNNING")
+    return "Monitor pacing and published team updates.";
   if (status === "COMPLETED") return "Open the report and confirm final outcomes.";
   if (status === "CREATIVE_IN_PROGRESS") return "The team is checking creative and placement fit.";
-  if (status === "QUEUED" || status === "APPROVED") return "Launch setup is waiting on final operator handoff.";
+  if (status === "QUEUED" || status === "APPROVED")
+    return "Launch setup is waiting on final operator handoff.";
   if (status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW") {
     return "Review is in progress; plan and invoice updates will follow.";
   }
@@ -141,7 +143,12 @@ function briefActionLabel(status: string) {
   if (status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW") {
     return "Track review";
   }
-  if (status === "APPROVED" || status === "CREATIVE_IN_PROGRESS" || status === "QUEUED" || status === "PLAN_SENT") {
+  if (
+    status === "APPROVED" ||
+    status === "CREATIVE_IN_PROGRESS" ||
+    status === "QUEUED" ||
+    status === "PLAN_SENT"
+  ) {
     return "Check launch prep";
   }
   if (isLiveCampaign(status)) return "Monitor live";
@@ -168,7 +175,7 @@ export default function CampaignsPage() {
     flags["trustEngine"] === true &&
     (session?.isPlatformAdmin || session?.permissions?.includes("analytics:read"))
       ? [{ label: "Trust Engine", href: "/os/trust-engine", icon: ShieldCheck }]
-      : []),
+      : [])
   ];
 
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -187,7 +194,9 @@ export default function CampaignsPage() {
   const activeCampaigns = campaigns.filter(
     (campaign) => campaign.status === "ACTIVE" || campaign.status === "RUNNING"
   ).length;
-  const pendingReviewCampaigns = campaigns.filter((campaign) => campaign.status === "PENDING_REVIEW").length;
+  const pendingReviewCampaigns = campaigns.filter(
+    (campaign) => campaign.status === "PENDING_REVIEW"
+  ).length;
   const completedCampaigns = campaigns.filter((campaign) => campaign.status === "COMPLETED").length;
   const budgetCurrency = fallbackCurrency(campaigns, wallet);
   const spend = formatCampaignMoney({
@@ -196,7 +205,8 @@ export default function CampaignsPage() {
   });
   const impressions = metricValue(analytics, "impressions");
   const avgCpm = formatCampaignMoney({
-    amountMinor: impressions > 0 ? Math.round((totalBudgetMinor(campaigns) * 1000) / impressions) : 0,
+    amountMinor:
+      impressions > 0 ? Math.round((totalBudgetMinor(campaigns) * 1000) / impressions) : 0,
     currency: budgetCurrency
   });
   const liveViewers = metricValue(analytics, "live_viewers");
@@ -259,20 +269,23 @@ export default function CampaignsPage() {
       <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--ft-accent)_16%,transparent),transparent_38%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-micro uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+            <div className="text-micro inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono tracking-[0.18em] text-[var(--ft-text-muted)] uppercase">
               Managed campaign desk
             </div>
             <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
               One view for briefs, launch prep, live spend, and reports.
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
-              Review the state of your active campaigns, filter the queue, and jump straight into the next action without leaving the desk.
+              Review the state of your active campaigns, filter the queue, and jump straight into
+              the next action without leaving the desk.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="success">Live monitoring</Badge>
             <Badge tone="info">{loading ? "Syncing" : `${activeCampaigns} active`}</Badge>
-            <Badge tone="neutral">{loading ? <ValueSkeleton width="w-16" /> : `${pendingReviewCampaigns} in review`}</Badge>
+            <Badge tone="neutral">
+              {loading ? <ValueSkeleton width="w-16" /> : `${pendingReviewCampaigns} in review`}
+            </Badge>
           </div>
         </div>
       </section>
@@ -282,9 +295,18 @@ export default function CampaignsPage() {
         <SummaryStatStrip
           className="mb-4"
           items={[
-            { label: "active campaigns", value: loading ? <ValueSkeleton width="w-10" /> : activeCampaigns },
-            { label: "pending reviews", value: loading ? <ValueSkeleton width="w-10" /> : pendingReviewCampaigns },
-            { label: "next reports tracked", value: loading ? <ValueSkeleton width="w-10" /> : completedCampaigns },
+            {
+              label: "active campaigns",
+              value: loading ? <ValueSkeleton width="w-10" /> : activeCampaigns
+            },
+            {
+              label: "pending reviews",
+              value: loading ? <ValueSkeleton width="w-10" /> : pendingReviewCampaigns
+            },
+            {
+              label: "next reports tracked",
+              value: loading ? <ValueSkeleton width="w-10" /> : completedCampaigns
+            },
             { label: "portfolio spend", value: loading ? <ValueSkeleton width="w-24" /> : spend }
           ]}
         />
@@ -305,7 +327,7 @@ export default function CampaignsPage() {
       </section>
 
       <section className="mt-4 flex flex-col gap-3 border-y border-[var(--ft-border)] py-3 lg:flex-row lg:items-center">
-        <div className="flex items-center gap-2 font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="text-micro flex items-center gap-2 font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
           <Filter className="size-4 stroke-[1.5]" />
           Filters
         </div>
@@ -348,7 +370,9 @@ export default function CampaignsPage() {
         <div className="min-w-0">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Your active campaigns</h2>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+                Your active campaigns
+              </h2>
               <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                 Track live work, submitted briefs, launch holds, and reports in one client view.
               </p>
@@ -368,14 +392,15 @@ export default function CampaignsPage() {
                     Start a Campaign
                   </Link>
                 }
-                copy={
-                  campaigns.length === 0
-                    ? "When you're ready to grow, our team is here to help. Start with a brief and we'll build your campaign strategy."
-                    : "No campaigns match the selected filters."
-                }
                 icon={Megaphone}
-                title={campaigns.length === 0 ? "No campaigns yet." : "No campaigns match this filter."}
-              />
+                title={
+                  campaigns.length === 0 ? "No campaigns yet." : "No campaigns match this filter."
+                }
+              >
+                {campaigns.length === 0
+                  ? "When you're ready to grow, our team is here to help. Start with a brief and we'll build your campaign strategy."
+                  : "No campaigns match the selected filters."}
+              </EmptyState>
             </Panel>
           ) : (
             <div className="grid gap-3">
@@ -413,7 +438,7 @@ export default function CampaignsPage() {
 
                         <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[280px]">
                           <div className="border-t border-[var(--ft-border)] pt-3 sm:border-t-0 sm:pt-0">
-                            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                            <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                               Budget
                             </div>
                             <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">
@@ -421,7 +446,7 @@ export default function CampaignsPage() {
                             </div>
                           </div>
                           <div className="border-t border-[var(--ft-border)] pt-3 sm:border-t-0 sm:pt-0">
-                            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                            <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                               Launch window
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-sm text-[var(--ft-text-secondary)]">
@@ -438,25 +463,30 @@ export default function CampaignsPage() {
                             <span className="font-medium text-[var(--ft-text-primary)]">
                               Fulfillment path
                             </span>
-                            <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                            <span className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                               {campaignProgress(campaign.status)}%
                             </span>
                           </div>
                           <FulfillmentStrip
                             className="mt-3"
-                            currentStep={Math.min(4, Math.max(0, Math.round(campaignProgress(campaign.status) / 25)))}
+                            currentStep={Math.min(
+                              4,
+                              Math.max(0, Math.round(campaignProgress(campaign.status) / 25))
+                            )}
                             steps={["Brief", "Strategy", "Creative", "Live", "Report"]}
                             variant="labeled"
                           />
                           <div className="mt-4 grid gap-3 text-sm text-[var(--ft-text-secondary)] md:grid-cols-3">
                             <div>
-                              <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              <div className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                                 Next action
                               </div>
-                              <div className="mt-1 leading-5">{campaignNextAction(campaign.status)}</div>
+                              <div className="mt-1 leading-5">
+                                {campaignNextAction(campaign.status)}
+                              </div>
                             </div>
                             <div>
-                              <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              <div className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                                 Provider
                               </div>
                               <div className="mt-1 font-medium text-[var(--ft-text-primary)]">
@@ -464,7 +494,7 @@ export default function CampaignsPage() {
                               </div>
                             </div>
                             <div>
-                              <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              <div className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                                 Destination
                               </div>
                               <div className="mt-1 font-medium text-[var(--ft-text-primary)]">
@@ -515,7 +545,9 @@ export default function CampaignsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Managed ads desk</h2>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+                Managed ads desk
+              </h2>
               <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                 Review signals the operators will use before launch.
               </p>
@@ -528,7 +560,9 @@ export default function CampaignsPage() {
             </div>
           ) : primaryInsight ? (
             <div className="mt-5 border-y border-[var(--ft-border)] py-4">
-              <div className="font-medium text-[var(--ft-text-primary)]">{primaryInsight.label}</div>
+              <div className="font-medium text-[var(--ft-text-primary)]">
+                {primaryInsight.label}
+              </div>
               <div className="mt-3 divide-y divide-[var(--ft-border)] text-sm text-[var(--ft-text-secondary)]">
                 {primaryInsight.reasons.slice(0, 3).map((reason) => (
                   <div className="py-2 first:pt-0 last:pb-0" key={reason}>
@@ -541,11 +575,10 @@ export default function CampaignsPage() {
             <InlineEmptyNote label="No desk insights yet — start a campaign to generate them." />
           ) : (
             <div className="mt-5">
-              <EmptyState
-                copy="Team observations will appear after the campaign desk has enough delivery signal to review."
-                icon={Sparkles}
-                title="No desk insights yet"
-              />
+              <EmptyState icon={Sparkles} title="No desk insights yet">
+                Team observations will appear after the campaign desk has enough delivery signal to
+                review.
+              </EmptyState>
             </div>
           )}
           <Link className={`${secondaryLinkButtonClass} mt-4 w-full`} href="/os/analytics">
@@ -559,7 +592,9 @@ export default function CampaignsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Performance pulse</h2>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+                Performance pulse
+              </h2>
               <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                 {(roiBps / 100).toFixed(1)}% ROI signal / {formatCompact(liveViewers)} live viewers
               </p>
@@ -570,11 +605,9 @@ export default function CampaignsPage() {
             <InlineEmptyNote label="No trend data yet — start a campaign to begin tracking." />
           ) : trend.length === 0 ? (
             <div className="mt-5">
-              <EmptyState
-                copy="Spend and conversion trend points will appear after analytics ingestion."
-                icon={BarChart3}
-                title="No trend data"
-              />
+              <EmptyState icon={BarChart3} title="No trend data">
+                Spend and conversion trend points will appear after analytics ingestion.
+              </EmptyState>
             </div>
           ) : (
             <div className="mt-5 flex h-56 items-end gap-2 border-t border-[var(--ft-border)] pt-4">
@@ -584,7 +617,7 @@ export default function CampaignsPage() {
                     className="w-full rounded-t-[var(--radius-sm)] bg-[var(--ft-accent)]"
                     style={{ height: `${Math.max(18, (point.spendMinor / maxSpend) * 180)}px` }}
                   />
-                  <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                     {point.day}
                   </div>
                 </div>
@@ -596,7 +629,9 @@ export default function CampaignsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Recent launch window</h2>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+                Recent launch window
+              </h2>
               <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                 Latest schedule and provider state.
               </p>
@@ -631,7 +666,7 @@ export default function CampaignsPage() {
         </Panel>
       </section>
       <Link
-        className="fixed bottom-20 right-4 z-40 inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-transparent bg-[var(--ft-accent)] px-4 text-sm font-semibold text-[var(--ft-text-inverse)] shadow-[var(--shadow-lg)] transition hover:bg-[var(--ft-accent-dim)] md:hidden"
+        className="fixed right-4 bottom-20 z-40 inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-transparent bg-[var(--ft-accent)] px-4 text-sm font-semibold text-[var(--ft-text-inverse)] shadow-[var(--shadow-lg)] transition hover:bg-[var(--ft-accent-dim)] md:hidden"
         href="/os/campaigns/new"
       >
         <Plus className="size-4 stroke-[1.5]" />

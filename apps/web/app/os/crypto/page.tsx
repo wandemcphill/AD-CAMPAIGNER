@@ -4,9 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Bitcoin, Clock, Copy } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Panel,
+  PermissionDenied
+} from "@fliptrybe/ui";
 
-import { EmptyState, LoadingBlock } from "../../campaigns/components";
+import { LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
 import {
   createDepositAddress,
@@ -96,7 +102,9 @@ export default function CryptoPage() {
       });
       setDepositAddress(address);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "We could not generate a deposit address.");
+      setError(
+        caught instanceof Error ? caught.message : "We could not generate a deposit address."
+      );
     } finally {
       setGenerating(false);
     }
@@ -114,8 +122,8 @@ export default function CryptoPage() {
   if (forbidden) {
     return (
       <PermissionDenied>
-        You do not have permission to view crypto for this workspace. Contact your workspace
-        owner if you believe this is a mistake.
+        You do not have permission to view crypto for this workspace. Contact your workspace owner
+        if you believe this is a mistake.
       </PermissionDenied>
     );
   }
@@ -184,7 +192,8 @@ export default function CryptoPage() {
                 </div>
                 {rate ? (
                   <p className="mt-1 text-xs text-[var(--ft-text-muted)]">
-                    Rate ₦{rate.usdNgnRate.toLocaleString()}/USD · fee {formatNaira(rate.feeNgnMinor)}
+                    Rate ₦{rate.usdNgnRate.toLocaleString()}/USD · fee{" "}
+                    {formatNaira(rate.feeNgnMinor)}
                   </p>
                 ) : null}
               </div>
@@ -195,7 +204,7 @@ export default function CryptoPage() {
                     Send {selectedAssetInfo?.name} ({depositAddress.network}) to:
                   </div>
                   <div className="mt-1 flex items-center gap-2">
-                    <code className="flex-1 break-all text-sm">{depositAddress.address}</code>
+                    <code className="flex-1 text-sm break-all">{depositAddress.address}</code>
                     <Button onClick={copyAddress} variant="secondary">
                       <Copy className="size-4" />
                       {copied ? "Copied" : "Copy"}
@@ -208,27 +217,29 @@ export default function CryptoPage() {
                   )}
                 </div>
               ) : (
-                <Button className="mt-4 w-full justify-center" disabled={generating} onClick={() => void generateAddress()}>
+                <Button
+                  className="mt-4 w-full justify-center"
+                  disabled={generating}
+                  onClick={() => void generateAddress()}
+                >
                   {generating ? "Generating..." : "Get deposit address"}
                 </Button>
               )}
 
               <div className="mt-4 flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--ft-yellow)]" />
-                Only send {selectedAssetInfo?.name ?? "the selected asset"} on the {depositAddress?.network ?? "listed"}{" "}
-                network to this address. Sending any other asset or using the wrong network may result in
-                permanent loss of funds.
+                Only send {selectedAssetInfo?.name ?? "the selected asset"} on the{" "}
+                {depositAddress?.network ?? "listed"} network to this address. Sending any other
+                asset or using the wrong network may result in permanent loss of funds.
               </div>
             </Panel>
 
             <Panel className="mt-6 p-5">
               <h2 className="mb-3 font-semibold">Recent deposits</h2>
               {transactions.length === 0 ? (
-                <EmptyState
-                  copy="Crypto deposits you make will show up here once credited."
-                  icon={Clock}
-                  title="No deposits yet"
-                />
+                <EmptyState icon={Clock} title="No deposits yet">
+                  Crypto deposits you make will show up here once credited.
+                </EmptyState>
               ) : (
                 <div className="grid gap-2">
                   {transactions.map((t) => (
@@ -244,7 +255,9 @@ export default function CryptoPage() {
                           {new Date(t.createdAt).toLocaleDateString()}
                         </div>
                       </div>
-                      <Badge tone={t.status === "completed" ? "success" : "neutral"}>{t.status}</Badge>
+                      <Badge tone={t.status === "completed" ? "success" : "neutral"}>
+                        {t.status}
+                      </Badge>
                     </div>
                   ))}
                 </div>

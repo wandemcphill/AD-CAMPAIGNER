@@ -4,17 +4,23 @@ import { useState } from "react";
 import { CheckCircle2, Clock, Folder, RefreshCw, Users } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, cn, humanizeStatus } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  cn,
+  humanizeStatus
+} from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { useTeamData } from "../../team/use-team-data";
 import Link from "next/link";
 
 const TABS = [
   { id: "members", label: "Members" },
   { id: "projects", label: "Projects" },
-  { id: "approvals", label: "Approvals" },
+  { id: "approvals", label: "Approvals" }
 ];
 
 function initials(name: string) {
@@ -54,11 +60,9 @@ export default function TeamPage() {
           {loading ? (
             <LoadingBlock label="Loading team members" />
           ) : members.length === 0 ? (
-            <EmptyState
-              copy="Invite teammates from your workspace settings to see them here."
-              icon={Users}
-              title="No team members yet"
-            />
+            <EmptyState icon={Users} title="No team members yet">
+              Invite teammates from your workspace settings to see them here.
+            </EmptyState>
           ) : (
             <div className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)]">
               {members.map((member) => (
@@ -72,7 +76,8 @@ export default function TeamPage() {
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">{member.name}</div>
                     <div className="text-xs text-[var(--ft-text-muted)]">
-                      {member.permissions.length} permission{member.permissions.length === 1 ? "" : "s"}
+                      {member.permissions.length} permission
+                      {member.permissions.length === 1 ? "" : "s"}
                     </div>
                   </div>
                   <Badge tone={member.role === "OWNER" ? "info" : "neutral"}>{member.role}</Badge>
@@ -88,11 +93,9 @@ export default function TeamPage() {
           {loading ? (
             <LoadingBlock label="Loading projects" />
           ) : projects.length === 0 ? (
-            <EmptyState
-              copy="Projects appear here once teammates are assigned to a campaign."
-              icon={Folder}
-              title="No active projects"
-            />
+            <EmptyState icon={Folder} title="No active projects">
+              Projects appear here once teammates are assigned to a campaign.
+            </EmptyState>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {projects.map((project) => {
@@ -113,8 +116,12 @@ export default function TeamPage() {
                       <Badge tone="neutral">{humanizeStatus(project.status)}</Badge>
                     </div>
                     <div className="mt-3 flex items-center gap-4 text-xs text-[var(--ft-text-muted)]">
-                      <span><Users className="mr-1 inline size-3" /> {total} assigned</span>
-                      <span><CheckCircle2 className="mr-1 inline size-3" /> {completed}/{total} complete</span>
+                      <span>
+                        <Users className="mr-1 inline size-3" /> {total} assigned
+                      </span>
+                      <span>
+                        <CheckCircle2 className="mr-1 inline size-3" /> {completed}/{total} complete
+                      </span>
                     </div>
                     <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--ft-bg-muted)]">
                       <div
@@ -135,11 +142,9 @@ export default function TeamPage() {
           {loading ? (
             <LoadingBlock label="Loading approvals" />
           ) : approvals.length === 0 ? (
-            <EmptyState
-              copy="Campaigns waiting on review or a change request will appear here."
-              icon={CheckCircle2}
-              title="Nothing needs review right now"
-            />
+            <EmptyState icon={CheckCircle2} title="Nothing needs review right now">
+              Campaigns waiting on review or a change request will appear here.
+            </EmptyState>
           ) : (
             <div className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)]">
               {approvals.map((approval) => (
@@ -148,14 +153,22 @@ export default function TeamPage() {
                   href={`/os/campaigns/${approval.id}`}
                   key={approval.id}
                 >
-                  <div className={cn(
-                    "grid size-9 place-items-center rounded-full",
-                    approval.status === "CHANGES_REQUESTED" ? "bg-[var(--ft-red)]/10" : "bg-[var(--ft-yellow)]/10"
-                  )}>
-                    <Clock className={cn(
-                      "size-4",
-                      approval.status === "CHANGES_REQUESTED" ? "text-[var(--ft-red)]" : "text-[var(--ft-yellow)]"
-                    )} />
+                  <div
+                    className={cn(
+                      "grid size-9 place-items-center rounded-full",
+                      approval.status === "CHANGES_REQUESTED"
+                        ? "bg-[var(--ft-red)]/10"
+                        : "bg-[var(--ft-yellow)]/10"
+                    )}
+                  >
+                    <Clock
+                      className={cn(
+                        "size-4",
+                        approval.status === "CHANGES_REQUESTED"
+                          ? "text-[var(--ft-red)]"
+                          : "text-[var(--ft-yellow)]"
+                      )}
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="text-sm font-medium">{approval.title}</div>
@@ -164,7 +177,9 @@ export default function TeamPage() {
                     </div>
                   </div>
                   <Badge tone={approval.status === "CHANGES_REQUESTED" ? "danger" : "warning"}>
-                    {approval.status === "CHANGES_REQUESTED" ? "Changes requested" : "Pending review"}
+                    {approval.status === "CHANGES_REQUESTED"
+                      ? "Changes requested"
+                      : "Pending review"}
                   </Badge>
                 </Link>
               ))}

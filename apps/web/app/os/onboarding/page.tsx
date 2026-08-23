@@ -5,6 +5,7 @@ import { ArrowRight, CheckCircle2, PlugZap, RefreshCw, Rocket, ShieldCheck } fro
 import {
   Badge,
   Button,
+  EmptyState,
   MetricStrip,
   Panel,
   PermissionDenied,
@@ -15,7 +16,6 @@ import {
 } from "@fliptrybe/ui";
 
 import {
-  EmptyState,
   ErrorNotice,
   LoadingBlock,
   PageHeader,
@@ -101,7 +101,12 @@ export default function OnboardingPage() {
       <PageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button className="w-full sm:w-auto" disabled={loading} onClick={() => void refresh()} variant="secondary">
+            <Button
+              className="w-full sm:w-auto"
+              disabled={loading}
+              onClick={() => void refresh()}
+              variant="secondary"
+            >
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
@@ -135,7 +140,7 @@ export default function OnboardingPage() {
         </div>
         <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
           <div>
-            <p className="font-mono text-micro tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
+            <p className="text-micro font-mono tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
               Business setup desk
             </p>
             <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
@@ -147,11 +152,19 @@ export default function OnboardingPage() {
             </p>
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Button className="border-[var(--ft-border-strong)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)] hover:bg-[var(--ft-bg-muted)]" disabled={loading} onClick={() => void refresh()} variant="secondary">
+            <Button
+              className="border-[var(--ft-border-strong)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)] hover:bg-[var(--ft-bg-muted)]"
+              disabled={loading}
+              onClick={() => void refresh()}
+              variant="secondary"
+            >
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <Link className={`${session ? linkButtonClass : secondaryLinkButtonClass} w-full sm:w-auto`} href={session ? "/os/campaigns/new" : "/login"}>
+            <Link
+              className={`${session ? linkButtonClass : secondaryLinkButtonClass} w-full sm:w-auto`}
+              href={session ? "/os/campaigns/new" : "/login"}
+            >
               {session ? "Start campaign" : "Sign in"}
               <ArrowRight className="size-4 stroke-[1.5]" />
             </Link>
@@ -160,9 +173,18 @@ export default function OnboardingPage() {
         <div className="mt-6">
           <SummaryStatStrip
             items={[
-              { label: "workspace", value: session ? "Ready" : sessionLoading ? "Checking" : "Signed out" },
-              { label: "destinations", value: loading ? <ValueSkeleton width="w-10" /> : String(destinations.length) },
-              { label: "providers", value: loading ? <ValueSkeleton width="w-10" /> : String(providers.length) },
+              {
+                label: "workspace",
+                value: session ? "Ready" : sessionLoading ? "Checking" : "Signed out"
+              },
+              {
+                label: "destinations",
+                value: loading ? <ValueSkeleton width="w-10" /> : String(destinations.length)
+              },
+              {
+                label: "providers",
+                value: loading ? <ValueSkeleton width="w-10" /> : String(providers.length)
+              },
               { label: "readiness", value: `${readySteps}/${stepStates.length}` }
             ]}
           />
@@ -198,14 +220,23 @@ export default function OnboardingPage() {
 
       <section className="mt-4 grid gap-3 border-y border-[var(--ft-border)] py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div>
-          <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Managed services readiness</h2>
+          <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+            Managed services readiness
+          </h2>
           <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
-            Complete the workspace, destination, billing, and provider checks before campaign operators begin launch work.
+            Complete the workspace, destination, billing, and provider checks before campaign
+            operators begin launch work.
           </p>
         </div>
         <Link
           className={`${secondaryLinkButtonClass} w-full sm:w-auto`}
-          href={session ? (readySteps === stepStates.length ? "/os/campaigns/new" : "/os/wallet") : "/login"}
+          href={
+            session
+              ? readySteps === stepStates.length
+                ? "/os/campaigns/new"
+                : "/os/wallet"
+              : "/login"
+          }
         >
           {session
             ? readySteps === stepStates.length
@@ -226,7 +257,7 @@ export default function OnboardingPage() {
               <div className="flex items-center gap-2">
                 <span
                   className={cn(
-                    "grid size-7 shrink-0 place-items-center rounded-[var(--radius-sm)] border font-mono text-micro",
+                    "text-micro grid size-7 shrink-0 place-items-center rounded-[var(--radius-sm)] border font-mono",
                     step.ready
                       ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
                       : index === readySteps
@@ -248,12 +279,12 @@ export default function OnboardingPage() {
                     : index === readySteps
                       ? "bg-[var(--ft-yellow)]"
                       : "bg-[var(--ft-bg-muted)]"
-                  )}
+                )}
               />
             </div>
           ))}
         </div>
-        <div className="mt-3 font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="text-micro mt-3 font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
           Setup progress / {readySteps} of {stepStates.length} ready
         </div>
       </section>
@@ -268,7 +299,7 @@ export default function OnboardingPage() {
                   step.ready ? "text-[var(--ft-green)]" : "text-[var(--ft-text-muted)]"
                 )}
               />
-                <Badge tone={step.ready ? "success" : "warning"}>
+              <Badge tone={step.ready ? "success" : "warning"}>
                 {step.ready ? "Ready" : sessionLoading ? "Checking" : "Signed out"}
               </Badge>
             </div>
@@ -291,7 +322,7 @@ export default function OnboardingPage() {
             </div>
             <ShieldCheck className="size-5 stroke-[1.5] text-[var(--ft-green)]" />
           </div>
-            <div className="mt-5 border-y border-[var(--ft-border)] py-4">
+          <div className="mt-5 border-y border-[var(--ft-border)] py-4">
             {session ? (
               <div className="grid gap-2 text-sm">
                 <div className="font-medium text-[var(--ft-text-primary)]">
@@ -299,16 +330,14 @@ export default function OnboardingPage() {
                 </div>
                 <div className="text-[var(--ft-text-secondary)]">{session.user.name}</div>
                 <div className="text-xs text-[var(--ft-text-muted)]">@{session.user.username}</div>
-                <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                <div className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   {session.role ?? "member"}
                 </div>
               </div>
             ) : (
-              <EmptyState
-                copy="Use the login screen to create your workspace and attach this session automatically."
-                icon={ShieldCheck}
-                title="Sign in required"
-              />
+              <EmptyState icon={ShieldCheck} title="Sign in required">
+                Use the login screen to create your workspace and attach this session automatically.
+              </EmptyState>
             )}
           </div>
         </Panel>
@@ -330,11 +359,9 @@ export default function OnboardingPage() {
               </div>
             ) : providers.length === 0 ? (
               <div className="py-4">
-                <EmptyState
-                  copy="Provider health will appear when the platform health endpoint responds."
-                  icon={PlugZap}
-                  title="No provider health"
-                />
+                <EmptyState icon={PlugZap} title="No provider health">
+                  Provider health will appear when the platform health endpoint responds.
+                </EmptyState>
               </div>
             ) : (
               providers.map(([name, provider]) => (
@@ -355,7 +382,9 @@ export default function OnboardingPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Destination catalog</h2>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+                Destination catalog
+              </h2>
               <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                 Available campaign endpoints.
               </p>
@@ -369,11 +398,9 @@ export default function OnboardingPage() {
               </div>
             ) : destinations.length === 0 ? (
               <div className="sm:col-span-2 lg:col-span-3">
-                <EmptyState
-                  copy="Destination options will appear after the catalog endpoint responds."
-                  icon={Rocket}
-                  title="No destinations"
-                />
+                <EmptyState icon={Rocket} title="No destinations">
+                  Destination options will appear after the catalog endpoint responds.
+                </EmptyState>
               </div>
             ) : (
               destinations.map((destination) => (

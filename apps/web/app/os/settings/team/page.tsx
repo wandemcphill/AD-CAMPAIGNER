@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { Plus, Shield, Trash2, Users } from "lucide-react";
 
-import { Badge, Button, ValueSkeleton } from "@fliptrybe/ui";
+import { Badge, Button, EmptyState, ValueSkeleton } from "@fliptrybe/ui";
 import { Drawer, Input } from "@fliptrybe/ui/components";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { useApiSession } from "../../../lib/use-session";
 import {
   TEAM_ROLES,
@@ -90,7 +90,9 @@ export default function TeamSettingsPage() {
           <div className="flex items-center gap-2">
             <Users className="size-5 text-[var(--ft-accent)]" />
             <h2 className="font-semibold">Team Members</h2>
-            <Badge tone="neutral">{loading ? <ValueSkeleton width="w-10" /> : members.length}</Badge>
+            <Badge tone="neutral">
+              {loading ? <ValueSkeleton width="w-10" /> : members.length}
+            </Badge>
           </div>
           {isAdmin && (
             <Button onClick={() => setShowInvite(true)}>
@@ -113,11 +115,9 @@ export default function TeamSettingsPage() {
           </div>
         ) : members.length === 0 ? (
           <div className="mt-6">
-            <EmptyState
-              copy="Invite teammates to your workspace to see them listed here."
-              icon={Users}
-              title="No team members yet"
-            />
+            <EmptyState icon={Users} title="No team members yet">
+              Invite teammates to your workspace to see them listed here.
+            </EmptyState>
           </div>
         ) : (
           <div className="mt-6 divide-y divide-[var(--ft-border)]">
@@ -129,10 +129,13 @@ export default function TeamSettingsPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{member.name}</span>
-                    {member.role === "OWNER" && <Shield className="size-3.5 text-[var(--ft-accent)]" />}
+                    {member.role === "OWNER" && (
+                      <Shield className="size-3.5 text-[var(--ft-accent)]" />
+                    )}
                   </div>
                   <div className="text-xs text-[var(--ft-text-muted)]">
-                    {member.permissions.length} permission{member.permissions.length === 1 ? "" : "s"}
+                    {member.permissions.length} permission
+                    {member.permissions.length === 1 ? "" : "s"}
                   </div>
                 </div>
                 {member.role === "OWNER" || !isAdmin ? (
@@ -146,7 +149,9 @@ export default function TeamSettingsPage() {
                       value={member.role}
                     >
                       {TEAM_ROLES.map((role) => (
-                        <option key={role} value={role}>{role}</option>
+                        <option key={role} value={role}>
+                          {role}
+                        </option>
                       ))}
                     </select>
                     <button
@@ -176,7 +181,9 @@ export default function TeamSettingsPage() {
             value={inviteUsername}
           />
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="invite-role">Role</label>
+            <label className="text-sm font-medium" htmlFor="invite-role">
+              Role
+            </label>
             <select
               className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
               id="invite-role"
@@ -184,7 +191,9 @@ export default function TeamSettingsPage() {
               value={inviteRole}
             >
               {TEAM_ROLES.map((role) => (
-                <option key={role} value={role}>{role}</option>
+                <option key={role} value={role}>
+                  {role}
+                </option>
               ))}
             </select>
           </div>

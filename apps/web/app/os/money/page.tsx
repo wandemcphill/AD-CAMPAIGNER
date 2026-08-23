@@ -18,10 +18,10 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import { Badge, ValueSkeleton, humanizeStatus } from "@fliptrybe/ui";
+import { Badge, EmptyState, ValueSkeleton, humanizeStatus } from "@fliptrybe/ui";
 
 import { formatCampaignMoney, formatDateTime } from "../../campaigns/api";
-import { EmptyState, LoadingBlock } from "../../campaigns/components";
+import { LoadingBlock } from "../../campaigns/components";
 import { useBillingData } from "../../campaigns/use-campaign-dashboard-data";
 import { useFeatureFlags } from "../../lib/feature-flags";
 
@@ -37,17 +37,63 @@ type MoneyEntry = {
 // vertical is switched on for this workspace (matches the shell sidebar gating).
 const ENTRIES: MoneyEntry[] = [
   { label: "Wallet", description: "Balance, funding & payouts", href: "/os/wallet", icon: Wallet },
-  { label: "Invoices", description: "Bill customers and track payments", href: "/os/money/invoices", icon: FileText, flag: "invoicing" },
-  { label: "Payment Links", description: "Collect payments with a shareable link", href: "/os/money/payment-links", icon: Link2, flag: "paymentLinks" },
-  { label: "Virtual Accounts", description: "Collect payments to dedicated accounts", href: "/os/financial-products/accounts", icon: Building2, flag: "virtualAccounts" },
-  { label: "Virtual Cards", description: "Issue and manage spending cards", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" },
-  { label: "Transfers", description: "Send money locally and abroad", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },
+  {
+    label: "Invoices",
+    description: "Bill customers and track payments",
+    href: "/os/money/invoices",
+    icon: FileText,
+    flag: "invoicing"
+  },
+  {
+    label: "Payment Links",
+    description: "Collect payments with a shareable link",
+    href: "/os/money/payment-links",
+    icon: Link2,
+    flag: "paymentLinks"
+  },
+  {
+    label: "Virtual Accounts",
+    description: "Collect payments to dedicated accounts",
+    href: "/os/financial-products/accounts",
+    icon: Building2,
+    flag: "virtualAccounts"
+  },
+  {
+    label: "Virtual Cards",
+    description: "Issue and manage spending cards",
+    href: "/os/financial-products/cards",
+    icon: CreditCard,
+    flag: "virtualCards"
+  },
+  {
+    label: "Transfers",
+    description: "Send money locally and abroad",
+    href: "/os/financial-products/remittance",
+    icon: Send,
+    flag: "remittance"
+  },
   // Transactions and Payouts don't have routes of their own — they're surfaces of
   // the wallet page, deep-linked via ?tab=. Payouts stays hidden until
   // walletWithdrawals is on, matching the tab's own gating.
-  { label: "Transactions", description: "Every movement on your ledger", href: "/os/wallet?tab=history", icon: Receipt },
-  { label: "Payouts", description: "Withdraw to your bank account", href: "/os/wallet?tab=withdraw", icon: Banknote, flag: "walletWithdrawals" },
-  { label: "Vouchers", description: "Buy and redeem value vouchers", href: "/os/vouchers", icon: Ticket }
+  {
+    label: "Transactions",
+    description: "Every movement on your ledger",
+    href: "/os/wallet?tab=history",
+    icon: Receipt
+  },
+  {
+    label: "Payouts",
+    description: "Withdraw to your bank account",
+    href: "/os/wallet?tab=withdraw",
+    icon: Banknote,
+    flag: "walletWithdrawals"
+  },
+  {
+    label: "Vouchers",
+    description: "Buy and redeem value vouchers",
+    href: "/os/vouchers",
+    icon: Ticket
+  }
 ];
 
 // A leading "+" means money in, "-" means money out. Colour and icon follow suit.
@@ -85,7 +131,13 @@ export default function MoneyOverviewPage() {
             Available balance
           </div>
           <div className="mt-2 font-mono text-3xl font-bold">
-            {loading ? <ValueSkeleton width="w-24" /> : availableBalance ? formatCampaignMoney(availableBalance) : "—"}
+            {loading ? (
+              <ValueSkeleton width="w-24" />
+            ) : availableBalance ? (
+              formatCampaignMoney(availableBalance)
+            ) : (
+              "—"
+            )}
           </div>
           <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
             {loading
@@ -106,12 +158,14 @@ export default function MoneyOverviewPage() {
               <ArrowUpRight className="size-4" /> Withdraw
             </Link>
           </div>
-          <div className="pointer-events-none absolute -right-16 -top-16 size-40 rounded-full bg-[var(--ft-accent)]/5 blur-3xl" />
+          <div className="pointer-events-none absolute -top-16 -right-16 size-40 rounded-full bg-[var(--ft-accent)]/5 blur-3xl" />
         </section>
 
         {/* Money tools */}
         <section>
-          <h2 className="mb-3 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Tools</h2>
+          <h2 className="text-micro mb-3 font-mono tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+            Tools
+          </h2>
           <div className="grid gap-2 sm:grid-cols-2">
             {visibleEntries.map((entry) => (
               <Link
@@ -123,8 +177,12 @@ export default function MoneyOverviewPage() {
                   <entry.icon className="size-5" />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold group-hover:text-[var(--ft-accent)]">{entry.label}</div>
-                  <div className="mt-0.5 text-xs text-[var(--ft-text-muted)]">{entry.description}</div>
+                  <div className="text-sm font-semibold group-hover:text-[var(--ft-accent)]">
+                    {entry.label}
+                  </div>
+                  <div className="mt-0.5 text-xs text-[var(--ft-text-muted)]">
+                    {entry.description}
+                  </div>
                 </div>
               </Link>
             ))}
@@ -136,7 +194,10 @@ export default function MoneyOverviewPage() {
       <section className="mt-6 rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Recent transactions</h2>
-          <Link className="inline-flex items-center gap-1 text-xs font-medium text-[var(--ft-accent)]" href="/os/wallet">
+          <Link
+            className="inline-flex items-center gap-1 text-xs font-medium text-[var(--ft-accent)]"
+            href="/os/wallet"
+          >
             View all <ArrowRight className="size-3" />
           </Link>
         </div>
@@ -144,7 +205,9 @@ export default function MoneyOverviewPage() {
           {loading ? (
             <LoadingBlock label="Loading transactions" />
           ) : recentActivity.length === 0 ? (
-            <EmptyState copy="Fund your wallet or make a payment to see activity here." title="No transactions yet" />
+            <EmptyState title="No transactions yet">
+              Fund your wallet or make a payment to see activity here.
+            </EmptyState>
           ) : (
             <div className="grid gap-1.5">
               {recentActivity.map((item) => {
@@ -161,14 +224,26 @@ export default function MoneyOverviewPage() {
                           : "grid size-8 shrink-0 place-items-center rounded-full bg-[var(--ft-bg-muted)] text-[var(--ft-text-muted)]"
                       }
                     >
-                      {credit ? <ArrowDownLeft className="size-4" /> : <ArrowUpRight className="size-4" />}
+                      {credit ? (
+                        <ArrowDownLeft className="size-4" />
+                      ) : (
+                        <ArrowUpRight className="size-4" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{item.label}</div>
-                      <div className="text-micro text-[var(--ft-text-muted)]">{formatDateTime(item.at)}</div>
+                      <div className="text-micro text-[var(--ft-text-muted)]">
+                        {formatDateTime(item.at)}
+                      </div>
                     </div>
                     <div className="text-right">
-                      <div className={credit ? "font-mono text-sm text-[var(--ft-green)]" : "font-mono text-sm"}>{item.amount}</div>
+                      <div
+                        className={
+                          credit ? "font-mono text-sm text-[var(--ft-green)]" : "font-mono text-sm"
+                        }
+                      >
+                        {item.amount}
+                      </div>
                       <Badge tone="neutral">{humanizeStatus(item.status)}</Badge>
                     </div>
                   </div>

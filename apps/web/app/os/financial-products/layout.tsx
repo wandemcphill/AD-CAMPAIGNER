@@ -6,7 +6,7 @@ import { Building2 } from "lucide-react";
 
 import { TabBar } from "@fliptrybe/ui/components";
 
-import { EmptyState } from "../../campaigns/components";
+import { EmptyState } from "@fliptrybe/ui";
 import { isAgeRestrictedError } from "../../lib/api-client";
 import { useFeatureFlags } from "../../lib/feature-flags";
 import { AgeGateNotice } from "../age-gate-notice";
@@ -83,10 +83,10 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
           </div>
         ) : flagsReady && availableTabs.length === 0 ? (
           <div className="mt-6">
-            <EmptyState
-              copy="Virtual accounts, virtual cards, and international transfers are not switched on for this workspace yet. Contact support if you were expecting access."
-              title="Not available yet"
-            />
+            <EmptyState title="Not available yet">
+              Virtual accounts, virtual cards, and international transfers are not switched on for
+              this workspace yet. Contact support if you were expecting access.
+            </EmptyState>
           </div>
         ) : (
           <>

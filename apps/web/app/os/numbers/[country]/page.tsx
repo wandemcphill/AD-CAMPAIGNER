@@ -5,10 +5,17 @@ import { useParams } from "next/navigation";
 import { CheckCircle2, ChevronLeft, MessageSquare, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Panel,
+  PermissionDenied,
+  cn
+} from "@fliptrybe/ui";
 import { ProvisionStep } from "@fliptrybe/ui/components";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
 import {
   formatNaira,
@@ -41,7 +48,9 @@ export default function NumbersProductListPage() {
     try {
       setProducts(await loadProducts(countryCode));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "We could not load numbers for this country.");
+      setError(
+        caught instanceof Error ? caught.message : "We could not load numbers for this country."
+      );
       setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
@@ -129,7 +138,8 @@ export default function NumbersProductListPage() {
                   <h2 className="text-lg font-semibold text-[var(--ft-red)]">Purchase failed</h2>
                   <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">{purchaseError}</p>
                   <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3 text-xs text-[var(--ft-text-secondary)]">
-                    Your wallet was not charged — a provisioning failure is always refunded automatically.
+                    Your wallet was not charged — a provisioning failure is always refunded
+                    automatically.
                   </div>
                   <Button className="mt-4" onClick={reset} variant="secondary">
                     Try again
@@ -137,7 +147,9 @@ export default function NumbersProductListPage() {
                 </div>
               ) : (
                 <>
-                  <h2 className="text-sm font-medium text-[var(--ft-text-muted)]">Confirm purchase</h2>
+                  <h2 className="text-sm font-medium text-[var(--ft-text-muted)]">
+                    Confirm purchase
+                  </h2>
                   <div className="mt-3 flex items-center justify-between rounded-[var(--radius-md)] border border-[var(--ft-border)] p-4">
                     <div>
                       <div className="font-semibold">{selectedProduct.displayName}</div>
@@ -155,7 +167,10 @@ export default function NumbersProductListPage() {
                       <Button onClick={reset} variant="secondary">
                         Cancel
                       </Button>
-                      <Button className="flex-1 justify-center" onClick={() => void confirmPurchase()}>
+                      <Button
+                        className="flex-1 justify-center"
+                        onClick={() => void confirmPurchase()}
+                      >
                         <Sparkles className="size-4" />
                         Confirm & pay
                       </Button>
@@ -180,11 +195,9 @@ export default function NumbersProductListPage() {
           </Panel>
         ) : products.length === 0 ? (
           <Panel className="mt-6 p-6">
-            <EmptyState
-              copy="No number products are active for this country yet."
-              icon={MessageSquare}
-              title="Nothing available"
-            />
+            <EmptyState icon={MessageSquare} title="Nothing available">
+              No number products are active for this country yet.
+            </EmptyState>
           </Panel>
         ) : (
           <div className="mt-6 grid gap-2">
@@ -207,7 +220,9 @@ export default function NumbersProductListPage() {
                     {product.durationDays} days
                   </div>
                 </div>
-                <div className="text-lg font-bold">{formatNaira(product.estimatedPriceMinorNgn)}</div>
+                <div className="text-lg font-bold">
+                  {formatNaira(product.estimatedPriceMinorNgn)}
+                </div>
               </button>
             ))}
           </div>

@@ -22,6 +22,7 @@ import {
 import {
   Badge,
   Button,
+  EmptyState,
   InvoiceCard,
   Panel,
   PermissionDenied,
@@ -47,7 +48,6 @@ import {
   type WalletWithdrawalRecord
 } from "../../campaigns/api";
 import {
-  EmptyState,
   ErrorNotice,
   Field,
   LoadingBlock,
@@ -74,7 +74,9 @@ const billingTabs: Array<{ label: string; value: BillingTab; flag?: string }> = 
   { label: "Withdraw", value: "withdraw", flag: "walletWithdrawals" }
 ];
 
-function withdrawalStatusTone(status: WalletWithdrawalRecord["status"]): "neutral" | "success" | "warning" | "danger" | "info" {
+function withdrawalStatusTone(
+  status: WalletWithdrawalRecord["status"]
+): "neutral" | "success" | "warning" | "danger" | "info" {
   if (status === "COMPLETED") return "success";
   if (status === "FAILED") return "danger";
   if (status === "RECONCILIATION_REQUIRED") return "warning";
@@ -314,11 +316,15 @@ export default function BillingPage() {
   const moneyTabs: SectionTab[] = [
     ...MONEY_TABS_BASE,
     { label: "Vouchers", href: "/os/vouchers", icon: Ticket },
-    ...(flags["virtualAccounts"] === true || flags["virtualCards"] === true || flags["remittance"] === true
+    ...(flags["virtualAccounts"] === true ||
+    flags["virtualCards"] === true ||
+    flags["remittance"] === true
       ? [{ label: "Financial Products", href: "/os/financial-products", icon: Building2 }]
       : []),
-    ...(flags["cryptoSell"] === true ? [{ label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin }] : []),
-    ...(flags["rmbBuy"] === true ? [{ label: "Buy RMB", href: "/os/rmb", icon: Banknote }] : []),
+    ...(flags["cryptoSell"] === true
+      ? [{ label: "Sell Crypto", href: "/os/crypto", icon: Bitcoin }]
+      : []),
+    ...(flags["rmbBuy"] === true ? [{ label: "Buy RMB", href: "/os/rmb", icon: Banknote }] : [])
   ];
   const currency: CurrencyCode = wallet?.availableBalance.currency ?? "NGN";
   const available = wallet?.availableBalance ?? null;
@@ -366,7 +372,9 @@ export default function BillingPage() {
     void listWalletWithdrawals()
       .then(setWithdrawals)
       .catch((caught) =>
-        setWithdrawalsError(caught instanceof Error ? caught.message : "Could not load withdrawal history.")
+        setWithdrawalsError(
+          caught instanceof Error ? caught.message : "Could not load withdrawal history."
+        )
       );
   }, [activeTab, withdrawals, flags]);
 
@@ -379,7 +387,11 @@ export default function BillingPage() {
       if (!amountMinor) {
         throw new Error("Enter a withdrawal amount before continuing.");
       }
-      if (!withdrawRecipientName.trim() || !withdrawAccountNumber.trim() || !withdrawBankCode.trim()) {
+      if (
+        !withdrawRecipientName.trim() ||
+        !withdrawAccountNumber.trim() ||
+        !withdrawBankCode.trim()
+      ) {
         throw new Error("Enter the recipient name, account number, and bank code.");
       }
 
@@ -399,7 +411,9 @@ export default function BillingPage() {
       await refresh();
     } catch (caught) {
       setWithdrawFormError(
-        caught instanceof Error ? caught.message : "Could not submit this withdrawal. No funds were moved."
+        caught instanceof Error
+          ? caught.message
+          : "Could not submit this withdrawal. No funds were moved."
       );
     } finally {
       setWithdrawSubmitting(false);
@@ -434,7 +448,9 @@ export default function BillingPage() {
       setIntent(updated);
       await refresh();
     } catch (caught) {
-      setVerifyError(caught instanceof Error ? caught.message : "Could not verify this payment yet.");
+      setVerifyError(
+        caught instanceof Error ? caught.message : "Could not verify this payment yet."
+      );
     } finally {
       setVerifyingPayment(false);
     }
@@ -582,14 +598,18 @@ export default function BillingPage() {
           {
             detail: pendingChargeMinor > 0 ? "Needs checkout" : "No pending charges",
             label: "Checkout Due",
-            value: loading ? <ValueSkeleton width="w-24" /> : moneyValue(pendingChargeMinor, currency)
+            value: loading ? (
+              <ValueSkeleton width="w-24" />
+            ) : (
+              moneyValue(pendingChargeMinor, currency)
+            )
           }
         ].map((item) => (
           <div
             className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-surface)] p-4"
             key={item.label}
           >
-            <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
               {item.label}
             </div>
             <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
@@ -614,7 +634,7 @@ export default function BillingPage() {
 
           <form className="mt-5 grid gap-4" id="wallet-top-up-form" onSubmit={handleSubmit}>
             <div>
-              <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+              <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                 Preset amounts
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -723,7 +743,7 @@ export default function BillingPage() {
 
           {activeTab === "history" ? (
             <div>
-              <div className="hidden grid-cols-[132px_minmax(220px,1fr)_96px_132px_132px] gap-3 border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
+              <div className="text-micro hidden grid-cols-[132px_minmax(220px,1fr)_96px_132px_132px] gap-3 border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
                 <div>Date</div>
                 <div>Description</div>
                 <div>Type</div>
@@ -743,15 +763,16 @@ export default function BillingPage() {
                         Add funds
                       </Button>
                     }
-                    copy="Add funds to your wallet to pay for campaigns, services, and more."
                     icon={CreditCard}
                     title="No transactions yet"
-                  />
+                  >
+                    Add funds to your wallet to pay for campaigns, services, and more.
+                  </EmptyState>
                 </div>
               ) : (
                 groupedActivity.map((group) => (
                   <div key={group.month}>
-                    <div className="sticky top-[52px] z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono text-micro font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
+                    <div className="text-micro sticky top-[52px] z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
                       {group.month}
                     </div>
                     {group.items.map((item) => (
@@ -771,11 +792,11 @@ export default function BillingPage() {
                           <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                             Campaign-linked wallet movement
                           </div>
-                          <div className="mt-1 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                          <div className="text-micro mt-1 font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                             {item.status}
                           </div>
                         </div>
-                        <span className="w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
+                        <span className="text-micro w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
                           {activityType(item)}
                         </span>
                         <div
@@ -790,7 +811,7 @@ export default function BillingPage() {
                           <div className="font-mono text-sm text-[var(--ft-text-muted)]">
                             {item.reference}
                           </div>
-                          <div className="flex gap-2 font-mono text-micro tracking-[0.04em] text-[var(--ft-accent)] uppercase">
+                          <div className="text-micro flex gap-2 font-mono tracking-[0.04em] text-[var(--ft-accent)] uppercase">
                             <span>Receipt</span>
                             <span>Statement</span>
                           </div>
@@ -811,21 +832,38 @@ export default function BillingPage() {
 
               {invoices === undefined ? (
                 <LoadingBlock label="Loading invoices" />
-              ) : invoices.filter((inv) => inv.status !== "DRAFT" && inv.status !== "VOID").length > 0 ? (
+              ) : invoices.filter((inv) => inv.status !== "DRAFT" && inv.status !== "VOID").length >
+                0 ? (
                 <div className="mb-6 grid gap-4">
                   {invoices
                     .filter((inv) => inv.status !== "DRAFT" && inv.status !== "VOID")
                     .map((inv) => {
                       const dueMinor = inv.totalMinor - inv.amountPaidMinor;
-                      const canPay = inv.status === "ISSUED" || inv.status === "PARTIALLY_PAID" || inv.status === "OVERDUE";
+                      const canPay =
+                        inv.status === "ISSUED" ||
+                        inv.status === "PARTIALLY_PAID" ||
+                        inv.status === "OVERDUE";
                       return (
                         <div className="grid gap-2" key={inv.id}>
                           <InvoiceCard
-                            amount={formatCampaignMoney({ amountMinor: dueMinor, currency: inv.currency })}
-                            campaign={inv.lineItems[0]?.description ?? `Campaign invoice ${inv.number}`}
-                            due={inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : "No due date"}
+                            amount={formatCampaignMoney({
+                              amountMinor: dueMinor,
+                              currency: inv.currency
+                            })}
+                            campaign={
+                              inv.lineItems[0]?.description ?? `Campaign invoice ${inv.number}`
+                            }
+                            due={
+                              inv.dueAt ? new Date(inv.dueAt).toLocaleDateString() : "No due date"
+                            }
                             invoiceNumber={inv.number}
-                            status={inv.status === "PAID" ? "paid" : inv.status === "OVERDUE" ? "overdue" : "pending"}
+                            status={
+                              inv.status === "PAID"
+                                ? "paid"
+                                : inv.status === "OVERDUE"
+                                  ? "overdue"
+                                  : "pending"
+                            }
                           />
                           {canPay ? (
                             <Button
@@ -900,10 +938,12 @@ export default function BillingPage() {
                       View Statements
                     </Button>
                   }
-                  copy="Once your campaign is approved, invoices will appear here with campaign name, service period, and a clear payment action."
                   icon={CreditCard}
                   title="No pending invoices"
-                />
+                >
+                  Once your campaign is approved, invoices will appear here with campaign name,
+                  service period, and a clear payment action.
+                </EmptyState>
               )}
             </div>
           ) : activeTab === "withdraw" ? (
@@ -984,7 +1024,7 @@ export default function BillingPage() {
                     type="button"
                   >
                     Crypto
-                    <span className="ml-1 font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    <span className="text-micro ml-1 font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                       Soon
                     </span>
                   </button>
@@ -1004,7 +1044,7 @@ export default function BillingPage() {
                   <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
                     Account name
                     <input
-                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]"
+                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)] transition outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
                       onChange={(event) => setWithdrawRecipientName(event.target.value)}
                       placeholder="Name on the bank account"
                       value={withdrawRecipientName}
@@ -1013,7 +1053,7 @@ export default function BillingPage() {
                   <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
                     Account number
                     <input
-                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]"
+                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] transition outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
                       inputMode="numeric"
                       onChange={(event) => setWithdrawAccountNumber(event.target.value)}
                       placeholder="10-digit NUBAN"
@@ -1023,7 +1063,7 @@ export default function BillingPage() {
                   <label className="grid gap-2 text-sm font-medium text-[var(--ft-text-secondary)]">
                     Bank code
                     <input
-                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] outline-none transition focus:ring-2 focus:ring-[var(--ft-accent)]"
+                      className="h-11 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-3 font-mono text-sm text-[var(--ft-text-primary)] transition outline-none focus:ring-2 focus:ring-[var(--ft-accent)]"
                       onChange={(event) => setWithdrawBankCode(event.target.value)}
                       placeholder="e.g. 044"
                       value={withdrawBankCode}
@@ -1049,7 +1089,9 @@ export default function BillingPage() {
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-[var(--ft-text-primary)]">Withdrawal history</h3>
+                <h3 className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                  Withdrawal history
+                </h3>
                 {withdrawalsError ? (
                   <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
                     {withdrawalsError}
@@ -1061,11 +1103,10 @@ export default function BillingPage() {
                   </div>
                 ) : withdrawals.length === 0 ? (
                   <div className="mt-3">
-                    <EmptyState
-                      copy="Bank withdrawals you submit will show up here with their status — on hold, processing, completed, failed, or under review."
-                      icon={WalletCards}
-                      title="No withdrawals yet"
-                    />
+                    <EmptyState icon={WalletCards} title="No withdrawals yet">
+                      Bank withdrawals you submit will show up here with their status — on hold,
+                      processing, completed, failed, or under review.
+                    </EmptyState>
                   </div>
                 ) : (
                   <div className="mt-3 grid gap-2">
@@ -1076,7 +1117,10 @@ export default function BillingPage() {
                       >
                         <div className="flex items-center justify-between gap-3">
                           <div className="text-sm font-medium text-[var(--ft-text-primary)]">
-                            {formatCampaignMoney({ amountMinor: row.amountMinor, currency: row.currency })}
+                            {formatCampaignMoney({
+                              amountMinor: row.amountMinor,
+                              currency: row.currency
+                            })}
                           </div>
                           <Badge tone={withdrawalStatusTone(row.status)}>
                             {withdrawalStatusLabel(row.status)}
@@ -1085,7 +1129,7 @@ export default function BillingPage() {
                         <div className="text-sm text-[var(--ft-text-secondary)]">
                           {row.recipientName} · {row.recipientAccountNumber}
                         </div>
-                        <div className="font-mono text-micro text-[var(--ft-text-muted)]">
+                        <div className="text-micro font-mono text-[var(--ft-text-muted)]">
                           {new Date(row.createdAt).toLocaleString()}
                           {row.providerReference ? ` · Ref ${row.providerReference}` : ""}
                         </div>
@@ -1095,7 +1139,9 @@ export default function BillingPage() {
                           </p>
                         ) : null}
                         {row.status === "FAILED" && row.failureReason ? (
-                          <p className="text-sm leading-6 text-[var(--ft-red)]">{row.failureReason}</p>
+                          <p className="text-sm leading-6 text-[var(--ft-red)]">
+                            {row.failureReason}
+                          </p>
                         ) : null}
                       </div>
                     ))}
@@ -1112,10 +1158,12 @@ export default function BillingPage() {
                     Add Card
                   </Button>
                 }
-                copy="Saved cards will appear only as tokenized payment methods returned by the secure checkout provider."
                 icon={CreditCard}
                 title="No saved payment methods"
-              />
+              >
+                Saved cards will appear only as tokenized payment methods returned by the secure
+                checkout provider.
+              </EmptyState>
             </div>
           )}
         </Panel>
@@ -1132,7 +1180,7 @@ export default function BillingPage() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] p-5">
               <div>
-                <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   Ledger detail
                 </div>
                 <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">

@@ -4,9 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Building2 } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Panel,
+  PermissionDenied
+} from "@fliptrybe/ui";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
 import {
   closeAccount,
@@ -110,11 +116,9 @@ export default function AccountsTabPage() {
           </Panel>
         ) : accounts.length === 0 ? (
           <Panel className="p-6">
-            <EmptyState
-              copy="Create your first virtual account above."
-              icon={Building2}
-              title="No accounts yet"
-            />
+            <EmptyState icon={Building2} title="No accounts yet">
+              Create your first virtual account above.
+            </EmptyState>
           </Panel>
         ) : (
           <div className="grid gap-2">

@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Copy, Eye, Plus, RefreshCw, Share2, Sparkles, Ticket } from "lucide-react";
 
-import { Badge, Button, Panel, SummaryStatStrip, ValueSkeleton, cn, humanizeStatus } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Panel,
+  SummaryStatStrip,
+  ValueSkeleton,
+  cn,
+  humanizeStatus
+} from "@fliptrybe/ui";
 
 import {
   createVoucher,
@@ -16,7 +25,7 @@ import {
   type VoucherRecord
 } from "../../vouchers/api";
 import { VoucherCard } from "../../vouchers/voucher-card";
-import { EmptyState, ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
+import { ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
 
 function statusTone(status: string): "neutral" | "success" | "warning" | "info" {
   const normalized = status.toUpperCase();
@@ -140,7 +149,10 @@ export default function VouchersPage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <Button disabled={!currentProduct || busy === "issue"} onClick={() => void issueVoucher()}>
+            <Button
+              disabled={!currentProduct || busy === "issue"}
+              onClick={() => void issueVoucher()}
+            >
               <Plus className="size-4 stroke-[1.5]" />
               {busy === "issue" ? "Issuing..." : "Issue voucher"}
             </Button>
@@ -160,10 +172,19 @@ export default function VouchersPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            { label: "vouchers issued", value: loading ? <ValueSkeleton width="w-10" /> : vouchers.length },
-            { label: "still sealed", value: loading ? <ValueSkeleton width="w-10" /> : sealedCount },
+            {
+              label: "vouchers issued",
+              value: loading ? <ValueSkeleton width="w-10" /> : vouchers.length
+            },
+            {
+              label: "still sealed",
+              value: loading ? <ValueSkeleton width="w-10" /> : sealedCount
+            },
             { label: "redeemed", value: loading ? <ValueSkeleton width="w-10" /> : redeemedCount },
-            { label: "products available", value: loading ? <ValueSkeleton width="w-10" /> : products.length }
+            {
+              label: "products available",
+              value: loading ? <ValueSkeleton width="w-10" /> : products.length
+            }
           ]}
         />
       </section>
@@ -181,7 +202,11 @@ export default function VouchersPage() {
               value={shareLink}
             />
             <Button onClick={() => void copyShareLink()} variant="secondary">
-              {copied ? <Check className="size-4 stroke-[1.5]" /> : <Copy className="size-4 stroke-[1.5]" />}
+              {copied ? (
+                <Check className="size-4 stroke-[1.5]" />
+              ) : (
+                <Copy className="size-4 stroke-[1.5]" />
+              )}
               {copied ? "Copied" : "Copy link"}
             </Button>
             <Button onClick={() => setShareLink(undefined)} variant="ghost">
@@ -315,17 +340,18 @@ export default function VouchersPage() {
                     Issue voucher
                   </Button>
                 }
-                copy="Issue a sealed voucher and it will appear here instantly."
                 icon={Sparkles}
                 title="No vouchers yet"
-              />
+              >
+                Issue a sealed voucher and it will appear here instantly.
+              </EmptyState>
             </Panel>
           ) : (
             vouchers.map((voucher) => (
               <div className="grid gap-3" key={voucher.id}>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={statusTone(voucher.status)}>{humanizeStatus(voucher.status)}</Badge>
-                  <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  <span className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                     {voucher.serialNumber}
                   </span>
                   <span className="text-sm text-[var(--ft-text-secondary)]">

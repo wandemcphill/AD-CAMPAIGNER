@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { Clock, Smartphone, Wifi } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Panel, humanizeStatus } from "@fliptrybe/ui";
+import { Badge, EmptyState, Panel, humanizeStatus } from "@fliptrybe/ui";
 
-import { EmptyState, LoadingBlock } from "../../../campaigns/components";
+import { LoadingBlock } from "../../../campaigns/components";
 import { loadVtuOrders, type VtuOrder } from "../vtu-api";
 
 function formatNaira(amountMinor: number) {
@@ -32,11 +32,9 @@ export default function AirtimeHistoryPage() {
         {loading ? (
           <LoadingBlock label="Loading history" />
         ) : orders.length === 0 ? (
-          <EmptyState
-            copy="Airtime & data purchases you make will show up here."
-            icon={Clock}
-            title="No purchases yet"
-          />
+          <EmptyState icon={Clock} title="No purchases yet">
+            Airtime & data purchases you make will show up here.
+          </EmptyState>
         ) : (
           <div className="grid gap-2">
             {orders.map((o) => (

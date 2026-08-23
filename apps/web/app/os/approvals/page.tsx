@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ClipboardCheck, RefreshCw, ShieldAlert, X } from "lucide-react";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, EmptyState } from "@fliptrybe/ui";
 
-import { EmptyState, ErrorNotice, Field, LoadingBlock, PageHeader } from "../../campaigns/components";
+import { ErrorNotice, Field, LoadingBlock, PageHeader } from "../../campaigns/components";
 import {
   decideApproval,
   loadApprovals,
@@ -44,7 +44,9 @@ function timeInQueue(createdAt: string) {
   return `${Math.floor(hours / 24)}d`;
 }
 
-function statusTone(status: ApprovalRequestRecord["status"]): "neutral" | "success" | "warning" | "danger" | "info" {
+function statusTone(
+  status: ApprovalRequestRecord["status"]
+): "neutral" | "success" | "warning" | "danger" | "info" {
   if (status === "APPROVED" || status === "EXECUTED") return "success";
   if (status === "REJECTED" || status === "EXECUTION_FAILED") return "danger";
   return "warning";
@@ -54,7 +56,9 @@ function payloadBudget(payload: Record<string, unknown>) {
   const amountMinor = payload["amountMinor"];
   const currency = payload["currency"];
   if (typeof amountMinor === "number" && typeof currency === "string") {
-    return new Intl.NumberFormat("en-NG", { style: "currency", currency }).format(amountMinor / 100);
+    return new Intl.NumberFormat("en-NG", { style: "currency", currency }).format(
+      amountMinor / 100
+    );
   }
   return "-";
 }
@@ -128,7 +132,7 @@ export default function ApprovalsQueuePage() {
 
       <div className="mt-5 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
             Status
           </span>
           {statusFilters.map((filter) => (
@@ -147,7 +151,7 @@ export default function ApprovalsQueuePage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
             Type
           </span>
           {typeFilters.map((filter) => (
@@ -168,7 +172,7 @@ export default function ApprovalsQueuePage() {
       </div>
 
       <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
-        <div className="hidden grid-cols-[1fr_140px_120px_100px_180px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
+        <div className="text-micro hidden grid-cols-[1fr_140px_120px_100px_180px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
           <div>Client / Reason</div>
           <div>Campaign Type</div>
           <div>Budget</div>
@@ -182,11 +186,11 @@ export default function ApprovalsQueuePage() {
             </div>
           ) : requests.length === 0 ? (
             <div className="p-4">
-              <EmptyState
-                copy="Only requests routed through the dual-approval engine (currently Digital Access refunds/reversals) show up here. Campaign and KYC approvals still use their own review screens."
-                icon={ClipboardCheck}
-                title="Nothing in the queue"
-              />
+              <EmptyState icon={ClipboardCheck} title="Nothing in the queue">
+                Only requests routed through the dual-approval engine (currently Digital Access
+                refunds/reversals) show up here. Campaign and KYC approvals still use their own
+                review screens.
+              </EmptyState>
             </div>
           ) : (
             requests.map((request) => (
@@ -203,7 +207,9 @@ export default function ApprovalsQueuePage() {
                   {payloadBudget(request.payload)}
                 </div>
                 <div className="flex items-center gap-1 text-sm text-[var(--ft-text-secondary)]">
-                  {status === "flagged" ? <ShieldAlert className="size-3.5 text-[var(--ft-yellow)]" /> : null}
+                  {status === "flagged" ? (
+                    <ShieldAlert className="size-3.5 text-[var(--ft-yellow)]" />
+                  ) : null}
                   {timeInQueue(request.createdAt)}
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -224,7 +230,11 @@ export default function ApprovalsQueuePage() {
                     <X className="size-3.5" />
                     Reject
                   </Button>
-                  <Button onClick={() => setSelectedId(request.id)} type="button" variant="secondary">
+                  <Button
+                    onClick={() => setSelectedId(request.id)}
+                    type="button"
+                    variant="secondary"
+                  >
                     View Details
                   </Button>
                 </div>
@@ -245,10 +255,12 @@ export default function ApprovalsQueuePage() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] p-5">
               <div>
-                <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   Approval detail
                 </div>
-                <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">{selected.action}</h2>
+                <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">
+                  {selected.action}
+                </h2>
               </div>
               <button
                 aria-label="Close approval detail"
@@ -264,13 +276,16 @@ export default function ApprovalsQueuePage() {
               <Badge tone={statusTone(selected.status)}>{selected.status}</Badge>
 
               <Field label="Reason (Campaign Creative / Notes)" value={selected.reason} />
-              <Field label="Target / Entity" value={`${selected.entityType} · ${selected.entityId}`} />
+              <Field
+                label="Target / Entity"
+                value={`${selected.entityType} · ${selected.entityId}`}
+              />
               <Field label="Budget" value={payloadBudget(selected.payload)} />
               <Field label="Requested by" value={selected.requestedByUserId} />
               <Field label="Time in queue" value={timeInQueue(selected.createdAt)} />
 
               <div>
-                <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   Risk score
                 </div>
                 <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">

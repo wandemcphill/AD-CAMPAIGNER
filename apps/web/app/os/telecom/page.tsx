@@ -4,10 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock, Globe2, Smartphone, Sparkles, Wifi } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, PermissionDenied, cn, humanizeStatus } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Panel,
+  PermissionDenied,
+  cn,
+  humanizeStatus
+} from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
 import {
   buyTelecomAirtime,
@@ -105,7 +113,11 @@ export default function TelecomGatewayPage() {
       const first = result.operators[0];
       if (first) void selectOperator(first.operatorId, result.countryIso);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not detect the country or operator for this number.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not detect the country or operator for this number."
+      );
     } finally {
       setDetecting(false);
     }
@@ -119,7 +131,9 @@ export default function TelecomGatewayPage() {
       setAirtimeProducts(products.airtime);
       setDataBundles(products.data);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load products for this operator.");
+      setError(
+        caught instanceof Error ? caught.message : "Could not load products for this operator."
+      );
     }
   }
 
@@ -209,8 +223,8 @@ export default function TelecomGatewayPage() {
   if (forbidden) {
     return (
       <PermissionDenied>
-        You do not have permission to view telecom for this workspace. Contact your workspace
-        owner if you believe this is a mistake.
+        You do not have permission to view telecom for this workspace. Contact your workspace owner
+        if you believe this is a mistake.
       </PermissionDenied>
     );
   }
@@ -261,14 +275,12 @@ export default function TelecomGatewayPage() {
                     </div>
 
                     {detected.operators.length === 0 ? (
-                      <EmptyState
-                        copy="No operators are currently supported for this country."
-                        icon={Globe2}
-                        title="No operators available"
-                      />
+                      <EmptyState icon={Globe2} title="No operators available">
+                        No operators are currently supported for this country.
+                      </EmptyState>
                     ) : (
                       <>
-                        <h2 className="mb-2 mt-4 text-sm font-medium text-[var(--ft-text-muted)]">
+                        <h2 className="mt-4 mb-2 text-sm font-medium text-[var(--ft-text-muted)]">
                           Operator
                         </h2>
                         <div className="grid grid-cols-2 gap-2">
@@ -281,7 +293,9 @@ export default function TelecomGatewayPage() {
                                   : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
                               )}
                               key={op.operatorId}
-                              onClick={() => void selectOperator(op.operatorId, detected.countryIso)}
+                              onClick={() =>
+                                void selectOperator(op.operatorId, detected.countryIso)
+                              }
                               type="button"
                             >
                               {op.name}
@@ -350,11 +364,9 @@ export default function TelecomGatewayPage() {
                             {mode === "data" && (
                               <div className="mt-4">
                                 {dataBundles.length === 0 ? (
-                                  <EmptyState
-                                    copy="No data bundles are currently available for this operator."
-                                    icon={Wifi}
-                                    title="No bundles available"
-                                  />
+                                  <EmptyState icon={Wifi} title="No bundles available">
+                                    No data bundles are currently available for this operator.
+                                  </EmptyState>
                                 ) : (
                                   <div className="grid gap-2">
                                     {dataBundles.map((b) => (
@@ -410,11 +422,9 @@ export default function TelecomGatewayPage() {
               {loading ? (
                 <LoadingBlock label="Loading history" />
               ) : orders.length === 0 ? (
-                <EmptyState
-                  copy="International top-ups you make will show up here."
-                  icon={Clock}
-                  title="No purchases yet"
-                />
+                <EmptyState icon={Clock} title="No purchases yet">
+                  International top-ups you make will show up here.
+                </EmptyState>
               ) : (
                 <div className="grid gap-2">
                   {orders.map((o) => (

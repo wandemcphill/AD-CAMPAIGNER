@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Sparkles, Tv } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Button, Panel, cn } from "@fliptrybe/ui";
+import { Button, EmptyState, Panel, cn } from "@fliptrybe/ui";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import {
   buyCable,
   loadCablePackages,
@@ -114,8 +114,8 @@ export default function CableTabPage() {
           </p>
           {success.status === "AMBIGUOUS" && (
             <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-left text-xs leading-5 text-[var(--ft-text-secondary)]">
-              Delivery could not be confirmed immediately. Our ops team is reviewing this order — you
-              won&apos;t be double-charged either way.
+              Delivery could not be confirmed immediately. Our ops team is reviewing this order —
+              you won&apos;t be double-charged either way.
             </div>
           )}
           <Button className="mt-4" onClick={() => setSuccess(undefined)} variant="secondary">
@@ -166,7 +166,9 @@ export default function CableTabPage() {
           </div>
           {cardValidation?.valid && (
             <div className="mt-2 rounded-[var(--radius-md)] border border-[var(--ft-green)]/30 bg-[var(--ft-green)]/5 p-3 text-sm">
-              <div className="font-medium">{cardValidation.customerName ?? "Smartcard verified"}</div>
+              <div className="font-medium">
+                {cardValidation.customerName ?? "Smartcard verified"}
+              </div>
             </div>
           )}
         </div>
@@ -186,11 +188,9 @@ export default function CableTabPage() {
           {loadingPackages ? (
             <LoadingBlock label="Loading packages" />
           ) : packages.length === 0 ? (
-            <EmptyState
-              copy="No packages are currently available for this provider."
-              icon={Tv}
-              title="No packages available"
-            />
+            <EmptyState icon={Tv} title="No packages available">
+              No packages are currently available for this provider.
+            </EmptyState>
           ) : (
             <div className="grid max-h-72 gap-2 overflow-y-auto">
               {packages.map((pkg) => (
@@ -218,7 +218,11 @@ export default function CableTabPage() {
         <Button
           className="mt-4 w-full justify-center"
           disabled={
-            !smartCardNumber.trim() || !cablePhone.trim() || !selectedPackage || !cardValidation?.valid || submitting
+            !smartCardNumber.trim() ||
+            !cablePhone.trim() ||
+            !selectedPackage ||
+            !cardValidation?.valid ||
+            submitting
           }
           onClick={() => void submitCable()}
         >

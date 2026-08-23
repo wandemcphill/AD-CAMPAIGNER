@@ -25,6 +25,7 @@ import {
 import {
   Badge,
   Button,
+  EmptyState,
   Panel,
   PermissionDenied,
   PlatformChip,
@@ -44,7 +45,6 @@ import {
   submitCampaign as submitCampaignForReview
 } from "../../../campaigns/api";
 import {
-  EmptyState,
   ErrorNotice,
   LoadingBlock,
   PageHeader,
@@ -85,27 +85,32 @@ type CampaignFormState = {
 
 const builderSteps = [
   {
-    description: "Tell the team what you sell, where traffic should go, and what success looks like.",
+    description:
+      "Tell the team what you sell, where traffic should go, and what success looks like.",
     label: "Campaign Basics",
     title: "Brief us on the outcome"
   },
   {
-    description: "Share directional audience signals so specialists can refine targeting inside each ad platform.",
+    description:
+      "Share directional audience signals so specialists can refine targeting inside each ad platform.",
     label: "Audience & Targeting",
     title: "Define who we should reach"
   },
   {
-    description: "Choose the first destination and note any placement preference for the launch plan.",
+    description:
+      "Choose the first destination and note any placement preference for the launch plan.",
     label: "Platforms & Placement",
     title: "Pick where the campaign should run"
   },
   {
-    description: "Set the funding range, flight dates, and daily pacing expectation for invoice review.",
+    description:
+      "Set the funding range, flight dates, and daily pacing expectation for invoice review.",
     label: "Budget & Flight",
     title: "Plan the spend"
   },
   {
-    description: "Upload source assets and approve the handoff details before the team review starts.",
+    description:
+      "Upload source assets and approve the handoff details before the team review starts.",
     label: "Creative Handoff",
     title: "Send the brief to the team"
   }
@@ -121,13 +126,21 @@ const stepGuidance = [
   {
     body: "Audience notes should be directional, not overbuilt. The specialist will translate this into platform-ready targeting and exclusions.",
     icon: Users,
-    points: ["Core geography and age range", "Interest or buyer signals", "Language and audience sensitivity notes"],
+    points: [
+      "Core geography and age range",
+      "Interest or buyer signals",
+      "Language and audience sensitivity notes"
+    ],
     title: "Audience signals"
   },
   {
     body: "Pick the channel that best matches the asset and buying intent. The team can still adjust placement after reviewing the creative.",
     icon: Target,
-    points: ["Destination that should receive traffic", "Preferred content format", "Any placement you want avoided"],
+    points: [
+      "Destination that should receive traffic",
+      "Preferred content format",
+      "Any placement you want avoided"
+    ],
     title: "Channel fit"
   },
   {
@@ -413,7 +426,7 @@ function StepHeading({ activeStep }: { activeStep: number }) {
 
   return (
     <div>
-      <div className="font-mono text-xs font-medium uppercase tracking-[0.15em] text-[var(--ft-accent)]">
+      <div className="font-mono text-xs font-medium tracking-[0.15em] text-[var(--ft-accent)] uppercase">
         Step {activeStep + 1} of {builderSteps.length}
       </div>
       <h2 className="mt-2 text-xl font-semibold text-[var(--ft-text-primary)]">{step.title}</h2>
@@ -428,7 +441,9 @@ function ReviewRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1 border-b border-[var(--ft-border)] py-3 last:border-b-0 sm:grid-cols-[160px_1fr] sm:gap-4">
       <dt className="text-sm text-[var(--ft-text-muted)]">{label}</dt>
-      <dd className="text-sm font-medium text-[var(--ft-text-primary)]">{value || "Not provided"}</dd>
+      <dd className="text-sm font-medium text-[var(--ft-text-primary)]">
+        {value || "Not provided"}
+      </dd>
     </div>
   );
 }
@@ -450,7 +465,9 @@ function UploadZone({ label, spec }: { label: string; spec: string }) {
 
     const extension = `.${file.name.split(".").pop()?.toLowerCase() ?? ""}`;
     if (!acceptedUploadMimeTypes.has(file.type) && !acceptedUploadTypes.includes(extension)) {
-      setUploadError("That file type isn't supported. Upload PNG, JPG, PDF, MP4, MOV, or ZIP under 50MB.");
+      setUploadError(
+        "That file type isn't supported. Upload PNG, JPG, PDF, MP4, MOV, or ZIP under 50MB."
+      );
       event.target.value = "";
       return;
     }
@@ -475,7 +492,7 @@ function UploadZone({ label, spec }: { label: string; spec: string }) {
       {fileName ? (
         <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-2 text-left">
           <span className="min-w-0 truncate text-sm text-[var(--ft-text-primary)]">{fileName}</span>
-          <span className="shrink-0 font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="text-micro shrink-0 font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
             {fileSize}
           </span>
         </div>
@@ -599,7 +616,9 @@ export default function NewCampaignPage() {
       window.localStorage.removeItem(wizardStepStorageKey);
 
       try {
-        const submitted = await submitCampaignForReview(created.id, { reason: "Submitted from Studio wizard" });
+        const submitted = await submitCampaignForReview(created.id, {
+          reason: "Submitted from Studio wizard"
+        });
         setCreatedCampaign(submitted);
       } catch {
         // The campaign row exists (as DRAFT) even though the submit call
@@ -615,7 +634,9 @@ export default function NewCampaignPage() {
         // generic retry message the user can't act on.
         setAgeRestricted(true);
       } else {
-        setFormError("We could not send this brief right now. Your draft is still here, so try again in a moment.");
+        setFormError(
+          "We could not send this brief right now. Your draft is still here, so try again in a moment."
+        );
       }
     } finally {
       setSubmitting(false);
@@ -700,11 +721,13 @@ export default function NewCampaignPage() {
                 Before you launch your first campaign, we need a few details about your business.
               </h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
-                Complete company, contact, destination, and billing context first. This helps our operators prepare
-                your campaign plan, invoice the right business, and keep reviews moving without chasing basics.
+                Complete company, contact, destination, and billing context first. This helps our
+                operators prepare your campaign plan, invoice the right business, and keep reviews
+                moving without chasing basics.
               </p>
-              <p className="mt-2 text-xs font-medium uppercase tracking-[0.08em] text-[var(--ft-accent)]">
-                Add business info, contact, billing context, and brand links to unlock campaign submission.
+              <p className="mt-2 text-xs font-medium tracking-[0.08em] text-[var(--ft-accent)] uppercase">
+                Add business info, contact, billing context, and brand links to unlock campaign
+                submission.
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
@@ -720,7 +743,10 @@ export default function NewCampaignPage() {
           <div className="grid border-t border-[var(--ft-border)] bg-[var(--ft-bg-muted)] md:grid-cols-3">
             {profileGateSteps.map((item, index) => (
               <div
-                className={cn("p-4", index > 0 ? "border-t border-[var(--ft-border)] md:border-l md:border-t-0" : "")}
+                className={cn(
+                  "p-4",
+                  index > 0 ? "border-t border-[var(--ft-border)] md:border-t-0 md:border-l" : ""
+                )}
                 key={item.label}
               >
                 <div className="flex items-center gap-3">
@@ -729,7 +755,9 @@ export default function NewCampaignPage() {
                   </div>
                   <div className="font-medium text-[var(--ft-text-primary)]">{item.label}</div>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-[var(--ft-text-secondary)]">{item.body}</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                  {item.body}
+                </p>
               </div>
             ))}
           </div>
@@ -747,221 +775,229 @@ export default function NewCampaignPage() {
       </section>
 
       {businessProfileComplete ? (
-      <section className="mt-6 grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_340px]">
-        <div className="xl:col-span-3">
-          <WizardStepBar current={createdCampaign ? builderSteps.length : activeStep} steps={builderSteps.map((step) => step.label)} />
-        </div>
-        <aside className="hidden xl:block">
-          <div className="sticky top-20 min-h-[520px] border-l border-[var(--ft-border)] bg-[var(--ft-bg-surface)] py-4">
-            <div className="px-4 pb-4">
-              <div className="font-mono text-micro font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                Client brief
+        <section className="mt-6 grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_340px]">
+          <div className="xl:col-span-3">
+            <WizardStepBar
+              current={createdCampaign ? builderSteps.length : activeStep}
+              steps={builderSteps.map((step) => step.label)}
+            />
+          </div>
+          <aside className="hidden xl:block">
+            <div className="sticky top-20 min-h-[520px] border-l border-[var(--ft-border)] bg-[var(--ft-bg-surface)] py-4">
+              <div className="px-4 pb-4">
+                <div className="text-micro font-mono font-medium tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+                  Client brief
+                </div>
+                <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                  Tell us what to promote. Our team reviews, plans, and launches the campaign.
+                </p>
               </div>
-              <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                Tell us what to promote. Our team reviews, plans, and launches the campaign.
-              </p>
-            </div>
-            <div className="grid">
-              {builderSteps.map((step, index) => {
-                const completed = Boolean(createdCampaign) || index < activeStep;
-                const current = !createdCampaign && index === activeStep;
+              <div className="grid">
+                {builderSteps.map((step, index) => {
+                  const completed = Boolean(createdCampaign) || index < activeStep;
+                  const current = !createdCampaign && index === activeStep;
 
-                return (
-                  <button
-                    className={cn(
-                      "grid grid-cols-[28px_1fr] gap-3 border-l-2 px-4 py-3 text-left transition",
-                      completed
-                        ? "border-l-transparent text-[var(--ft-text-primary)]"
-                        : "border-l-transparent text-[var(--ft-text-muted)]",
-                      current &&
-                        "border-l-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)]"
-                    )}
-                    key={step.label}
-                    onClick={() => {
-                      setFormError(undefined);
-                      setActiveStep(index);
-                    }}
-                    type="button"
-                  >
+                  return (
+                    <button
+                      className={cn(
+                        "grid grid-cols-[28px_1fr] gap-3 border-l-2 px-4 py-3 text-left transition",
+                        completed
+                          ? "border-l-transparent text-[var(--ft-text-primary)]"
+                          : "border-l-transparent text-[var(--ft-text-muted)]",
+                        current &&
+                          "border-l-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-text-primary)]"
+                      )}
+                      key={step.label}
+                      onClick={() => {
+                        setFormError(undefined);
+                        setActiveStep(index);
+                      }}
+                      type="button"
+                    >
+                      <span
+                        className={cn(
+                          "text-micro mt-0.5 grid size-7 place-items-center rounded-[var(--radius-sm)] border font-mono",
+                          completed
+                            ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
+                            : current
+                              ? "border-[var(--ft-accent)] text-[var(--ft-accent)]"
+                              : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-text-muted)]"
+                        )}
+                      >
+                        {completed ? <Check className="size-4 stroke-[2]" /> : index + 1}
+                      </span>
+                      <span>
+                        <span
+                          className={cn("block text-sm", current ? "font-semibold" : "font-medium")}
+                        >
+                          {step.label}
+                        </span>
+                        <span className="mt-1 block text-xs leading-5 text-[var(--ft-text-muted)]">
+                          {step.description}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </aside>
+
+          <div className="xl:hidden">
+            <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-micro font-mono tracking-[0.15em] text-[var(--ft-accent)] uppercase">
+                    Step {activeStep + 1} of {builderSteps.length}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-[var(--ft-text-primary)]">
+                    {activeStepMeta.label}
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  {builderSteps.map((step, index) => (
                     <span
                       className={cn(
-                        "mt-0.5 grid size-7 place-items-center rounded-[var(--radius-sm)] border font-mono text-micro",
-                        completed
-                          ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
-                          : current
-                            ? "border-[var(--ft-accent)] text-[var(--ft-accent)]"
-                            : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-text-muted)]"
+                        "block size-2 rounded-full",
+                        index <= activeStep || createdCampaign
+                          ? "bg-[var(--ft-accent)]"
+                          : "bg-[var(--ft-border-strong)]"
+                      )}
+                      key={step.label}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <Panel className="overflow-hidden bg-[var(--ft-bg-surface)]">
+            {createdCampaign ? (
+              <div className="grid gap-6 p-5">
+                <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] pb-5">
+                  <div>
+                    <div
+                      className={cn(
+                        "text-micro inline-flex items-center gap-2 rounded-[var(--radius-sm)] border px-2 py-1 font-mono tracking-[0.04em] uppercase",
+                        createdCampaign.status === "REJECTED"
+                          ? "border-[var(--ft-red)]/40 bg-[var(--ft-red-subtle)] text-[var(--ft-red)]"
+                          : "border-[var(--ft-green)]/40 bg-[var(--ft-green-subtle)] text-[var(--ft-green)]"
                       )}
                     >
-                      {completed ? <Check className="size-4 stroke-[2]" /> : index + 1}
-                    </span>
-                    <span>
-                      <span className={cn("block text-sm", current ? "font-semibold" : "font-medium")}>
-                        {step.label}
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 text-[var(--ft-text-muted)]">
-                        {step.description}
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </aside>
-
-        <div className="xl:hidden">
-          <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-accent)]">
-                  Step {activeStep + 1} of {builderSteps.length}
-                </div>
-                <div className="mt-1 text-sm font-semibold text-[var(--ft-text-primary)]">
-                  {activeStepMeta.label}
-                </div>
-              </div>
-              <div className="flex gap-1.5">
-                {builderSteps.map((step, index) => (
-                  <span
-                    className={cn(
-                      "block size-2 rounded-full",
-                      index <= activeStep || createdCampaign
-                        ? "bg-[var(--ft-accent)]"
-                        : "bg-[var(--ft-border-strong)]"
-                    )}
-                    key={step.label}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Panel className="overflow-hidden bg-[var(--ft-bg-surface)]">
-          {createdCampaign ? (
-            <div className="grid gap-6 p-5">
-              <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] pb-5">
-                <div>
-                  <div
-                    className={cn(
-                      "inline-flex items-center gap-2 rounded-[var(--radius-sm)] border px-2 py-1 font-mono text-micro uppercase tracking-[0.04em]",
-                      createdCampaign.status === "REJECTED"
-                        ? "border-[var(--ft-red)]/40 bg-[var(--ft-red-subtle)] text-[var(--ft-red)]"
-                        : "border-[var(--ft-green)]/40 bg-[var(--ft-green-subtle)] text-[var(--ft-green)]"
-                    )}
-                  >
-                    <CheckCircle2 className="size-4 stroke-[1.5]" />
-                    {createdCampaign.status === "REJECTED" ? "Brief blocked" : "Brief received"}
-                  </div>
-                  <h2 className="mt-4 text-2xl font-semibold text-[var(--ft-text-primary)]">
-                    {createdCampaign.status === "REJECTED"
-                      ? "This brief was blocked by our risk controls."
-                      : "Our team has your campaign brief."}
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
-                    {createdCampaign.status === "REJECTED"
-                      ? "Nothing was charged. Open the campaign to see the reason, then get in touch or adjust the brief and resubmit."
-                      : "Brief sent. Your campaign is now in review with the Fliptrybe team. We'll confirm your campaign plan within 1 business day and send you an invoice to fund your campaign."}
-                  </p>
-                </div>
-                <Rocket className="hidden size-6 stroke-[1.5] text-[var(--ft-accent)] sm:block" />
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[1fr_0.75fr]">
-                <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                  <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                    Reference ID
-                  </div>
-                  <div className="mt-2 break-all font-mono text-xl text-[var(--ft-text-primary)]">
-                    {referenceId}
-                  </div>
-                  <div className="mt-5 grid gap-3 text-sm">
-                    <div className="flex justify-between gap-3">
-                      <span className="text-[var(--ft-text-secondary)]">Campaign</span>
-                      <span className="text-right font-medium text-[var(--ft-text-primary)]">
-                        {createdCampaign.name}
-                      </span>
+                      <CheckCircle2 className="size-4 stroke-[1.5]" />
+                      {createdCampaign.status === "REJECTED" ? "Brief blocked" : "Brief received"}
                     </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-[var(--ft-text-secondary)]">Budget</span>
-                      <span className="font-mono text-[var(--ft-text-primary)]">
-                        {formatCampaignMoney(createdCampaign.budget)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-[var(--ft-text-secondary)]">Current status</span>
-                      <StatusBadge status={createdCampaign.status} />
-                    </div>
+                    <h2 className="mt-4 text-2xl font-semibold text-[var(--ft-text-primary)]">
+                      {createdCampaign.status === "REJECTED"
+                        ? "This brief was blocked by our risk controls."
+                        : "Our team has your campaign brief."}
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">
+                      {createdCampaign.status === "REJECTED"
+                        ? "Nothing was charged. Open the campaign to see the reason, then get in touch or adjust the brief and resubmit."
+                        : "Brief sent. Your campaign is now in review with the Fliptrybe team. We'll confirm your campaign plan within 1 business day and send you an invoice to fund your campaign."}
+                    </p>
                   </div>
+                  <Rocket className="hidden size-6 stroke-[1.5] text-[var(--ft-accent)] sm:block" />
                 </div>
 
-                <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                  <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                    Expected timeline
-                  </div>
-                  <div className="mt-4 grid gap-4">
-                    {[
-                      {
-                        detail: "Your reference ID is ready for tracking.",
-                        label: "Submission received",
-                        state: "done"
-                      },
-                      {
-                        detail: "The team checks objective, budget, targeting, and assets.",
-                        label: "Team review",
-                        state: "current"
-                      },
-                      {
-                        detail: "Setup and launch usually follow in 1-3 business days once clear.",
-                        label: "Setup and launch",
-                        state: "upcoming"
-                      }
-                    ].map((item) => (
-                      <div className="grid grid-cols-[20px_1fr] gap-3" key={item.label}>
-                        <span
-                          className={cn(
-                            "mt-1 grid size-5 place-items-center rounded-full border",
-                            item.state === "done"
-                              ? "border-[var(--ft-green)] bg-[var(--ft-green)] text-[var(--ft-bg-base)]"
-                              : item.state === "current"
-                                ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
-                                : "border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)]"
-                          )}
-                        >
-                          {item.state === "done" ? <Check className="size-3.5 stroke-[2]" /> : null}
-                        </span>
-                        <span>
-                          <span className="block text-sm font-medium text-[var(--ft-text-primary)]">
-                            {item.label}
-                          </span>
-                          <span className="mt-1 block text-xs leading-5 text-[var(--ft-text-secondary)]">
-                            {item.detail}
-                          </span>
+                <div className="grid gap-4 lg:grid-cols-[1fr_0.75fr]">
+                  <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                    <div className="text-micro font-mono tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+                      Reference ID
+                    </div>
+                    <div className="mt-2 font-mono text-xl break-all text-[var(--ft-text-primary)]">
+                      {referenceId}
+                    </div>
+                    <div className="mt-5 grid gap-3 text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="text-[var(--ft-text-secondary)]">Campaign</span>
+                        <span className="text-right font-medium text-[var(--ft-text-primary)]">
+                          {createdCampaign.name}
                         </span>
                       </div>
-                    ))}
+                      <div className="flex justify-between gap-3">
+                        <span className="text-[var(--ft-text-secondary)]">Budget</span>
+                        <span className="font-mono text-[var(--ft-text-primary)]">
+                          {formatCampaignMoney(createdCampaign.budget)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <span className="text-[var(--ft-text-secondary)]">Current status</span>
+                        <StatusBadge status={createdCampaign.status} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                    <div className="text-micro font-mono tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+                      Expected timeline
+                    </div>
+                    <div className="mt-4 grid gap-4">
+                      {[
+                        {
+                          detail: "Your reference ID is ready for tracking.",
+                          label: "Submission received",
+                          state: "done"
+                        },
+                        {
+                          detail: "The team checks objective, budget, targeting, and assets.",
+                          label: "Team review",
+                          state: "current"
+                        },
+                        {
+                          detail:
+                            "Setup and launch usually follow in 1-3 business days once clear.",
+                          label: "Setup and launch",
+                          state: "upcoming"
+                        }
+                      ].map((item) => (
+                        <div className="grid grid-cols-[20px_1fr] gap-3" key={item.label}>
+                          <span
+                            className={cn(
+                              "mt-1 grid size-5 place-items-center rounded-full border",
+                              item.state === "done"
+                                ? "border-[var(--ft-green)] bg-[var(--ft-green)] text-[var(--ft-bg-base)]"
+                                : item.state === "current"
+                                  ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
+                                  : "border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)]"
+                            )}
+                          >
+                            {item.state === "done" ? (
+                              <Check className="size-3.5 stroke-[2]" />
+                            ) : null}
+                          </span>
+                          <span>
+                            <span className="block text-sm font-medium text-[var(--ft-text-primary)]">
+                              {item.label}
+                            </span>
+                            <span className="mt-1 block text-xs leading-5 text-[var(--ft-text-secondary)]">
+                              {item.detail}
+                            </span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex flex-col gap-3 border-t border-[var(--ft-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  className="text-left text-sm font-medium text-[var(--ft-text-secondary)] hover:text-[var(--ft-text-primary)]"
-                  onClick={handleBriefAnotherCampaign}
-                  type="button"
-                >
-                  Brief another campaign
-                </button>
-                <Link className={linkButtonClass} href={`/os/campaigns/${createdCampaign.id}`}>
-                  View Campaign Status
-                  <ArrowRight className="size-4 stroke-[1.5]" />
-                </Link>
+                <div className="flex flex-col gap-3 border-t border-[var(--ft-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    className="text-left text-sm font-medium text-[var(--ft-text-secondary)] hover:text-[var(--ft-text-primary)]"
+                    onClick={handleBriefAnotherCampaign}
+                    type="button"
+                  >
+                    Brief another campaign
+                  </button>
+                  <Link className={linkButtonClass} href={`/os/campaigns/${createdCampaign.id}`}>
+                    View Campaign Status
+                    <ArrowRight className="size-4 stroke-[1.5]" />
+                  </Link>
+                </div>
               </div>
-            </div>
-          ) : (
-            <form className="grid" onSubmit={handleSubmit}>
-              <div className="border-b border-[var(--ft-border)] p-5">
+            ) : (
+              <form className="grid" onSubmit={handleSubmit}>
+                <div className="border-b border-[var(--ft-border)] p-5">
                   <StepHeading activeStep={activeStep} />
                   <div className="mt-4 grid gap-2 sm:grid-cols-3">
                     {["Strategy review", "Invoice check", "Operator launch"].map((item) => (
@@ -976,648 +1012,667 @@ export default function NewCampaignPage() {
                   </div>
                 </div>
 
-              <div className="min-h-[520px] p-5">
-                {activeStep === 0 ? (
-                  <section className="grid gap-5">
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <label className={labelClass}>
-                        Campaign name
-                        <input
-                          className={inputClass}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, name: event.target.value }))
-                          }
-                          value={form.name}
-                        />
-                      </label>
-                      <label className={labelClass}>
-                        Landing URL
-                        <span className="flex h-11 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-4 focus-within:border-[var(--ft-accent)]">
-                          <LinkIcon className="size-4 shrink-0 stroke-[1.5] text-[var(--ft-text-muted)]" />
+                <div className="min-h-[520px] p-5">
+                  {activeStep === 0 ? (
+                    <section className="grid gap-5">
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <label className={labelClass}>
+                          Campaign name
                           <input
-                            className="min-w-0 flex-1 bg-transparent text-[var(--ft-text-primary)] outline-none"
+                            className={inputClass}
                             onChange={(event) =>
-                              setForm((current) => ({ ...current, destinationUrl: event.target.value }))
+                              setForm((current) => ({ ...current, name: event.target.value }))
                             }
-                            value={form.destinationUrl}
+                            value={form.name}
                           />
-                        </span>
-                      </label>
-                    </div>
-
-                    <div>
-                      <div className="mb-2 text-xs font-medium text-[var(--ft-text-secondary)]">
-                        Campaign objective
-                      </div>
-                      <div className="grid gap-2 lg:grid-cols-2">
-                        {objectiveOptions.map((objective) => (
-                          <button
-                            className={cn(
-                              "grid min-h-20 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[var(--radius-sm)] border px-3 py-3 text-left transition",
-                              form.objective === objective
-                                ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)]"
-                                : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] hover:border-[var(--ft-border-strong)]"
-                            )}
-                            key={objective}
-                            onClick={() =>
-                              setForm((current) => ({
-                                ...current,
-                                objective
-                              }))
-                            }
-                            type="button"
-                          >
-                            <CircleDot className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
-                            <span>
-                              <span className="block text-sm font-medium text-[var(--ft-text-primary)]">
-                                {objectiveLabels[objective]}
-                              </span>
-                              <span className="mt-1 block text-xs leading-5 text-[var(--ft-text-secondary)]">
-                                {objectiveHint(objective)}
-                              </span>
-                            </span>
-                            <span
-                              className={cn(
-                                "size-3 rounded-full border",
-                                form.objective === objective
-                                  ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]"
-                                  : "border-[var(--ft-border-strong)]"
-                              )}
+                        </label>
+                        <label className={labelClass}>
+                          Landing URL
+                          <span className="flex h-11 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] px-4 focus-within:border-[var(--ft-accent)]">
+                            <LinkIcon className="size-4 shrink-0 stroke-[1.5] text-[var(--ft-text-muted)]" />
+                            <input
+                              className="min-w-0 flex-1 bg-transparent text-[var(--ft-text-primary)] outline-none"
+                              onChange={(event) =>
+                                setForm((current) => ({
+                                  ...current,
+                                  destinationUrl: event.target.value
+                                }))
+                              }
+                              value={form.destinationUrl}
                             />
-                          </button>
-                        ))}
+                          </span>
+                        </label>
                       </div>
-                    </div>
 
-                    <label className={labelClass}>
-                      What are you promoting?
-                      <textarea
-                        className={textareaClass}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, promotion: event.target.value }))
-                        }
-                        value={form.promotion}
-                      />
-                    </label>
-                    <label className={labelClass}>
-                      Key message or tagline
-                      <input
-                        className={inputClass}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, keyMessage: event.target.value }))
-                        }
-                        value={form.keyMessage}
-                      />
-                    </label>
-                  </section>
-                ) : null}
-
-                {activeStep === 1 ? (
-                  <section className="grid gap-5">
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <label className={labelClass}>
-                        Primary target country or region
-                        <input
-                          className={inputClass}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, targetRegion: event.target.value }))
-                          }
-                          value={form.targetRegion}
-                        />
-                      </label>
-                      <label className={labelClass}>
-                        Age range
-                        <input
-                          className={inputClass}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, ageRange: event.target.value }))
-                          }
-                          value={form.ageRange}
-                        />
-                      </label>
-                      <label className={labelClass}>
-                        Gender
-                        <select
-                          className={inputClass}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, gender: event.target.value }))
-                          }
-                          value={form.gender}
-                        >
-                          {["All", "Male", "Female", "Non-binary-inclusive"].map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className={labelClass}>
-                        Language targeting
-                        <input
-                          className={inputClass}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, language: event.target.value }))
-                          }
-                          value={form.language}
-                        />
-                      </label>
-                    </div>
-                    <label className={labelClass}>
-                      Interest signals
-                      <textarea
-                        className={textareaClass}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, interests: event.target.value }))
-                        }
-                        value={form.interests}
-                      />
-                    </label>
-                    {personas.length > 0 ? (
-                      <label className={labelClass}>
-                        Persona (optional)
-                        <select
-                          className={inputClass}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, personaId: event.target.value }))
-                          }
-                          value={form.personaId}
-                        >
-                          <option value="">No persona — use audience signals only</option>
-                          {personas.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} · {p.role}
-                            </option>
-                          ))}
-                        </select>
-                        <span className={helperClass}>Attach an active persona to inform creative voice and audience fit.</span>
-                      </label>
-                    ) : null}
-                    <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                      <div className="flex items-center gap-2 text-sm font-medium text-[var(--ft-text-primary)]">
-                        <Users className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
-                        Audience guidance
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                        Keep targeting directional. Fliptrybe specialists will refine the final audience inside TikTok and Meta Ads Manager.
-                      </p>
-                    </div>
-                  </section>
-                ) : null}
-
-                {activeStep === 2 ? (
-                  <section className="grid gap-5">
-                    <div>
-                      <div className="mb-2 text-xs font-medium text-[var(--ft-text-secondary)]">
-                        Destination
-                      </div>
-                      <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
-                        {loading ? (
-                          <div className="sm:col-span-2 2xl:col-span-3">
-                            <LoadingBlock label="Loading destinations" />
-                          </div>
-                        ) : destinations.length === 0 ? (
-                          <div className="sm:col-span-2 2xl:col-span-3">
-                            <EmptyState
-                              copy="The destination catalog is empty."
-                              icon={Rocket}
-                              title="No destinations"
-                            />
-                          </div>
-                        ) : (
-                          destinations.map((destination) => (
+                      <div>
+                        <div className="mb-2 text-xs font-medium text-[var(--ft-text-secondary)]">
+                          Campaign objective
+                        </div>
+                        <div className="grid gap-2 lg:grid-cols-2">
+                          {objectiveOptions.map((objective) => (
                             <button
-                              className="text-left"
-                              key={destination}
+                              className={cn(
+                                "grid min-h-20 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-[var(--radius-sm)] border px-3 py-3 text-left transition",
+                                form.objective === objective
+                                  ? "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)]"
+                                  : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] hover:border-[var(--ft-border-strong)]"
+                              )}
+                              key={objective}
                               onClick={() =>
-                                setForm((current) => ({ ...current, destinationKind: destination }))
+                                setForm((current) => ({
+                                  ...current,
+                                  objective
+                                }))
                               }
                               type="button"
                             >
-                              <PlatformSelectCard
-                                checked={form.destinationKind === destination}
-                                description={destinationLabels[destination]}
-                                platform={destinationPlatform(destination)}
+                              <CircleDot className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+                              <span>
+                                <span className="block text-sm font-medium text-[var(--ft-text-primary)]">
+                                  {objectiveLabels[objective]}
+                                </span>
+                                <span className="mt-1 block text-xs leading-5 text-[var(--ft-text-secondary)]">
+                                  {objectiveHint(objective)}
+                                </span>
+                              </span>
+                              <span
+                                className={cn(
+                                  "size-3 rounded-full border",
+                                  form.objective === objective
+                                    ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]"
+                                    : "border-[var(--ft-border-strong)]"
+                                )}
                               />
                             </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    <label className={labelClass}>
-                      Placement preference
-                      <select
-                        className={inputClass}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, placement: event.target.value }))
-                        }
-                        value={form.placement}
-                      >
-                        {[
-                          "Any recommended placement",
-                          "Feed",
-                          "Stories",
-                          "Reels",
-                          "In-feed video",
-                          "Live promotion"
-                        ].map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <div className="grid gap-3 lg:grid-cols-2">
-                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                        <div className="flex items-center gap-2 text-sm font-medium text-[var(--ft-text-primary)]">
-                          <Target className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
-                          TikTok
+                          ))}
                         </div>
-                        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                          Best for short video, creator-led product discovery, and fast awareness.
-                        </p>
                       </div>
-                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                        <div className="flex items-center gap-2 text-sm font-medium text-[var(--ft-text-primary)]">
-                          <Target className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
-                          Meta
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                          Strong for Instagram and Facebook reach, retargeting, and traffic campaigns.
-                        </p>
-                      </div>
-                    </div>
-                  </section>
-                ) : null}
 
-                {activeStep === 3 ? (
-                  <section className="grid gap-5">
-                    <div className="rounded-[var(--radius-sm)] border border-[var(--ft-accent)]/40 bg-[var(--ft-accent-subtle)] p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
-                        <WalletCards className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
-                        Budget guidance
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                        Minimum NGN 50,000 is recommended for meaningful learning. Your team will confirm final media allocation and any management fee on the invoice.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2">
-                      {budgetPresets.map((preset) => (
-                        <button
-                          className={cn(
-                            "h-9 rounded-[var(--radius-sm)] border px-3 font-mono text-xs transition",
-                            form.budget === preset.value
-                              ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
-                              : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-text-secondary)] hover:border-[var(--ft-accent)]"
-                          )}
-                          key={preset.value}
-                          onClick={() => setForm((current) => ({ ...current, budget: preset.value }))}
-                          type="button"
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                      <span
-                        className={cn(
-                          "inline-flex h-9 items-center rounded-[var(--radius-sm)] border px-3 font-mono text-xs",
-                          selectedBudgetPreset
-                            ? "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-text-muted)]"
-                            : "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]"
-                        )}
-                      >
-                        Custom
-                      </span>
-                    </div>
-
-                    <div className="grid gap-4 lg:grid-cols-3">
                       <label className={labelClass}>
-                        Total campaign budget
-                        <input
-                          className={`${inputClass} font-mono text-lg`}
-                          inputMode="numeric"
+                        What are you promoting?
+                        <textarea
+                          className={textareaClass}
                           onChange={(event) =>
-                            setForm((current) => ({ ...current, budget: event.target.value }))
+                            setForm((current) => ({ ...current, promotion: event.target.value }))
                           }
-                          value={form.budget}
+                          value={form.promotion}
                         />
                       </label>
                       <label className={labelClass}>
-                        Start date
+                        Key message or tagline
                         <input
                           className={inputClass}
                           onChange={(event) =>
-                            setForm((current) => ({ ...current, startDate: event.target.value }))
+                            setForm((current) => ({ ...current, keyMessage: event.target.value }))
                           }
-                          type="date"
-                          value={form.startDate}
+                          value={form.keyMessage}
                         />
                       </label>
-                      <label className={labelClass}>
-                        End date
-                        <input
-                          className={inputClass}
-                          onChange={(event) =>
-                            setForm((current) => ({ ...current, endDate: event.target.value }))
-                          }
-                          type="date"
-                          value={form.endDate}
-                        />
-                      </label>
-                    </div>
+                    </section>
+                  ) : null}
 
-                    <div className="grid gap-3 lg:grid-cols-3">
-                      <div className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-muted)] p-4">
-                        <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                          Duration
-                        </div>
-                        <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
-                          {durationDays ? `${durationDays}d` : "Set dates"}
-                        </div>
-                      </div>
-                      <div className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-muted)] p-4">
-                        <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                          Daily spend est.
-                        </div>
-                        <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
-                          {dailySpendMinor
-                            ? formatCampaignMoney({
-                                amountMinor: dailySpendMinor,
-                                currency: form.currency
-                              })
-                            : "Set dates"}
-                        </div>
-                      </div>
-                      <div
-                        className="rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-transparent p-4 text-left transition hover:bg-[var(--ft-bg-muted)]"
-                      >
-                        <div className="flex items-center gap-2 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                          <Calculator className="size-4 stroke-[1.5]" />
-                          Estimate after review
-                        </div>
-                        <div className="mt-2 text-sm text-[var(--ft-text-primary)]">
-                          Reach and CPM come with the campaign plan
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
-                            Allocation guide
-                          </div>
-                          <p className={cn("mt-1", helperClass)}>
-                            The ops team can adjust this split after review.
-                          </p>
-                        </div>
-                        <CalendarDays className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
-                      </div>
-                      <div className="mt-4 flex h-3 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--ft-bg-surface)]">
-                        {allocation.map((item) => (
-                          <div
-                            className={item.className}
-                            key={item.label}
-                            style={{ width: `${item.percentage}%` }}
+                  {activeStep === 1 ? (
+                    <section className="grid gap-5">
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <label className={labelClass}>
+                          Primary target country or region
+                          <input
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                targetRegion: event.target.value
+                              }))
+                            }
+                            value={form.targetRegion}
                           />
-                        ))}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-3">
-                        {allocation.map((item) => (
-                          <span
-                            className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-secondary)]"
-                            key={item.label}
+                        </label>
+                        <label className={labelClass}>
+                          Age range
+                          <input
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, ageRange: event.target.value }))
+                            }
+                            value={form.ageRange}
+                          />
+                        </label>
+                        <label className={labelClass}>
+                          Gender
+                          <select
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, gender: event.target.value }))
+                            }
+                            value={form.gender}
                           >
-                            {item.label} {item.percentage}%
-                          </span>
-                        ))}
+                            {["All", "Male", "Female", "Non-binary-inclusive"].map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className={labelClass}>
+                          Language targeting
+                          <input
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, language: event.target.value }))
+                            }
+                            value={form.language}
+                          />
+                        </label>
                       </div>
-                    </div>
-                  </section>
-                ) : null}
-
-                {activeStep === 4 ? (
-                  <section className="grid gap-5">
-                    <div className="rounded-[var(--radius-sm)] border border-[var(--ft-accent)]/35 bg-[var(--ft-accent-subtle)] p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
-                        <ShieldCheck className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
-                        Private creative handoff
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                        Files are used only by the Fliptrybe campaign team for review, adaptation, and launch proof.
-                        Upload source assets here, then the team will confirm what is approved before anything goes live.
-                      </p>
-                    </div>
-
-                    <div className="grid gap-3 lg:grid-cols-2">
-                      {creativeZonesFor(form.destinationKind).map((zone) => (
-                        <UploadZone key={zone.label} label={zone.label} spec={zone.spec} />
-                      ))}
-                    </div>
-
-                    <div className="grid gap-4 lg:grid-cols-2">
                       <label className={labelClass}>
-                        Headline copy
-                        <input
-                          className={inputClass}
-                          maxLength={40}
+                        Interest signals
+                        <textarea
+                          className={textareaClass}
                           onChange={(event) =>
-                            setForm((current) => ({ ...current, headline: event.target.value }))
+                            setForm((current) => ({ ...current, interests: event.target.value }))
                           }
-                          value={form.headline}
+                          value={form.interests}
                         />
-                        <span className={helperClass}>Max 40 characters.</span>
                       </label>
+                      {personas.length > 0 ? (
+                        <label className={labelClass}>
+                          Persona (optional)
+                          <select
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, personaId: event.target.value }))
+                            }
+                            value={form.personaId}
+                          >
+                            <option value="">No persona — use audience signals only</option>
+                            {personas.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} · {p.role}
+                              </option>
+                            ))}
+                          </select>
+                          <span className={helperClass}>
+                            Attach an active persona to inform creative voice and audience fit.
+                          </span>
+                        </label>
+                      ) : null}
+                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                        <div className="flex items-center gap-2 text-sm font-medium text-[var(--ft-text-primary)]">
+                          <Users className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+                          Audience guidance
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                          Keep targeting directional. Fliptrybe specialists will refine the final
+                          audience inside TikTok and Meta Ads Manager.
+                        </p>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeStep === 2 ? (
+                    <section className="grid gap-5">
+                      <div>
+                        <div className="mb-2 text-xs font-medium text-[var(--ft-text-secondary)]">
+                          Destination
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+                          {loading ? (
+                            <div className="sm:col-span-2 2xl:col-span-3">
+                              <LoadingBlock label="Loading destinations" />
+                            </div>
+                          ) : destinations.length === 0 ? (
+                            <div className="sm:col-span-2 2xl:col-span-3">
+                              <EmptyState icon={Rocket} title="No destinations">
+                                The destination catalog is empty.
+                              </EmptyState>
+                            </div>
+                          ) : (
+                            destinations.map((destination) => (
+                              <button
+                                className="text-left"
+                                key={destination}
+                                onClick={() =>
+                                  setForm((current) => ({
+                                    ...current,
+                                    destinationKind: destination
+                                  }))
+                                }
+                                type="button"
+                              >
+                                <PlatformSelectCard
+                                  checked={form.destinationKind === destination}
+                                  description={destinationLabels[destination]}
+                                  platform={destinationPlatform(destination)}
+                                />
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
                       <label className={labelClass}>
-                        CTA button
+                        Placement preference
                         <select
                           className={inputClass}
                           onChange={(event) =>
-                            setForm((current) => ({ ...current, cta: event.target.value }))
+                            setForm((current) => ({ ...current, placement: event.target.value }))
                           }
-                          value={form.cta}
+                          value={form.placement}
                         >
-                          {ctaOptions.map((option) => (
+                          {[
+                            "Any recommended placement",
+                            "Feed",
+                            "Stories",
+                            "Reels",
+                            "In-feed video",
+                            "Live promotion"
+                          ].map((option) => (
                             <option key={option} value={option}>
                               {option}
                             </option>
                           ))}
                         </select>
                       </label>
-                    </div>
-                    <label className={labelClass}>
-                      Primary copy or caption
-                      <textarea
-                        className={textareaClass}
-                        maxLength={125}
-                        onChange={(event) =>
-                          setForm((current) => ({ ...current, primaryCopy: event.target.value }))
-                        }
-                        value={form.primaryCopy}
-                      />
-                      <span className={helperClass}>Max 125 characters.</span>
-                    </label>
 
-                    <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                      <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
-                        <ClipboardList className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
-                        Brief review
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                          <div className="flex items-center gap-2 text-sm font-medium text-[var(--ft-text-primary)]">
+                            <Target className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+                            TikTok
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                            Best for short video, creator-led product discovery, and fast awareness.
+                          </p>
+                        </div>
+                        <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                          <div className="flex items-center gap-2 text-sm font-medium text-[var(--ft-text-primary)]">
+                            <Target className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+                            Meta
+                          </div>
+                          <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                            Strong for Instagram and Facebook reach, retargeting, and traffic
+                            campaigns.
+                          </p>
+                        </div>
                       </div>
-                      <dl className="mt-3">
-                        <ReviewRow label="Campaign" value={form.name} />
-                        <ReviewRow label="Objective" value={objectiveLabels[form.objective]} />
-                        <ReviewRow
-                          label="Destination"
-                          value={`${destinationLabels[form.destinationKind]} / ${form.destinationUrl}`}
+                    </section>
+                  ) : null}
+
+                  {activeStep === 3 ? (
+                    <section className="grid gap-5">
+                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-accent)]/40 bg-[var(--ft-accent-subtle)] p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
+                          <WalletCards className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+                          Budget guidance
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                          Minimum NGN 50,000 is recommended for meaningful learning. Your team will
+                          confirm final media allocation and any management fee on the invoice.
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {budgetPresets.map((preset) => (
+                          <button
+                            className={cn(
+                              "h-9 rounded-[var(--radius-sm)] border px-3 font-mono text-xs transition",
+                              form.budget === preset.value
+                                ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
+                                : "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-text-secondary)] hover:border-[var(--ft-accent)]"
+                            )}
+                            key={preset.value}
+                            onClick={() =>
+                              setForm((current) => ({ ...current, budget: preset.value }))
+                            }
+                            type="button"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                        <span
+                          className={cn(
+                            "inline-flex h-9 items-center rounded-[var(--radius-sm)] border px-3 font-mono text-xs",
+                            selectedBudgetPreset
+                              ? "border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-text-muted)]"
+                              : "border-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]"
+                          )}
+                        >
+                          Custom
+                        </span>
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-3">
+                        <label className={labelClass}>
+                          Total campaign budget
+                          <input
+                            className={`${inputClass} font-mono text-lg`}
+                            inputMode="numeric"
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, budget: event.target.value }))
+                            }
+                            value={form.budget}
+                          />
+                        </label>
+                        <label className={labelClass}>
+                          Start date
+                          <input
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, startDate: event.target.value }))
+                            }
+                            type="date"
+                            value={form.startDate}
+                          />
+                        </label>
+                        <label className={labelClass}>
+                          End date
+                          <input
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, endDate: event.target.value }))
+                            }
+                            type="date"
+                            value={form.endDate}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="grid gap-3 lg:grid-cols-3">
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-muted)] p-4">
+                          <div className="text-micro font-mono tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+                            Duration
+                          </div>
+                          <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
+                            {durationDays ? `${durationDays}d` : "Set dates"}
+                          </div>
+                        </div>
+                        <div className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-muted)] p-4">
+                          <div className="text-micro font-mono tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+                            Daily spend est.
+                          </div>
+                          <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
+                            {dailySpendMinor
+                              ? formatCampaignMoney({
+                                  amountMinor: dailySpendMinor,
+                                  currency: form.currency
+                                })
+                              : "Set dates"}
+                          </div>
+                        </div>
+                        <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-transparent p-4 text-left transition hover:bg-[var(--ft-bg-muted)]">
+                          <div className="text-micro flex items-center gap-2 font-mono tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+                            <Calculator className="size-4 stroke-[1.5]" />
+                            Estimate after review
+                          </div>
+                          <div className="mt-2 text-sm text-[var(--ft-text-primary)]">
+                            Reach and CPM come with the campaign plan
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
+                              Allocation guide
+                            </div>
+                            <p className={cn("mt-1", helperClass)}>
+                              The ops team can adjust this split after review.
+                            </p>
+                          </div>
+                          <CalendarDays className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+                        </div>
+                        <div className="mt-4 flex h-3 overflow-hidden rounded-[var(--radius-sm)] bg-[var(--ft-bg-surface)]">
+                          {allocation.map((item) => (
+                            <div
+                              className={item.className}
+                              key={item.label}
+                              style={{ width: `${item.percentage}%` }}
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-3">
+                          {allocation.map((item) => (
+                            <span
+                              className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase"
+                              key={item.label}
+                            >
+                              {item.label} {item.percentage}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {activeStep === 4 ? (
+                    <section className="grid gap-5">
+                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-accent)]/35 bg-[var(--ft-accent-subtle)] p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
+                          <ShieldCheck className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+                          Private creative handoff
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                          Files are used only by the Fliptrybe campaign team for review, adaptation,
+                          and launch proof. Upload source assets here, then the team will confirm
+                          what is approved before anything goes live.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        {creativeZonesFor(form.destinationKind).map((zone) => (
+                          <UploadZone key={zone.label} label={zone.label} spec={zone.spec} />
+                        ))}
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <label className={labelClass}>
+                          Headline copy
+                          <input
+                            className={inputClass}
+                            maxLength={40}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, headline: event.target.value }))
+                            }
+                            value={form.headline}
+                          />
+                          <span className={helperClass}>Max 40 characters.</span>
+                        </label>
+                        <label className={labelClass}>
+                          CTA button
+                          <select
+                            className={inputClass}
+                            onChange={(event) =>
+                              setForm((current) => ({ ...current, cta: event.target.value }))
+                            }
+                            value={form.cta}
+                          >
+                            {ctaOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      <label className={labelClass}>
+                        Primary copy or caption
+                        <textarea
+                          className={textareaClass}
+                          maxLength={125}
+                          onChange={(event) =>
+                            setForm((current) => ({ ...current, primaryCopy: event.target.value }))
+                          }
+                          value={form.primaryCopy}
                         />
-                        <ReviewRow
-                          label="Audience"
-                          value={`${form.targetRegion}, ${form.ageRange}, ${form.gender}`}
-                        />
-                        <ReviewRow
-                          label="Budget"
-                          value={`${formatCampaignMoney(estimatedBudget)} over ${
-                            durationDays ? `${durationDays} days` : "selected dates"
-                          }`}
-                        />
-                        <ReviewRow
-                          label="Flight"
-                          value={`${form.startDate || "Start not set"} to ${form.endDate || "End not set"}`}
-                        />
-                        <ReviewRow label="Key message" value={form.keyMessage} />
-                        <ReviewRow label="Placement" value={form.placement} />
-                        <ReviewRow label="Creative CTA" value={form.cta} />
-                        <ReviewRow
-                          label="Asset handoff"
-                          value="Creative files are attached for team review; proof screenshots will be added after launch."
-                        />
-                      </dl>
-                    </div>
-                  </section>
-                ) : null}
-              </div>
+                        <span className={helperClass}>Max 125 characters.</span>
+                      </label>
 
-              <div className="sticky bottom-16 z-20 flex flex-col-reverse gap-3 border-t border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4 shadow-[0_-10px_28px_rgba(0,0,0,0.18)] sm:flex-row sm:items-center sm:justify-between sm:p-5 md:bottom-0">
-                <button
-                  className={cn(
-                    "h-10 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:text-[var(--ft-text-primary)] sm:h-auto",
-                    activeStep === 0 && "hidden sm:invisible sm:block"
-                  )}
-                  onClick={goToPreviousStep}
-                  type="button"
-                >
-                  Back
-                </button>
-
-                {activeStep < lastStepIndex ? (
-                  <Button type="submit">
-                    Continue
-                    <ArrowRight className="size-4 stroke-[1.5]" />
-                  </Button>
-                ) : (
-                  <Button disabled={submitting || loading} type="submit">
-                    <Sparkles className="size-4 stroke-[1.5]" />
-                    {submitting ? "Sending brief" : "Send Brief to Team"}
-                  </Button>
-                )}
-              </div>
-            </form>
-          )}
-        </Panel>
-
-        <div className="grid content-start gap-4 xl:sticky xl:top-20">
-          <Panel className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Live brief preview</h2>
-                <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-                  {quotePathLabel}
-                </p>
-              </div>
-              <Megaphone className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
-            </div>
-
-            <div className="mt-5 border-y border-[var(--ft-border)] py-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={createdCampaign?.status ?? "DRAFT"} />
-                <PlatformChip platform={selectedPlatform} />
-              </div>
-              <div className="mt-4 text-xl font-medium text-[var(--ft-text-primary)]">
-                {form.name || "Untitled campaign"}
-              </div>
-              <div className="mt-2 text-sm text-[var(--ft-text-secondary)]">
-                {objectiveLabels[form.objective]} / {destinationLabels[form.destinationKind]}
-              </div>
-            </div>
-
-            <div className="divide-y divide-[var(--ft-border)] text-sm">
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="text-[var(--ft-text-secondary)]">Budget</span>
-                <span className="font-mono text-[var(--ft-text-primary)]">
-                  {formatCampaignMoney(estimatedBudget)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="text-[var(--ft-text-secondary)]">Daily spend</span>
-                <span className="font-mono text-[var(--ft-text-primary)]">
-                  {dailySpendMinor
-                    ? formatCampaignMoney({
-                        amountMinor: dailySpendMinor,
-                        currency: form.currency
-                      })
-                    : "Waiting on dates"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="text-[var(--ft-text-secondary)]">Reach</span>
-                <span className="font-mono text-[var(--ft-text-primary)]">
-                  Prepared after review
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3 py-3">
-                <span className="text-[var(--ft-text-secondary)]">Estimated CPM</span>
-                <span className="font-mono text-[var(--ft-text-primary)]">
-                  Prepared after review
-                </span>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel className="p-4">
-            <div className="flex items-start gap-3">
-              <div className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
-                <StepHelpIcon className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
-              </div>
-              <div>
-                <h2 className="text-base font-medium text-[var(--ft-text-primary)]">{stepHelp.title}</h2>
-                <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">{stepHelp.body}</p>
-              </div>
-            </div>
-            <div className="mt-4 grid gap-2">
-              {stepHelp.points.map((point) => (
-                <div
-                  className="flex items-start gap-2 border-t border-[var(--ft-border)] pt-2 text-sm text-[var(--ft-text-secondary)] first:border-t-0 first:pt-0"
-                  key={point}
-                >
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-[var(--ft-green)]" />
-                  <span>{point}</span>
+                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ft-text-primary)]">
+                          <ClipboardList className="size-4 stroke-[1.5] text-[var(--ft-accent)]" />
+                          Brief review
+                        </div>
+                        <dl className="mt-3">
+                          <ReviewRow label="Campaign" value={form.name} />
+                          <ReviewRow label="Objective" value={objectiveLabels[form.objective]} />
+                          <ReviewRow
+                            label="Destination"
+                            value={`${destinationLabels[form.destinationKind]} / ${form.destinationUrl}`}
+                          />
+                          <ReviewRow
+                            label="Audience"
+                            value={`${form.targetRegion}, ${form.ageRange}, ${form.gender}`}
+                          />
+                          <ReviewRow
+                            label="Budget"
+                            value={`${formatCampaignMoney(estimatedBudget)} over ${
+                              durationDays ? `${durationDays} days` : "selected dates"
+                            }`}
+                          />
+                          <ReviewRow
+                            label="Flight"
+                            value={`${form.startDate || "Start not set"} to ${form.endDate || "End not set"}`}
+                          />
+                          <ReviewRow label="Key message" value={form.keyMessage} />
+                          <ReviewRow label="Placement" value={form.placement} />
+                          <ReviewRow label="Creative CTA" value={form.cta} />
+                          <ReviewRow
+                            label="Asset handoff"
+                            value="Creative files are attached for team review; proof screenshots will be added after launch."
+                          />
+                        </dl>
+                      </div>
+                    </section>
+                  ) : null}
                 </div>
-              ))}
-            </div>
+
+                <div className="sticky bottom-16 z-20 flex flex-col-reverse gap-3 border-t border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4 shadow-[0_-10px_28px_rgba(0,0,0,0.18)] sm:flex-row sm:items-center sm:justify-between sm:p-5 md:bottom-0">
+                  <button
+                    className={cn(
+                      "h-10 text-left text-sm font-medium text-[var(--ft-text-secondary)] transition hover:text-[var(--ft-text-primary)] sm:h-auto",
+                      activeStep === 0 && "hidden sm:invisible sm:block"
+                    )}
+                    onClick={goToPreviousStep}
+                    type="button"
+                  >
+                    Back
+                  </button>
+
+                  {activeStep < lastStepIndex ? (
+                    <Button type="submit">
+                      Continue
+                      <ArrowRight className="size-4 stroke-[1.5]" />
+                    </Button>
+                  ) : (
+                    <Button disabled={submitting || loading} type="submit">
+                      <Sparkles className="size-4 stroke-[1.5]" />
+                      {submitting ? "Sending brief" : "Send Brief to Team"}
+                    </Button>
+                  )}
+                </div>
+              </form>
+            )}
           </Panel>
 
-          <Panel className="p-4">
-            <div className="flex items-center gap-2 font-medium text-[var(--ft-text-primary)]">
-              <FileText className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
-              Team handoff
-            </div>
-            <p className="mt-3 text-sm leading-6 text-[var(--ft-text-secondary)]">
-              After submission, our team reviews the brief, confirms the assets, and prepares launch steps within 1 business day. No public launch begins until the plan and funding path are clear.
-            </p>
-          </Panel>
-        </div>
-      </section>
+          <div className="grid content-start gap-4 xl:sticky xl:top-20">
+            <Panel className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
+                    Live brief preview
+                  </h2>
+                  <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">{quotePathLabel}</p>
+                </div>
+                <Megaphone className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+              </div>
+
+              <div className="mt-5 border-y border-[var(--ft-border)] py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge status={createdCampaign?.status ?? "DRAFT"} />
+                  <PlatformChip platform={selectedPlatform} />
+                </div>
+                <div className="mt-4 text-xl font-medium text-[var(--ft-text-primary)]">
+                  {form.name || "Untitled campaign"}
+                </div>
+                <div className="mt-2 text-sm text-[var(--ft-text-secondary)]">
+                  {objectiveLabels[form.objective]} / {destinationLabels[form.destinationKind]}
+                </div>
+              </div>
+
+              <div className="divide-y divide-[var(--ft-border)] text-sm">
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <span className="text-[var(--ft-text-secondary)]">Budget</span>
+                  <span className="font-mono text-[var(--ft-text-primary)]">
+                    {formatCampaignMoney(estimatedBudget)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <span className="text-[var(--ft-text-secondary)]">Daily spend</span>
+                  <span className="font-mono text-[var(--ft-text-primary)]">
+                    {dailySpendMinor
+                      ? formatCampaignMoney({
+                          amountMinor: dailySpendMinor,
+                          currency: form.currency
+                        })
+                      : "Waiting on dates"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <span className="text-[var(--ft-text-secondary)]">Reach</span>
+                  <span className="font-mono text-[var(--ft-text-primary)]">
+                    Prepared after review
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 py-3">
+                  <span className="text-[var(--ft-text-secondary)]">Estimated CPM</span>
+                  <span className="font-mono text-[var(--ft-text-primary)]">
+                    Prepared after review
+                  </span>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel className="p-4">
+              <div className="flex items-start gap-3">
+                <div className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
+                  <StepHelpIcon className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+                </div>
+                <div>
+                  <h2 className="text-base font-medium text-[var(--ft-text-primary)]">
+                    {stepHelp.title}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                    {stepHelp.body}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2">
+                {stepHelp.points.map((point) => (
+                  <div
+                    className="flex items-start gap-2 border-t border-[var(--ft-border)] pt-2 text-sm text-[var(--ft-text-secondary)] first:border-t-0 first:pt-0"
+                    key={point}
+                  >
+                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-[var(--ft-green)]" />
+                    <span>{point}</span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+
+            <Panel className="p-4">
+              <div className="flex items-center gap-2 font-medium text-[var(--ft-text-primary)]">
+                <FileText className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
+                Team handoff
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[var(--ft-text-secondary)]">
+                After submission, our team reviews the brief, confirms the assets, and prepares
+                launch steps within 1 business day. No public launch begins until the plan and
+                funding path are clear.
+              </p>
+            </Panel>
+          </div>
+        </section>
       ) : null}
     </>
   );

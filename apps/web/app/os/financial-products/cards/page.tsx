@@ -4,9 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowDownToLine, CreditCard, Snowflake, X } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Panel,
+  PermissionDenied
+} from "@fliptrybe/ui";
 
-import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
 import {
   enrollCardCustomer,
@@ -161,13 +167,17 @@ export default function CardsTabPage() {
                 city: enrollForm.city.trim(),
                 state: enrollForm.state.trim(),
                 country: enrollForm.country.trim() || "NG",
-                ...(enrollForm.postalCode.trim() ? { postalCode: enrollForm.postalCode.trim() } : {})
+                ...(enrollForm.postalCode.trim()
+                  ? { postalCode: enrollForm.postalCode.trim() }
+                  : {})
               }
             }
           : {}),
         ...(enrollForm.idType ? { idType: enrollForm.idType } : {}),
         ...(enrollForm.idNumber.trim() ? { idNumber: enrollForm.idNumber.trim() } : {}),
-        ...(enrollForm.idImageBase64.trim() ? { idImageBase64: enrollForm.idImageBase64.trim() } : {})
+        ...(enrollForm.idImageBase64.trim()
+          ? { idImageBase64: enrollForm.idImageBase64.trim() }
+          : {})
       });
       await refreshEnrollment(currency);
     } catch (caught) {
@@ -266,8 +276,8 @@ export default function CardsTabPage() {
   if (forbidden) {
     return (
       <PermissionDenied>
-        You do not have permission to view virtual cards for this workspace. Contact your
-        workspace owner if you believe this is a mistake.
+        You do not have permission to view virtual cards for this workspace. Contact your workspace
+        owner if you believe this is a mistake.
       </PermissionDenied>
     );
   }
@@ -366,7 +376,7 @@ export default function CardsTabPage() {
           </div>
         ) : (
           <>
-            <label className="mb-1 mt-4 block text-xs text-[var(--ft-text-muted)]">
+            <label className="mt-4 mb-1 block text-xs text-[var(--ft-text-muted)]">
               Cardholder name
             </label>
             <input
@@ -376,7 +386,7 @@ export default function CardsTabPage() {
               value={cardholderName}
             />
 
-            <label className="mb-1 mt-4 block text-xs text-[var(--ft-text-muted)]">
+            <label className="mt-4 mb-1 block text-xs text-[var(--ft-text-muted)]">
               Initial funding ({currency})
             </label>
             <input
@@ -418,7 +428,9 @@ export default function CardsTabPage() {
           </Panel>
         ) : cards.length === 0 ? (
           <Panel className="p-6">
-            <EmptyState copy="Issue your first virtual card above." icon={CreditCard} title="No cards yet" />
+            <EmptyState icon={CreditCard} title="No cards yet">
+              Issue your first virtual card above.
+            </EmptyState>
           </Panel>
         ) : (
           <div className="grid gap-2">
