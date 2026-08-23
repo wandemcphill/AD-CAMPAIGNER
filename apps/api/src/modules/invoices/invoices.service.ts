@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Prisma } from "@fliptrybe/database";
 import {
@@ -11,6 +11,7 @@ import {
 import type { CurrencyCode } from "@fliptrybe/types";
 
 import { PrismaService } from "../prisma.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type { CreateInvoiceDto, InvoiceLineItemInput, PayInvoiceDto } from "./invoices.dtos";
 
@@ -110,7 +111,12 @@ function firstString(...values: unknown[]): string {
 
 @Injectable()
 export class InvoicesService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  private readonly logger = new Logger(InvoicesService.name);
+
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService
+  ) {}
 
   private get db() {
     return this.prisma.client;
@@ -184,7 +190,10 @@ export class InvoicesService {
 
   async send(context: AuthenticatedRequestContext, id: string) {
     const workspaceId = requireWorkspaceId(context);
-    const invoice = await this.db.invoice.findFirst({ where: { id, workspaceId, deletedAt: null } });
+    const invoice = await this.db.invoice.findFirst({
+      where: { id, workspaceId, deletedAt: null },
+      include: { workspace: true }
+    });
     if (!invoice) {
       throw new NotFoundException("Invoice not found.");
     }
@@ -196,6 +205,52 @@ export class InvoicesService {
       data: { status: "SENT", issuedAt: new Date() },
       include: { lineItems: true }
     });
+
+    // "Send" only means something to the client if an email actually goes
+    // out to them -- previously this just flipped status, which looked like
+    // delivery to whoever clicked the button but reached no one. A missing
+    // customerEmail (the field is optional on Invoice) is not an error here:
+    // the invoice still gets marked SENT, since the business owner may be
+    // sharing the pay link through their own channel instead.
+    if (invoice.customerEmail) {
+      try {
+        const appUrl = (
+          process.env.APP_URL ??
+          process.env.NEXT_PUBLIC_APP_URL ??
+          "https://fliptrybe.xyz"
+        ).replace(/\/+$/, "");
+        await this.notifications.send({
+          guestEmail: invoice.customerEmail,
+          channels: ["EMAIL"],
+          template: "invoice_sent",
+          vars: {
+            first_name: invoice.customerName,
+            business_name: invoice.workspace.name,
+            reference: invoice.number,
+            currency: invoice.currency,
+            amount: (invoice.totalMinor / 100).toFixed(2),
+            date: invoice.dueAt
+              ? invoice.dueAt.toLocaleDateString("en-US", {
+                  day: "numeric",
+                  month: "long",
+                  year: "numeric"
+                })
+              : "No due date set",
+            pay_url: `${appUrl}/pay/invoice/${invoice.id}`
+          },
+          idempotencyKey: `invoice_sent:${invoice.id}`
+        });
+      } catch (err) {
+        // Matches guest-checkout.service.ts's emailReceipt: a notification
+        // failure must never undo the status change that already happened,
+        // or block the caller from knowing the invoice is now SENT. The
+        // NotificationsService call itself already fails soft for a missing
+        // destination or unconfigured provider (records PENDING_CONFIGURATION,
+        // does not throw) -- this catch is for genuinely unexpected errors.
+        this.logger.warn(`Failed to email invoice ${invoice.id}: ${(err as Error).message}`);
+      }
+    }
+
     return serializeInvoice(updated);
   }
 

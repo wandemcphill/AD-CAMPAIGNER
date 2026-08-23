@@ -183,4 +183,55 @@ describe("renderNotificationTemplate", () => {
 
     expect(rendered.emailBody).toMatch(/href="https:\/\/[^"]+\/support"/);
   });
+
+  it("renders an invoice_sent email with the client name, amount, and pay link", () => {
+    const rendered = renderNotificationTemplate("invoice_sent", {
+      first_name: "Jane Doe",
+      business_name: "Acme Growth Ltd",
+      reference: "INV-0007",
+      currency: "NGN",
+      amount: "125,000.00",
+      date: "15 Sep 2026",
+      pay_url: "https://fliptrybe.xyz/pay/invoice/inv_123"
+    });
+
+    expect(rendered.subject).toBe("New invoice from Acme Growth Ltd: INV-0007");
+    expect(rendered.emailBody).toContain("Hi Jane Doe,");
+    expect(rendered.emailBody).toContain("Acme Growth Ltd");
+    expect(rendered.emailBody).toContain("NGN 125,000.00");
+    expect(rendered.emailBody).toContain("15 Sep 2026");
+    expect(rendered.emailBody).toContain(`href="https://fliptrybe.xyz/pay/invoice/inv_123"`);
+    expect(rendered.smsBody).toContain("INV-0007");
+    expect(rendered.smsBody).toContain("https://fliptrybe.xyz/pay/invoice/inv_123");
+  });
+
+  it("escapes a hostile business name in an invoice email without breaking the layout", () => {
+    const rendered = renderNotificationTemplate("invoice_sent", {
+      first_name: "Jane",
+      business_name: `<img src=x onerror=alert(1)>`,
+      reference: "INV-0008",
+      currency: "NGN",
+      amount: "1,000.00",
+      date: "No due date set",
+      pay_url: "https://fliptrybe.xyz/pay/invoice/inv_456"
+    });
+
+    expect(rendered.emailBody).not.toContain("<img");
+    expect(rendered.emailBody).toContain("&lt;img");
+  });
+
+  it("neutralizes a javascript: pay link so the invoice button is never live", () => {
+    const rendered = renderNotificationTemplate("invoice_sent", {
+      first_name: "Jane",
+      business_name: "Acme",
+      reference: "INV-0009",
+      currency: "NGN",
+      amount: "1,000.00",
+      date: "No due date set",
+      pay_url: "javascript:alert(document.cookie)"
+    });
+
+    expect(rendered.emailBody).toContain(`href="#"`);
+    expect(rendered.emailBody).not.toContain(`href="javascript:`);
+  });
 });

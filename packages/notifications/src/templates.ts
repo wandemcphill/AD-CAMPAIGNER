@@ -14,6 +14,8 @@ export interface NotificationTemplateVars {
   service?: string;
   date?: string;
   support_url?: string;
+  business_name?: string;
+  pay_url?: string;
   [key: string]: string | undefined;
 }
 
@@ -201,6 +203,27 @@ export const notificationTemplates = {
     smsBody:
       "A FlipTrybe password reset was requested. Check your email for the link. " +
       "If this wasn't you, contact {{support_url}}"
+  },
+  invoice_sent: {
+    subject: "New invoice from {{business_name}}: {{reference}}",
+    emailBody: EMAIL_WRAPPER(`
+      <p><strong>{{business_name}}</strong> has sent you an invoice.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding: 4px 0; color: #666;">Invoice</td><td style="text-align: right;">{{reference}}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Amount due</td><td style="text-align: right;">{{currency}} {{amount}}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Due</td><td style="text-align: right;">{{date}}</td></tr>
+      </table>
+      <p style="margin: 24px 0;">
+        <a href="{{url:pay_url}}" style="background: #d97706; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">View &amp; pay invoice</a>
+      </p>
+      <p style="font-size: 13px; color: #666;">
+        Or paste this link into your browser:<br />
+        <span style="word-break: break-all;">{{pay_url}}</span>
+      </p>
+    `),
+    smsBody:
+      "{{business_name}} sent you invoice {{reference}} for {{currency}} {{amount}}, due {{date}}. " +
+      "Pay: {{pay_url}}"
   }
 } as const satisfies Record<string, NotificationTemplate>;
 

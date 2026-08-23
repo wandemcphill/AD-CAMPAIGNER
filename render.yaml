@@ -611,6 +611,22 @@ services:
         value: "0.8"
       - key: NOTIFICATION_PROVIDER
         value: live
+      # Read by apps/worker/src/notifications-processor.ts (the only process
+      # that ever reads these -- the API side only enqueues). Without
+      # TERMII_API_KEY, NOTIFICATION_PROVIDER=live above has no effect:
+      # adapterForChannel falls through to the mock provider in non-production,
+      # or to PENDING_CONFIGURATION in production, regardless of that value.
+      # Set the real value in the Render dashboard; nothing here does that.
+      - key: TERMII_API_KEY
+        sync: false
+      - key: TERMII_BASE_URL
+        sync: false
+      - key: TERMII_SMS_SENDER_ID
+        sync: false
+      - key: TERMII_EMAIL_CONFIGURATION_ID
+        sync: false
+      - key: TERMII_WHATSAPP_CONFIGURATION_ID
+        sync: false
       - key: ENABLE_OTP_MODULE
         value: "true"
       - key: ENABLE_PREMIUM_OTP

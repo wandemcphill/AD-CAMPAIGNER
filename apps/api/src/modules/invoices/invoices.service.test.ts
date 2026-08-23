@@ -2,13 +2,23 @@
 import { BadRequestException } from "@nestjs/common";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type {
+  NotificationsService,
+  SendNotificationInput
+} from "../notifications/notifications.service";
 import type { PrismaService } from "../prisma.service";
 import { InvoicesService } from "./invoices.service";
 
 const ctx = { userId: "user_1", workspaceId: "workspace_1" };
 
-function buildService(db: Record<string, unknown>) {
-  return new InvoicesService({ client: db } as unknown as PrismaService);
+function buildService(
+  db: Record<string, unknown>,
+  notifications: Partial<NotificationsService> = { send: vi.fn(() => Promise.resolve([])) }
+) {
+  return new InvoicesService(
+    { client: db } as unknown as PrismaService,
+    notifications as NotificationsService
+  );
 }
 
 afterEach(() => {
@@ -192,5 +202,85 @@ describe("InvoicesService currency handling", () => {
         paidVia: "payscribe"
       }
     });
+  });
+});
+
+describe("InvoicesService.send", () => {
+  function draftInvoiceDb(overrides: Record<string, unknown> = {}) {
+    return {
+      invoice: {
+        findFirst: vi.fn(() =>
+          Promise.resolve({
+            id: "inv_1",
+            workspaceId: "workspace_1",
+            number: "INV-0007",
+            status: "DRAFT",
+            customerName: "Jane Doe",
+            customerEmail: "jane@client.test",
+            currency: "NGN",
+            totalMinor: 12500000,
+            dueAt: new Date("2026-09-15T00:00:00.000Z"),
+            workspace: { name: "Acme Growth Ltd" },
+            ...overrides
+          })
+        ),
+        update: vi.fn(() => Promise.resolve({ id: "inv_1", status: "SENT", lineItems: [] }))
+      }
+    };
+  }
+
+  it("emails the client when a draft invoice with an email on file is sent", async () => {
+    const db = draftInvoiceDb();
+    const send = vi.fn((_input: SendNotificationInput) => Promise.resolve([]));
+    const service = buildService(db, { send });
+
+    await service.send(ctx, "inv_1");
+
+    expect(db.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "inv_1" },
+        data: expect.objectContaining({ status: "SENT" })
+      })
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    const call = send.mock.calls[0]?.[0];
+    expect(call?.guestEmail).toBe("jane@client.test");
+    expect(call?.channels).toEqual(["EMAIL"]);
+    expect(call?.template).toBe("invoice_sent");
+    expect(call?.vars).toMatchObject({
+      first_name: "Jane Doe",
+      business_name: "Acme Growth Ltd",
+      reference: "INV-0007",
+      currency: "NGN",
+      amount: "125000.00"
+    });
+    expect(call?.vars?.pay_url).toContain("/pay/invoice/inv_1");
+  });
+
+  it("does not attempt to email when the invoice has no customerEmail on file", async () => {
+    const db = draftInvoiceDb({ customerEmail: null });
+    const send = vi.fn(() => Promise.resolve([]));
+    const service = buildService(db, { send });
+
+    await service.send(ctx, "inv_1");
+
+    expect(send).not.toHaveBeenCalled();
+    // The invoice itself still gets marked SENT -- a missing client email is
+    // not a reason to block the business owner from sharing the pay link
+    // through their own channel instead.
+    expect(db.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "SENT" }) })
+    );
+  });
+
+  it("still marks the invoice SENT even if the notification call throws", async () => {
+    const db = draftInvoiceDb();
+    const send = vi.fn(() => Promise.reject(new Error("queue unavailable")));
+    const service = buildService(db, { send });
+
+    await expect(service.send(ctx, "inv_1")).resolves.toBeDefined();
+    expect(db.invoice.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "SENT" }) })
+    );
   });
 });
