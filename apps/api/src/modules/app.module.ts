@@ -36,6 +36,8 @@ import {
   WalletController,
   WebhooksController
 } from "./platform.controllers";
+import { AdminCommandCenterController } from "./admin-command-center.controller";
+import { AdminCommandCenterService } from "./admin-command-center.service";
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { AuthSessionService } from "./auth-session.service";
@@ -142,6 +144,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     MediaController,
     SearchController,
     AdminController,
+    AdminCommandCenterController,
     AdminUsersController,
     AdminWalletsController,
     AdminGrowthController,
@@ -151,6 +154,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
   providers: [
     AuthSessionService,
     PlatformService,
+    AdminCommandCenterService,
     ManagedAdsService,
     RealtimeGateway,
     {
