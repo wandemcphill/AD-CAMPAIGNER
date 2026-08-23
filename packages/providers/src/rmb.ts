@@ -1,6 +1,4 @@
-// RMB-buy provider adapter — Alipay/WeChat/bank-transfer orders to China. Verified
-// live against the real Sogo Partner API on 2026-08-06 (GET /rmb/buy/rates).
-
+// RMB-buy provider adapter — Alipay/WeChat/bank-transfer orders to China.
 import {
   CURRENT_INTERFACE_VERSION,
   type ProviderAdapterBase,
@@ -37,6 +35,18 @@ export interface RmbBuySubmitResult {
   ngnAmountMinor: number;
 }
 
+export class SogoRmbProviderError extends Error {
+  readonly statusCode: number;
+  readonly responseBody: string;
+
+  constructor(statusCode: number, responseBody: string) {
+    super(`Sogo RMB request returned HTTP ${statusCode}: ${responseBody}`);
+    this.name = "SogoRmbProviderError";
+    this.statusCode = statusCode;
+    this.responseBody = responseBody;
+  }
+}
+
 export interface RmbBuyProvider extends ProviderAdapterBase {
   getRates(): Promise<RmbRatesSnapshot>;
   submitOrder(input: {
@@ -48,15 +58,12 @@ export interface RmbBuyProvider extends ProviderAdapterBase {
     recipientBankName?: string;
     recipientBankAccountNumber?: string;
     description: string;
-    /** Hosted URL of the recipient's QR code (already uploaded to our storage provider) — fetched server-side and forwarded to Sogo as multipart. */
+    /** Hosted URL of the recipient's QR code (already uploaded to our storage provider). */
     qrCodeUrl?: string;
     idempotencyKey: string;
   }): Promise<RmbBuySubmitResult>;
 }
 
-// Sogo signs RMB webhooks with HMAC-SHA256 too, but this adapter doesn't implement
-// verifyWebhookSignature/normalizeWebhook yet — declare "none" honestly rather than
-// claim a capability with no implementation behind it (see contract.ts).
 function rmbCapabilities(): ProviderCapabilities {
   return {
     domain: "RMB",
@@ -120,7 +127,7 @@ export function createSogoRmbAdapter(config: SogoRmbConfig): RmbBuyProvider {
       });
       if (!res.ok) {
         const body = await res.text();
-        throw new Error(`Sogo rmb/buy/rates returned HTTP ${res.status}: ${body}`);
+        throw new SogoRmbProviderError(res.status, body);
       }
 
       const body = (await res.json()) as {
@@ -154,23 +161,41 @@ export function createSogoRmbAdapter(config: SogoRmbConfig): RmbBuyProvider {
     async submitOrder(input) {
       const form = new FormData();
       form.set("channel", input.channel);
-      if (input.accountType) {
+
+      if (input.channel === "alipay" || input.channel === "wechat") {
+        if (!input.accountType) {
+          throw new Error(`${input.channel} account type is required`);
+        }
         form.set(
           input.channel === "wechat" ? "wechat_account_type" : "alipay_account_type",
           input.accountType
         );
+        if (!input.qrCodeUrl) {
+          throw new Error("qrCodeUrl is required for Alipay and WeChat RMB orders");
+        }
       }
+
       form.set("rmb_amount", String(input.rmbAmount));
+      form.set("recipient_name", input.recipientName);
       form.set("description", input.description);
-      if (input.recipientIdentifier) form.set("recipient_identifier", input.recipientIdentifier);
-      if (input.recipientBankName) form.set("recipient_bank_name", input.recipientBankName);
+
+      if (input.recipientIdentifier) {
+        form.set("recipient_identifier", input.recipientIdentifier);
+      }
+      if (input.recipientBankName) {
+        form.set("recipient_bank_name", input.recipientBankName);
+      }
       if (input.recipientBankAccountNumber) {
         form.set("recipient_bank_account_number", input.recipientBankAccountNumber);
+        if (input.channel === "bank" && !input.recipientIdentifier) {
+          form.set("recipient_identifier", input.recipientBankAccountNumber);
+        }
       }
+
       if (input.qrCodeUrl) {
         const qrRes = await f(input.qrCodeUrl);
         if (!qrRes.ok) {
-          throw new Error(`Could not fetch QR code image from ${input.qrCodeUrl}: HTTP ${qrRes.status}`);
+          throw new Error(`Could not fetch QR code image: HTTP ${qrRes.status}`);
         }
         const qrBlob = await qrRes.blob();
         form.set("qr_code", qrBlob, "qr-code.jpg");
@@ -178,13 +203,16 @@ export function createSogoRmbAdapter(config: SogoRmbConfig): RmbBuyProvider {
 
       const res = await f(`${baseUrl}/rmb/buy`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${config.apiKey}`, "Idempotency-Key": input.idempotencyKey },
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Idempotency-Key": input.idempotencyKey
+        },
         body: form
       });
 
       if (!res.ok) {
         const body = await res.text();
-        throw new Error(`Sogo rmb/buy returned HTTP ${res.status}: ${body}`);
+        throw new SogoRmbProviderError(res.status, body);
       }
 
       const body = (await res.json()) as {
@@ -221,4 +249,3 @@ export function createSogoRmbAdapter(config: SogoRmbConfig): RmbBuyProvider {
     }
   };
 }
-
