@@ -37,19 +37,20 @@ export type CreateInvoiceInput = {
   lineItems: { description: string; quantity: number; unitPriceMinor: number }[];
 };
 
-type InvoiceListResponse = Invoice[] | { data?: unknown; invoices?: unknown };
+function normalizeInvoices(value: unknown): Invoice[] {
+  if (Array.isArray(value)) return value as Invoice[];
 
-function normalizeInvoices(value: InvoiceListResponse): Invoice[] {
-  if (Array.isArray(value)) return value;
   if (value && typeof value === "object") {
-    if (Array.isArray(value.data)) return value.data as Invoice[];
-    if (Array.isArray(value.invoices)) return value.invoices as Invoice[];
+    const record = value as Record<string, unknown>;
+    if (Array.isArray(record.data)) return record.data as Invoice[];
+    if (Array.isArray(record.invoices)) return record.invoices as Invoice[];
   }
+
   throw new Error("The invoice service returned an invalid invoice list.");
 }
 
 export async function listInvoices(): Promise<Invoice[]> {
-  const response = await apiRequest<InvoiceListResponse>("/invoices");
+  const response = await apiRequest<unknown>("/invoices");
   return normalizeInvoices(response);
 }
 
