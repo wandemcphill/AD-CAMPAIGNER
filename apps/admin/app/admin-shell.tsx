@@ -48,7 +48,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Product Governance", href: "/product-governance/", icon: Boxes },
   { label: "Provider Governance", href: "/provider-governance/", icon: Network },
   { label: "Growth", href: "/growth-services/", icon: Boxes },
-  { label: "Audit", href: "/campaign-ops/activity/", icon: FileSearch },
+  { label: "Audit", href: "/audit/", icon: FileSearch },
   { label: "Access", href: "/digital-access/", icon: LockKeyhole },
   { label: "VTU", href: "/vtu/", icon: Smartphone },
   { label: "Providers", href: "/providers/", icon: Network },
