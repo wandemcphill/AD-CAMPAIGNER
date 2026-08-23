@@ -8,6 +8,7 @@ import { Badge, Panel, PermissionDenied } from "@fliptrybe/ui";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
 import { loadMyNumbers, type VirtualNumber, type VirtualNumberStatus } from "../api";
+import Link from "next/link";
 
 const STATUS_TONE: Record<VirtualNumberStatus, "success" | "warning" | "neutral" | "danger"> = {
   RESERVED: "neutral",
@@ -69,12 +70,12 @@ export default function MyNumbersPage() {
             <Smartphone className="size-5 text-[var(--ft-accent)]" />
             <h1 className="text-xl font-bold">My Numbers</h1>
           </div>
-          <a
+          <Link
             className="text-sm font-medium text-[var(--ft-accent)] hover:underline"
             href="/os/numbers"
           >
             Get a number
-          </a>
+          </Link>
         </div>
 
         <ErrorNotice message={error} />
@@ -95,7 +96,7 @@ export default function MyNumbersPage() {
           ) : (
             <div className="grid gap-2">
               {numbers.map((n) => (
-                <a href={`/os/numbers/mine/${n.id}`} key={n.id}>
+                <Link href={`/os/numbers/mine/${n.id}`} key={n.id}>
                   <Panel className="flex items-center gap-4 p-4 transition hover:border-[var(--ft-accent)]/40">
                     <div className="grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10">
                       <Smartphone className="size-4 text-[var(--ft-accent)]" />
@@ -115,7 +116,7 @@ export default function MyNumbersPage() {
                     </div>
                     <Badge tone={STATUS_TONE[n.status]}>{n.status.toLowerCase()}</Badge>
                   </Panel>
-                </a>
+                </Link>
               ))}
             </div>
           )}

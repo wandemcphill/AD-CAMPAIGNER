@@ -17,6 +17,7 @@ import {
   type VirtualNumberOrder,
   type VirtualNumberProduct
 } from "../api";
+import Link from "next/link";
 
 type PurchaseStage = "idle" | "charging" | "provisioning" | "done" | "failed";
 
@@ -92,13 +93,13 @@ export default function NumbersProductListPage() {
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-2xl">
-        <a
+        <Link
           className="inline-flex items-center gap-1 text-sm text-[var(--ft-text-muted)] hover:text-[var(--ft-text-primary)]"
           href="/os/numbers"
         >
           <ChevronLeft className="size-4" />
           All countries
-        </a>
+        </Link>
 
         <h1 className="mt-2 text-xl font-bold">Available numbers</h1>
 

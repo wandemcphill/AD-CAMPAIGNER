@@ -28,6 +28,7 @@ import {
 } from "../../campaigns/components";
 import { destinationLabels, objectiveLabels } from "../../campaigns/data";
 import { useCampaignDashboardData } from "../../campaigns/use-campaign-dashboard-data";
+import Link from "next/link";
 
 type PlatformAiInsights = {
   summary?: { mode?: string; [key: string]: unknown };
@@ -86,10 +87,10 @@ export default function CampaignAnalyticsPage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href="/os/reports">
+            <Link className={secondaryLinkButtonClass} href="/os/reports">
               <Eye className="size-4 stroke-[1.5]" />
               Report Center
-            </a>
+            </Link>
           </div>
         }
         eyebrow={
@@ -292,10 +293,10 @@ export default function CampaignAnalyticsPage() {
                   <div className="font-mono text-sm text-[var(--ft-text-primary)]">
                     {formatCampaignMoney(campaign.budget)}
                   </div>
-                  <a className={`${secondaryLinkButtonClass} h-9 px-3`} href={`/os/campaigns/${campaign.id}`}>
+                  <Link className={`${secondaryLinkButtonClass} h-9 px-3`} href={`/os/campaigns/${campaign.id}`}>
                     <Eye className="size-4 stroke-[1.5]" />
                     View brief
-                  </a>
+                  </Link>
                 </div>
               ))
             )}

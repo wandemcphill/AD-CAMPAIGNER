@@ -9,6 +9,7 @@ import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { useTeamData } from "../../team/use-team-data";
+import Link from "next/link";
 
 const TABS = [
   { id: "members", label: "Members" },
@@ -99,7 +100,7 @@ export default function TeamPage() {
                 const completed = project.members.filter((m) => m.completedAt).length;
 
                 return (
-                  <a
+                  <Link
                     className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 transition hover:border-[var(--ft-accent)]/30"
                     href={`/os/campaigns/${project.id}`}
                     key={project.id}
@@ -121,7 +122,7 @@ export default function TeamPage() {
                         style={{ width: total ? `${(completed / total) * 100}%` : "0%" }}
                       />
                     </div>
-                  </a>
+                  </Link>
                 );
               })}
             </div>
@@ -142,7 +143,7 @@ export default function TeamPage() {
           ) : (
             <div className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)]">
               {approvals.map((approval) => (
-                <a
+                <Link
                   className="flex items-center gap-4 border-b border-[var(--ft-border)] p-4 transition last:border-0 hover:bg-[var(--ft-bg-muted)]"
                   href={`/os/campaigns/${approval.id}`}
                   key={approval.id}
@@ -165,7 +166,7 @@ export default function TeamPage() {
                   <Badge tone={approval.status === "CHANGES_REQUESTED" ? "danger" : "warning"}>
                     {approval.status === "CHANGES_REQUESTED" ? "Changes requested" : "Pending review"}
                   </Badge>
-                </a>
+                </Link>
               ))}
             </div>
           )}

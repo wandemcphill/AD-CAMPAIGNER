@@ -8,6 +8,7 @@ import { Badge, Button, Panel } from "@fliptrybe/ui";
 
 import { ErrorNotice } from "../../../../campaigns/components";
 import { applyAsAgency } from "../../../../marketplace/api";
+import Link from "next/link";
 
 const SPECIALTIES = [
   "Social Media",
@@ -64,9 +65,9 @@ export default function ApplyAsAgencyPage() {
           <h1 className="mt-3 text-lg font-semibold">Application submitted</h1>
           <p className="mt-2 text-sm text-[var(--ft-text-secondary)]">
             Our team will review your agency application. You can track its status from{" "}
-            <a className="text-[var(--ft-accent)]" href="/os/marketplace/applications">
+            <Link className="text-[var(--ft-accent)]" href="/os/marketplace/applications">
               My Applications
-            </a>
+            </Link>
             .
           </p>
           <Button className="mt-5" onClick={() => (window.location.href = "/os/marketplace/agencies")} variant="secondary">

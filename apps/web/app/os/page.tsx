@@ -31,6 +31,7 @@ import { useCampaignDashboardData } from "../campaigns/use-campaign-dashboard-da
 import { useFeatureFlags } from "../lib/feature-flags";
 import { formatNotificationTime } from "../notifications/api";
 import { useNotificationsData } from "../notifications/use-notifications-data";
+import Link from "next/link";
 
 type QuickAction = { icon: LucideIcon; label: string; href: string; color: string; flag?: string };
 
@@ -93,9 +94,9 @@ export default function DashboardPage() {
               <div className="mt-2 font-mono text-2xl font-bold">
                 {loading ? <ValueSkeleton width="w-24" /> : availableBalance ? formatCampaignMoney(availableBalance) : "—"}
               </div>
-              <a className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--ft-accent)]" href="/os/wallet">
+              <Link className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--ft-accent)]" href="/os/wallet">
                 Manage wallet <ArrowRight className="size-3" />
-              </a>
+              </Link>
               <div className="pointer-events-none absolute -right-16 -top-16 size-40 rounded-full bg-[var(--ft-accent)]/5 blur-3xl" />
             </motion.div>
             <motion.div
@@ -151,7 +152,7 @@ export default function DashboardPage() {
           <section className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Continue Working</h2>
-              <a className="text-xs font-medium text-[var(--ft-accent)]" href="/os/campaigns">View all</a>
+              <Link className="text-xs font-medium text-[var(--ft-accent)]" href="/os/campaigns">View all</Link>
             </div>
             <div className="mt-4 grid gap-2">
               {loading ? (
@@ -164,7 +165,7 @@ export default function DashboardPage() {
                 />
               ) : (
                 recentCampaigns.map((campaign) => (
-                  <a
+                  <Link
                     className="flex items-center gap-4 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-3 transition hover:border-[var(--ft-accent)]/30"
                     href={`/os/campaigns/${campaign.id}`}
                     key={campaign.id}
@@ -181,7 +182,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <ArrowRight className="size-4 text-[var(--ft-text-muted)]" />
-                  </a>
+                  </Link>
                 ))
               )}
             </div>
@@ -261,7 +262,7 @@ export default function DashboardPage() {
                 <Bell className="size-4 text-[var(--ft-accent)]" />
                 <h2 className="font-semibold">Notifications</h2>
               </div>
-              <a className="text-xs font-medium text-[var(--ft-accent)]" href="/os/notifications">View all</a>
+              <Link className="text-xs font-medium text-[var(--ft-accent)]" href="/os/notifications">View all</Link>
             </div>
             <div className="mt-3 grid gap-2">
               {notifLoading ? (

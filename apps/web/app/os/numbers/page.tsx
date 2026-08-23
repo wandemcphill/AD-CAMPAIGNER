@@ -8,6 +8,7 @@ import { Badge, Panel, PermissionDenied } from "@fliptrybe/ui";
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
 import { loadCountries, type NumberCountry } from "./api";
+import Link from "next/link";
 
 export default function NumbersCountryGridPage() {
   const [countries, setCountries] = useState<NumberCountry[]>([]);
@@ -70,7 +71,7 @@ export default function NumbersCountryGridPage() {
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
               {countries.map((country) => (
-                <a href={`/os/numbers/${country.isoCode}`} key={country.isoCode}>
+                <Link href={`/os/numbers/${country.isoCode}`} key={country.isoCode}>
                   <Panel className="flex items-center gap-4 p-4 transition hover:border-[var(--ft-accent)]/40">
                     <div className="text-3xl">{country.flagEmoji}</div>
                     <div className="flex-1">
@@ -82,7 +83,7 @@ export default function NumbersCountryGridPage() {
                       SMS
                     </Badge>
                   </Panel>
-                </a>
+                </Link>
               ))}
             </div>
           )}

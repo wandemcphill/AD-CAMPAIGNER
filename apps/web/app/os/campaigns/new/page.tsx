@@ -58,6 +58,7 @@ import { isAgeRestrictedError } from "../../../lib/api-client";
 import { useApiSession } from "../../../lib/use-session";
 import { loadPersonas, type PersonaRecord } from "../../../personas/api";
 import { AgeGateNotice } from "../../age-gate-notice";
+import Link from "next/link";
 
 type CampaignFormState = {
   ageRange: string;
@@ -658,10 +659,10 @@ export default function NewCampaignPage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href="/os/campaigns">
+            <Link className={secondaryLinkButtonClass} href="/os/campaigns">
               Campaigns
               <ArrowRight className="size-4 stroke-[1.5]" />
-            </a>
+            </Link>
           </div>
         }
         eyebrow={
@@ -707,13 +708,13 @@ export default function NewCampaignPage() {
               </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-              <a className={linkButtonClass} href="/os/onboarding">
+              <Link className={linkButtonClass} href="/os/onboarding">
                 Complete Business Profile
                 <ArrowRight className="size-4 stroke-[1.5]" />
-              </a>
-              <a className={secondaryLinkButtonClass} href="/os/campaigns">
+              </Link>
+              <Link className={secondaryLinkButtonClass} href="/os/campaigns">
                 Not now
-              </a>
+              </Link>
             </div>
           </div>
           <div className="grid border-t border-[var(--ft-border)] bg-[var(--ft-bg-muted)] md:grid-cols-3">
@@ -952,10 +953,10 @@ export default function NewCampaignPage() {
                 >
                   Brief another campaign
                 </button>
-                <a className={linkButtonClass} href={`/os/campaigns/${createdCampaign.id}`}>
+                <Link className={linkButtonClass} href={`/os/campaigns/${createdCampaign.id}`}>
                   View Campaign Status
                   <ArrowRight className="size-4 stroke-[1.5]" />
-                </a>
+                </Link>
               </div>
             </div>
           ) : (

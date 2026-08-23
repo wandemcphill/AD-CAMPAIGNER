@@ -12,6 +12,7 @@ import {
   type MarketplaceApplicationStatus,
   type MarketplaceCreatorApplicationRecord
 } from "../../../marketplace/api";
+import Link from "next/link";
 
 const STATUS_TONE: Record<MarketplaceApplicationStatus, "success" | "warning" | "danger"> = {
   APPROVED: "success",
@@ -73,12 +74,12 @@ export default function MyMarketplaceApplicationsPage() {
           <EmptyState
             action={
               <div className="flex flex-col gap-2 sm:flex-row">
-                <a href="/os/marketplace/agencies/apply">
+                <Link href="/os/marketplace/agencies/apply">
                   <Button variant="secondary">Apply as Agency</Button>
-                </a>
-                <a href="/os/marketplace/creators/apply">
+                </Link>
+                <Link href="/os/marketplace/creators/apply">
                   <Button variant="secondary">Apply as Creator</Button>
-                </a>
+                </Link>
               </div>
             }
             copy="You haven't applied to be listed in the Marketplace yet. Submit an agency or creator application to get started."

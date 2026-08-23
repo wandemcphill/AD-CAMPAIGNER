@@ -27,6 +27,7 @@ import {
 } from "../../campaigns/components";
 import { objectiveLabels, type CampaignAnalyticsOverview } from "../../campaigns/data";
 import { useCampaignDashboardData } from "../../campaigns/use-campaign-dashboard-data";
+import Link from "next/link";
 
 type ReportVariant = "live" | "pending" | "published";
 
@@ -220,13 +221,13 @@ export default function ReportsPage() {
       <PageHeader
         action={
           <div className="flex flex-col gap-2 sm:flex-row">
-            <a className={`${secondaryLinkButtonClass} w-full sm:w-auto`} href="/os/campaigns">
+            <Link className={`${secondaryLinkButtonClass} w-full sm:w-auto`} href="/os/campaigns">
               Campaign Desk
-            </a>
-            <a className={`${linkButtonClass} w-full sm:w-auto`} href="/os/campaigns/new">
+            </Link>
+            <Link className={`${linkButtonClass} w-full sm:w-auto`} href="/os/campaigns/new">
               <Sparkles className="size-4 stroke-[1.5]" />
               Start a Campaign
-            </a>
+            </Link>
           </div>
         }
         eyebrow={
@@ -278,10 +279,10 @@ export default function ReportsPage() {
           {!loading && campaigns.length === 0 ? (
             <EmptyState
               action={
-                <a className={linkButtonClass} href="/os/campaigns/new">
+                <Link className={linkButtonClass} href="/os/campaigns/new">
                   Start a Campaign
                   <ArrowRight className="size-4 stroke-[1.5]" />
-                </a>
+                </Link>
               }
               copy="Reports are published by the Fliptrybe team at key campaign milestones, usually halfway through and at the end."
               icon={FileText}
@@ -305,12 +306,12 @@ export default function ReportsPage() {
                           - {reportNextStep(campaign)}
                         </span>
                         <div className="flex flex-col gap-2 sm:flex-row">
-                          <a
+                          <Link
                             className={`${secondaryLinkButtonClass} w-full sm:w-auto`}
                             href={`/os/campaigns/${campaign.id}`}
                           >
                             View Campaign
-                          </a>
+                          </Link>
                           {variant === "pending" ? (
                             <span className="inline-flex h-10 items-center justify-center rounded-[var(--radius-sm)] border border-dashed border-[var(--ft-border-strong)] px-4 text-sm font-medium text-[var(--ft-text-muted)]">
                               Report locked

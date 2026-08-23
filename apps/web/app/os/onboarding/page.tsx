@@ -26,6 +26,7 @@ import {
 import { destinationLabels, onboardingSteps } from "../../campaigns/data";
 import { useOnboardingData } from "../../campaigns/use-campaign-dashboard-data";
 import { useApiSession } from "../../lib/use-session";
+import Link from "next/link";
 
 const onboardingStepCopy: Record<string, string> = {
   "Workspace session": "Sign in once and the platform creates the workspace session automatically.",
@@ -104,13 +105,13 @@ export default function OnboardingPage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a className={`${secondaryLinkButtonClass} w-full sm:w-auto`} href="/os/wallet">
+            <Link className={`${secondaryLinkButtonClass} w-full sm:w-auto`} href="/os/wallet">
               Billing
-            </a>
-            <a className={`${linkButtonClass} w-full sm:w-auto`} href="/os/campaigns/new">
+            </Link>
+            <Link className={`${linkButtonClass} w-full sm:w-auto`} href="/os/campaigns/new">
               <Rocket className="size-4 stroke-[1.5]" />
               New campaign
-            </a>
+            </Link>
           </div>
         }
         eyebrow={

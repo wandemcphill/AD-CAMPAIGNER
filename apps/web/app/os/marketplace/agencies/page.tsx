@@ -13,6 +13,7 @@ import {
   loadMarketplaceAgencies,
   type MarketplaceAgencyRecord
 } from "../../../marketplace/api";
+import Link from "next/link";
 
 const SPEC_TABS = [
   { id: "all", label: "All" },
@@ -62,12 +63,12 @@ export default function AgencyMarketplacePage() {
           <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Verified agencies with transparent pricing and proven results</p>
         </div>
         <div className="flex items-center gap-2">
-          <a href="/os/marketplace/applications">
+          <Link href="/os/marketplace/applications">
             <Button variant="secondary">My Applications</Button>
-          </a>
-          <a href="/os/marketplace/agencies/apply">
+          </Link>
+          <Link href="/os/marketplace/agencies/apply">
             <Button>Apply as Agency</Button>
-          </a>
+          </Link>
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
             <RefreshCw className="size-4" /> Refresh
           </Button>
@@ -97,9 +98,9 @@ export default function AgencyMarketplacePage() {
         <div className="mt-6">
           <EmptyState
             action={
-              <a href="/os/marketplace/agencies/apply">
+              <Link href="/os/marketplace/agencies/apply">
                 <Button variant="secondary">Apply as Agency</Button>
-              </a>
+              </Link>
             }
             copy="No agencies have been listed in this marketplace yet. This catalog is curated separately and hasn't been seeded."
             icon={Briefcase}

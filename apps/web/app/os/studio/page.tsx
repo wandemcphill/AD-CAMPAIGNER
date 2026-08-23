@@ -28,6 +28,7 @@ import {
 import { ErrorNotice } from "../../campaigns/components";
 import { useApiSession } from "../../lib/use-session";
 import { ApiClientError } from "../../lib/api-client";
+import Link from "next/link";
 
 type GoalOption = {
   goal: StudioGoal;
@@ -139,18 +140,18 @@ export default function StudioPage() {
             without a manual setup step.
           </p>
           <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-            <a
+            <Link
               className="inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-accent)] bg-[var(--ft-accent)] px-5 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
               href="/login"
             >
               Sign in
-            </a>
-            <a
+            </Link>
+            <Link
               className="inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-5 text-sm font-semibold text-[var(--ft-text-primary)] transition hover:border-[var(--ft-accent)]"
               href="/register"
             >
               Create account
-            </a>
+            </Link>
           </div>
         </Panel>
       </>
@@ -246,13 +247,13 @@ export default function StudioPage() {
             </div>
           ) : null}
           <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
-            <a
+            <Link
               className="inline-flex h-10 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-transparent bg-[var(--ft-accent)] px-5 text-sm font-semibold text-[var(--ft-bg-base)] transition hover:bg-[var(--ft-accent-dim)]"
               href={`/os/campaigns/${result.campaign.id}`}
             >
               View campaign
               <ArrowRight className="size-4 stroke-[1.5]" />
-            </a>
+            </Link>
             <Button onClick={handleStartAnother} variant="secondary">
               Boost something else
             </Button>

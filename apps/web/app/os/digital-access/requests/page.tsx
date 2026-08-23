@@ -8,6 +8,7 @@ import { ErrorNotice, PageHeader, RequestStatus } from "../../../digital-access/
 import { useDigitalAccessData } from "../../../digital-access/use-digital-access-data";
 import { navItems } from "../../../digital-access/data";
 import { SectionTabs } from "../../section-tabs";
+import Link from "next/link";
 
 export default function DigitalAccessRequestsPage() {
   const { error, loading, refresh, requests } = useDigitalAccessData();
@@ -82,7 +83,7 @@ export default function DigitalAccessRequestsPage() {
             <QueueMessage label="No requests yet" />
           ) : (
             requests.map((request) => (
-              <a
+              <Link
                 className="grid gap-3 p-4 transition hover:bg-[var(--ft-bg-raised)] sm:grid-cols-[1fr_auto_auto] sm:items-center"
                 href={`/os/digital-access/requests/${request.id}`}
                 key={request.id}
@@ -97,7 +98,7 @@ export default function DigitalAccessRequestsPage() {
                 <div className="font-mono text-sm font-semibold text-[var(--ft-text-primary)]">
                   {request.amount}
                 </div>
-              </a>
+              </Link>
             ))
           )}
         </div>

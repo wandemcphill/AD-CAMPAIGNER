@@ -78,6 +78,7 @@ import {
 } from "../../../campaigns/components";
 import { destinationLabels, objectiveLabels, type CampaignAnalyticsOverview } from "../../../campaigns/data";
 import { useCampaignDashboardData } from "../../../campaigns/use-campaign-dashboard-data";
+import Link from "next/link";
 
 const processSteps = [
   "Brief Received",
@@ -574,10 +575,10 @@ function CampaignBudgetTransparency({
                 : financial.error ?? `Updated ${formatDateTime(summary.updatedAt)}`}
             </p>
           </div>
-          <a className={secondaryLinkButtonClass} href={`/os/campaigns/${campaign.id}/financial-history`}>
+          <Link className={secondaryLinkButtonClass} href={`/os/campaigns/${campaign.id}/financial-history`}>
             <ReceiptText className="size-4" />
             Financial History
-          </a>
+          </Link>
         </div>
         <div className="mt-5 h-2 rounded-sm bg-[var(--ft-bg-muted)]">
           <div className="h-2 rounded-sm bg-[var(--ft-accent)]" style={{ width: `${budgetProgress(summary)}%` }} />
@@ -1414,10 +1415,10 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
     if (status === "DRAFT") {
       return (
-        <a className={linkButtonClass} href="/os/campaigns/new">
+        <Link className={linkButtonClass} href="/os/campaigns/new">
           <FileText className="size-4" />
           Send Brief to Team
-        </a>
+        </Link>
       );
     }
 
@@ -1432,10 +1433,10 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
     if (status === "APPROVED") {
       return (
-        <a className={linkButtonClass} href="/os/wallet">
+        <Link className={linkButtonClass} href="/os/wallet">
           <WalletCards className="size-4" />
           Check Funding
-        </a>
+        </Link>
       );
     }
 
@@ -1450,19 +1451,19 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
     if (status === "ACTIVE" || status === "RUNNING") {
       return (
-        <a className={linkButtonClass} href="/os/reports">
+        <Link className={linkButtonClass} href="/os/reports">
           <BarChart3 className="size-4" />
           Monitor Results
-        </a>
+        </Link>
       );
     }
 
     if (status === "COMPLETED") {
       return (
-        <a className={linkButtonClass} href="/os/reports">
+        <Link className={linkButtonClass} href="/os/reports">
           <BarChart3 className="size-4" />
           Review Results
-        </a>
+        </Link>
       );
     }
 
@@ -1476,10 +1477,10 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
     }
 
     return (
-      <a className={linkButtonClass} href="/os/campaigns/new">
+      <Link className={linkButtonClass} href="/os/campaigns/new">
         <FileText className="size-4" />
         Resubmit Campaign
-      </a>
+      </Link>
     );
   }
 
@@ -1492,10 +1493,10 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
               <RefreshCw className="size-4" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href="/os/campaigns">
+            <Link className={secondaryLinkButtonClass} href="/os/campaigns">
               <ArrowLeft className="size-4" />
               Back
-            </a>
+            </Link>
           </div>
         }
         eyebrow={
@@ -1517,9 +1518,9 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
         <section className="mt-6">
           <EmptyState
             action={
-              <a className={secondaryLinkButtonClass} href="/os/campaigns">
+              <Link className={secondaryLinkButtonClass} href="/os/campaigns">
                 View campaigns
-              </a>
+              </Link>
             }
             copy="This campaign was not found in the active workspace."
             icon={CalendarClock}

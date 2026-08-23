@@ -14,6 +14,7 @@ import {
   renewNumber,
   type VirtualNumber
 } from "../../../api";
+import Link from "next/link";
 
 const RENEW_DURATIONS = [30, 90, 180, 360];
 
@@ -89,13 +90,13 @@ export default function ManageNumberPage() {
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-2xl">
-        <a
+        <Link
           className="inline-flex items-center gap-1 text-sm text-[var(--ft-text-muted)] hover:text-[var(--ft-text-primary)]"
           href={`/os/numbers/mine/${numberId}`}
         >
           <ChevronLeft className="size-4" />
           Back to inbox
-        </a>
+        </Link>
 
         <ErrorNotice message={error} />
 

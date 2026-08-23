@@ -49,6 +49,7 @@ import {
 import { ThemeToggle, cn } from "@fliptrybe/ui";
 import { useFeatureFlags } from "../lib/feature-flags";
 import { useApiSession } from "../lib/use-session";
+import Link from "next/link";
 
 type NavItem = {
   label: string;
@@ -241,7 +242,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)]/90 px-4 backdrop-blur-xl lg:px-6"><div className="flex items-center gap-3"><button className="lg:hidden" onClick={() => setSidebarOpen(true)} type="button"><Menu className="size-5 text-[var(--ft-text-muted)]" /></button><div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">{title}</div></div><div className="flex items-center gap-1"><a className="grid size-9 place-items-center rounded-[var(--radius-sm)] text-[var(--ft-text-muted)]" href="/os/notifications"><Bell className="size-4" /></a><ThemeToggle className="hidden lg:inline-flex" /><button className="hidden h-8 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-xs font-medium text-[var(--ft-text-secondary)] sm:flex" disabled={signingOut} onClick={() => void handleSignOut()} type="button"><LogOut className="size-3.5" />{signingOut ? "Signing out..." : "Logout"}</button></div></header>
+        <header className="sticky top-0 z-40 flex h-12 items-center justify-between border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)]/90 px-4 backdrop-blur-xl lg:px-6"><div className="flex items-center gap-3"><button className="lg:hidden" onClick={() => setSidebarOpen(true)} type="button"><Menu className="size-5 text-[var(--ft-text-muted)]" /></button><div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">{title}</div></div><div className="flex items-center gap-1"><Link className="grid size-9 place-items-center rounded-[var(--radius-sm)] text-[var(--ft-text-muted)]" href="/os/notifications"><Bell className="size-4" /></Link><ThemeToggle className="hidden lg:inline-flex" /><button className="hidden h-8 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-xs font-medium text-[var(--ft-text-secondary)] sm:flex" disabled={signingOut} onClick={() => void handleSignOut()} type="button"><LogOut className="size-3.5" />{signingOut ? "Signing out..." : "Logout"}</button></div></header>
         <main className="flex-1 overflow-y-auto pb-20 lg:pb-0">{children}</main>
         <nav className="fixed inset-x-0 bottom-0 z-50 grid h-16 grid-cols-5 border-t border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pb-[env(safe-area-inset-bottom)] lg:hidden">{MOBILE_NAV.map((item) => <a className={cn("grid place-items-center gap-0.5 py-1", isActive(item.href) ? "text-[var(--ft-accent)]" : "text-[var(--ft-text-muted)]")} href={item.href} key={item.href} onClick={item.label === "More" ? (event) => { event.preventDefault(); setSidebarOpen(true); } : undefined}><item.icon className="size-5" /><span className="text-[10px] font-medium">{item.label}</span></a>)}</nav>
       </div>

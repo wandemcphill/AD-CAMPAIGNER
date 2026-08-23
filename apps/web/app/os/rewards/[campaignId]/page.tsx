@@ -15,6 +15,7 @@ import {
   type TaskCompletion
 } from "../../../rewards/api";
 import { ErrorNotice, LoadingBlock, PageHeader } from "../../../campaigns/components";
+import Link from "next/link";
 
 function formatMinor(amountMinor: number, currency: string) {
   const symbol = currency === "NGN" ? "₦" : currency;
@@ -155,9 +156,9 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
                   </Button>
                 )}
                 {task.taskType === "QR_SCAN" && !verified && !pending && campaign.status === "ACTIVE" && (
-                  <a href="/os/rewards/scan">
+                  <Link href="/os/rewards/scan">
                     <Button variant="secondary">Scan QR</Button>
-                  </a>
+                  </Link>
                 )}
                 {verified && <Badge tone="success">Done</Badge>}
                 {pending && <Badge tone="warning">Pending</Badge>}

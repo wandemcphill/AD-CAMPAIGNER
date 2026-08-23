@@ -26,6 +26,7 @@ import {
   type MarketplaceCreatorRecord
 } from "../../marketplace/api";
 import { SectionTabs, type SectionTab } from "../section-tabs";
+import Link from "next/link";
 
 const MARKETPLACE_TABS: SectionTab[] = [
   { label: "Overview", href: "/os/marketplace", icon: Store },
@@ -118,7 +119,7 @@ export default function MarketplacePage() {
         <section className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Top Agencies</h2>
-            <a className="text-xs text-[var(--ft-accent)]" href="/os/marketplace/agencies">View all <ArrowRight className="inline size-3" /></a>
+            <Link className="text-xs text-[var(--ft-accent)]" href="/os/marketplace/agencies">View all <ArrowRight className="inline size-3" /></Link>
           </div>
           <div className="mt-3 grid gap-2">
             {loading ? (
@@ -149,7 +150,7 @@ export default function MarketplacePage() {
         <section className="rounded-[var(--radius-xl)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold">Top Creators</h2>
-            <a className="text-xs text-[var(--ft-accent)]" href="/os/marketplace/creators">View all <ArrowRight className="inline size-3" /></a>
+            <Link className="text-xs text-[var(--ft-accent)]" href="/os/marketplace/creators">View all <ArrowRight className="inline size-3" /></Link>
           </div>
           <div className="mt-3 grid gap-2">
             {loading ? (

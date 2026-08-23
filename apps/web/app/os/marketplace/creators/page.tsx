@@ -14,6 +14,7 @@ import {
   loadMarketplaceCreators,
   type MarketplaceCreatorRecord
 } from "../../../marketplace/api";
+import Link from "next/link";
 
 const NICHE_TABS = [
   { id: "all", label: "All" },
@@ -68,12 +69,12 @@ export default function CreatorMarketplacePage() {
           <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Discover creators with real audiences and proven engagement</p>
         </div>
         <div className="flex items-center gap-2">
-          <a href="/os/marketplace/applications">
+          <Link href="/os/marketplace/applications">
             <Button variant="secondary">My Applications</Button>
-          </a>
-          <a href="/os/marketplace/creators/apply">
+          </Link>
+          <Link href="/os/marketplace/creators/apply">
             <Button>Apply as Creator</Button>
-          </a>
+          </Link>
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
             <RefreshCw className="size-4" /> Refresh
           </Button>
@@ -103,9 +104,9 @@ export default function CreatorMarketplacePage() {
         <div className="mt-6">
           <EmptyState
             action={
-              <a href="/os/marketplace/creators/apply">
+              <Link href="/os/marketplace/creators/apply">
                 <Button variant="secondary">Apply as Creator</Button>
-              </a>
+              </Link>
             }
             copy="No creators have been listed in this marketplace yet. This catalog is curated separately and hasn't been seeded."
             icon={Globe}

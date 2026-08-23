@@ -55,6 +55,7 @@ import {
 import { ThemeToggle, cn } from "@fliptrybe/ui";
 import { useFeatureFlags } from "../lib/feature-flags";
 import { useApiSession } from "../lib/use-session";
+import Link from "next/link";
 
 /**
  * `flag` names a runtime feature flag from the API (see lib/feature-flags).
@@ -513,7 +514,7 @@ export function OsShell({ children }: { children: ReactNode }) {
               Search
               <kbd className="rounded border border-[var(--ft-border)] px-1 font-mono text-[9px]">⌘K</kbd>
             </button>
-            <a
+            <Link
               className={cn(
                 "grid size-9 place-items-center rounded-[var(--radius-sm)] transition hover:bg-[var(--ft-bg-muted)]",
                 pathname.startsWith("/os/notifications") ? "text-[var(--ft-accent)]" : "text-[var(--ft-text-muted)]"
@@ -521,7 +522,7 @@ export function OsShell({ children }: { children: ReactNode }) {
               href="/os/notifications"
             >
               <Bell className="size-4" />
-            </a>
+            </Link>
             <ThemeToggle className="hidden lg:inline-flex" />
             <button
               className="hidden h-8 items-center gap-2 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-xs font-medium text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)]/40 hover:text-[var(--ft-text-primary)] disabled:opacity-60 sm:flex"

@@ -63,6 +63,7 @@ import { useCampaignDashboardData } from "../../campaigns/use-campaign-dashboard
 import { useFeatureFlags } from "../../lib/feature-flags";
 import { useApiSession } from "../../lib/use-session";
 import { SectionTabs, type SectionTab } from "../section-tabs";
+import Link from "next/link";
 
 const GROWTH_TABS_BASE: SectionTab[] = [
   { label: "Campaigns", href: "/os/campaigns", icon: Megaphone },
@@ -230,14 +231,14 @@ export default function CampaignsPage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href="/os/studio">
+            <Link className={secondaryLinkButtonClass} href="/os/studio">
               <Sparkles className="size-4 stroke-[1.5]" />
               Try Studio
-            </a>
-            <a className={linkButtonClass} href="/os/campaigns/new">
+            </Link>
+            <Link className={linkButtonClass} href="/os/campaigns/new">
               <Plus className="size-4 stroke-[1.5]" />
               Start a Campaign
-            </a>
+            </Link>
           </div>
         }
         eyebrow={
@@ -362,10 +363,10 @@ export default function CampaignsPage() {
             <Panel className="p-4">
               <EmptyState
                 action={
-                  <a className={secondaryLinkButtonClass} href="/os/campaigns/new">
+                  <Link className={secondaryLinkButtonClass} href="/os/campaigns/new">
                     <Plus className="size-4 stroke-[1.5]" />
                     Start a Campaign
-                  </a>
+                  </Link>
                 }
                 copy={
                   campaigns.length === 0
@@ -398,12 +399,12 @@ export default function CampaignsPage() {
                             <PlatformChip platform={platform} />
                             <Badge tone="neutral">{campaignStageLabel(campaign.status)}</Badge>
                           </div>
-                          <a
+                          <Link
                             className="mt-3 block text-lg font-semibold text-[var(--ft-text-primary)] transition hover:text-[var(--ft-accent)]"
                             href={`/os/campaigns/${campaign.id}`}
                           >
                             {campaign.name}
-                          </a>
+                          </Link>
                           <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
                             {objectiveLabels[campaign.objective]} service for{" "}
                             {destinationLabels[campaign.destination.kind]}.
@@ -474,7 +475,7 @@ export default function CampaignsPage() {
                         </div>
 
                         <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
-                          <a
+                          <Link
                             aria-disabled={reviewOnly}
                             className={cn(
                               `${secondaryLinkButtonClass} h-9 px-3`,
@@ -494,12 +495,12 @@ export default function CampaignsPage() {
                           >
                             <Eye className="size-4 stroke-[1.5]" />
                             {briefActionLabel(campaign.status)}
-                          </a>
+                          </Link>
                           {isLiveCampaign(campaign.status) || isReportReady(campaign.status) ? (
-                            <a className={`${linkButtonClass} h-9 px-3`} href="/os/reports">
+                            <Link className={`${linkButtonClass} h-9 px-3`} href="/os/reports">
                               <BarChart3 className="size-4 stroke-[1.5]" />
                               View report
-                            </a>
+                            </Link>
                           ) : null}
                         </div>
                       </div>
@@ -547,10 +548,10 @@ export default function CampaignsPage() {
               />
             </div>
           )}
-          <a className={`${secondaryLinkButtonClass} mt-4 w-full`} href="/os/analytics">
+          <Link className={`${secondaryLinkButtonClass} mt-4 w-full`} href="/os/analytics">
             <BarChart3 className="size-4 stroke-[1.5]" />
             View performance snapshots
-          </a>
+          </Link>
         </Panel>
       </section>
 
@@ -611,7 +612,7 @@ export default function CampaignsPage() {
               <InlineEmptyNote label="No launch windows yet." />
             ) : (
               campaigns.slice(0, 3).map((campaign) => (
-                <a
+                <Link
                   className="grid gap-3 py-3 transition hover:bg-[var(--ft-bg-muted)] sm:grid-cols-[1fr_auto]"
                   href={`/os/campaigns/${campaign.id}`}
                   key={campaign.id}
@@ -623,19 +624,19 @@ export default function CampaignsPage() {
                     </div>
                   </div>
                   <StatusBadge status={campaign.status} />
-                </a>
+                </Link>
               ))
             )}
           </div>
         </Panel>
       </section>
-      <a
+      <Link
         className="fixed bottom-20 right-4 z-40 inline-flex h-11 items-center justify-center gap-2 rounded-[var(--radius-sm)] border border-transparent bg-[var(--ft-accent)] px-4 text-sm font-semibold text-[var(--ft-text-inverse)] shadow-[var(--shadow-lg)] transition hover:bg-[var(--ft-accent-dim)] md:hidden"
         href="/os/campaigns/new"
       >
         <Plus className="size-4 stroke-[1.5]" />
         Start
-      </a>
+      </Link>
     </>
   );
 }

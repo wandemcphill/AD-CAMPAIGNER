@@ -14,6 +14,7 @@ import {
   type VirtualNumber,
   type VirtualNumberMessage
 } from "../../api";
+import Link from "next/link";
 
 function timeAgo(iso: string) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -69,13 +70,13 @@ export default function NumberInboxPage() {
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-2xl">
-        <a
+        <Link
           className="inline-flex items-center gap-1 text-sm text-[var(--ft-text-muted)] hover:text-[var(--ft-text-primary)]"
           href="/os/numbers/mine"
         >
           <ChevronLeft className="size-4" />
           My Numbers
-        </a>
+        </Link>
 
         <ErrorNotice message={error} />
 
@@ -95,12 +96,12 @@ export default function NumberInboxPage() {
                   {number.countryCode}
                 </div>
               </div>
-              <a
+              <Link
                 className="flex size-9 items-center justify-center rounded-[var(--radius-md)] border border-[var(--ft-border)] text-[var(--ft-text-muted)] transition hover:text-[var(--ft-text-primary)]"
                 href={`/os/numbers/mine/${numberId}/manage`}
               >
                 <Settings className="size-4" />
-              </a>
+              </Link>
             </div>
 
             <Panel className="mt-4 p-4">

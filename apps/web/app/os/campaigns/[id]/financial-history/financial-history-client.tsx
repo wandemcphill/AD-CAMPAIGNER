@@ -15,6 +15,7 @@ import {
   linkButtonClass,
   secondaryLinkButtonClass
 } from "../../../../campaigns/components";
+import Link from "next/link";
 
 type HistoryState = {
   budgetSummary: CampaignBudgetSummary | null;
@@ -87,10 +88,10 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
               <RefreshCw className="size-4" />
               Refresh
             </Button>
-            <a className={secondaryLinkButtonClass} href={`/os/campaigns/${campaignId}`}>
+            <Link className={secondaryLinkButtonClass} href={`/os/campaigns/${campaignId}`}>
               <ArrowLeft className="size-4" />
               Back
-            </a>
+            </Link>
           </div>
         }
         eyebrow={<Badge tone="info">Campaign ledger</Badge>}
@@ -152,9 +153,9 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
             <div className="p-5">
               <EmptyState
                 action={
-                  <a className={linkButtonClass} href={`/os/campaigns/${campaignId}`}>
+                  <Link className={linkButtonClass} href={`/os/campaigns/${campaignId}`}>
                     Back to campaign
-                  </a>
+                  </Link>
                 }
                 copy="No wallet funding, invoice payment, budget allocation, spend, refund, or adjustment has been recorded yet."
                 icon={ReceiptText}

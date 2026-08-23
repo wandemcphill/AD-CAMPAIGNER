@@ -37,6 +37,7 @@ import {
 import { destinationLabels } from "../../campaigns/data";
 import { useOnboardingData } from "../../campaigns/use-campaign-dashboard-data";
 import { useApiSession } from "../../lib/use-session";
+import Link from "next/link";
 
 const profileSections = [
   {
@@ -293,10 +294,10 @@ export default function ProfilePage() {
           {!session && !sessionLoading ? (
             <EmptyState
               action={
-                <a className={linkButtonClass} href="/login">
+                <Link className={linkButtonClass} href="/login">
                   Sign in
                   <ArrowRight className="size-4 stroke-[1.5]" />
-                </a>
+                </Link>
               }
               copy="A signed-in session connects this profile to campaign briefs, invoices, reports, and operator updates."
               icon={ShieldCheck}
