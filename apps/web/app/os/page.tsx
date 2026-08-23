@@ -28,6 +28,7 @@ import {
 import { LoadingBlock } from "../campaigns/components";
 import { useCampaignDashboardData } from "../campaigns/use-campaign-dashboard-data";
 import { useFeatureFlags } from "../lib/feature-flags";
+import { asHref } from "../lib/nav";
 import { useApiSession } from "../lib/use-session";
 import { formatNotificationTime } from "../notifications/api";
 import { useNotificationsData } from "../notifications/use-notifications-data";
@@ -201,7 +202,7 @@ export default function DashboardPage() {
               >
                 <Link
                   className="group flex h-full flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 transition hover:border-[var(--ft-accent)]/30 hover:shadow-[var(--shadow-md)]"
-                  href={action.href}
+                  href={asHref(action.href)}
                 >
                   <div
                     className="grid size-10 place-items-center rounded-[var(--radius-md)] transition group-hover:scale-110"
@@ -245,7 +246,7 @@ export default function DashboardPage() {
                 focusCampaigns.map((campaign) => (
                   <Link
                     className="flex items-center gap-4 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-3 transition hover:border-[var(--ft-accent)]/30"
-                    href={`/os/campaigns/${campaign.id}`}
+                    href={asHref(`/os/campaigns/${campaign.id}`)}
                     key={campaign.id}
                   >
                     <div className="min-w-0 flex-1">
