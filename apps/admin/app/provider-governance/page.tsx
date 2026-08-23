@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, Boxes, CheckCircle2, Clock3, Network, ShieldCheck, Tags } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock3, Network, ShieldCheck, Tags } from "lucide-react";
 
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
@@ -119,7 +119,7 @@ export default function ProviderGovernancePage() {
     const needle = query.trim().toLowerCase();
     if (!needle) return data?.providers ?? [];
     return (data?.providers ?? []).filter((provider) =>
-      [provider.name, provider.domain, provider.status, ...provider.grants.map((g) => g.capability)]
+      [provider.name, provider.domain, provider.status, ...provider.grants.map((grant) => grant.capability)]
         .join(" ")
         .toLowerCase()
         .includes(needle)
