@@ -13,47 +13,47 @@ export class ProviderWebhooksService {
     private readonly queueProducer: QueueProducerService
   ) {}
 
-  /**
-   * Verify HMAC-SHA256 signature for Sogo webhooks
-   * Sogo uses: HMAC-SHA256(payload + ":" + timestamp, secret)
-   */
+  /** Current Sogo signature: HMAC-SHA256(rawBody, webhookSecret). */
   verifySogoSignature(
     payload: string,
-    timestamp: string,
+    timestamp: string | undefined,
     signature: string,
     secret: string
   ): boolean {
-    const dataToSign = `${payload}:${timestamp}`;
-    const digest = crypto.createHmac('sha256', secret).update(dataToSign).digest('hex');
-    return this.secureCompare(digest, signature);
+    if (!secret || !signature) return false;
+
+    const currentDigest = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+    if (this.secureCompare(currentDigest, signature)) return true;
+
+    // Legacy fallback used by the first Sogo integration: HMAC(rawBody + ':' + timestamp).
+    if (!timestamp) return false;
+    const legacyDigest = crypto
+      .createHmac('sha256', secret)
+      .update(`${payload}:${timestamp}`)
+      .digest('hex');
+    return this.secureCompare(legacyDigest, signature);
   }
 
-  /**
-   * Verify HMAC-SHA256 signature for Reloadly webhooks
-   * Reloadly uses: HMAC-SHA256(payload + ":" + timestamp, secret) in hex
-   */
   verifyReloadlySignature(payload: string, timestamp: string, signature: string, secret: string): boolean {
     const dataToSign = `${payload}:${timestamp}`;
     const digest = crypto.createHmac('sha256', secret).update(dataToSign).digest('hex');
     return this.secureCompare(digest, signature);
   }
 
-  /**
-   * Handle Sogo gift card transaction webhook
-   */
   async handleSogoWebhook(
     payload: unknown,
     rawPayload: string,
     signature: string,
-    timestamp: string,
+    timestamp: string | undefined,
     secret: string
   ): Promise<void> {
-    if (!timestamp) {
-      throw new UnauthorizedException('Missing Sogo webhook timestamp');
-    }
-
     const event = payload as Record<string, unknown>;
-    const eventType = typeof event.type === 'string' ? event.type : 'unknown';
+    const eventType =
+      typeof event.event === 'string'
+        ? event.event
+        : typeof event.type === 'string'
+          ? event.type
+          : 'unknown';
     const signatureValid = this.verifySogoSignature(rawPayload, timestamp, signature, secret);
 
     await this.recordWebhookEvent('sogo', eventType, event, signature, signatureValid);
@@ -69,7 +69,8 @@ export class ProviderWebhooksService {
         await this.handleSogoTransactionCompleted(event);
         break;
       case 'transaction.failed':
-        await this.handleSogoTransactionFailed(event);
+      case 'transaction.cancelled':
+        await this.handleSogoTransactionFailedOrCancelled(event);
         break;
       case 'transaction.refunded':
         await this.handleSogoTransactionRefunded(event);
@@ -79,9 +80,6 @@ export class ProviderWebhooksService {
     }
   }
 
-  /**
-   * Handle Reloadly gift card transaction webhook
-   */
   async handleReloadlyWebhook(
     payload: unknown,
     rawPayload: string,
@@ -152,9 +150,6 @@ export class ProviderWebhooksService {
     await this.queueProducer.enqueueDigitalValueProcessing(transaction.id, 'GIFT_CARD_SELL');
   }
 
-  // Crypto sell has no debit — funds only ever move via this CREDIT, so the
-  // idempotencyKey (derived from the Sogo transaction id) is the only guard
-  // against double-crediting on a webhook retry.
   private async handleSogoCryptoCompleted(data: Record<string, unknown>): Promise<void> {
     const providerReference = data.reference as string | undefined;
     const txHash = (data.tx_hash ?? null) as string | null;
@@ -177,20 +172,24 @@ export class ProviderWebhooksService {
 
     const amountMinor = Math.round(amountRaw * 100);
     const idemKey = `crypto_credit_${existing.id}`;
-
-    const ledgerEntry = await this.prisma.client.ledgerEntry.create({
-      data: {
-        walletId: existing.walletId,
-        kind: 'CREDIT',
-        amountMinor,
-        currency: existing.currency,
-        reference: idemKey,
-        description: `Crypto sell credit${txHash ? ` (${txHash})` : ''}`,
-        idempotencyKey: idemKey,
-        sourceType: 'CryptoSellTransaction',
-        sourceId: existing.id
-      }
+    const existingLedger = await this.prisma.client.ledgerEntry.findUnique({
+      where: { idempotencyKey: idemKey }
     });
+    const ledgerEntry =
+      existingLedger ??
+      (await this.prisma.client.ledgerEntry.create({
+        data: {
+          walletId: existing.walletId,
+          kind: 'CREDIT',
+          amountMinor,
+          currency: existing.currency,
+          reference: idemKey,
+          description: `Crypto sell credit${txHash ? ` (${txHash})` : ''}`,
+          idempotencyKey: idemKey,
+          sourceType: 'CryptoSellTransaction',
+          sourceId: existing.id
+        }
+      }));
 
     await this.prisma.client.cryptoSellTransaction.update({
       where: { id: existing.id },
@@ -232,23 +231,28 @@ export class ProviderWebhooksService {
     if (order.status === 'REFUNDED') return;
 
     const idemKey = `rmb_refund_${order.id}`;
-    const ledgerEntry = await this.prisma.client.ledgerEntry.create({
-      data: {
-        walletId: order.walletId,
-        kind: 'REVERSAL',
-        amountMinor: order.ngnAmountMinor,
-        currency: 'NGN',
-        reference: idemKey,
-        description: `RMB order refund → ${order.recipientName}`,
-        idempotencyKey: idemKey,
-        sourceType: 'RmbOrder',
-        sourceId: order.id
-      }
-    });
+    await this.prisma.client.$transaction(async (tx) => {
+      const existingLedger = await tx.ledgerEntry.findUnique({ where: { idempotencyKey: idemKey } });
+      const ledgerEntry =
+        existingLedger ??
+        (await tx.ledgerEntry.create({
+          data: {
+            walletId: order.walletId,
+            kind: 'REVERSAL',
+            amountMinor: order.ngnAmountMinor,
+            currency: 'NGN',
+            reference: idemKey,
+            description: `RMB order refund → ${order.recipientName}`,
+            idempotencyKey: idemKey,
+            sourceType: 'RmbOrder',
+            sourceId: order.id
+          }
+        }));
 
-    await this.prisma.client.rmbOrder.update({
-      where: { id: order.id },
-      data: { status: 'REFUNDED', refundLedgerEntryId: ledgerEntry.id }
+      await tx.rmbOrder.update({
+        where: { id: order.id },
+        data: { status: 'REFUNDED', refundLedgerEntryId: ledgerEntry.id }
+      });
     });
   }
 
@@ -259,6 +263,29 @@ export class ProviderWebhooksService {
     } else {
       this.logger.warn(`Unhandled Sogo refund for transaction type: ${String(data.type)}`);
     }
+  }
+
+  private async handleSogoTransactionFailedOrCancelled(event: Record<string, unknown>): Promise<void> {
+    const data = (event.data ?? {}) as Record<string, unknown>;
+    const transactionType = data.type as string | undefined;
+
+    if (transactionType === 'rmb_buy') {
+      const providerReference = data.reference as string | undefined;
+      if (!providerReference) {
+        this.logger.warn('Sogo RMB failure/cancellation webhook missing reference');
+        return;
+      }
+      const updated = await this.prisma.client.rmbOrder.updateMany({
+        where: { providerReference },
+        data: { status: 'CANCELLED' }
+      });
+      if (updated.count === 0) {
+        this.logger.warn(`Unknown Sogo RMB order reference for failure/cancellation: ${providerReference}`);
+      }
+      return;
+    }
+
+    await this.handleSogoTransactionFailed(event);
   }
 
   private async handleSogoTransactionFailed(event: Record<string, unknown>): Promise<void> {
@@ -293,7 +320,6 @@ export class ProviderWebhooksService {
     const status = event.status as string | undefined;
     this.logger.log(`Processing Reloadly transaction status: ${transactionId} = ${status}`);
 
-    // Map Reloadly status to our GiftCardPurchaseStatus enum
     const statusMap: Record<string, GiftCardPurchaseStatus> = {
       SUCCESSFUL: 'FULFILLED',
       PENDING: 'PURCHASING',
@@ -311,12 +337,9 @@ export class ProviderWebhooksService {
       data: { status: mappedStatus }
     });
 
-    // Dispatch downstream processing job
     await this.queueProducer.enqueueDigitalValueProcessing(transactionId, 'GIFT_CARD_BUY');
   }
 
-  // Audit trail only — never let a logging failure or duplicate-delivery replay
-  // block the actual webhook handling above.
   private async recordWebhookEvent(
     provider: string,
     eventType: string,
