@@ -22,7 +22,10 @@ jobs:
   release-readiness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -34,6 +37,7 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma:generate
       - run: pnpm ops:release -- ${{ inputs.strict == true && '--strict' || '' }} ${{ inputs.smoke == true && '--smoke' || '' }}
         env:
           APP_URL: ${{ vars.RELEASE_SMOKE_APP_URL }}
