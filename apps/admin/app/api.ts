@@ -43,12 +43,16 @@ export type AdminDashboardData = {
   source: "api" | "partial";
 };
 
+type CommandCenterOverview = {
+  users?: { total?: number; active?: number; new24h?: number; suspended?: number };
+  campaigns?: { active?: number; pendingReview?: number };
+  payments?: { volumeMinor30d?: number; pending?: number; failed24h?: number };
+  wallets?: { active?: number };
+  fulfilment?: { growthOpen?: number; vtuOpen?: number; virtualNumbersOpen?: number };
+  risk?: { review?: number; high?: number };
+};
+
 type PlatformOverview = {
-  users?: number;
-  activeCampaigns?: number;
-  pendingModeration?: number;
-  paymentVolumeMinor?: number;
-  fraudSignals?: number;
   smmSupplierCount?: number;
   queueHealth?: Record<string, string>;
 };
@@ -99,13 +103,8 @@ function queueStatus(value?: string): AdminQueueRow["status"] {
 }
 
 function riskFromCampaignStatus(status?: string): AdminRiskRow["risk"] {
-  if (status === "REJECTED" || status === "FAILED" || status === "CHANGES_REQUESTED") {
-    return "High";
-  }
-  if (status === "PENDING_REVIEW" || status === "PAUSED") {
-    return "Medium";
-  }
-
+  if (status === "REJECTED" || status === "FAILED" || status === "CHANGES_REQUESTED") return "High";
+  if (status === "PENDING_REVIEW" || status === "PAUSED") return "Medium";
   return "Low";
 }
 
@@ -114,79 +113,76 @@ function auditText(item: AuditLog) {
   return `${item.action ?? "audit.event"}${target ? ` on ${target}` : ""}`;
 }
 
-function buildMetrics(platform?: PlatformOverview, campaignOps?: CampaignOpsOverview): AdminMetric[] {
-  const totals = campaignOps?.totals;
-
+function buildMetrics(center?: CommandCenterOverview): AdminMetric[] {
   return [
     {
       label: "Users",
-      value: compactNumber(platform?.users),
-      detail: `${compactNumber(platform?.activeCampaigns)} active campaigns`,
+      value: compactNumber(center?.users?.total),
+      detail: `${compactNumber(center?.users?.active)} active · ${compactNumber(center?.users?.new24h)} new today`,
       tone: "success",
       icon: Users
     },
     {
       label: "Payment volume",
-      value: moneyFromMinor(platform?.paymentVolumeMinor),
-      detail: "Reported by platform overview",
+      value: moneyFromMinor(center?.payments?.volumeMinor30d),
+      detail: `${compactNumber(center?.payments?.pending)} pending payments`,
       tone: "info",
       icon: Banknote
     },
     {
-      label: "Fraud signals",
-      value: String(platform?.fraudSignals ?? totals?.blocked ?? 0),
-      detail: `${totals?.pendingReviews ?? platform?.pendingModeration ?? 0} reviews pending`,
-      tone: (platform?.fraudSignals ?? totals?.blocked ?? 0) > 0 ? "warning" : "success",
+      label: "Risk signals",
+      value: String(center?.risk?.review ?? 0),
+      detail: `${center?.risk?.high ?? 0} high-risk reviews`,
+      tone: (center?.risk?.high ?? 0) > 0 ? "warning" : "success",
       icon: AlertTriangle
     },
     {
-      label: "Operational queue",
+      label: "Open fulfilment",
       value: String(
-        (totals?.pendingReviews ?? 0) +
-          (totals?.launchPreparation ?? 0) +
-          (totals?.reporting ?? 0)
+        (center?.fulfilment?.growthOpen ?? 0) +
+          (center?.fulfilment?.vtuOpen ?? 0) +
+          (center?.fulfilment?.virtualNumbersOpen ?? 0)
       ),
-      detail: `${totals?.running ?? 0} campaigns running`,
+      detail: `${center?.campaigns?.pendingReview ?? 0} campaigns awaiting review`,
       tone: "info",
       icon: Gauge
     }
   ];
 }
 
-function buildQueues(platform?: PlatformOverview, campaignOps?: CampaignOpsOverview): AdminQueueRow[] {
+function buildQueues(
+  center?: CommandCenterOverview,
+  platform?: PlatformOverview,
+  campaignOps?: CampaignOpsOverview
+): AdminQueueRow[] {
   const health = platform?.queueHealth ?? {};
   const totals = campaignOps?.totals ?? {};
 
   return [
-    { name: "campaign reviews", depth: totals.pendingReviews ?? 0, status: queueStatus(health.campaign) },
+    { name: "campaign reviews", depth: center?.campaigns?.pendingReview ?? totals.pendingReviews ?? 0, status: queueStatus(health.campaign) },
     { name: "launch preparation", depth: totals.launchPreparation ?? 0, status: queueStatus(health.campaign) },
-    { name: "reporting", depth: totals.reporting ?? 0, status: queueStatus(health.analytics) },
-    { name: "SMM/provider routes", depth: platform?.smmSupplierCount ?? 0, status: queueStatus(health.smm) }
+    { name: "Growth fulfilment", depth: center?.fulfilment?.growthOpen ?? 0, status: queueStatus(health.smm) },
+    { name: "VTU / Virtual Numbers", depth: (center?.fulfilment?.vtuOpen ?? 0) + (center?.fulfilment?.virtualNumbersOpen ?? 0), status: queueStatus(health.smm) }
   ];
 }
 
-function buildRisk(campaignOps?: CampaignOpsOverview): AdminRiskRow[] {
+function buildRisk(campaignOps?: CampaignOpsOverview, center?: CommandCenterOverview): AdminRiskRow[] {
   const queue = campaignOps?.queue ?? [];
   const risky = queue
-    .filter(
-      (item) => riskFromCampaignStatus(item.status) !== "Low" || Number(item.budgetUtilization ?? 0) >= 85
-    )
+    .filter((item) => riskFromCampaignStatus(item.status) !== "Low" || Number(item.budgetUtilization ?? 0) >= 85)
     .slice(0, 4)
     .map((item) => ({
       item: item.name ?? item.id ?? "Campaign",
-      risk:
-        Number(item.budgetUtilization ?? 0) >= 85
-          ? "Medium"
-          : riskFromCampaignStatus(item.status),
-      reason:
-        Number(item.budgetUtilization ?? 0) >= 85
-          ? "Budget utilization alert"
-          : item.status ?? "Campaign needs review"
+      risk: Number(item.budgetUtilization ?? 0) >= 85 ? "Medium" : riskFromCampaignStatus(item.status),
+      reason: Number(item.budgetUtilization ?? 0) >= 85 ? "Budget utilization alert" : item.status ?? "Campaign needs review"
     }));
 
-  return risky.length > 0
-    ? risky
-    : [{ item: "Campaign queue", risk: "Low", reason: "No urgent campaign exceptions returned" }];
+  if (risky.length > 0) return risky;
+  if ((center?.risk?.review ?? 0) > 0) {
+    return [{ item: "Campaign risk desk", risk: (center?.risk?.high ?? 0) > 0 ? "High" : "Medium", reason: `${center?.risk?.review} risk reviews are open` }];
+  }
+
+  return [{ item: "Risk desk", risk: "Low", reason: "No urgent risk exceptions returned" }];
 }
 
 function buildAudits(campaignOps?: CampaignOpsOverview, auditLogs?: AuditLog[]) {
@@ -215,7 +211,8 @@ async function optional<T>(request: Promise<T>) {
 }
 
 export async function loadAdminDashboard(): Promise<AdminDashboardData> {
-  const [platform, campaignOps, supplierHealth, auditLogs] = await Promise.all([
+  const [center, platform, campaignOps, supplierHealth, auditLogs] = await Promise.all([
+    optional(apiRequest<CommandCenterOverview>("/admin/command-center/overview")),
     optional(apiRequest<PlatformOverview>("/admin/overview")),
     optional(apiRequest<CampaignOpsOverview>("/admin/campaign-ops/overview")),
     optional(apiRequest<SupplierHealth>("/admin/smm/health")),
@@ -223,11 +220,11 @@ export async function loadAdminDashboard(): Promise<AdminDashboardData> {
   ]);
 
   return {
-    metrics: buildMetrics(platform, campaignOps),
-    queues: buildQueues(platform, campaignOps),
-    risk: buildRisk(campaignOps),
+    metrics: buildMetrics(center),
+    queues: buildQueues(center, platform, campaignOps),
+    risk: buildRisk(campaignOps, center),
     audits: buildAudits(campaignOps, auditLogs),
     providers: buildProviders(supplierHealth),
-    source: platform && campaignOps ? "api" : "partial"
+    source: center && campaignOps ? "api" : "partial"
   };
 }
