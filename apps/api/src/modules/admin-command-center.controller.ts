@@ -15,4 +15,9 @@ export class AdminCommandCenterController {
   overview() {
     return this.commandCenter.getOverview();
   }
+
+  @Get("alerts")
+  alerts() {
+    return this.commandCenter.getAlerts();
+  }
 }
