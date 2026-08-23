@@ -2,8 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 
 import { PrismaService } from "../prisma.service";
 
-const STATUS_VALUES = ["OPEN", "INVESTIGATING", "RESOLVED", "WONT_FIX"] as const;
-type ReconciliationStatus = (typeof STATUS_VALUES)[number];
+type ReconciliationStatus = "OPEN" | "INVESTIGATING" | "RESOLVED" | "WONT_FIX";
 
 @Injectable()
 export class AdminReconciliationService {
