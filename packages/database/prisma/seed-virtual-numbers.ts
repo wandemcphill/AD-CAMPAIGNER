@@ -1,89 +1,158 @@
 import { createPrismaClient } from "../src/index";
 
-// Seeds NumberCountry and VirtualNumberProduct for the Phase 2 launch ladder.
-// Production verification-number routing is intentionally 5SIM-only. The live
-// provider adapter reads FIVESIM_API_TOKEN (or the legacy FIVESIM_API_KEY) from
-// the service environment. Other OTP suppliers remain documented only and are
-// not selected for customer number orders.
+// Production verification-number routing is intentionally 5SIM-only. The
+// catalogue must mirror 5SIM's live country inventory rather than a hand-picked
+// country list, otherwise the customer storefront hides most of the supplier's
+// inventory.
 
-interface CountrySeed {
-  isoCode: string;
-  name: string;
-  dialPrefix: string;
-  flagEmoji: string;
-  enabled: boolean;
-  sortOrder: number;
+const BASE_URL = (process.env.FIVESIM_BASE_URL ?? process.env.FIVESIM_API_URL ?? "https://5sim.net/v1").replace(/\/+$/, "");
+const TOKEN = process.env.FIVESIM_API_TOKEN?.trim() ?? process.env.FIVESIM_API_KEY?.trim() ?? "";
+
+function flagEmoji(iso: string): string {
+  const normalized = iso.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return "🌍";
+  return [...normalized]
+    .map((char) => String.fromCodePoint(127397 + char.charCodeAt(0)))
+    .join("");
 }
 
-const COUNTRIES: CountrySeed[] = [
-  { isoCode: "GB", name: "United Kingdom", dialPrefix: "+44", flagEmoji: "🇬🇧", enabled: true, sortOrder: 10 },
-  { isoCode: "US", name: "United States", dialPrefix: "+1", flagEmoji: "🇺🇸", enabled: true, sortOrder: 20 },
-  { isoCode: "CA", name: "Canada", dialPrefix: "+1", flagEmoji: "🇨🇦", enabled: true, sortOrder: 30 },
-  { isoCode: "DE", name: "Germany", dialPrefix: "+49", flagEmoji: "🇩🇪", enabled: false, sortOrder: 40 },
-  { isoCode: "AU", name: "Australia", dialPrefix: "+61", flagEmoji: "🇦🇺", enabled: false, sortOrder: 50 }
-];
+type FiveSimCountry = {
+  iso?: Record<string, number>;
+  prefix?: Record<string, number>;
+  text_en?: string;
+  [key: string]: unknown;
+};
 
-interface ProductSeed {
-  countryCode: string;
-  rentalKind: "TEMPORARY" | "STANDARD" | "EXTENDED" | "LONG_TERM";
-  durationDays: number;
-  displayName: string;
-  active: boolean;
-  preferredProviders: string[];
-  referenceCostMinorUsd: number;
+type FiveSimPrices = Record<
+  string,
+  Record<string, Record<string, { cost?: number; count?: number; rate?: number }>>
+>;
+
+async function fiveSimGet<T>(path: string): Promise<T> {
+  if (!TOKEN) throw new Error("FIVESIM_API_TOKEN is not configured.");
+  const response = await fetch(`${BASE_URL}${path}`, {
+    headers: {
+      Authorization: `Bearer ${TOKEN}`,
+      Accept: "application/json"
+    }
+  });
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`5SIM ${path} returned HTTP ${response.status}: ${body.slice(0, 300)}`);
+  }
+  return (await response.json()) as T;
 }
 
-const PRODUCTS: ProductSeed[] = [
-  { countryCode: "GB", rentalKind: "LONG_TERM", durationDays: 360, displayName: "UK Number — 360 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 5500 },
-  { countryCode: "US", rentalKind: "STANDARD", durationDays: 30, displayName: "US Number — 30 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 1800 },
-  { countryCode: "US", rentalKind: "EXTENDED", durationDays: 90, displayName: "US Number — 90 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 4900 },
-  { countryCode: "US", rentalKind: "EXTENDED", durationDays: 180, displayName: "US Number — 180 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 9200 },
-  { countryCode: "US", rentalKind: "LONG_TERM", durationDays: 360, displayName: "US Number — 360 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 17500 },
-  { countryCode: "CA", rentalKind: "STANDARD", durationDays: 30, displayName: "Canada Number — 30 days", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 2000 },
-  { countryCode: "DE", rentalKind: "EXTENDED", durationDays: 30, displayName: "Germany Number — 30 days", active: false, preferredProviders: ["5sim"], referenceCostMinorUsd: 3500 },
-  { countryCode: "US", rentalKind: "TEMPORARY", durationDays: 1, displayName: "US Number — 24 hours (5SIM)", active: true, preferredProviders: ["5sim"], referenceCostMinorUsd: 150 }
-];
+function deriveCountry(payload: FiveSimCountry, slug: string) {
+  const iso = Object.keys(payload.iso ?? {})[0]?.toUpperCase() ?? "";
+  const prefix = Object.keys(payload.prefix ?? {})[0] ?? "";
+  const countryCode = slug.trim().toLowerCase();
 
-async function seedCountries(db: ReturnType<typeof createPrismaClient>) {
-  let created = 0;
-  let updated = 0;
+  return {
+    countryCode,
+    iso,
+    name: payload.text_en?.trim() || slug,
+    dialPrefix: prefix || "+0",
+    flagEmoji: flagEmoji(iso)
+  };
+}
 
-  for (const country of COUNTRIES) {
-    const existing = await db.numberCountry.findUnique({ where: { isoCode: country.isoCode } });
+function minimumLiveCostMinorUsd(prices: FiveSimPrices, countryCode: string): number {
+  const country = prices[countryCode];
+  if (!country) return 0;
+
+  let minimum = Number.POSITIVE_INFINITY;
+  for (const product of Object.values(country)) {
+    for (const operator of Object.values(product)) {
+      const count = Number(operator.count ?? 0);
+      const cost = Number(operator.cost ?? 0);
+      if (count > 0 && Number.isFinite(cost) && cost > 0) {
+        minimum = Math.min(minimum, cost);
+      }
+    }
+  }
+
+  return Number.isFinite(minimum) ? Math.round(minimum * 100) : 0;
+}
+
+async function seedLive5SimCatalog(db: ReturnType<typeof createPrismaClient>) {
+  const [countries, prices] = await Promise.all([
+    fiveSimGet<Record<string, FiveSimCountry>>("/guest/countries"),
+    fiveSimGet<FiveSimPrices>("/guest/prices")
+  ]);
+
+  const rows = Object.entries(countries)
+    .filter(([slug]) => slug !== "any")
+    .map(([slug, payload]) => ({
+      ...deriveCountry(payload, slug),
+      referenceCostMinorUsd: minimumLiveCostMinorUsd(prices, slug)
+    }))
+    .filter((country) => country.name && country.dialPrefix);
+
+  if (rows.length === 0) {
+    throw new Error("5SIM returned no usable countries.");
+  }
+
+  // Disable stale rows before reactivating the live supplier universe. This
+  // removes the old four-country/hand-seeded ceiling without deleting history.
+  await db.numberCountry.updateMany({ data: { enabled: false } });
+  await db.virtualNumberProduct.updateMany({ data: { active: false, preferredProviders: ["5sim"] } });
+
+  let countriesCreated = 0;
+  let countriesUpdated = 0;
+  let productsCreated = 0;
+  let productsUpdated = 0;
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const country = rows[index];
+    const existing = await db.numberCountry.findUnique({ where: { isoCode: country.countryCode } });
+
     if (existing) {
       await db.numberCountry.update({
-        where: { isoCode: country.isoCode },
+        where: { isoCode: existing.isoCode },
         data: {
           name: country.name,
           dialPrefix: country.dialPrefix,
           flagEmoji: country.flagEmoji,
-          enabled: country.enabled,
-          sortOrder: country.sortOrder
+          enabled: true,
+          sortOrder: (index + 1) * 10
         }
       });
-      updated++;
+      countriesUpdated += 1;
     } else {
-      await db.numberCountry.create({ data: country });
-      created++;
+      await db.numberCountry.create({
+        data: {
+          isoCode: country.countryCode,
+          name: country.name,
+          dialPrefix: country.dialPrefix,
+          flagEmoji: country.flagEmoji,
+          enabled: true,
+          sortOrder: (index + 1) * 10
+        }
+      });
+      countriesCreated += 1;
     }
-  }
 
-  console.log(`NumberCountry: ${created} created, ${updated} updated`);
-}
+    // 5SIM's guest products endpoint is service-oriented. This product is the
+    // storefront's generic 24-hour verification number SKU; the purchase path
+    // then resolves live 5SIM services and prices for the selected country.
+    const product = {
+      countryCode: country.countryCode,
+      capability: "SMS" as const,
+      rentalKind: "TEMPORARY" as const,
+      durationDays: 1,
+      displayName: `${country.name} verification number — 24 hours`,
+      active: true,
+      preferredProviders: ["5sim"],
+      metadata: {
+        referenceCostMinorUsd: country.referenceCostMinorUsd,
+        provider: "5sim",
+        providerCountryRef: country.countryCode,
+        catalogSource: "5SIM_LIVE"
+      }
+    };
 
-async function seedProducts(db: ReturnType<typeof createPrismaClient>) {
-  // Remove stale supplier affinity from any older product rows. This prevents a
-  // previous SMSPool/SMSPVA seed from remaining selectable after the launch policy
-  // changes to 5SIM-only.
-  await db.virtualNumberProduct.updateMany({
-    data: { preferredProviders: ["5sim"] }
-  });
-
-  let created = 0;
-  let updated = 0;
-
-  for (const product of PRODUCTS) {
-    const existing = await db.virtualNumberProduct.findUnique({
+    const existingProduct = await db.virtualNumberProduct.findUnique({
       where: {
         countryCode_capability_durationDays: {
           countryCode: product.countryCode,
@@ -93,35 +162,35 @@ async function seedProducts(db: ReturnType<typeof createPrismaClient>) {
       }
     });
 
-    const data = {
-      countryCode: product.countryCode,
-      capability: "SMS" as const,
-      rentalKind: product.rentalKind,
-      durationDays: product.durationDays,
-      displayName: product.displayName,
-      active: product.active,
-      preferredProviders: ["5sim"],
-      metadata: { referenceCostMinorUsd: product.referenceCostMinorUsd }
-    };
-
-    if (existing) {
-      await db.virtualNumberProduct.update({ where: { id: existing.id }, data });
-      updated++;
+    if (existingProduct) {
+      await db.virtualNumberProduct.update({ where: { id: existingProduct.id }, data: product });
+      productsUpdated += 1;
     } else {
-      await db.virtualNumberProduct.create({ data });
-      created++;
+      await db.virtualNumberProduct.create({ data: product });
+      productsCreated += 1;
     }
   }
 
-  console.log(`VirtualNumberProduct: ${created} created, ${updated} updated (5SIM-only)`);
+  console.log(
+    `5SIM live catalogue: ${rows.length} countries synced (${countriesCreated} created, ${countriesUpdated} updated); ` +
+      `${productsCreated + productsUpdated} active verification products.`
+  );
 }
 
 async function main() {
   const db = createPrismaClient();
 
   try {
-    await seedCountries(db);
-    await seedProducts(db);
+    try {
+      await seedLive5SimCatalog(db);
+    } catch (error) {
+      // A transient supplier outage must not wipe the last known-good catalogue.
+      // The sync is therefore best-effort during deploy; existing rows remain
+      // untouched when the upstream call fails.
+      console.error(
+        `5SIM live catalogue sync skipped: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   } finally {
     await db.$disconnect();
   }

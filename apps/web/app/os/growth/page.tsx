@@ -1,8 +1,9 @@
 "use client";
 
-import { RefreshCw, ShieldAlert } from "lucide-react";
+import { useMemo, useState } from "react";
+import { RefreshCw, Search, ShieldAlert } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel, SummaryStatStrip, ValueSkeleton } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import {
   DeliveryMeter,
@@ -17,7 +18,27 @@ import { SectionTabs } from "../section-tabs";
 
 export default function GrowthServicesPage() {
   const { error, loading, orders, refresh, services } = useGrowthData();
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("ALL");
+
   const activeServices = services.filter((service) => service.enabled);
+  const categories = useMemo(
+    () => Array.from(new Set(activeServices.map((service) => service.category))).sort(),
+    [activeServices]
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleServices = useMemo(
+    () =>
+      activeServices.filter((service) => {
+        if (category !== "ALL" && service.category !== category) return false;
+        if (!normalizedQuery) return true;
+        return `${service.name} ${service.platform} ${service.category} ${service.description}`
+          .toLowerCase()
+          .includes(normalizedQuery);
+      }),
+    [activeServices, category, normalizedQuery]
+  );
+
   const highRiskServices = services.filter(
     (service) => service.riskTone === "danger" || service.riskTone === "warning"
   ).length;
@@ -56,96 +77,129 @@ export default function GrowthServicesPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            { label: "services", value: loading ? <ValueSkeleton width="w-10" /> : String(activeServices.length) },
-            { label: "active orders", value: loading ? <ValueSkeleton width="w-10" /> : String(activeOrders) },
-            { label: "completed", value: loading ? <ValueSkeleton width="w-10" /> : String(completedOrders) },
-            { label: "risk flags", value: loading ? <ValueSkeleton width="w-10" /> : String(highRiskServices) }
+            { label: "services", value: loading ? "..." : String(activeServices.length) },
+            { label: "showing", value: loading ? "..." : String(visibleServices.length) },
+            { label: "active orders", value: loading ? "..." : String(activeOrders) },
+            { label: "completed", value: loading ? "..." : String(completedOrders) }
           ]}
         />
       </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-4">
         <MetricCard
-          detail="Available storefront items"
+          detail="Full supplier-backed storefront catalogue"
           label="Services"
           tone="info"
-          value={loading ? <ValueSkeleton width="w-10" /> : String(activeServices.length)}
+          value={loading ? "..." : String(activeServices.length)}
+        />
+        <MetricCard
+          detail="Matches current search and category filters"
+          label="Showing"
+          tone="info"
+          value={loading ? "..." : String(visibleServices.length)}
         />
         <MetricCard
           detail="Pending, submitted, or in delivery"
           label="Active orders"
           tone="warning"
-          value={loading ? <ValueSkeleton width="w-10" /> : String(activeOrders)}
-        />
-        <MetricCard
-          detail="Delivered orders"
-          label="Completed"
-          tone="success"
-          value={loading ? <ValueSkeleton width="w-10" /> : String(completedOrders)}
+          value={loading ? "..." : String(activeOrders)}
         />
         <MetricCard
           detail="Require clear customer disclosure"
           label="Risk flags"
-          value={loading ? <ValueSkeleton width="w-10" /> : String(highRiskServices)}
+          value={loading ? "..." : String(highRiskServices)}
         />
       </section>
 
-      <section className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="grid gap-4 md:grid-cols-2">
-          {activeServices.slice(0, 6).map((service) => (
-            <Panel className="p-4" key={service.code}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="grid size-11 place-items-center rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
-                  <service.icon className="size-5 text-[var(--ft-text-primary)]" />
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Badge tone="info">{service.platform}</Badge>
-                  <Badge tone={service.riskTone}>Risk</Badge>
-                </div>
-              </div>
-              <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">
-                {service.name}
-              </h2>
-              <p className="mt-2 min-h-12 text-sm leading-6 text-[var(--ft-text-muted)]">
-                {service.description}
-              </p>
-              <div className="mt-4 grid gap-2 rounded-md bg-[var(--ft-bg-muted)] p-3 text-sm">
-                <div className="flex justify-between gap-3">
-                  <span className="text-[var(--ft-text-muted)]">Price</span>
-                  <span className="font-semibold text-[var(--ft-text-primary)]">
-                    {service.price}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span className="text-[var(--ft-text-muted)]">Quantity</span>
-                  <span className="font-medium text-[var(--ft-text-primary)]">
-                    {service.minimumQuantity.toLocaleString()}-
-                    {service.maximumQuantity.toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <span className="text-[var(--ft-text-muted)]">ETA</span>
-                  <span className="font-medium text-[var(--ft-text-primary)]">
-                    {service.expectedCompletion}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <span className="text-xs leading-5 text-[var(--ft-text-muted)]">
-                  {service.riskSummary}
-                </span>
-                <OrderGrowthServiceButton service={service} />
-              </div>
-            </Panel>
+      <section className="mt-6 grid gap-3 lg:grid-cols-[1fr_auto]">
+        <label className="flex min-h-11 items-center gap-2 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3">
+          <Search className="size-4 shrink-0 text-[var(--ft-text-muted)]" />
+          <input
+            aria-label="Search Growth Services"
+            className="min-w-0 flex-1 bg-transparent text-sm text-[var(--ft-text-primary)] outline-none placeholder:text-[var(--ft-text-muted)]"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search TikTok LIVE, Nigeria, followers, views, comments..."
+            value={query}
+          />
+        </label>
+        <select
+          aria-label="Filter Growth Services by category"
+          className="min-h-11 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)] outline-none"
+          onChange={(event) => setCategory(event.target.value)}
+          value={category}
+        >
+          <option value="ALL">All categories</option>
+          {categories.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
           ))}
+        </select>
+      </section>
+
+      <section className="mt-6 grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+        <div className="grid gap-4 md:grid-cols-2">
+          {loading ? (
+            <Panel className="p-5 md:col-span-2">
+              Loading the complete Growth Services catalogue...
+            </Panel>
+          ) : visibleServices.length === 0 ? (
+            <Panel className="p-5 md:col-span-2">
+              <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">No matching services</h2>
+              <p className="mt-2 text-sm text-[var(--ft-text-muted)]">
+                Try a broader search or switch back to All categories.
+              </p>
+            </Panel>
+          ) : (
+            visibleServices.map((service) => (
+              <Panel className="p-4" key={service.code}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="grid size-11 place-items-center rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]">
+                    <service.icon className="size-5 text-[var(--ft-text-primary)]" />
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Badge tone="info">{service.platform}</Badge>
+                    <Badge tone="info">{service.category}</Badge>
+                    <Badge tone={service.riskTone}>Risk</Badge>
+                  </div>
+                </div>
+                <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">
+                  {service.name}
+                </h2>
+                <p className="mt-2 min-h-12 text-sm leading-6 text-[var(--ft-text-muted)]">
+                  {service.description}
+                </p>
+                <div className="mt-4 grid gap-2 rounded-md bg-[var(--ft-bg-muted)] p-3 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[var(--ft-text-muted)]">Price</span>
+                    <span className="font-semibold text-[var(--ft-text-primary)]">{service.price}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[var(--ft-text-muted)]">Quantity</span>
+                    <span className="font-medium text-[var(--ft-text-primary)]">
+                      {service.minimumQuantity.toLocaleString()}-{service.maximumQuantity.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[var(--ft-text-muted)]">ETA</span>
+                    <span className="font-medium text-[var(--ft-text-primary)]">
+                      {service.expectedCompletion}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <span className="text-xs leading-5 text-[var(--ft-text-muted)]">{service.riskSummary}</span>
+                  <OrderGrowthServiceButton service={service} />
+                </div>
+              </Panel>
+            ))
+          )}
         </div>
 
         <Panel className="p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">
-                Delivery tracker
-              </h2>
+              <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Delivery tracker</h2>
               <p className="mt-1 text-sm text-[var(--ft-text-muted)]">
                 Quantity ordered, delivered, and expected completion.
               </p>
@@ -165,12 +219,8 @@ export default function GrowthServicesPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="font-semibold text-[var(--ft-text-primary)]">
-                        {order.serviceName}
-                      </div>
-                      <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
-                        {order.expectedCompletionAt}
-                      </div>
+                      <div className="font-semibold text-[var(--ft-text-primary)]">{order.serviceName}</div>
+                      <div className="mt-1 text-xs text-[var(--ft-text-muted)]">{order.expectedCompletionAt}</div>
                     </div>
                     <GrowthStatusBadge status={order.status} />
                   </div>
