@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException, BadRequestException } from "@nestjs/common";
 
 import { PrismaService } from "./prisma.service";
 import { AdminCommandCenterService } from "./admin-command-center.service";
@@ -115,7 +115,10 @@ export class AdminOperationsControlTowerService {
         title: `${item.domain.replaceAll("_", " ")} · ${item.status}`,
         detail: item.failureReason ?? item.title,
         href: "/fulfilment/",
-        createdAt: item.updatedAt.toISOString()
+        createdAt: item.updatedAt.toISOString(),
+        action: item.canOpenReconciliation ? "RECONCILE" as const : undefined,
+        domain: item.domain,
+        resourceId: item.id
       })),
       ...reconciliation.map((row) => ({
         id: `reconciliation:${row.id}`,
@@ -145,5 +148,34 @@ export class AdminOperationsControlTowerService {
       totals: { all: items.length, danger: items.filter((item) => item.priority === "danger").length, warning: items.filter((item) => item.priority === "warning").length },
       items: items.slice(0, 250)
     };
+  }
+
+  async reconcileFulfilment(domain: string, resourceId: string, reason: string, actorUserId: string) {
+    if (!reason.trim()) throw new BadRequestException("A reconciliation reason is required.");
+
+    const item = (await this.commandCenter.listFulfilment({ domain: domain as never, limit: 500 })).find((candidate) => candidate.id === resourceId);
+    if (!item) throw new NotFoundException("Fulfilment resource was not found in the operations queue.");
+    if (!item.canOpenReconciliation) throw new BadRequestException("This fulfilment resource is not eligible for reconciliation.");
+
+    const providerDomain = domain === "VTU" || domain === "TELECOM" ? "VTU" : domain;
+    const resourceType = domain === "GUEST_CHECKOUT"
+      ? "GuestTransaction"
+      : domain === "VIRTUAL_NUMBER"
+        ? "VirtualNumberOrder"
+        : `${domain}Order`;
+
+    return this.commandCenter.openFulfilmentReconciliation(
+      {
+        domain: item.domain,
+        resourceType,
+        resourceId,
+        kind: "AMBIGUOUS_PROVIDER_RESULT",
+        providerName: item.providerName ?? "unknown",
+        providerDomain: providerDomain as never,
+        workspaceId: item.workspaceId,
+        reason: reason.trim()
+      },
+      actorUserId
+    );
   }
 }
