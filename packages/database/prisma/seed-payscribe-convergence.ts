@@ -1,18 +1,18 @@
 import { createPrismaClient } from "../src/index";
 
-// This is an additive convergence seed. It does not delete historical provider
-// records; it makes Maplerad ineligible for financial-product routing while
-// preserving the audit trail, and explicitly records Payscribe as the intended
-// USD-card / NGN-account provider.
+// Additive convergence seed. Historical provider rows remain for audit, but
+// retired Maplerad records are made impossible to route.
 async function main() {
   const db = createPrismaClient();
 
+  const retiredNames = [
+    "maplerad-virtual-card",
+    "maplerad-virtual-account",
+    "maplerad-remittance"
+  ];
+
   await db.providerConfig.updateMany({
-    where: {
-      name: {
-        in: ["maplerad-virtual-card", "maplerad-virtual-account", "maplerad-remittance"]
-      }
-    },
+    where: { name: { in: retiredNames } },
     data: {
       status: "DISABLED",
       priority: 9999,
@@ -27,7 +27,7 @@ async function main() {
   });
 
   await db.providerCapabilityGrant.updateMany({
-    where: { providerName: "maplerad" },
+    where: { providerName: { in: retiredNames } },
     data: {
       enabled: false,
       productionApproved: false,
