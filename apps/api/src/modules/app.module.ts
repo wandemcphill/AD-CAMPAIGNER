@@ -39,6 +39,7 @@ import {
 import { AdminCommandCenterController } from "./admin-command-center.controller";
 import { AdminCommandCenterService } from "./admin-command-center.service";
 import { AdminFinanceModule } from "./admin-finance/admin-finance.module";
+import { AdminReconciliationModule } from "./admin-reconciliation/admin-reconciliation.module";
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { AuthSessionService } from "./auth-session.service";
@@ -80,19 +81,12 @@ import { NotificationsModule } from "./notifications/notifications.module";
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
-      {
-        name: "short",
-        ttl: 60000,
-        limit: 100
-      },
-      {
-        name: "long",
-        ttl: 900000,
-        limit: 1000
-      }
+      { name: "short", ttl: 60000, limit: 100 },
+      { name: "long", ttl: 900000, limit: 1000 }
     ]),
     PrismaModule,
     AdminFinanceModule,
+    AdminReconciliationModule,
     ApprovalsModule,
     DigitalAccessModule,
     InvoicesModule,
