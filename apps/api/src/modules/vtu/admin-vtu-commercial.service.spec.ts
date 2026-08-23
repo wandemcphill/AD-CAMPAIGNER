@@ -1,4 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
+import { describe, expect, it, vi } from "vitest";
 
 import { AdminVtuCommercialService } from "./admin-vtu-commercial.service";
 
@@ -7,13 +8,13 @@ describe("AdminVtuCommercialService", () => {
     const prisma = {
       client: {
         vtuCanonicalSku: {
-          findUnique: jest.fn().mockResolvedValue({
+          findUnique: vi.fn().mockResolvedValue({
             id: "sku_1",
             minMarginBps: 500,
             sellingPriceMinor: null,
             providerMappings: [{ costMinor: 10_000 }]
           }),
-          update: jest.fn()
+          update: vi.fn()
         }
       }
     } as never;
@@ -40,13 +41,13 @@ describe("AdminVtuCommercialService", () => {
     const prisma = {
       client: {
         vtuCanonicalSku: {
-          findUnique: jest.fn().mockResolvedValue({
+          findUnique: vi.fn().mockResolvedValue({
             id: "sku_1",
             minMarginBps: 500,
             sellingPriceMinor: null,
             providerMappings: [{ costMinor: 10_000 }]
           }),
-          update: jest.fn().mockResolvedValue(updated)
+          update: vi.fn().mockResolvedValue(updated)
         }
       }
     } as never;
