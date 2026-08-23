@@ -13,7 +13,7 @@ export class ProviderWebhooksService {
     private readonly queueProducer: QueueProducerService
   ) {}
 
-  /** Current Sogo signature: HMAC-SHA256(rawBody, webhookSecret). */
+  /** Current Sogo signature: sha256=<hex(HMAC-SHA256(rawBody, webhookSecret))>. */
   verifySogoSignature(
     payload: string,
     timestamp: string | undefined,
@@ -22,8 +22,11 @@ export class ProviderWebhooksService {
   ): boolean {
     if (!secret || !signature) return false;
 
+    const normalizedSignature = signature.startsWith('sha256=')
+      ? signature.slice('sha256='.length)
+      : signature;
     const currentDigest = crypto.createHmac('sha256', secret).update(payload).digest('hex');
-    if (this.secureCompare(currentDigest, signature)) return true;
+    if (this.secureCompare(currentDigest, normalizedSignature)) return true;
 
     // Legacy fallback used by the first Sogo integration: HMAC(rawBody + ':' + timestamp).
     if (!timestamp) return false;
@@ -31,7 +34,7 @@ export class ProviderWebhooksService {
       .createHmac('sha256', secret)
       .update(`${payload}:${timestamp}`)
       .digest('hex');
-    return this.secureCompare(legacyDigest, signature);
+    return this.secureCompare(legacyDigest, normalizedSignature);
   }
 
   verifyReloadlySignature(payload: string, timestamp: string, signature: string, secret: string): boolean {
