@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 
 import { PrismaService } from "../prisma.service";
 
@@ -39,7 +39,9 @@ export class AdminReconciliationService {
     if (!existing) throw new NotFoundException("Reconciliation exception not found");
 
     const trimmed = note.trim();
-    if (trimmed.length < 3) throw new Error("A reconciliation note of at least 3 characters is required.");
+    if (trimmed.length < 3) {
+      throw new BadRequestException("A reconciliation note of at least 3 characters is required.");
+    }
 
     const resolved = status === "RESOLVED" || status === "WONT_FIX";
     return this.db.financialReconciliationException.update({
