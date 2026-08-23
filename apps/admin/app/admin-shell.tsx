@@ -59,6 +59,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Digital Value", href: "/digital-value/", icon: CircleDollarSign },
   { label: "Ad Accounts", href: "/ad-accounts/", icon: CreditCard },
   { label: "Telecom", href: "/telecom/", icon: Phone },
+  { label: "Webhook Operations", href: "/webhook-operations/", icon: Webhook },
   { label: "Webhooks", href: "/webhooks/", icon: Webhook },
   { label: "Support", href: "/support/", icon: LifeBuoy },
   { label: "Rewards", href: "/rewards/", icon: Gift },
