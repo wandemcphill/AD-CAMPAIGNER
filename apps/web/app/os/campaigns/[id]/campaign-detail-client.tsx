@@ -32,6 +32,7 @@ import {
   Panel,
   PlatformChip,
   ProofItem,
+  StatusBadge,
   SummaryStatStrip,
   TimelineEvent,
   campaignStatusMeta
@@ -72,7 +73,6 @@ import {
   LoadingBlock,
   PageHeader,
   SourceBadge,
-  StatusBadge,
   linkButtonClass,
   secondaryLinkButtonClass
 } from "../../../campaigns/components";

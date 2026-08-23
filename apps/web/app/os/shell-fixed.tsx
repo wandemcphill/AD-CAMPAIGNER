@@ -368,7 +368,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
               : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)]"
           )}
           href={asHref(section.href)}
-          onClick={mobile ? () => setSidebarOpen(false) : undefined}
+          {...(mobile ? { onClick: () => setSidebarOpen(false) } : {})}
         >
           <section.icon className="size-4" />
           {section.label}
@@ -391,7 +391,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
                 )}
                 href={asHref(child.href)}
                 key={child.href}
-                onClick={mobile ? () => setSidebarOpen(false) : undefined}
+                {...(mobile ? { onClick: () => setSidebarOpen(false) } : {})}
               >
                 <child.icon className="size-3.5" />
                 {child.label}

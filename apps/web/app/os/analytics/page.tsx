@@ -10,6 +10,7 @@ import {
   Panel,
   PermissionDenied,
   PlatformChip,
+  StatusBadge,
   ValueSkeleton
 } from "@fliptrybe/ui";
 
@@ -22,7 +23,6 @@ import {
   PageHeader,
   ReportCard,
   SourceBadge,
-  StatusBadge,
   destinationPlatform,
   secondaryLinkButtonClass
 } from "../../campaigns/components";

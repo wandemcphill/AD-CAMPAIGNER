@@ -15,6 +15,8 @@ import { cn } from "@fliptrybe/ui";
  */
 type LinkHref = ComponentProps<typeof Link>["href"];
 
+const asHref = (href: string) => href as LinkHref;
+
 export type SectionTab = { label: string; href: string; icon: LucideIcon };
 
 /**
@@ -38,7 +40,7 @@ export function SectionTabs({ items }: { items: SectionTab[] }) {
                 ? "border-[var(--ft-accent)] text-[var(--ft-accent)]"
                 : "border-transparent text-[var(--ft-text-secondary)] hover:text-[var(--ft-text-primary)]"
             )}
-            href={item.href as LinkHref}
+            href={asHref(item.href)}
             key={item.href}
           >
             <item.icon className="size-4 stroke-[1.5]" />

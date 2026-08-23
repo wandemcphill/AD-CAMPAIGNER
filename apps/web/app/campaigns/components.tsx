@@ -16,7 +16,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import { Badge, Panel, PlatformChip, StatusBadge, ThemeToggle, cn } from "@fliptrybe/ui";
+import { Badge, Panel, PlatformChip, StatusBadge, cn } from "@fliptrybe/ui";
 import type { Campaign, Money, Wallet } from "@fliptrybe/types";
 
 import { destinationLabels, objectiveLabels, type ClientDataSource } from "./data";

@@ -29,8 +29,9 @@ import {
   PermissionDenied,
   PlatformChip,
   PlatformSelectCard,
-  UploadZone as SharedUploadZone,
+  StatusBadge,
   SummaryStatStrip,
+  UploadZone as SharedUploadZone,
   WizardStepBar,
   cn
 } from "@fliptrybe/ui";
@@ -48,7 +49,6 @@ import {
   LoadingBlock,
   PageHeader,
   SourceBadge,
-  StatusBadge,
   linkButtonClass,
   secondaryLinkButtonClass
 } from "../../../campaigns/components";
