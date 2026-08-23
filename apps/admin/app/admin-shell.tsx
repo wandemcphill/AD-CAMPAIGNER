@@ -18,12 +18,12 @@ import {
   Scale,
   ShieldAlert,
   ShieldCheck,
+  Tags,
   Users,
   Wallet,
   ShoppingCart,
   Smartphone,
   Store,
-  Tags,
   Webhook,
   type LucideIcon
 } from "lucide-react";
@@ -45,6 +45,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Users", href: "/users/", icon: Users },
   { label: "Reconciliation", href: "/reconciliation/", icon: Scale },
   { label: "Products & Pricing", href: "/commercial/", icon: Tags },
+  { label: "Provider Governance", href: "/provider-governance/", icon: Network },
   { label: "Growth", href: "/growth-services/", icon: Boxes },
   { label: "Audit", href: "/campaign-ops/activity/", icon: FileSearch },
   { label: "Access", href: "/digital-access/", icon: LockKeyhole },
