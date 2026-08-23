@@ -15,7 +15,6 @@ import {
   classifyFallbackSafety,
   createFincraRemittanceProvider,
   createInflowVirtualAccountProvider,
-  createMapleradVirtualCardProvider,
   createPayscribeVirtualAccountProvider,
   createPayscribeVirtualCardProvider,
   createSudoVirtualCardProvider,
@@ -120,7 +119,6 @@ const VENDOR_BY_PROVIDER_CONFIG_NAME: Record<string, string> = {
   "yativo-remittance": "yativo",
   "fincra-remittance": "fincra",
   "sudo-virtual-card": "sudo",
-  "maplerad-virtual-card": "maplerad",
   "inflow-virtual-account": "inflow"
 };
 
@@ -219,11 +217,11 @@ export class FinancialProductsService {
 
   private buildCardAdapter(providerName: string): VirtualCardProvider {
     switch (vendorKey(providerName)) {
-      // Sudo and Maplerad are the two card issuers with confirmed live sandbox
-      // testing (see the adapter headers in packages/providers). Their adapters
-      // were written and tested but imported nowhere, so the only reachable
-      // issuer was Payscribe — which is itself not sandbox-verified. Both are
-      // wired here; which one actually serves traffic is still decided by the
+      // Sudo has confirmed live sandbox testing (see the adapter header in
+      // packages/providers). Payscribe is the sole USD card issuer FlipTrybe
+      // currently has access to -- Maplerad's adapter was removed entirely
+      // after access was revoked (2026-08-23), not left wired in behind
+      // Payscribe. Which one actually serves traffic is still decided by the
       // ProviderConfig row and its capability grant, not by this switch.
       case "sudo":
         return createSudoVirtualCardProvider({
@@ -234,11 +232,6 @@ export class FinancialProductsService {
           ...(process.env["SUDO_FUNDING_ACCOUNT_ID"]
             ? { fundingAccountId: process.env["SUDO_FUNDING_ACCOUNT_ID"] }
             : {})
-        });
-      case "maplerad":
-        return createMapleradVirtualCardProvider({
-          apiKey: process.env["MAPLERAD_API_KEY"] ?? "",
-          ...(process.env["MAPLERAD_BASE_URL"] ? { baseUrl: process.env["MAPLERAD_BASE_URL"] } : {})
         });
       case "payscribe":
         return createPayscribeVirtualCardProvider({
@@ -308,8 +301,8 @@ export class FinancialProductsService {
    * Card providers are currency-specific and must be routed as such.
    *
    * This asked for productType "NGN_CARD" unconditionally, whatever currency the
-   * customer requested. Payscribe and Maplerad issue USD cards only, so a USD
-   * request could never reach either of them — the scope excluded them by
+   * customer requested. Payscribe issues USD cards only, so a USD
+   * request could never reach it — the scope excluded it by
    * construction. Sudo is NGN-only, so the reverse hazard exists too: an NGN
    * scope must not resolve to a USD-only issuer.
    *
@@ -504,7 +497,7 @@ export class FinancialProductsService {
   /**
    * What a card load costs in wallet currency.
    *
-   * The wallet is NGN-only; Payscribe and Maplerad issue USD cards. Before this,
+   * The wallet is NGN-only; Payscribe issues USD cards. Before this,
    * issueCard compared a USD cents figure against the NGN balance and wrote a
    * DEBIT of that figure tagged `currency: "USD"` onto the NGN wallet — so a $50
    * card was charged as ₦50, roughly 1500x under. Same bug on fundCard.

@@ -331,8 +331,8 @@ export class ProvidersService {
   /**
    * Which workspaces are enrolled with which issuer, and at what tier.
    *
-   * An enrollment is a hard prerequisite for issuing a card on Payscribe, Sudo
-   * and Maplerad, so when a customer reports "I can't create a card" this is the
+   * An enrollment is a hard prerequisite for issuing a card on Payscribe and Sudo,
+   * so when a customer reports "I can't create a card" this is the
    * first thing ops needs to see. It is also the only place the provider-side
    * customer id is visible for reconciling against the provider's dashboard.
    *

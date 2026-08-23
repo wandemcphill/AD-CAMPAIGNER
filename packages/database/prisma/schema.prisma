@@ -2417,7 +2417,7 @@ enum FinancialCapability {
 
 // A provider-side customer, created because the provider will not issue a card
 // or a virtual account without one. Payscribe needs tier 2 for cards and tier 1
-// for accounts; Sudo, Maplerad and Inflow each have an equivalent gate.
+// for accounts; Sudo and Inflow each have an equivalent gate.
 //
 // Keyed by (workspaceId, providerName) so swapping providers is additive — the
 // replacement gets its own row and the outgoing one's id stays readable for

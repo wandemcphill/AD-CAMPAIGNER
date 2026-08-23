@@ -23,7 +23,7 @@ interface ProviderConfigSeed {
   // applies its productType filter when this is non-empty (see selectProviders
   // — an empty array means "no restriction"), so leaving it blank made every
   // card provider a candidate for every currency: a USD request could resolve
-  // to NGN-only Sudo, and Payscribe/Maplerad were unreachable for USD because
+  // to NGN-only Sudo, and Payscribe was unreachable for USD because
   // the caller's scope was hardcoded to NGN_CARD.
   enabledProductTypes: string[];
   metadata: Record<string, unknown>;
@@ -92,14 +92,23 @@ const SEEDS: ProviderConfigSeed[] = [
   {
     name: "payscribe-virtual-card",
     domain: "VIRTUAL_CARD",
-    // Leads USD. The earlier ordering put Payscribe last on the grounds that it
-    // was never sandbox-verified while Maplerad was — but that comparison was
-    // being made across currencies it could never actually serve. Within
-    // USD_CARD the deciding fact is that Payscribe is the issuer FlipTrybe has
-    // been granted access to; Maplerad's verification came from a sprint with
-    // no ongoing account. Access beats a stale sandbox result. Both stay
-    // DISABLED and ungranted regardless, so this only decides ordering once an
-    // operator turns one on.
+    // Sole USD card provider. Maplerad was the prior provider here; its access
+    // was revoked (2026-08-23) and its adapter removed from
+    // packages/providers entirely, not just deprioritized behind this row.
+    // Payscribe is the issuer FlipTrybe currently has access to. Fincra and
+    // Swappr are implemented in packages/providers as unverified fallback
+    // candidates -- add their own ProviderConfig rows here once their
+    // respective approvals land, following this same shape. EUR/GBP card
+    // support needs its own adapter doc-mapping pass per currency before a
+    // row for either would mean anything; enabledProductTypes alone won't
+    // make a provider issue a currency it was never mapped against.
+    //
+    // Still DISABLED and ungranted per the provider-integration governance
+    // rule in packages/providers/src/financial-products.ts -- status HEALTHY
+    // here only means "the router will pick this if asked," not "verified."
+    // A sandbox transaction, webhook, and idempotency test with live
+    // credentials must pass before virtualCards is safe to turn on for real
+    // traffic; nothing in this seed change constitutes that verification.
     priority: 10,
     status: "HEALTHY",
     enabledCountries: ["NG"],
@@ -111,18 +120,6 @@ const SEEDS: ProviderConfigSeed[] = [
       note:
         "USD cards only; requires a tier-2 ProviderCustomer before issuance. " +
         "No live credentials yet — PAYSCRIBE_API_KEY unset."
-    }
-  },
-  {
-    name: "maplerad-virtual-card",
-    domain: "VIRTUAL_CARD",
-    priority: 15,
-    enabledCountries: ["NG"],
-    enabledProductTypes: ["USD_CARD"],
-    metadata: {
-      providerKey: "maplerad",
-      role: "fallback",
-      note: "Sandbox-verified issuance; no production credentials yet — MAPLERAD_API_KEY unset."
     }
   },
   {

@@ -36,14 +36,14 @@ import type { FinancialReconciliationService } from "./financial-reconciliation.
 // there, add it here and to VENDOR_BY_PROVIDER_CONFIG_NAME in the service.
 const SEEDED_PROVIDER_CONFIG_NAMES = {
   account: ["swappr-virtual-account", "inflow-virtual-account"],
-  card: ["sudo-virtual-card", "maplerad-virtual-card", "payscribe-virtual-card"],
+  card: ["sudo-virtual-card", "payscribe-virtual-card"],
   remittance: ["swappr-remittance", "yativo-remittance", "fincra-remittance"]
 } as const;
 
 // The `name` each adapter reports, and therefore what lands in the DB column.
 const PERSISTED_ADAPTER_NAMES = {
   account: ["swappr", "payscribe", "inflow"],
-  card: ["sudo", "maplerad", "payscribe"],
+  card: ["sudo", "payscribe"],
   remittance: ["swappr", "yativo", "fincra"]
 } as const;
 

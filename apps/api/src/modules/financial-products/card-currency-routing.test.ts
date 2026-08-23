@@ -13,8 +13,8 @@ import type { FinancialReconciliationService } from "./financial-reconciliation.
  * Two defects this pins:
  *
  *  1. selectCardAdapter asked the router for productType "NGN_CARD" no matter
- *     what currency was requested. Payscribe and Maplerad issue USD only, so a
- *     USD card could never route to either — the scope excluded them before
+ *     what currency was requested. Payscribe issues USD only, so a
+ *     USD card could never route to it — the scope excluded it before
  *     scoring even ran.
  *
  *  2. issueCard never passed providerCustomerId. Payscribe's adapter throws

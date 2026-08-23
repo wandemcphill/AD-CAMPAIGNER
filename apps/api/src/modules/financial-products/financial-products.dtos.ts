@@ -27,7 +27,7 @@ export class IssueVirtualCardDto {
   cardholderName!: string;
 
   // Decides which issuer is routed to: providers are currency-specific (Sudo is
-  // NGN-only, Payscribe and Maplerad are USD-only), so this becomes the router's
+  // NGN-only, Payscribe is USD-only), so this becomes the router's
   // productType scope, not just a label on the row.
   @IsOptional()
   @IsString()

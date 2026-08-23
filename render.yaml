@@ -252,7 +252,7 @@ services:
       - key: FINCRA_ENV
         value: production
       # Live FX cache refresh calls provider quote endpoints every 5 minutes.
-      # Keep disabled until FINCRA/SWAPPR/MAPLERAD credentials and base URLs are
+      # Keep disabled until FINCRA/SWAPPR credentials and base URLs are
       # verified; manual/bootstrap rates still serve quotes without noisy 401s.
       - key: FX_LIVE_PROVIDER_REFRESH
         value: "false"
@@ -431,10 +431,6 @@ services:
       - key: YATIVO_API_KEY
         sync: false
       - key: YATIVO_ACCOUNT_ID
-        sync: false
-      - key: MAPLERAD_BASE_URL
-        sync: false
-      - key: MAPLERAD_SECRET_KEY
         sync: false
       - key: FX_NGN_MIN
         sync: false

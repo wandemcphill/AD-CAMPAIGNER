@@ -832,7 +832,7 @@ export default function AdminProvidersPage() {
         {tab === "customers" && (
           <div className="mt-6 grid gap-3">
             <Panel className="p-4 text-xs leading-5 text-[var(--ft-text-secondary)]">
-              A card issuer that requires a verified customer (Payscribe, Sudo, Maplerad) will not
+              A card issuer that requires a verified customer (Payscribe, Sudo) will not
               issue until the workspace appears here. This is the first thing to check when a
               customer reports that card creation fails.
               <br />
