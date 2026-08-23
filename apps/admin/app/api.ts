@@ -1,12 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import {
-  AlertTriangle,
-  Banknote,
-  Gauge,
-  Users
-} from "lucide-react";
+import { AlertTriangle, Banknote, Gauge, Users } from "lucide-react";
 
 import { apiRequest, formatMoney } from "./lib/api-client";
 
@@ -32,12 +27,19 @@ export type AdminRiskRow = {
   reason: string;
 };
 
+export type AdminProviderRow = {
+  name: string;
+  status: string;
+  healthy: boolean;
+  mode?: string;
+};
+
 export type AdminDashboardData = {
   metrics: AdminMetric[];
   queues: AdminQueueRow[];
   risk: AdminRiskRow[];
   audits: string[];
-  rails: Array<{ name: string; status: string }>;
+  providers: AdminProviderRow[];
   source: "api" | "partial";
 };
 
@@ -82,8 +84,6 @@ type AuditLog = {
   createdAt?: string;
 };
 
-const railNames = ["Korapay", "Paystack", "Stripe", "Manual transfer"];
-
 function compactNumber(value?: number) {
   return new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(
     value ?? 0
@@ -111,7 +111,6 @@ function riskFromCampaignStatus(status?: string): AdminRiskRow["risk"] {
 
 function auditText(item: AuditLog) {
   const target = [item.entityType, item.entityId].filter(Boolean).join(" ");
-
   return `${item.action ?? "audit.event"}${target ? ` on ${target}` : ""}`;
 }
 
@@ -120,7 +119,7 @@ function buildMetrics(platform?: PlatformOverview, campaignOps?: CampaignOpsOver
 
   return [
     {
-      label: "Active users",
+      label: "Users",
       value: compactNumber(platform?.users),
       detail: `${compactNumber(platform?.activeCampaigns)} active campaigns`,
       tone: "success",
@@ -129,7 +128,7 @@ function buildMetrics(platform?: PlatformOverview, campaignOps?: CampaignOpsOver
     {
       label: "Payment volume",
       value: moneyFromMinor(platform?.paymentVolumeMinor),
-      detail: "Production payment telemetry",
+      detail: "Reported by platform overview",
       tone: "info",
       icon: Banknote
     },
@@ -141,12 +140,11 @@ function buildMetrics(platform?: PlatformOverview, campaignOps?: CampaignOpsOver
       icon: AlertTriangle
     },
     {
-      label: "Queue depth",
+      label: "Operational queue",
       value: String(
         (totals?.pendingReviews ?? 0) +
           (totals?.launchPreparation ?? 0) +
-          (totals?.reporting ?? 0) +
-          (platform?.smmSupplierCount ?? 0)
+          (totals?.reporting ?? 0)
       ),
       detail: `${totals?.running ?? 0} campaigns running`,
       tone: "info",
@@ -161,20 +159,25 @@ function buildQueues(platform?: PlatformOverview, campaignOps?: CampaignOpsOverv
 
   return [
     { name: "campaign reviews", depth: totals.pendingReviews ?? 0, status: queueStatus(health.campaign) },
-    { name: "launch prep", depth: totals.launchPreparation ?? 0, status: queueStatus(health.campaign) },
+    { name: "launch preparation", depth: totals.launchPreparation ?? 0, status: queueStatus(health.campaign) },
     { name: "reporting", depth: totals.reporting ?? 0, status: queueStatus(health.analytics) },
-    { name: "supplier routes", depth: platform?.smmSupplierCount ?? 0, status: queueStatus(health.smm) }
+    { name: "SMM/provider routes", depth: platform?.smmSupplierCount ?? 0, status: queueStatus(health.smm) }
   ];
 }
 
 function buildRisk(campaignOps?: CampaignOpsOverview): AdminRiskRow[] {
   const queue = campaignOps?.queue ?? [];
   const risky = queue
-    .filter((item) => riskFromCampaignStatus(item.status) !== "Low" || Number(item.budgetUtilization ?? 0) >= 85)
+    .filter(
+      (item) => riskFromCampaignStatus(item.status) !== "Low" || Number(item.budgetUtilization ?? 0) >= 85
+    )
     .slice(0, 4)
     .map((item) => ({
       item: item.name ?? item.id ?? "Campaign",
-      risk: Number(item.budgetUtilization ?? 0) >= 85 ? "Medium" : riskFromCampaignStatus(item.status),
+      risk:
+        Number(item.budgetUtilization ?? 0) >= 85
+          ? "Medium"
+          : riskFromCampaignStatus(item.status),
       reason:
         Number(item.budgetUtilization ?? 0) >= 85
           ? "Budget utilization alert"
@@ -189,19 +192,18 @@ function buildRisk(campaignOps?: CampaignOpsOverview): AdminRiskRow[] {
 function buildAudits(campaignOps?: CampaignOpsOverview, auditLogs?: AuditLog[]) {
   const activity = campaignOps?.activity?.map(auditText) ?? [];
   const logs = auditLogs?.map(auditText) ?? [];
-
-  return [...activity, ...logs].slice(0, 5);
+  return [...activity, ...logs].slice(0, 6);
 }
 
-function buildRails(supplierHealth?: SupplierHealth) {
-  const supplierStatuses = new Map(
-    (supplierHealth?.suppliers ?? []).map((supplier) => [
-      supplier.name?.toLowerCase(),
-      supplier.healthy === false ? "watch" : supplier.status ?? supplier.mode ?? "live"
-    ])
-  );
-
-  return railNames.map((name) => ({ name, status: supplierStatuses.get(name.toLowerCase()) ?? "configured" }));
+function buildProviders(supplierHealth?: SupplierHealth): AdminProviderRow[] {
+  return (supplierHealth?.suppliers ?? [])
+    .filter((supplier) => supplier.name)
+    .map((supplier) => ({
+      name: supplier.name!,
+      status: supplier.healthy === false ? "watch" : supplier.status ?? "healthy",
+      healthy: supplier.healthy !== false,
+      ...(supplier.mode ? { mode: supplier.mode } : {})
+    }));
 }
 
 async function optional<T>(request: Promise<T>) {
@@ -225,7 +227,7 @@ export async function loadAdminDashboard(): Promise<AdminDashboardData> {
     queues: buildQueues(platform, campaignOps),
     risk: buildRisk(campaignOps),
     audits: buildAudits(campaignOps, auditLogs),
-    rails: buildRails(supplierHealth),
+    providers: buildProviders(supplierHealth),
     source: platform && campaignOps ? "api" : "partial"
   };
 }
