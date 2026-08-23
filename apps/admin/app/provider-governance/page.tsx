@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, Network, ShieldCheck, Tags } from "lucide-react";
+import { Clock3, Network, ShieldCheck, Tags } from "lucide-react";
 
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
@@ -160,11 +160,11 @@ export default function ProviderGovernancePage() {
         <div className="mt-5">
           <SummaryStatStrip
             items={[
-              { label: "Providers", value: totals?.providers ?? 0, icon: Network },
-              { label: "Healthy", value: totals?.healthy ?? 0, icon: CheckCircle2 },
-              { label: "Live capabilities", value: totals?.liveGrants ?? 0, icon: ShieldCheck },
-              { label: "Pricing rules", value: totals?.pricingRules ?? 0, icon: Tags },
-              { label: "Open reconciliation", value: totals?.openReconciliation ?? 0, icon: AlertTriangle }
+              { label: "Providers", value: totals?.providers ?? 0 },
+              { label: "Healthy", value: totals?.healthy ?? 0 },
+              { label: "Live capabilities", value: totals?.liveGrants ?? 0 },
+              { label: "Pricing rules", value: totals?.pricingRules ?? 0 },
+              { label: "Open reconciliation", value: totals?.openReconciliation ?? 0 }
             ]}
           />
         </div>
