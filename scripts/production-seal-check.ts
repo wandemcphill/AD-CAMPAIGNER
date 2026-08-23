@@ -3,10 +3,27 @@ import { readFileSync } from "node:fs";
 const render = readFileSync(new URL("../render.yaml", import.meta.url), "utf8");
 const errors: string[] = [];
 
+function envValue(key: string): string | undefined {
+  const lines = render.split(/\r?\n/);
+  const marker = `- key: ${key}`;
+  const index = lines.findIndex((line) => line.trim() === marker);
+  if (index < 0) return undefined;
+
+  for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+    const line = lines[cursor];
+    if (!line) break;
+    const trimmed = line.trim();
+    if (trimmed.startsWith("- key:") || trimmed.startsWith("- type:")) break;
+    const match = trimmed.match(/^value:\s*(.+)$/);
+    if (match) return match[1].trim().replace(/^['\"]|['\"]$/g, "");
+  }
+
+  return undefined;
+}
+
 function expectValue(key: string, expected: string) {
-  const pattern = new RegExp(`- key: ${key}\\s+value: ([^\\n]+)`, "m");
-  const value = render.match(pattern)?.[1]?.trim().replace(/^['\"]|['\"]$/g, "");
-  if (!value) {
+  const value = envValue(key);
+  if (value === undefined) {
     errors.push(`render.yaml: missing explicit value for ${key}`);
     return;
   }
@@ -33,7 +50,7 @@ for (const key of [
   expectValue(key, "false");
 }
 
-const webhook = render.match(/- key: KORAPAY_WEBHOOK_URL\\s+value: ([^\\n]+)/m)?.[1]?.trim();
+const webhook = envValue("KORAPAY_WEBHOOK_URL");
 if (!webhook) {
   errors.push("render.yaml: KORAPAY_WEBHOOK_URL must be explicitly configured.");
 } else if (!webhook.includes("/api/webhooks/korapay")) {
