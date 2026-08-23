@@ -1,0 +1,53 @@
+name: Apply UI facelift bundle
+
+on:
+  push:
+    branches: ["ops/ui-facelift-import"]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout staging branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Save bundle and switch to current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .tmp/ui-facelift.bundle.b64 /tmp/ui-facelift.bundle.b64
+          base64 --decode /tmp/ui-facelift.bundle.b64 > /tmp/ui-facelift.bundle
+          git fetch origin main
+          git checkout -B ui-facelift-applied origin/main
+          rm -rf .tmp
+
+      - name: Import facelift commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch /tmp/ui-facelift.bundle HEAD:refs/remotes/bundle/ui-facelift
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git cherry-pick 3ed17ca5779777122c19f27920a1850cd4c988ad^..163dd6e77c4a24ac5e6e17a300422f158728c7d5
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack prepare pnpm@10.18.3 --activate
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm lint
+
+      - name: Push applied branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:ui-facelift-applied
