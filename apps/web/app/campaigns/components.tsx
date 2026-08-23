@@ -16,8 +16,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import { Badge, Panel, PlatformChip, StatusBadge as DesignStatusBadge, ThemeToggle, cn } from "@fliptrybe/ui";
-import type { Campaign, CampaignStatus, Money, Wallet } from "@fliptrybe/types";
+import { Badge, Panel, PlatformChip, StatusBadge, ThemeToggle, cn } from "@fliptrybe/ui";
+import type { Campaign, Money, Wallet } from "@fliptrybe/types";
 
 import { destinationLabels, objectiveLabels, type ClientDataSource } from "./data";
 
@@ -53,10 +53,6 @@ export function SourceBadge({ source }: { source: ClientDataSource }) {
       {source === "api" ? "Live workspace" : "Local data path"}
     </Badge>
   );
-}
-
-export function StatusBadge({ status }: { status: CampaignStatus }) {
-  return <DesignStatusBadge status={status} />;
 }
 
 export function destinationPlatform(destinationKind: string) {
