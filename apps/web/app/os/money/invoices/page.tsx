@@ -32,6 +32,10 @@ function emptyLine(): LineDraft {
   return { description: "", quantity: "1", unitPrice: "" };
 }
 
+function invoiceStatusTone(status: string): "neutral" | "info" | "success" | "warning" | "danger" {
+  return STATUS_TONE[status as InvoiceStatus] ?? "neutral";
+}
+
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<Invoice[]>();
   const [error, setError] = useState<string>();
@@ -274,7 +278,7 @@ export default function InvoicesPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-semibold">{invoice.number}</span>
-                    <Badge tone={STATUS_TONE[invoice.status]}>{invoice.status.toLowerCase()}</Badge>
+                    <Badge tone={invoiceStatusTone(invoice.status)}>{invoice.status.toLowerCase()}</Badge>
                   </div>
                   <div className="mt-0.5 truncate text-xs text-[var(--ft-text-muted)]">
                     {invoice.customerName}
