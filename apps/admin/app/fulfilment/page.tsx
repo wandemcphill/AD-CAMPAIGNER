@@ -70,7 +70,9 @@ const EXCEPTION_KINDS = [
   "MISSING_INTERNALLY",
   "AMOUNT_MISMATCH",
   "UNKNOWN"
-];
+] as const;
+
+type ReconciliationKind = (typeof EXCEPTION_KINDS)[number];
 
 function tone(status: string): "success" | "warning" | "danger" | "neutral" {
   if (["COMPLETED", "DELIVERED", "PAID", "CONFIRMED", "OTP_VERIFIED"].includes(status)) return "success";
@@ -129,8 +131,10 @@ export default function FulfilmentAdminPage() {
     if (reason === null || !reason.trim()) return;
 
     const providerDomain = item.domain === "VTU" || item.domain === "TELECOM" ? "VTU" : item.domain;
-    const kind = window.prompt("Choose reconciliation kind", EXCEPTION_KINDS[0]) ?? EXCEPTION_KINDS[0];
-    if (!EXCEPTION_KINDS.includes(kind)) return;
+    const requestedKind = window.prompt("Choose reconciliation kind", EXCEPTION_KINDS[0]);
+    if (requestedKind === null) return;
+    if (!(EXCEPTION_KINDS as readonly string[]).includes(requestedKind)) return;
+    const kind = requestedKind as ReconciliationKind;
 
     setBusy(item.id);
     setError(undefined);
