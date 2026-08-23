@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ShieldAlert, ShieldCheck, Users } from "lucide-react";
+import { ExternalLink, ShieldAlert, ShieldCheck, Users } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
@@ -49,8 +50,6 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string>();
   const [success, setSuccess] = useState<string>();
 
-  // Takes its filters as arguments so the callback identity stays stable —
-  // otherwise the mount effect below would refire on every keystroke.
   const search = useCallback(async (term: string, status: UserStatus | "") => {
     setLoading(true);
     setError(undefined);
@@ -131,7 +130,7 @@ export default function AdminUsersPage() {
           <h1 className="text-xl font-bold">Users</h1>
         </div>
         <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-          Search accounts, review workspace memberships, and suspend or reactivate access.
+          Search accounts, review workspace memberships, suspend or reactivate access, and open security posture.
         </p>
 
         <Panel className="mt-5 flex flex-wrap gap-2 p-4">
@@ -184,16 +183,10 @@ export default function AdminUsersPage() {
               >
                 <div>
                   <div className="font-medium">{user.name}</div>
-                  <div className="font-mono text-xs text-[var(--ft-text-muted)]">
-                    @{user.username}
-                  </div>
+                  <div className="font-mono text-xs text-[var(--ft-text-muted)]">@{user.username}</div>
                 </div>
-                <div className="truncate text-sm text-[var(--ft-text-secondary)]">
-                  {user.email ?? "—"}
-                </div>
-                <Badge tone={user.status === "ACTIVE" ? "success" : "danger"}>
-                  {user.status.toLowerCase()}
-                </Badge>
+                <div className="truncate text-sm text-[var(--ft-text-secondary)]">{user.email ?? "—"}</div>
+                <Badge tone={user.status === "ACTIVE" ? "success" : "danger"}>{user.status.toLowerCase()}</Badge>
                 <div className="text-xs text-[var(--ft-text-muted)]">
                   {user.isPlatformAdmin ? "platform admin" : formatWhen(user.createdAt)}
                 </div>
@@ -207,15 +200,11 @@ export default function AdminUsersPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-lg font-semibold">{selected.name}</div>
-                <div className="font-mono text-xs text-[var(--ft-text-muted)]">
-                  @{selected.username} · {selected.id}
-                </div>
+                <div className="font-mono text-xs text-[var(--ft-text-muted)]">@{selected.username} · {selected.id}</div>
               </div>
               <div className="flex flex-wrap gap-2">
                 {selected.isPlatformAdmin ? <Badge tone="info">platform admin</Badge> : null}
-                <Badge tone={selected.status === "ACTIVE" ? "success" : "danger"}>
-                  {selected.status.toLowerCase()}
-                </Badge>
+                <Badge tone={selected.status === "ACTIVE" ? "success" : "danger"}>{selected.status.toLowerCase()}</Badge>
               </div>
             </div>
 
@@ -234,14 +223,9 @@ export default function AdminUsersPage() {
               ) : (
                 <div className="mt-1 grid gap-1">
                   {selected.memberships.map((membership) => (
-                    <div
-                      className="flex items-center justify-between gap-3 border-t border-[var(--ft-border)] pt-1 text-sm"
-                      key={membership.workspace.id}
-                    >
+                    <div className="flex items-center justify-between gap-3 border-t border-[var(--ft-border)] pt-1 text-sm" key={membership.workspace.id}>
                       <span>{membership.workspace.name}</span>
-                      <span className="font-mono text-xs text-[var(--ft-text-muted)]">
-                        {membership.role} · {membership.workspace.id}
-                      </span>
+                      <span className="font-mono text-xs text-[var(--ft-text-muted)]">{membership.role} · {membership.workspace.id}</span>
                     </div>
                   ))}
                 </div>
@@ -250,28 +234,19 @@ export default function AdminUsersPage() {
 
             <div className="flex flex-wrap gap-2">
               {selected.status === "ACTIVE" ? (
-                <Button
-                  disabled={busy || selected.isPlatformAdmin}
-                  onClick={() => void setStatus(selected, "SUSPENDED")}
-                  variant="secondary"
-                >
-                  <ShieldAlert className="size-4" />
-                  Suspend
+                <Button disabled={busy || selected.isPlatformAdmin} onClick={() => void setStatus(selected, "SUSPENDED")} variant="secondary">
+                  <ShieldAlert className="size-4" /> Suspend
                 </Button>
               ) : (
-                <Button disabled={busy} onClick={() => void setStatus(selected, "ACTIVE")}>
-                  <ShieldCheck className="size-4" />
-                  Reactivate
-                </Button>
+                <Button disabled={busy} onClick={() => void setStatus(selected, "ACTIVE")}><ShieldCheck className="size-4" /> Reactivate</Button>
               )}
+              <Link href={`/users/${encodeURIComponent(selected.id)}/security`}>
+                <Button variant="secondary"><ExternalLink className="size-4" /> Security posture</Button>
+              </Link>
             </div>
 
             {selected.isPlatformAdmin && selected.status === "ACTIVE" ? (
-              <p className="text-xs text-[var(--ft-text-muted)]">
-                Platform admins cannot be suspended here. Remove the account from
-                PLATFORM_ADMIN_USERNAMES first, otherwise it could not be restored from inside the
-                product.
-              </p>
+              <p className="text-xs text-[var(--ft-text-muted)]">Platform admins cannot be suspended here. Remove the account from PLATFORM_ADMIN_USERNAMES first.</p>
             ) : null}
           </Panel>
         ) : null}
