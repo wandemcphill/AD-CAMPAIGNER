@@ -22,6 +22,7 @@ import {
   ShoppingCart,
   Smartphone,
   Store,
+  Tags,
   Webhook,
   type LucideIcon
 } from "lucide-react";
@@ -34,17 +35,6 @@ import { SessionPanel } from "./ui/session-panel";
 
 export type AdminNavItem = { label: string; href: string; icon: LucideIcon };
 
-/**
- * Single source of truth for the top-level admin nav. Previously this array
- * was duplicated inline in apps/admin/app/page.tsx and every other top-level
- * page had no way to navigate back to the rest of the console at all.
- *
- * campaign-ops/, growth-services/, and digital-access/ each keep their own
- * dedicated *section* shell (AdminCampaignOpsShell, AdminGrowthShell,
- * AdminDigitalAccessShell) with sub-nav scoped to that vertical — those are
- * intentionally separate and are not duplicated per-page within their own
- * section, so they are left as-is.
- */
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Overview", href: "/", icon: Radar },
   { label: "Moderation", href: "/campaign-ops/", icon: ShieldCheck },
@@ -52,6 +42,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Wallets", href: "/wallets/", icon: Wallet },
   { label: "Users", href: "/users/", icon: Users },
   { label: "Reconciliation", href: "/reconciliation/", icon: Scale },
+  { label: "Products & Pricing", href: "/commercial/", icon: Tags },
   { label: "Growth", href: "/growth-services/", icon: Boxes },
   { label: "Audit", href: "/campaign-ops/activity/", icon: FileSearch },
   { label: "Access", href: "/digital-access/", icon: LockKeyhole },
