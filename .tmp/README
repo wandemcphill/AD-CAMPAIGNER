@@ -1,0 +1,1 @@
+Temporary importer payload. The workflow copies the UI facelift git bundle to /tmp, applies the six authored commits onto current main, validates typecheck/lint, then pushes ui-facelift-applied. This file is discarded when the workflow checks out main.
