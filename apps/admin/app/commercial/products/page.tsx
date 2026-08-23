@@ -139,7 +139,7 @@ export default function CommercialProductsPage() {
         supplier: service.preferredSupplier || "Auto route",
         marginBps: service.marginBps,
         costMinor: null,
-        href: "/growth-services/services/"
+        href: `/commercial/products/growth/${encodeURIComponent(service.code)}/`
       });
     }
 
