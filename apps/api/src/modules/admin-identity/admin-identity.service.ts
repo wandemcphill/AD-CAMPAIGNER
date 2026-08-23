@@ -67,12 +67,32 @@ export class AdminIdentityService {
       throw new ConflictException("A reason of at least 3 characters is required.");
     }
 
-    const user = await this.db.user.findUnique({ where: { id: targetUserId }, select: { id: true } });
+    const user = await this.db.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, username: true, isPlatformAdmin: true }
+    });
     if (!user) throw new NotFoundException("User not found");
+    if (user.isPlatformAdmin) {
+      throw new ConflictException("Platform-admin sessions cannot be revoked from this console.");
+    }
 
     const result = await this.db.session.updateMany({
       where: { userId: targetUserId, revokedAt: null },
       data: { revokedAt: new Date() }
+    });
+
+    await this.db.auditLog.create({
+      data: {
+        actorUserId,
+        action: "user.sessions_revoked",
+        entityType: "User",
+        entityId: targetUserId,
+        metadata: {
+          username: user.username,
+          revokedCount: result.count,
+          reason: trimmed
+        }
+      }
     });
 
     return {
