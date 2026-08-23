@@ -5,40 +5,17 @@ import { ThrottlerModule } from "@nestjs/throttler";
 import { ScheduleModule } from "@nestjs/schedule";
 
 import {
-  AdminController,
-  AdminUsersController,
-  AdminWalletsController,
-  AnalyticsController,
-  AuditController,
-  AuthController,
-  AdminCampaignOpsController,
-  AdminGrowthController,
-  AdAccountsController,
-  CampaignsController,
-  ClientProfileController,
-  CompanyProfilesController,
-  DestinationsController,
-  MeController,
-  GrowthController,
-  HealthController,
-  LiveController,
-  MediaController,
-  NotificationsController,
-  OrganizationsController,
-  WorkspaceController,
-  PaymentsController,
-  PlatformConfigController,
-  ReferralsController,
-  RootController,
-  SearchController,
-  SmmController,
-  TeamsController,
-  WalletController,
-  WebhooksController
+  AdminController, AdminUsersController, AdminWalletsController, AnalyticsController, AuditController,
+  AuthController, AdminCampaignOpsController, AdminGrowthController, AdAccountsController, CampaignsController,
+  ClientProfileController, CompanyProfilesController, DestinationsController, MeController, GrowthController,
+  HealthController, LiveController, MediaController, NotificationsController, OrganizationsController,
+  WorkspaceController, PaymentsController, PlatformConfigController, ReferralsController, RootController,
+  SearchController, SmmController, TeamsController, WalletController, WebhooksController
 } from "./platform.controllers";
 import { AdminCommandCenterController } from "./admin-command-center.controller";
 import { AdminCommandCenterService } from "./admin-command-center.service";
 import { AdminFinanceModule } from "./admin-finance/admin-finance.module";
+import { AdminIdentityModule } from "./admin-identity/admin-identity.module";
 import { AdminReconciliationModule } from "./admin-reconciliation/admin-reconciliation.module";
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
@@ -84,91 +61,28 @@ import { NotificationsModule } from "./notifications/notifications.module";
       { name: "short", ttl: 60000, limit: 100 },
       { name: "long", ttl: 900000, limit: 1000 }
     ]),
-    PrismaModule,
-    AdminFinanceModule,
-    AdminReconciliationModule,
-    ApprovalsModule,
-    DigitalAccessModule,
-    InvoicesModule,
-    PaymentLinksModule,
-    VouchersModule,
-    VtuModule,
-    TelecomGatewayModule,
-    VirtualNumbersModule,
-    FxModule,
-    DigitalValueModule,
-    PersonasModule,
-    AutomationModule,
-    MarketplaceModule,
-    RewardsModule,
-    SecurityModule,
-    ApiKeysModule,
-    AiConfigModule,
-    ProvidersModule,
-    WebhooksModule,
-    TrustEngineModule,
-    CryptoModule,
-    RmbModule,
-    FinancialProductsModule,
-    GuestCheckoutModule,
-    SupportModule,
+    PrismaModule, AdminFinanceModule, AdminIdentityModule, AdminReconciliationModule,
+    ApprovalsModule, DigitalAccessModule, InvoicesModule, PaymentLinksModule, VouchersModule,
+    VtuModule, TelecomGatewayModule, VirtualNumbersModule, FxModule, DigitalValueModule,
+    PersonasModule, AutomationModule, MarketplaceModule, RewardsModule, SecurityModule,
+    ApiKeysModule, AiConfigModule, ProvidersModule, WebhooksModule, TrustEngineModule,
+    CryptoModule, RmbModule, FinancialProductsModule, GuestCheckoutModule, SupportModule,
     NotificationsModule
   ],
   controllers: [
-    RootController,
-    HealthController,
-    PlatformConfigController,
-    AuthController,
-    OrganizationsController,
-    WorkspaceController,
-    TeamsController,
-    ClientProfileController,
-    CompanyProfilesController,
-    AdAccountsController,
-    CampaignsController,
-    MeController,
-    DestinationsController,
-    LiveController,
-    SmmController,
-    GrowthController,
-    PaymentsController,
-    WebhooksController,
-    WalletController,
-    AnalyticsController,
-    NotificationsController,
-    ReferralsController,
-    MediaController,
-    SearchController,
-    AdminController,
-    AdminCommandCenterController,
-    AdminUsersController,
-    AdminWalletsController,
-    AdminGrowthController,
-    AdminCampaignOpsController,
-    AuditController
+    RootController, HealthController, PlatformConfigController, AuthController, OrganizationsController,
+    WorkspaceController, TeamsController, ClientProfileController, CompanyProfilesController, AdAccountsController,
+    CampaignsController, MeController, DestinationsController, LiveController, SmmController, GrowthController,
+    PaymentsController, WebhooksController, WalletController, AnalyticsController, NotificationsController,
+    ReferralsController, MediaController, SearchController, AdminController, AdminCommandCenterController,
+    AdminUsersController, AdminWalletsController, AdminGrowthController, AdminCampaignOpsController, AuditController
   ],
   providers: [
-    AuthSessionService,
-    PlatformService,
-    AdminCommandCenterService,
-    ManagedAdsService,
-    RealtimeGateway,
-    {
-      provide: APP_GUARD,
-      useClass: ClientIpThrottlerGuard
-    },
-    {
-      provide: APP_GUARD,
-      useClass: AuthorizationGuard
-    },
-    {
-      provide: APP_GUARD,
-      useClass: AgeGuard
-    },
-    {
-      provide: APP_GUARD,
-      useClass: FeatureFlagGuard
-    }
+    AuthSessionService, PlatformService, AdminCommandCenterService, ManagedAdsService, RealtimeGateway,
+    { provide: APP_GUARD, useClass: ClientIpThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthorizationGuard },
+    { provide: APP_GUARD, useClass: AgeGuard },
+    { provide: APP_GUARD, useClass: FeatureFlagGuard }
   ]
 })
 export class AppModule {}
