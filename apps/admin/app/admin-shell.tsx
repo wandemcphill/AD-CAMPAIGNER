@@ -16,6 +16,7 @@ import {
   Phone,
   Radar,
   Scale,
+  ShieldAlert,
   ShieldCheck,
   Users,
   Wallet,
@@ -37,6 +38,7 @@ export type AdminNavItem = { label: string; href: string; icon: LucideIcon };
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Overview", href: "/", icon: Radar },
+  { label: "Risk & Security", href: "/risk/", icon: ShieldAlert },
   { label: "Moderation", href: "/campaign-ops/", icon: ShieldCheck },
   { label: "Payments", href: "/payments/", icon: Banknote },
   { label: "Wallets", href: "/wallets/", icon: Wallet },
@@ -87,9 +89,7 @@ export function AdminShell({
           <Link className="flex items-center gap-3" href="/">
             <img alt="FlipTrybe" className="size-10" src="/brand/icon-mark.svg" />
             <div>
-              <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
-                FlipTrybe Admin
-              </div>
+              <div className="text-sm font-semibold text-[var(--ft-text-primary)]">FlipTrybe Admin</div>
               <div className="text-xs text-[var(--ft-text-muted)]">{subtitle}</div>
             </div>
           </Link>
