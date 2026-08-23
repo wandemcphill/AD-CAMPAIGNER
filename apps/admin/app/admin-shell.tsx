@@ -44,6 +44,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Wallets", href: "/wallets/", icon: Wallet },
   { label: "Users", href: "/users/", icon: Users },
   { label: "Reconciliation", href: "/reconciliation/", icon: Scale },
+  { label: "Fulfilment", href: "/fulfilment/", icon: Boxes },
   { label: "Products & Pricing", href: "/commercial/", icon: Tags },
   { label: "Product Governance", href: "/product-governance/", icon: Boxes },
   { label: "Provider Governance", href: "/provider-governance/", icon: Network },
