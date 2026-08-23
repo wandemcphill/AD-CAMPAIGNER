@@ -81,7 +81,16 @@ export class FxService implements OnModuleInit {
     const attempts = await Promise.allSettled(
       this.fxProviders.map(async (provider) => provider.getRate(baseCurrency, quoteCurrency))
     );
-    const rates = attempts.flatMap((attempt) => (attempt.status === "fulfilled" ? [attempt.value] : []));
+    const rates: FxRate[] = [];
+    attempts.forEach((attempt, index) => {
+      if (attempt.status === "fulfilled") {
+        rates.push(attempt.value);
+        return;
+      }
+      const provider = this.fxProviders[index];
+      const reason = attempt.reason instanceof Error ? attempt.reason.message : String(attempt.reason);
+      this.logger.warn(`FX provider ${provider?.name ?? "unknown"} failed for ${baseCurrency}/${quoteCurrency}: ${reason}`);
+    });
     if (rates.length === 0) throw new Error(`No configured provider returned a rate for ${baseCurrency}/${quoteCurrency}`);
     return rates.reduce((best, candidate) => (candidate.rateMicros > best.rateMicros ? candidate : best));
   }
@@ -190,10 +199,10 @@ export class FxService implements OnModuleInit {
     const quote = await this.db.fxQuote.create({
       data: {
         id: uid("fxq"),
-        ...(ctx?.workspaceId ? { workspaceId: ctx.workspaceId } : {}),
+        workspaceId: ctx.workspaceId ?? null,
         baseCurrency,
         quoteCurrency,
-        sourceAmountMinor: BigInt(sourceAmountMinor),
+        sourceAmountMinor,
         providerRateMicros: rate.rateMicros,
         customerRateMicros,
         spreadBps,
