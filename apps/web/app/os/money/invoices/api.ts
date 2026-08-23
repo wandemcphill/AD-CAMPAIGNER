@@ -37,16 +37,31 @@ export type CreateInvoiceInput = {
   lineItems: { description: string; quantity: number; unitPriceMinor: number }[];
 };
 
-function normalizeInvoices(value: unknown): Invoice[] {
-  if (Array.isArray(value)) return value as Invoice[];
+function isInvoiceRecord(value: unknown): value is Invoice {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.number === "string" &&
+    typeof record.status === "string" &&
+    typeof record.customerName === "string" &&
+    typeof record.currency === "string"
+  );
+}
 
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    if (Array.isArray(record.data)) return record.data as Invoice[];
-    if (Array.isArray(record.invoices)) return record.invoices as Invoice[];
+function normalizeInvoices(value: unknown): Invoice[] {
+  const candidates =
+    Array.isArray(value)
+      ? value
+      : value && typeof value === "object"
+        ? ((value as Record<string, unknown>).data ?? (value as Record<string, unknown>).invoices)
+        : undefined;
+
+  if (!Array.isArray(candidates)) {
+    throw new Error("The invoice service returned an invalid invoice list.");
   }
 
-  throw new Error("The invoice service returned an invalid invoice list.");
+  return candidates.filter(isInvoiceRecord);
 }
 
 export async function listInvoices(): Promise<Invoice[]> {
