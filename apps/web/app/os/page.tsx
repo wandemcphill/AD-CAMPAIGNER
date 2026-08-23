@@ -35,9 +35,6 @@ import { useNotificationsData } from "../notifications/use-notifications-data";
 
 type QuickAction = { icon: LucideIcon; label: string; href: string; color: string; flag?: string };
 
-// Cross-domain quick actions -- not campaign-only. Flag-gated entries only
-// appear when the vertical is switched on for this workspace, so we never link
-// to a service that answers 503 (matches the shell sidebar gating).
 const QUICK_ACTIONS: QuickAction[] = [
   { icon: Megaphone, label: "New Campaign", href: "/os/campaigns/new", color: "var(--ft-accent)" },
   { icon: Plus, label: "Fund Wallet", href: "/os/wallet", color: "var(--ft-yellow)" },
@@ -65,9 +62,6 @@ const QUICK_ACTIONS: QuickAction[] = [
   { icon: Sparkles, label: "AI Studio", href: "/os/studio", color: "var(--ft-red)" }
 ];
 
-// Statuses where the ball is in the customer's court. Everything else is
-// either running or waiting on the ops desk, so it does not belong in the
-// "needs you" list.
 const AWAITING_CUSTOMER = new Set([
   "CHANGES_REQUESTED",
   "PENDING_REVIEW",
@@ -82,7 +76,6 @@ function greeting(hour: number) {
   return "Good evening";
 }
 
-/** One sentence describing the state of the desk, instead of a wall of counters. */
 function summaryLine(live: number, awaiting: number) {
   const parts: string[] = [];
   parts.push(live === 1 ? "1 campaign live" : `${live} campaigns live`);
@@ -120,8 +113,6 @@ export default function DashboardPage() {
       new Date(a.schedule?.startsAt ?? a.createdAt ?? 0).getTime()
   );
 
-  // Anything waiting on the customer comes first; the rest of the slots are
-  // filled with whatever they touched most recently.
   const focusCampaigns = [
     ...awaitingCampaigns,
     ...sortedByRecency.filter((c) => !AWAITING_CUSTOMER.has(c.status))
@@ -148,8 +139,6 @@ export default function DashboardPage() {
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
-        {/* Balance. Available and held read as one figure with its reservation,
-            rather than two cards that invite comparison. */}
         <motion.section
           animate={{ opacity: 1, y: 0 }}
           className="relative overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[var(--shadow-sm)]"
@@ -222,7 +211,6 @@ export default function DashboardPage() {
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="grid gap-6">
-          {/* Campaigns needing the customer, ahead of merely recent ones. */}
           <section className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">
@@ -239,7 +227,7 @@ export default function DashboardPage() {
               {loading ? (
                 <LoadingBlock label="Loading campaigns" />
               ) : focusCampaigns.length === 0 ? (
-                <EmptyState icon={Megaphone} title="No campaigns yet">
+                <EmptyState title="No campaigns yet">
                   Start a campaign to see it tracked here.
                 </EmptyState>
               ) : (
@@ -266,8 +254,6 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          {/* One performance block. Previously impressions, spend and the wallet
-              balance each appeared twice on this screen across three sections. */}
           <section className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Portfolio</h2>
