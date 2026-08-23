@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 interface CheckResult {
   name: string;
@@ -22,7 +22,15 @@ mkdirSync(outDir, { recursive: true });
 
 function run(name: string, command: string, args: string[], options: { skip?: boolean; reason?: string } = {}): CheckResult {
   if (options.skip) {
-    return { name, command: [command, ...args].join(" "), status: "skipped", exitCode: null, durationMs: 0, output: "", reason: options.reason };
+    return {
+      name,
+      command: [command, ...args].join(" "),
+      status: "skipped",
+      exitCode: null,
+      durationMs: 0,
+      output: "",
+      reason: options.reason
+    };
   }
 
   const started = Date.now();
@@ -44,7 +52,12 @@ function run(name: string, command: string, args: string[], options: { skip?: bo
       output: output.slice(-12000)
     };
   } catch (error) {
-    const candidate = error as { status?: number; stdout?: Buffer | string; stderr?: Buffer | string; message?: string };
+    const candidate = error as {
+      status?: number;
+      stdout?: Buffer | string;
+      stderr?: Buffer | string;
+      message?: string;
+    };
     const stdout = candidate.stdout?.toString() ?? "";
     const stderr = candidate.stderr?.toString() ?? candidate.message ?? "";
 
@@ -131,7 +144,9 @@ const markdown = [
   "| --- | --- | ---: |",
   ...results.map((result) => `| ${result.name} | ${result.status.toUpperCase()} | ${result.durationMs} ms |`),
   "",
-  failed.length === 0 ? "All executed release gates passed." : `Failed gates: ${failed.map((result) => result.name).join(", ")}`,
+  failed.length === 0
+    ? "All executed release gates passed."
+    : `Failed gates: ${failed.map((result) => result.name).join(", ")}`,
   ""
 ].join("\n");
 
