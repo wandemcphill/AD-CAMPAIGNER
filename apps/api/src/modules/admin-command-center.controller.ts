@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, Post, Query, Req, UnauthorizedException } from "@nestjs/common";
 
 import { RequirePermissions } from "./authorization.decorators";
 import { authenticatedContextFromHeaders, type WorkspaceContextRequest } from "./request-context";
@@ -56,6 +56,9 @@ export class AdminCommandCenterController {
     @Req() request: WorkspaceContextRequest
   ) {
     const context = authenticatedContextFromHeaders(request.headers);
+    if (!context.userId) {
+      throw new UnauthorizedException("Authenticated administrator context is required.");
+    }
     return this.commandCenter.openFulfilmentReconciliation(
       {
         domain: domain as never,
