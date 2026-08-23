@@ -115,8 +115,6 @@ import { NotificationsModule } from "./notifications/notifications.module";
     FinancialProductsModule,
     GuestCheckoutModule,
     SupportModule,
-    // Exports NotificationsService, which AuthSessionService injects to send
-    // password-reset emails.
     NotificationsModule
   ],
   controllers: [
@@ -139,15 +137,14 @@ import { NotificationsModule } from "./notifications/notifications.module";
     PaymentsController,
     WebhooksController,
     WalletController,
-    InvoicesController,
     AnalyticsController,
     NotificationsController,
     ReferralsController,
     MediaController,
     SearchController,
     AdminController,
-  AdminUsersController,
-  AdminWalletsController,
+    AdminUsersController,
+    AdminWalletsController,
     AdminGrowthController,
     AdminCampaignOpsController,
     AuditController
@@ -165,14 +162,10 @@ import { NotificationsModule } from "./notifications/notifications.module";
       provide: APP_GUARD,
       useClass: AuthorizationGuard
     },
-    // Runs after AuthorizationGuard so request.workspaceContext.userId is set and
-    // an unauthenticated caller gets 401/403 first. Enforces @RequireAdult().
     {
       provide: APP_GUARD,
       useClass: AgeGuard
     },
-    // Runs after AuthorizationGuard on purpose: an unauthorized caller gets
-    // 401/403, not a 503 that would disclose which verticals exist.
     {
       provide: APP_GUARD,
       useClass: FeatureFlagGuard
