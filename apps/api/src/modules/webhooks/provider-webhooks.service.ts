@@ -220,6 +220,43 @@ export class ProviderWebhooksService {
     }
   }
 
+  private async reverseRmbDebit(orderId: string, reason: 'failed' | 'cancelled'): Promise<void> {
+    await this.prisma.client.$transaction(async (tx) => {
+      const order = await tx.rmbOrder.findUnique({ where: { id: orderId } });
+      if (!order) return;
+      if (order.refundLedgerEntryId) {
+        if (order.status !== 'REFUNDED') {
+          await tx.rmbOrder.update({ where: { id: order.id }, data: { status: 'CANCELLED' } });
+        }
+        return;
+      }
+
+      const idemKey = `rmb_cancel_${order.id}`;
+      const existingLedger = await tx.ledgerEntry.findUnique({ where: { idempotencyKey: idemKey } });
+      const ledgerEntry =
+        existingLedger ??
+        (await tx.ledgerEntry.create({
+          data: {
+            id: `${order.id}_cancel_refund`,
+            walletId: order.walletId,
+            kind: 'REVERSAL',
+            amountMinor: order.ngnAmountMinor,
+            currency: 'NGN',
+            reference: idemKey,
+            description: `RMB order ${reason} → ${order.recipientName}`,
+            idempotencyKey: idemKey,
+            sourceType: 'RmbOrder',
+            sourceId: order.id
+          }
+        }));
+
+      await tx.rmbOrder.update({
+        where: { id: order.id },
+        data: { status: 'CANCELLED', refundLedgerEntryId: ledgerEntry.id }
+      });
+    });
+  }
+
   private async handleSogoRmbRefunded(data: Record<string, unknown>): Promise<void> {
     const providerReference = data.reference as string | undefined;
     if (!providerReference) {
@@ -235,25 +272,37 @@ export class ProviderWebhooksService {
 
     const idemKey = `rmb_refund_${order.id}`;
     await this.prisma.client.$transaction(async (tx) => {
+      const current = await tx.rmbOrder.findUnique({ where: { id: order.id } });
+      if (!current || current.status === 'REFUNDED') return;
+
+      if (current.refundLedgerEntryId) {
+        await tx.rmbOrder.update({
+          where: { id: current.id },
+          data: { status: 'REFUNDED' }
+        });
+        return;
+      }
+
       const existingLedger = await tx.ledgerEntry.findUnique({ where: { idempotencyKey: idemKey } });
       const ledgerEntry =
         existingLedger ??
         (await tx.ledgerEntry.create({
           data: {
-            walletId: order.walletId,
+            id: `${current.id}_refund`,
+            walletId: current.walletId,
             kind: 'REVERSAL',
-            amountMinor: order.ngnAmountMinor,
+            amountMinor: current.ngnAmountMinor,
             currency: 'NGN',
             reference: idemKey,
-            description: `RMB order refund → ${order.recipientName}`,
+            description: `RMB order refund → ${current.recipientName}`,
             idempotencyKey: idemKey,
             sourceType: 'RmbOrder',
-            sourceId: order.id
+            sourceId: current.id
           }
         }));
 
       await tx.rmbOrder.update({
-        where: { id: order.id },
+        where: { id: current.id },
         data: { status: 'REFUNDED', refundLedgerEntryId: ledgerEntry.id }
       });
     });
@@ -278,13 +327,12 @@ export class ProviderWebhooksService {
         this.logger.warn('Sogo RMB failure/cancellation webhook missing reference');
         return;
       }
-      const updated = await this.prisma.client.rmbOrder.updateMany({
-        where: { providerReference },
-        data: { status: 'CANCELLED' }
-      });
-      if (updated.count === 0) {
+      const order = await this.prisma.client.rmbOrder.findFirst({ where: { providerReference } });
+      if (!order) {
         this.logger.warn(`Unknown Sogo RMB order reference for failure/cancellation: ${providerReference}`);
+        return;
       }
+      await this.reverseRmbDebit(order.id, 'cancelled');
       return;
     }
 
