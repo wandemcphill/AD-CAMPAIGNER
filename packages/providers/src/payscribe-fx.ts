@@ -13,12 +13,6 @@ interface PayscribeEnvelope {
   data?: unknown;
 }
 
-interface PayscribeRateResponse {
-  receive?: string | number;
-  usd_rate?: string | number;
-  amount?: string | number;
-}
-
 interface PayscribeProvider {
   code?: string;
   provider_code?: string;
@@ -28,6 +22,7 @@ interface PayscribeProduct {
   sku?: string;
   receive_currency?: string;
   send_currency?: string;
+  current_rate?: string | number;
 }
 
 function baseUrl(config: PayscribeFxConfig) {
@@ -67,34 +62,6 @@ function arrayFromEnvelope(payload: unknown, key: string): unknown[] {
   return [];
 }
 
-function rateFromEnvelope(payload: unknown) {
-  if (typeof payload !== "object" || payload === null) return null;
-  const envelope = payload as PayscribeEnvelope & Record<string, unknown>;
-  const direct = parseNumber(envelope.usd_rate);
-  if (direct !== null) return direct;
-
-  if (typeof envelope.data === "object" && envelope.data !== null) {
-    const nested = parseNumber((envelope.data as Record<string, unknown>).usd_rate);
-    if (nested !== null) return nested;
-  }
-
-  if (typeof envelope.message === "object" && envelope.message !== null) {
-    const message = envelope.message as Record<string, unknown>;
-    const nested = parseNumber(message.usd_rate);
-    if (nested !== null) return nested;
-    if (typeof message.details === "object" && message.details !== null) {
-      const detailRate = parseNumber((message.details as Record<string, unknown>).usd_rate);
-      if (detailRate !== null) return detailRate;
-    }
-    if (typeof message.data === "object" && message.data !== null) {
-      const dataRate = parseNumber((message.data as Record<string, unknown>).usd_rate);
-      if (dataRate !== null) return dataRate;
-    }
-  }
-
-  return null;
-}
-
 async function getJson(config: PayscribeFxConfig, path: string) {
   if (!config.apiKey) throw new Error("Payscribe FX requires PAYSCRIBE_API_KEY.");
 
@@ -106,33 +73,57 @@ async function getJson(config: PayscribeFxConfig, path: string) {
   });
 
   const payload: unknown = await response.json();
-  if (!response.ok) throw new Error(`Payscribe FX API returned HTTP ${response.status}.`);
+  if (!response.ok) {
+    const detail = typeof payload === "object" && payload !== null && "description" in payload
+      ? responseMessage(payload as PayscribeEnvelope)
+      : `HTTP ${response.status}`;
+    throw new Error(`Payscribe FX API error: ${detail}`);
+  }
   if (typeof payload === "object" && payload !== null && "status" in payload && (payload as PayscribeEnvelope).status === false) {
     throw new Error(responseMessage(payload as PayscribeEnvelope));
   }
   return payload;
 }
 
-async function resolveNgProduct(config: PayscribeFxConfig) {
+async function resolveNgRateProduct(config: PayscribeFxConfig) {
   const providersPayload = await getJson(config, "/international-bills/providers?iso=NG");
   const providers = arrayFromEnvelope(providersPayload, "providers") as PayscribeProvider[];
-  const provider = providers.find((candidate) => candidate.code || candidate.provider_code);
-  const providerCode = provider?.code ?? provider?.provider_code;
-  if (!providerCode) throw new Error("Payscribe returned no usable NG international-bills provider.");
+  if (providers.length === 0) {
+    throw new Error("Payscribe returned no NG international-bills providers.");
+  }
 
-  const productsPayload = await getJson(
-    config,
-    `/international-bills/products?iso=NG&code=${encodeURIComponent(providerCode)}`
-  );
-  const products = arrayFromEnvelope(productsPayload, "products") as PayscribeProduct[];
-  const product = products.find(
-    (candidate) =>
-      typeof candidate.sku === "string" &&
-      (candidate.receive_currency ?? "").toUpperCase() === "NGN" &&
-      (candidate.send_currency ?? "USD").toUpperCase() === "USD"
-  );
-  if (!product?.sku) throw new Error("Payscribe returned no USD→NGN international-bills product.");
-  return product.sku;
+  const errors: string[] = [];
+  for (const provider of providers) {
+    const providerCode = provider.code ?? provider.provider_code;
+    if (!providerCode) continue;
+
+    try {
+      const productsPayload = await getJson(
+        config,
+        `/international-bills/products?iso=NG&code=${encodeURIComponent(providerCode)}`
+      );
+      const products = arrayFromEnvelope(productsPayload, "products") as PayscribeProduct[];
+      const product = products.find(
+        (candidate) =>
+          typeof candidate.sku === "string" &&
+          (candidate.receive_currency ?? "").toUpperCase() === "NGN" &&
+          (candidate.send_currency ?? "USD").toUpperCase() === "USD" &&
+          (parseNumber(candidate.current_rate) ?? 0) > 0
+      );
+      if (product?.sku) {
+        return {
+          providerCode,
+          sku: product.sku,
+          currentRate: parseNumber(product.current_rate)!
+        };
+      }
+      errors.push(`${providerCode}: no USD/NGN product with current_rate`);
+    } catch (error) {
+      errors.push(`${providerCode}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  throw new Error(`Payscribe returned no usable USD/NGN rate product (${errors.join("; ")}).`);
 }
 
 export function createPayscribeFxProvider(config: PayscribeFxConfig): FxProvider {
@@ -141,15 +132,12 @@ export function createPayscribeFxProvider(config: PayscribeFxConfig): FxProvider
       throw new Error(`Payscribe FX currently supports USD/NGN only, not ${baseCurrency}/${quoteCurrency}.`);
     }
 
-    const sku = await resolveNgProduct(config);
-    const payload = await getJson(config, `/international-bills/rate?iso=NG&sku=${encodeURIComponent(sku)}&amount=1`);
-    const rate = rateFromEnvelope(payload);
-    if (rate === null || rate <= 0) throw new Error("Payscribe did not return a positive USD/NGN rate.");
+    const resolved = await resolveNgRateProduct(config);
 
     return {
       baseCurrency,
       quoteCurrency,
-      rateMicros: BigInt(Math.round(rate * 1_000_000)),
+      rateMicros: BigInt(Math.round(resolved.currentRate * 1_000_000)),
       timestamp: new Date(),
       provider: "payscribe"
     };
@@ -177,7 +165,7 @@ export function createPayscribeFxProvider(config: PayscribeFxConfig): FxProvider
       const started = Date.now();
       try {
         await getRate("USD", "NGN");
-        return { healthy: true, message: `USD/NGN rate endpoint healthy in ${Date.now() - started}ms.` };
+        return { healthy: true, message: `USD/NGN product current_rate healthy in ${Date.now() - started}ms.` };
       } catch (error) {
         return { healthy: false, message: error instanceof Error ? error.message : String(error) };
       }
