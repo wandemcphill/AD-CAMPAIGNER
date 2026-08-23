@@ -1,10 +1,16 @@
 import { Injectable } from "@nestjs/common";
 
+import type { DatabaseClient } from "@fliptrybe/database";
+
 import { PrismaService } from "../prisma.service";
 
 @Injectable()
 export class AdminRiskService {
-  constructor(private readonly db: PrismaService) {}
+  constructor(private readonly prismaService: PrismaService) {}
+
+  private get db(): DatabaseClient {
+    return this.prismaService.client;
+  }
 
   async overview() {
     const [
