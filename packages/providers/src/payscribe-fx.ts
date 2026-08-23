@@ -10,6 +10,7 @@ interface PayscribeEnvelope {
   status?: boolean;
   description?: string;
   message?: unknown;
+  data?: unknown;
 }
 
 interface PayscribeRateResponse {
@@ -20,6 +21,7 @@ interface PayscribeRateResponse {
 
 interface PayscribeProvider {
   code?: string;
+  provider_code?: string;
 }
 
 interface PayscribeProduct {
@@ -44,6 +46,25 @@ function responseMessage(payload: PayscribeEnvelope) {
     if (typeof description === "string") return description;
   }
   return payload.description ?? "Payscribe API error.";
+}
+
+function arrayFromEnvelope(payload: unknown, key: string): unknown[] {
+  if (typeof payload !== "object" || payload === null) return [];
+  const envelope = payload as PayscribeEnvelope;
+
+  if (Array.isArray(envelope.data)) return envelope.data;
+  if (typeof envelope.data === "object" && envelope.data !== null && key in envelope.data) {
+    const value = (envelope.data as Record<string, unknown>)[key];
+    if (Array.isArray(value)) return value;
+  }
+  if (Array.isArray(envelope.message)) return envelope.message;
+  if (typeof envelope.message === "object" && envelope.message !== null) {
+    const message = envelope.message as Record<string, unknown>;
+    if (Array.isArray(message.details)) return message.details;
+    if (Array.isArray(message.data)) return message.data;
+    if (Array.isArray(message[key])) return message[key];
+  }
+  return [];
 }
 
 async function getJson(config: PayscribeFxConfig, path: string) {
@@ -75,29 +96,20 @@ async function getJson(config: PayscribeFxConfig, path: string) {
 }
 
 async function resolveNgProduct(config: PayscribeFxConfig) {
-  const providersPayload = (await getJson(config, "/international-bills/providers?iso=NG")) as {
-    message?: { details?: PayscribeProvider[] } | PayscribeProvider[];
-  };
-
-  const providers = Array.isArray(providersPayload.message)
-    ? providersPayload.message
-    : providersPayload.message?.details ?? [];
-  const providerCode = providers.find((provider) => provider.code)?.code;
+  const providersPayload = await getJson(config, "/international-bills/providers?iso=NG");
+  const providers = arrayFromEnvelope(providersPayload, "providers") as PayscribeProvider[];
+  const provider = providers.find((candidate) => candidate.code || candidate.provider_code);
+  const providerCode = provider?.code ?? provider?.provider_code;
 
   if (!providerCode) {
     throw new Error("Payscribe returned no usable NG international-bills provider.");
   }
 
-  const productsPayload = (await getJson(
+  const productsPayload = await getJson(
     config,
     `/international-bills/products?iso=NG&code=${encodeURIComponent(providerCode)}`
-  )) as {
-    message?: { details?: PayscribeProduct[] } | PayscribeProduct[];
-  };
-
-  const products = Array.isArray(productsPayload.message)
-    ? productsPayload.message
-    : productsPayload.message?.details ?? [];
+  );
+  const products = arrayFromEnvelope(productsPayload, "products") as PayscribeProduct[];
 
   const product = products.find(
     (candidate) =>
@@ -113,9 +125,7 @@ async function resolveNgProduct(config: PayscribeFxConfig) {
   return product.sku;
 }
 
-export function createPayscribeFxProvider(
-  config: PayscribeFxConfig
-): FxProvider {
+export function createPayscribeFxProvider(config: PayscribeFxConfig): FxProvider {
   async function getRate(baseCurrency: string, quoteCurrency: string): Promise<FxRate> {
     if (baseCurrency !== "USD" || quoteCurrency !== "NGN") {
       throw new Error(`Payscribe FX currently supports USD/NGN only, not ${baseCurrency}/${quoteCurrency}.`);
@@ -127,7 +137,7 @@ export function createPayscribeFxProvider(
       `/international-bills/rate?iso=NG&sku=${encodeURIComponent(sku)}&amount=1`
     )) as PayscribeRateResponse;
 
-    const rate = parseNumber(payload.usd_rate);
+    const rate = parseNumber(payload.usd_rate ?? (payload as Record<string, unknown>)["data"] && "") ;
     if (rate === null || rate <= 0) {
       throw new Error("Payscribe did not return a positive USD/NGN rate.");
     }
@@ -168,10 +178,7 @@ export function createPayscribeFxProvider(
         await getRate("USD", "NGN");
         return { healthy: true, message: `USD/NGN rate endpoint healthy in ${Date.now() - started}ms.` };
       } catch (error) {
-        return {
-          healthy: false,
-          message: error instanceof Error ? error.message : String(error)
-        };
+        return { healthy: false, message: error instanceof Error ? error.message : String(error) };
       }
     }
   };
