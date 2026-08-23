@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Gift, Plus, QrCode, Ticket, Trash2, Trophy, Users, Zap } from "lucide-react";
 import Link from "next/link";
 
-import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip, humanizeStatus } from "@fliptrybe/ui";
 
 import {
   addRewardTask,
@@ -367,7 +367,7 @@ export default function RewardsPage() {
                 <div className="flex items-start justify-between gap-2">
                   <h3 className="font-semibold leading-tight">{campaign.name}</h3>
                   <Badge tone={statusColor(campaign.status)}>
-                    {campaign.status}
+                    {humanizeStatus(campaign.status)}
                   </Badge>
                 </div>
 

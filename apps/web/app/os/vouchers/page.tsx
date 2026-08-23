@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Copy, Eye, Plus, RefreshCw, Share2, Sparkles, Ticket } from "lucide-react";
 
-import { Badge, Button, Panel, SummaryStatStrip, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip, cn, humanizeStatus } from "@fliptrybe/ui";
 
 import {
   createVoucher,
@@ -324,7 +324,7 @@ export default function VouchersPage() {
             vouchers.map((voucher) => (
               <div className="grid gap-3" key={voucher.id}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={statusTone(voucher.status)}>{voucher.status.toLowerCase()}</Badge>
+                  <Badge tone={statusTone(voucher.status)}>{humanizeStatus(voucher.status)}</Badge>
                   <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     {voucher.serialNumber}
                   </span>

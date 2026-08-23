@@ -15,7 +15,7 @@ import {
   Zap
 } from "lucide-react";
 
-import { Badge, Button, cn } from "@fliptrybe/ui";
+import { Badge, Button, cn, humanizeStatus } from "@fliptrybe/ui";
 import { Drawer, Input } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
@@ -244,7 +244,7 @@ export default function AutomationPage() {
                 </div>
               </div>
               <Badge tone={wf.status === "ACTIVE" ? "success" : wf.status === "PAUSED" ? "warning" : "neutral"}>
-                {wf.status.toLowerCase()}
+                {humanizeStatus(wf.status)}
               </Badge>
               <Button disabled={busy === wf.id} onClick={() => void onToggle(wf)} variant="secondary">
                 {wf.status === "ACTIVE" ? "Pause" : "Activate"}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Check, Copy, Link2, Plus } from "lucide-react";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, humanizeStatus } from "@fliptrybe/ui";
 import { Input } from "@fliptrybe/ui/components";
 
 import { isForbiddenError } from "../../../lib/api-client";
@@ -203,7 +203,7 @@ export default function PaymentLinksPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-semibold">{link.title}</span>
-                    <Badge tone={STATUS_TONE[link.status]}>{link.status.toLowerCase()}</Badge>
+                    <Badge tone={STATUS_TONE[link.status]}>{humanizeStatus(link.status)}</Badge>
                   </div>
                   <div className="mt-0.5 truncate font-mono text-xs text-[var(--ft-text-muted)]">
                     {link.amountMinor === null ? "Payer-set amount" : formatPaymentLinkMoney(link.amountMinor, link.currency)}

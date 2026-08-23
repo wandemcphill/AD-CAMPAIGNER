@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CheckCircle2, Clock, Folder, RefreshCw, Users } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, cn } from "@fliptrybe/ui";
+import { Badge, Button, cn, humanizeStatus } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
@@ -109,7 +109,7 @@ export default function TeamPage() {
                         <Folder className="size-4 text-[var(--ft-accent)]" />
                         <h3 className="font-semibold">{project.name}</h3>
                       </div>
-                      <Badge tone="neutral">{project.status}</Badge>
+                      <Badge tone="neutral">{humanizeStatus(project.status)}</Badge>
                     </div>
                     <div className="mt-3 flex items-center gap-4 text-xs text-[var(--ft-text-muted)]">
                       <span><Users className="mr-1 inline size-3" /> {total} assigned</span>

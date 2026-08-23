@@ -183,6 +183,54 @@ export function campaignStatusMeta(status: string) {
   return { label: "Under Review", tone: "warning" as const };
 }
 
+/**
+ * Tokens that must keep their casing when a status enum is humanized —
+ * "KYC_PENDING" should read "KYC pending", not "Kyc pending".
+ */
+const STATUS_ACRONYMS = new Set([
+  "API",
+  "FX",
+  "ID",
+  "KYC",
+  "NGN",
+  "OTP",
+  "QR",
+  "RMB",
+  "SMS",
+  "URL",
+  "USD",
+  "VTU"
+]);
+
+/**
+ * Turns a raw status enum into customer-facing prose: `PENDING_REVIEW` becomes
+ * "Pending review", `CHANGES_REQUESTED` becomes "Changes requested".
+ *
+ * Use this for any status a customer can see that ISN'T a campaign — invoices,
+ * orders, vouchers, payment links, workflows. Campaign statuses should go
+ * through `campaignStatusMeta` / `StatusBadge` instead, since those carry a
+ * deliberate service vocabulary ("Brief Received", "Campaign Live") rather than
+ * a mechanical prettification of the enum.
+ */
+export function humanizeStatus(status: string): string {
+  const words = status
+    .replaceAll(/[_-]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return "";
+
+  return words
+    .map((word, index) => {
+      const upper = word.toUpperCase();
+      if (STATUS_ACRONYMS.has(upper)) return upper;
+      const lower = word.toLowerCase();
+      return index === 0 ? lower.charAt(0).toUpperCase() + lower.slice(1) : lower;
+    })
+    .join(" ");
+}
+
 export function Panel({ className, ...props }: ComponentPropsWithoutRef<"section">) {
   return (
     <section

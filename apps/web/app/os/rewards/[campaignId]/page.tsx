@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { use } from "react";
 import { CheckCircle, Circle, Clock, Trophy } from "lucide-react";
 
-import { Badge, Button, Panel } from "@fliptrybe/ui";
+import { Badge, Button, Panel, humanizeStatus } from "@fliptrybe/ui";
 
 import {
   getRewardCampaign,
@@ -87,7 +87,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ campa
         eyebrow={<><Trophy className="h-4 w-4" /><span>Reward Campaign</span></>}
         action={
           <Badge tone={campaign.status === "ACTIVE" ? "success" : "neutral"}>
-            {campaign.status}
+            {humanizeStatus(campaign.status)}
           </Badge>
         }
       />

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Briefcase, FileText, Globe, RefreshCw } from "lucide-react";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, humanizeStatus } from "@fliptrybe/ui";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import {
@@ -104,7 +104,7 @@ export default function MyMarketplaceApplicationsPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium">{application.name}</div>
-                      <Badge tone={STATUS_TONE[application.status]}>{application.status.toLowerCase()}</Badge>
+                      <Badge tone={STATUS_TONE[application.status]}>{humanizeStatus(application.status)}</Badge>
                     </div>
                     <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
                       {application.specialty} · {application.location}
@@ -145,7 +145,7 @@ export default function MyMarketplaceApplicationsPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium">{application.name}</div>
-                      <Badge tone={STATUS_TONE[application.status]}>{application.status.toLowerCase()}</Badge>
+                      <Badge tone={STATUS_TONE[application.status]}>{humanizeStatus(application.status)}</Badge>
                     </div>
                     <div className="mt-1 text-xs text-[var(--ft-text-muted)]">{application.niche}</div>
                     <p className="mt-2 text-xs text-[var(--ft-text-secondary)]">{application.bio}</p>

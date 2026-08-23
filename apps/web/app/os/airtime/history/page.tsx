@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Clock, Smartphone, Wifi } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Panel } from "@fliptrybe/ui";
+import { Badge, Panel, humanizeStatus } from "@fliptrybe/ui";
 
 import { EmptyState, LoadingBlock } from "../../../campaigns/components";
 import { loadVtuOrders, type VtuOrder } from "../vtu-api";
@@ -68,7 +68,7 @@ export default function AirtimeHistoryPage() {
                         : "neutral"
                   }
                 >
-                  {o.status.toLowerCase()}
+                  {humanizeStatus(o.status)}
                 </Badge>
               </div>
             ))}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Gift, Trophy } from "lucide-react";
 
-import { Badge, Panel } from "@fliptrybe/ui";
+import { Badge, Panel, humanizeStatus } from "@fliptrybe/ui";
 
 import { getMyProgress, type RewardProgress } from "../../../rewards/api";
 import { ErrorNotice, LoadingBlock, PageHeader } from "../../../campaigns/components";
@@ -74,7 +74,7 @@ export default function MyProgressPage() {
                     <h3 className="font-semibold">{item.campaign.name}</h3>
                   </div>
                   <Badge tone={item.campaign.status === "ACTIVE" ? "success" : "neutral"} >
-                    {item.campaign.status}
+                    {humanizeStatus(item.campaign.status)}
                   </Badge>
                 </div>
 
@@ -99,7 +99,7 @@ export default function MyProgressPage() {
                       {formatMinor(item.entitlement.rewardValueMinor, item.entitlement.currency)} reward
                     </span>
                     <Badge tone={entitlementTone(item.entitlement.status)} >
-                      {item.entitlement.status.replace("_", " ")}
+                      {humanizeStatus(item.entitlement.status)}
                     </Badge>
                   </div>
                 )}

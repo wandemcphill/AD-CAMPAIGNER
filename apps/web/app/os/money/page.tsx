@@ -18,7 +18,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import { Badge } from "@fliptrybe/ui";
+import { Badge, humanizeStatus } from "@fliptrybe/ui";
 
 import { formatCampaignMoney, formatDateTime } from "../../campaigns/api";
 import { EmptyState, LoadingBlock } from "../../campaigns/components";
@@ -169,7 +169,7 @@ export default function MoneyOverviewPage() {
                     </div>
                     <div className="text-right">
                       <div className={credit ? "font-mono text-sm text-[var(--ft-green)]" : "font-mono text-sm"}>{item.amount}</div>
-                      <Badge tone="neutral">{item.status.toLowerCase()}</Badge>
+                      <Badge tone="neutral">{humanizeStatus(item.status)}</Badge>
                     </div>
                   </div>
                 );

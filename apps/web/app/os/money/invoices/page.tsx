@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { FileText, Plus, Trash2 } from "lucide-react";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, humanizeStatus } from "@fliptrybe/ui";
 import { Input } from "@fliptrybe/ui/components";
 
 import { isForbiddenError } from "../../../lib/api-client";
@@ -345,7 +345,7 @@ export default function InvoicesPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm font-semibold">{invoice.number}</span>
-                    <Badge tone={invoiceStatusTone(invoice.status)}>{invoice.status.toLowerCase()}</Badge>
+                    <Badge tone={invoiceStatusTone(invoice.status)}>{humanizeStatus(invoice.status)}</Badge>
                   </div>
                   <div className="mt-0.5 truncate text-xs text-[var(--ft-text-muted)]">
                     {invoice.customerName}

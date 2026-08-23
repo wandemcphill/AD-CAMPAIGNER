@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Clock, GraduationCap, Trophy, Tv, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Panel } from "@fliptrybe/ui";
+import { Badge, Panel, humanizeStatus } from "@fliptrybe/ui";
 
 import { EmptyState, LoadingBlock } from "../../../campaigns/components";
 import { loadBillsOrders, type BillsOrder } from "../vtu-api";
@@ -70,7 +70,7 @@ export default function UtilitiesHistoryPage() {
                         : "neutral"
                   }
                 >
-                  {o.status.toLowerCase()}
+                  {humanizeStatus(o.status)}
                 </Badge>
               </div>
             ))}

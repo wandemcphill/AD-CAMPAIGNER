@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Clock, Globe2, Smartphone, Sparkles, Wifi } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn, humanizeStatus } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
@@ -446,7 +446,7 @@ export default function TelecomGatewayPage() {
                               : "neutral"
                         }
                       >
-                        {o.status.toLowerCase()}
+                        {humanizeStatus(o.status)}
                       </Badge>
                       {!TERMINAL_ORDER_STATUSES.has(o.status) ? (
                         <Button
