@@ -5,10 +5,10 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, RefreshCw, Save, ShieldCheck } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
-import { AdminShell } from "../../../admin-shell";
-import { apiRequest } from "../../../lib/api-client";
-import { useApiSession } from "../../../lib/use-session";
-import { AdminAuthState } from "../../../ui/admin-auth-state";
+import { AdminShell } from "../../../../admin-shell";
+import { apiRequest } from "../../../../lib/api-client";
+import { useApiSession } from "../../../../lib/use-session";
+import { AdminAuthState } from "../../../../ui/admin-auth-state";
 
 type GrowthService = {
   code: string;
@@ -63,7 +63,7 @@ export default function GrowthProductEditor({ params }: { params: { code: string
         apiRequest<GrowthService[]>("/admin/growth/services"),
         apiRequest<{ supportedProviders: Supplier[] }>("/admin/growth/supplier-audit")
       ]);
-      const found = services.find((item) => item.code === decodeURIComponent(params.code));
+      const found = services.find((item: GrowthService) => item.code === decodeURIComponent(params.code));
       if (!found) throw new Error("Growth service not found.");
       setService(found);
       setSuppliers(audit.supportedProviders);
