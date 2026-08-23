@@ -7,9 +7,6 @@ import { IncomingWebhooksService } from "./incoming-webhooks.service";
 import { ProviderWebhooksService } from "./provider-webhooks.service";
 import { OutgoingWebhooksService, SUPPORTED_WEBHOOK_EVENTS } from "./outgoing-webhooks.service";
 
-// Outgoing webhook config is internal platform infrastructure — platform-admin only,
-// not the workspace-wide "analytics:read". admin:access resolves solely from
-// isPlatformAdmin, so no workspace role (OWNER included) can list or mutate.
 @Controller("developer/webhooks")
 @RequirePermissions("admin:access")
 export class OutgoingWebhooksController {
@@ -50,7 +47,10 @@ export class IncomingWebhooksController {
 
   @Get()
   list(@Query("status") status: string | undefined, @Query("name") name: string | undefined) {
-    return this.incoming.list({ ...(status === undefined ? {} : { status }), ...(name === undefined ? {} : { name }) });
+    return this.incoming.list({
+      ...(status === undefined ? {} : { status }),
+      ...(name === undefined ? {} : { name })
+    });
   }
 
   @Get("provider-events")
@@ -78,11 +78,14 @@ export class ProviderWebhooksController {
   @Post("sogo")
   async sogoWebhook(
     @Req() req: RawBodyRequest<unknown>,
-    @Headers("x-sogo-signature") signature: string,
-    @Headers("x-sogo-timestamp") timestamp: string
+    @Headers("x-sogo-signature-256") currentSignature?: string,
+    @Headers("x-sogo-signature") legacySignature?: string,
+    @Headers("x-sogo-timestamp") timestamp?: string
   ) {
-    const secret = process.env['SOGO_WEBHOOK_SECRET'] || process.env['SOGO_SECRET_KEY'] || '';
-    const payload = req.rawBody?.toString() || '';
+    const secret = process.env["SOGO_WEBHOOK_SECRET"] || process.env["SOGO_SECRET_KEY"] || process.env["SOGO_API_KEY"] || "";
+    const payload = req.rawBody?.toString() || "";
+    const signature = currentSignature || legacySignature || "";
+
     await this.provider.handleSogoWebhook(JSON.parse(payload), payload, signature, timestamp, secret);
     return { ok: true };
   }
@@ -93,8 +96,8 @@ export class ProviderWebhooksController {
     @Headers("x-reloadly-signature") signature: string,
     @Headers("x-reloadly-request-timestamp") timestamp: string
   ) {
-    const secret = process.env['RELOADLY_WEBHOOK_SECRET'] || '';
-    const payload = req.rawBody?.toString() || '';
+    const secret = process.env["RELOADLY_WEBHOOK_SECRET"] || "";
+    const payload = req.rawBody?.toString() || "";
     await this.provider.handleReloadlyWebhook(JSON.parse(payload), payload, timestamp, signature, secret);
     return { ok: true };
   }
