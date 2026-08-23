@@ -2,7 +2,7 @@
 
 import { ArrowRight, Clock, RefreshCw, Search, ShieldCheck, Wallet } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip, ValueSkeleton } from "@fliptrybe/ui";
 
 import { ErrorNotice, PageHeader, RequestStatus } from "../../digital-access/components";
 import { accessEnabled, navItems } from "../../digital-access/data";
@@ -85,9 +85,9 @@ export default function DigitalAccessPage() {
         <div className="mt-6">
           <SummaryStatStrip
             items={[
-              { label: "Open requests", value: loading ? "..." : String(openRequests) },
-              { label: "Fulfilled", value: loading ? "..." : String(fulfilledRequests) },
-              { label: "Catalog", value: loading ? "..." : String(services.length) },
+              { label: "Open requests", value: loading ? <ValueSkeleton width="w-10" /> : String(openRequests) },
+              { label: "Fulfilled", value: loading ? <ValueSkeleton width="w-10" /> : String(fulfilledRequests) },
+              { label: "Catalog", value: loading ? <ValueSkeleton width="w-10" /> : String(services.length) },
               { label: "Access mode", value: accessEnabled ? "Live" : "Setup" }
             ]}
           />
@@ -97,19 +97,19 @@ export default function DigitalAccessPage() {
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <MetricCard
           label="Open requests"
-          value={loading ? "..." : String(openRequests)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(openRequests)}
           detail="Awaiting or in fulfillment"
           tone="info"
         />
         <MetricCard
           label="Fulfilled"
-          value={loading ? "..." : String(fulfilledRequests)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(fulfilledRequests)}
           detail="Completed manually"
           tone="success"
         />
         <MetricCard
           label="Catalog"
-          value={loading ? "..." : String(services.length)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(services.length)}
           detail="Admin-priced services"
         />
       </section>

@@ -12,7 +12,7 @@ import {
   Zap
 } from "lucide-react";
 
-import { Badge, Button, Panel, SummaryStatStrip, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip, ValueSkeleton, cn } from "@fliptrybe/ui";
 
 import { EmptyState, ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
 import {
@@ -99,11 +99,11 @@ export default function NotificationsPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            { label: "total notifications", value: loading ? "..." : notifications.length },
-            { label: "unread", value: loading ? "..." : unreadCount },
+            { label: "total notifications", value: loading ? <ValueSkeleton width="w-10" /> : notifications.length },
+            { label: "unread", value: loading ? <ValueSkeleton width="w-10" /> : unreadCount },
             {
               label: "read",
-              value: loading ? "..." : notifications.length - unreadCount
+              value: loading ? <ValueSkeleton width="w-10" /> : notifications.length - unreadCount
             }
           ]}
         />

@@ -2,7 +2,7 @@
 
 import { RefreshCw, ShieldAlert } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, SummaryStatStrip, ValueSkeleton } from "@fliptrybe/ui";
 
 import {
   DeliveryMeter,
@@ -56,10 +56,10 @@ export default function GrowthServicesPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            { label: "services", value: loading ? "..." : String(activeServices.length) },
-            { label: "active orders", value: loading ? "..." : String(activeOrders) },
-            { label: "completed", value: loading ? "..." : String(completedOrders) },
-            { label: "risk flags", value: loading ? "..." : String(highRiskServices) }
+            { label: "services", value: loading ? <ValueSkeleton width="w-10" /> : String(activeServices.length) },
+            { label: "active orders", value: loading ? <ValueSkeleton width="w-10" /> : String(activeOrders) },
+            { label: "completed", value: loading ? <ValueSkeleton width="w-10" /> : String(completedOrders) },
+            { label: "risk flags", value: loading ? <ValueSkeleton width="w-10" /> : String(highRiskServices) }
           ]}
         />
       </section>
@@ -69,24 +69,24 @@ export default function GrowthServicesPage() {
           detail="Available storefront items"
           label="Services"
           tone="info"
-          value={loading ? "..." : String(activeServices.length)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(activeServices.length)}
         />
         <MetricCard
           detail="Pending, submitted, or in delivery"
           label="Active orders"
           tone="warning"
-          value={loading ? "..." : String(activeOrders)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(activeOrders)}
         />
         <MetricCard
           detail="Delivered orders"
           label="Completed"
           tone="success"
-          value={loading ? "..." : String(completedOrders)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(completedOrders)}
         />
         <MetricCard
           detail="Require clear customer disclosure"
           label="Risk flags"
-          value={loading ? "..." : String(highRiskServices)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(highRiskServices)}
         />
       </section>
 

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Copy, Eye, Plus, RefreshCw, Share2, Sparkles, Ticket } from "lucide-react";
 
-import { Badge, Button, Panel, SummaryStatStrip, cn, humanizeStatus } from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip, ValueSkeleton, cn, humanizeStatus } from "@fliptrybe/ui";
 
 import {
   createVoucher,
@@ -160,10 +160,10 @@ export default function VouchersPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            { label: "vouchers issued", value: loading ? "..." : vouchers.length },
-            { label: "still sealed", value: loading ? "..." : sealedCount },
-            { label: "redeemed", value: loading ? "..." : redeemedCount },
-            { label: "products available", value: loading ? "..." : products.length }
+            { label: "vouchers issued", value: loading ? <ValueSkeleton width="w-10" /> : vouchers.length },
+            { label: "still sealed", value: loading ? <ValueSkeleton width="w-10" /> : sealedCount },
+            { label: "redeemed", value: loading ? <ValueSkeleton width="w-10" /> : redeemedCount },
+            { label: "products available", value: loading ? <ValueSkeleton width="w-10" /> : products.length }
           ]}
         />
       </section>

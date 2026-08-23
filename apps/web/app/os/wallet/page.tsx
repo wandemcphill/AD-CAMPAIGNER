@@ -26,6 +26,7 @@ import {
   Panel,
   PermissionDenied,
   SummaryStatStrip,
+  ValueSkeleton,
   WalletBalance,
   cn
 } from "@fliptrybe/ui";
@@ -571,17 +572,17 @@ export default function BillingPage() {
           {
             detail: "Completed wallet debits",
             label: "Campaign Spend",
-            value: loading ? "..." : moneyValue(totalSpentMinor, currency)
+            value: loading ? <ValueSkeleton width="w-24" /> : moneyValue(totalSpentMinor, currency)
           },
           {
             detail: "Reserved for active campaigns",
             label: "Budget Reserve",
-            value: loading ? "..." : heldLabel
+            value: loading ? <ValueSkeleton width="w-10" /> : heldLabel
           },
           {
             detail: pendingChargeMinor > 0 ? "Needs checkout" : "No pending charges",
             label: "Checkout Due",
-            value: loading ? "..." : moneyValue(pendingChargeMinor, currency)
+            value: loading ? <ValueSkeleton width="w-24" /> : moneyValue(pendingChargeMinor, currency)
           }
         ].map((item) => (
           <div

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Gift, RefreshCw, Send, Smartphone, Tags } from "lucide-react";
 
-import { Badge, Button, Panel, PermissionDenied, SummaryStatStrip, cn } from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, SummaryStatStrip, ValueSkeleton, cn } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
@@ -342,9 +342,9 @@ export default function DigitalValuePage() {
         <section className="mt-5">
           <SummaryStatStrip
             items={[
-              { label: "gift card products", value: loading ? "..." : products.length },
-              { label: "available to buy", value: loading ? "..." : availableProducts.length },
-              { label: "cashout networks", value: loading ? "..." : networks.length }
+              { label: "gift card products", value: loading ? <ValueSkeleton width="w-10" /> : products.length },
+              { label: "available to buy", value: loading ? <ValueSkeleton width="w-10" /> : availableProducts.length },
+              { label: "cashout networks", value: loading ? <ValueSkeleton width="w-10" /> : networks.length }
             ]}
           />
         </section>

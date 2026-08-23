@@ -30,6 +30,7 @@ import {
   PermissionDenied,
   PlatformChip,
   SummaryStatStrip,
+  ValueSkeleton,
   campaignStatusMeta,
   cn
 } from "@fliptrybe/ui";
@@ -270,7 +271,7 @@ export default function CampaignsPage() {
           <div className="flex flex-wrap gap-2">
             <Badge tone="success">Live monitoring</Badge>
             <Badge tone="info">{loading ? "Syncing" : `${activeCampaigns} active`}</Badge>
-            <Badge tone="neutral">{loading ? "..." : `${pendingReviewCampaigns} in review`}</Badge>
+            <Badge tone="neutral">{loading ? <ValueSkeleton width="w-16" /> : `${pendingReviewCampaigns} in review`}</Badge>
           </div>
         </div>
       </section>
@@ -280,22 +281,22 @@ export default function CampaignsPage() {
         <SummaryStatStrip
           className="mb-4"
           items={[
-            { label: "active campaigns", value: loading ? "..." : activeCampaigns },
-            { label: "pending reviews", value: loading ? "..." : pendingReviewCampaigns },
-            { label: "next reports tracked", value: loading ? "..." : completedCampaigns },
-            { label: "portfolio spend", value: loading ? "..." : spend }
+            { label: "active campaigns", value: loading ? <ValueSkeleton width="w-10" /> : activeCampaigns },
+            { label: "pending reviews", value: loading ? <ValueSkeleton width="w-10" /> : pendingReviewCampaigns },
+            { label: "next reports tracked", value: loading ? <ValueSkeleton width="w-10" /> : completedCampaigns },
+            { label: "portfolio spend", value: loading ? <ValueSkeleton width="w-24" /> : spend }
           ]}
         />
         <MetricStrip
           items={[
             {
               label: "Impressions",
-              value: loading ? "..." : formatCompact(impressions),
+              value: loading ? <ValueSkeleton width="w-16" /> : formatCompact(impressions),
               detail: "Portfolio-wide, all live campaigns"
             },
             {
               label: "Avg CPM",
-              value: loading ? "..." : avgCpm,
+              value: loading ? <ValueSkeleton width="w-24" /> : avgCpm,
               detail: "Estimated portfolio cost"
             }
           ]}

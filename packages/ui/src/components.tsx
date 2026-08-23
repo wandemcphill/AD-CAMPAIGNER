@@ -244,7 +244,7 @@ export function KpiCard({
 }: {
   icon?: ReactNode;
   label: string;
-  value: string;
+  value: ReactNode;
   delta?: string;
   deltaTone?: "up" | "down" | "neutral";
 }) {

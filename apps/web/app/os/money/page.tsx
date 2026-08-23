@@ -18,7 +18,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import { Badge, humanizeStatus } from "@fliptrybe/ui";
+import { Badge, ValueSkeleton, humanizeStatus } from "@fliptrybe/ui";
 
 import { formatCampaignMoney, formatDateTime } from "../../campaigns/api";
 import { EmptyState, LoadingBlock } from "../../campaigns/components";
@@ -85,7 +85,7 @@ export default function MoneyOverviewPage() {
             Available balance
           </div>
           <div className="mt-2 font-mono text-3xl font-bold">
-            {loading ? "..." : availableBalance ? formatCampaignMoney(availableBalance) : "—"}
+            {loading ? <ValueSkeleton width="w-24" /> : availableBalance ? formatCampaignMoney(availableBalance) : "—"}
           </div>
           <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
             {loading

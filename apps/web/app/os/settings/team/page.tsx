@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Plus, Shield, Trash2, Users } from "lucide-react";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, ValueSkeleton } from "@fliptrybe/ui";
 import { Drawer, Input } from "@fliptrybe/ui/components";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
@@ -90,7 +90,7 @@ export default function TeamSettingsPage() {
           <div className="flex items-center gap-2">
             <Users className="size-5 text-[var(--ft-accent)]" />
             <h2 className="font-semibold">Team Members</h2>
-            <Badge tone="neutral">{loading ? "..." : members.length}</Badge>
+            <Badge tone="neutral">{loading ? <ValueSkeleton width="w-10" /> : members.length}</Badge>
           </div>
           {isAdmin && (
             <Button onClick={() => setShowInvite(true)}>

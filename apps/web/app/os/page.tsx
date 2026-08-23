@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge } from "@fliptrybe/ui";
+import { Badge, ValueSkeleton } from "@fliptrybe/ui";
 
 import {
   fallbackCurrency,
@@ -91,7 +91,7 @@ export default function DashboardPage() {
                 <Wallet className="size-4 text-[var(--ft-accent)]" />
               </div>
               <div className="mt-2 font-mono text-2xl font-bold">
-                {loading ? "..." : availableBalance ? formatCampaignMoney(availableBalance) : "—"}
+                {loading ? <ValueSkeleton width="w-24" /> : availableBalance ? formatCampaignMoney(availableBalance) : "—"}
               </div>
               <a className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-[var(--ft-accent)]" href="/os/wallet">
                 Manage wallet <ArrowRight className="size-3" />
@@ -190,10 +190,10 @@ export default function DashboardPage() {
           {/* Revenue Snapshot */}
           <section className="grid gap-3 sm:grid-cols-4">
             {[
-              { label: "Impressions", value: loading ? "..." : formatCompact(impressions), icon: BarChart3 },
-              { label: "Active Campaigns", value: loading ? "..." : String(activeCampaigns.length), icon: Megaphone },
-              { label: "Wallet Balance", value: loading ? "..." : (wallet ? formatCampaignMoney(wallet.availableBalance) : "—"), icon: Wallet },
-              { label: "Pending review", value: loading ? "..." : String(pendingReview), icon: TrendingUp },
+              { label: "Impressions", value: loading ? <ValueSkeleton width="w-16" /> : formatCompact(impressions), icon: BarChart3 },
+              { label: "Active Campaigns", value: loading ? <ValueSkeleton width="w-10" /> : String(activeCampaigns.length), icon: Megaphone },
+              { label: "Wallet Balance", value: loading ? <ValueSkeleton width="w-24" /> : (wallet ? formatCampaignMoney(wallet.availableBalance) : "—"), icon: Wallet },
+              { label: "Pending review", value: loading ? <ValueSkeleton width="w-10" /> : String(pendingReview), icon: TrendingUp },
             ].map((m) => (
               <div className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4" key={m.label}>
                 <m.icon className="size-4 text-[var(--ft-text-muted)]" />
@@ -212,15 +212,15 @@ export default function DashboardPage() {
             <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
               <div>
                 <div className="text-xs text-[var(--ft-text-muted)]">Impressions</div>
-                <div className="mt-1 font-mono text-lg">{loading ? "..." : formatCompact(impressions)}</div>
+                <div className="mt-1 font-mono text-lg">{loading ? <ValueSkeleton width="w-16" /> : formatCompact(impressions)}</div>
               </div>
               <div>
                 <div className="text-xs text-[var(--ft-text-muted)]">Clicks</div>
-                <div className="mt-1 font-mono text-lg">{loading ? "..." : formatCompact(clicks)}</div>
+                <div className="mt-1 font-mono text-lg">{loading ? <ValueSkeleton width="w-16" /> : formatCompact(clicks)}</div>
               </div>
               <div>
                 <div className="text-xs text-[var(--ft-text-muted)]">Portfolio spend</div>
-                <div className="mt-1 font-mono text-lg">{loading ? "..." : spend}</div>
+                <div className="mt-1 font-mono text-lg">{loading ? <ValueSkeleton width="w-24" /> : spend}</div>
               </div>
             </div>
           </section>

@@ -2,7 +2,7 @@
 
 import { Clock, RefreshCw, Wallet } from "lucide-react";
 
-import { Badge, Button, MetricCard, Panel } from "@fliptrybe/ui";
+import { Badge, Button, MetricCard, Panel, ValueSkeleton } from "@fliptrybe/ui";
 
 import { ErrorNotice, PageHeader, RequestStatus } from "../../../digital-access/components";
 import { useDigitalAccessData } from "../../../digital-access/use-digital-access-data";
@@ -43,19 +43,19 @@ export default function DigitalAccessRequestsPage() {
       <section className="mt-6 grid gap-4 md:grid-cols-3">
         <MetricCard
           label="Open requests"
-          value={loading ? "..." : String(openRequests)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(openRequests)}
           detail="Awaiting or in fulfillment"
           tone="info"
         />
         <MetricCard
           label="Fulfilled"
-          value={loading ? "..." : String(fulfilledRequests)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(fulfilledRequests)}
           detail="Completed manually"
           tone="success"
         />
         <MetricCard
           label="Total requests"
-          value={loading ? "..." : String(requests.length)}
+          value={loading ? <ValueSkeleton width="w-10" /> : String(requests.length)}
           detail="Current workspace"
         />
       </section>

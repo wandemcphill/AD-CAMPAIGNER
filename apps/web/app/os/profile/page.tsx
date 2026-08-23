@@ -20,7 +20,8 @@ import {
   PermissionDenied,
   PlatformChip,
   SummaryStatStrip,
-  TimelineEvent
+  TimelineEvent,
+  ValueSkeleton
 } from "@fliptrybe/ui";
 
 import {
@@ -218,8 +219,8 @@ export default function ProfilePage() {
                     label: "workspace",
                     value: sessionLoading ? "Checking" : session ? "Ready" : "Signed out"
                   },
-                  { label: "destinations", value: loading ? "..." : destinations.length },
-                  { label: "setup gaps", value: loading ? "..." : setupGapCount }
+                  { label: "destinations", value: loading ? <ValueSkeleton width="w-10" /> : destinations.length },
+                  { label: "setup gaps", value: loading ? <ValueSkeleton width="w-10" /> : setupGapCount }
                 ]}
               />
             </div>

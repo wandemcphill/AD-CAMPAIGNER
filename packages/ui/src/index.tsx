@@ -250,7 +250,7 @@ export function MetricCard({
   tone = "neutral"
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   detail: string;
   tone?: "neutral" | "success" | "warning" | "info";
 }) {
@@ -434,6 +434,33 @@ export function SkeletonBlock({ className }: { className?: string }) {
   return <div className={cn("skeleton", className)} />;
 }
 
+/**
+ * Placeholder for a single metric value while it loads.
+ *
+ * Sized to roughly the glyph height of the number it replaces so the row keeps
+ * its height and nothing reflows when the real value arrives — the reason to
+ * prefer this over a literal "..." string. `aria-hidden` plus the sr-only text
+ * means a screen reader hears "loading" once rather than reading out an empty
+ * decorative box.
+ */
+export function ValueSkeleton({
+  className,
+  width = "w-20"
+}: {
+  className?: string;
+  width?: string;
+}) {
+  return (
+    <span className="inline-flex items-center" role="status">
+      <span
+        aria-hidden="true"
+        className={cn("skeleton inline-block h-[1em] align-middle", width, className)}
+      />
+      <span className="sr-only">Loading</span>
+    </span>
+  );
+}
+
 export function OtpCodeBoxes({
   className,
   code,
@@ -480,7 +507,7 @@ export function OtpCodeBoxes({
 export function MetricStrip({
   items
 }: {
-  items: Array<{ label: string; value: string; detail?: string | undefined }>;
+  items: Array<{ label: string; value: ReactNode; detail?: string | undefined }>;
 }) {
   return (
     <div className="grid overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] md:grid-cols-2 xl:grid-cols-4">
@@ -595,7 +622,7 @@ export function SummaryStatStrip({
   items,
   className
 }: {
-  items: Array<{ label: string; value: string | number }>;
+  items: Array<{ label: string; value: ReactNode }>;
   className?: string;
 }) {
   return (
@@ -913,7 +940,7 @@ export function ReportCard({
   action?: ReactNode;
   budget?: string;
   campaign: string;
-  metrics: Array<{ label: string; value: string }>;
+  metrics: Array<{ label: string; value: ReactNode }>;
   period: string;
   platform?: string;
   summary: string;
@@ -976,7 +1003,7 @@ export function WalletBalance({
   warning
 }: {
   action?: ReactNode;
-  balance: string;
+  balance: ReactNode;
   warning?: string;
 }) {
   return (

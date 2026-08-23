@@ -10,6 +10,7 @@ import {
   PermissionDenied,
   PlatformChip,
   SummaryStatStrip,
+  ValueSkeleton,
   cn
 } from "@fliptrybe/ui";
 
@@ -159,8 +160,8 @@ export default function OnboardingPage() {
           <SummaryStatStrip
             items={[
               { label: "workspace", value: session ? "Ready" : sessionLoading ? "Checking" : "Signed out" },
-              { label: "destinations", value: loading ? "..." : String(destinations.length) },
-              { label: "providers", value: loading ? "..." : String(providers.length) },
+              { label: "destinations", value: loading ? <ValueSkeleton width="w-10" /> : String(destinations.length) },
+              { label: "providers", value: loading ? <ValueSkeleton width="w-10" /> : String(providers.length) },
               { label: "readiness", value: `${readySteps}/${stepStates.length}` }
             ]}
           />
@@ -177,12 +178,12 @@ export default function OnboardingPage() {
             },
             {
               label: "Destinations",
-              value: loading ? "..." : String(destinations.length),
+              value: loading ? <ValueSkeleton width="w-10" /> : String(destinations.length),
               detail: "Available endpoints"
             },
             {
               label: "Providers",
-              value: loading ? "..." : String(providers.length),
+              value: loading ? <ValueSkeleton width="w-10" /> : String(providers.length),
               detail: health?.service ?? "Campaign platform"
             },
             {

@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 import { BarChart3, Eye, Lightbulb, RefreshCw, TrendingUp } from "lucide-react";
 
-import { Badge, Button, MetricStrip, Panel, PermissionDenied, PlatformChip } from "@fliptrybe/ui";
+import {
+  Badge,
+  Button,
+  MetricStrip,
+  Panel,
+  PermissionDenied,
+  PlatformChip,
+  ValueSkeleton
+} from "@fliptrybe/ui";
 
 import { apiRequest } from "../../lib/api-client";
 import { formatCampaignMoney, formatCompact, metricValue } from "../../campaigns/api";
@@ -100,22 +108,22 @@ export default function CampaignAnalyticsPage() {
           items={[
             {
               label: "Impressions",
-              value: loading ? "..." : formatCompact(impressions),
+              value: loading ? <ValueSkeleton width="w-16" /> : formatCompact(impressions),
               detail: "All campaign channels"
             },
             {
               label: "Clicks",
-              value: loading ? "..." : formatCompact(clicks),
+              value: loading ? <ValueSkeleton width="w-16" /> : formatCompact(clicks),
               detail: "Tracked interactions"
             },
             {
               label: "ROI",
-              value: loading ? "..." : `${roi.toFixed(1)}%`,
+              value: loading ? <ValueSkeleton width="w-16" /> : `${roi.toFixed(1)}%`,
               detail: "Basis point signal"
             },
             {
               label: "Campaigns",
-              value: loading ? "..." : String(campaigns.length),
+              value: loading ? <ValueSkeleton width="w-10" /> : String(campaigns.length),
               detail: "Current workspace"
             }
           ]}

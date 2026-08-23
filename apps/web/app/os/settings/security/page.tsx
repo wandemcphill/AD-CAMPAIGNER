@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Key, KeyRound, Shield, Smartphone } from "lucide-react";
 import Link from "next/link";
 
-import { Badge, Button } from "@fliptrybe/ui";
+import { Badge, Button, ValueSkeleton } from "@fliptrybe/ui";
 import { Input } from "@fliptrybe/ui/components";
 
 import { loadSessions, loadTwoFactorStatus, type SessionRecord, type TwoFactorStatus } from "../../../security/api";
@@ -67,7 +67,7 @@ export default function SecuritySettingsPage() {
             </div>
             <div className="flex items-center gap-2">
               <Badge tone={twoFactor?.enabled ? "success" : "warning"}>
-                {loading ? "..." : twoFactor?.enabled ? "Enabled" : "Not enabled"}
+                {loading ? <ValueSkeleton width="w-10" /> : twoFactor?.enabled ? "Enabled" : "Not enabled"}
               </Badge>
               <ArrowRight className="size-4 text-[var(--ft-text-muted)]" />
             </div>
@@ -85,7 +85,7 @@ export default function SecuritySettingsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <Badge tone="info">{loading ? "..." : `${sessions.length} active`}</Badge>
+              <Badge tone="info">{loading ? <ValueSkeleton width="w-16" /> : `${sessions.length} active`}</Badge>
               <ArrowRight className="size-4 text-[var(--ft-text-muted)]" />
             </div>
           </Link>

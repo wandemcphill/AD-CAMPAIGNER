@@ -10,7 +10,8 @@ import {
   PermissionDenied,
   ReportCard,
   SummaryStatStrip,
-  TimelineEvent
+  TimelineEvent,
+  ValueSkeleton
 } from "@fliptrybe/ui";
 import type { Campaign, Money } from "@fliptrybe/types";
 
@@ -254,8 +255,8 @@ export default function ReportsPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge tone="success">{loading ? "Syncing" : `${publishedReports} published`}</Badge>
-            <Badge tone="info">{loading ? "..." : `${liveReports} live`}</Badge>
-            <Badge tone="neutral">{loading ? "..." : `${lockedReports} locked`}</Badge>
+            <Badge tone="info">{loading ? <ValueSkeleton width="w-16" /> : `${liveReports} live`}</Badge>
+            <Badge tone="neutral">{loading ? <ValueSkeleton width="w-16" /> : `${lockedReports} locked`}</Badge>
           </div>
         </div>
       </section>
@@ -263,9 +264,9 @@ export default function ReportsPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            { label: "campaigns tracked", value: loading ? "..." : campaigns.length },
-            { label: "published reports", value: loading ? "..." : publishedReports },
-            { label: "live snapshots", value: loading ? "..." : liveReports }
+            { label: "campaigns tracked", value: loading ? <ValueSkeleton width="w-10" /> : campaigns.length },
+            { label: "published reports", value: loading ? <ValueSkeleton width="w-10" /> : publishedReports },
+            { label: "live snapshots", value: loading ? <ValueSkeleton width="w-10" /> : liveReports }
           ]}
         />
       </section>
@@ -404,7 +405,7 @@ export default function ReportsPage() {
                 >
                   <span className="text-[var(--ft-text-secondary)]">{item.label}</span>
                   <span className="font-mono font-semibold text-[var(--ft-text-primary)]">
-                    {loading ? "..." : item.value}
+                    {loading ? <ValueSkeleton width="w-10" /> : item.value}
                   </span>
                 </div>
               ))}
