@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, AlertTriangle, Banknote, Boxes, RefreshCcw, Scale, ShieldAlert } from "lucide-react";
+import { Activity, AlertTriangle, Banknote, Boxes, RefreshCcw, RotateCcw, Scale, ShieldAlert } from "lucide-react";
 
 import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
@@ -40,6 +40,9 @@ type QueueItem = {
   detail: string;
   href: string;
   createdAt: string;
+  action?: "RECONCILE";
+  domain?: string;
+  resourceId?: string;
 };
 
 type QueueResponse = {
@@ -66,6 +69,7 @@ export default function OperationsControlTowerPage() {
   const [queue, setQueue] = useState<QueueResponse>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [busy, setBusy] = useState<string>();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -87,6 +91,29 @@ export default function OperationsControlTowerPage() {
   useEffect(() => {
     if (session?.isPlatformAdmin) void refresh();
   }, [session, refresh]);
+
+  async function reconcile(item: QueueItem) {
+    if (item.action !== "RECONCILE" || !item.domain || !item.resourceId) return;
+    const reason = window.prompt(
+      `Why should ${item.domain} ${item.resourceId} be opened for reconciliation?`,
+      "Provider result needs investigation."
+    );
+    if (reason === null || !reason.trim()) return;
+
+    setBusy(item.id);
+    setError(undefined);
+    try {
+      await apiRequest(`/admin/operations-control-tower/fulfilment/${encodeURIComponent(item.domain)}/${encodeURIComponent(item.resourceId)}/reconcile`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reason.trim() })
+      });
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not open reconciliation.");
+    } finally {
+      setBusy(undefined);
+    }
+  }
 
   if (sessionLoading || !session?.isPlatformAdmin) {
     return <AdminAuthState error={sessionError} loading={sessionLoading} title="Operations control tower auth" />;
@@ -148,7 +175,15 @@ export default function OperationsControlTowerPage() {
                       <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">{item.detail}</p>
                       <div className="mt-1 text-xs text-[var(--ft-text-muted)]">{when(item.createdAt)}</div>
                     </div>
-                    <Link className="shrink-0 text-sm font-medium text-[var(--ft-accent)] hover:underline" href={item.href}>Open desk</Link>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {item.action === "RECONCILE" ? (
+                        <Button disabled={busy === item.id} onClick={() => void reconcile(item)} variant="secondary">
+                          <RotateCcw className="size-4" />
+                          {busy === item.id ? "Opening..." : "Reconcile"}
+                        </Button>
+                      ) : null}
+                      <Link className="text-sm font-medium text-[var(--ft-accent)] hover:underline" href={item.href}>Open desk</Link>
+                    </div>
                   </div>
                 );
               })
