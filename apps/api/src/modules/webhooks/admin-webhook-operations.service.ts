@@ -12,7 +12,15 @@ export class AdminWebhookOperationsService {
 
   async overview() {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const [pendingOutbox, failedOutbox, recentOutbox, invalidProviderSignatures, providerEvents24h, activeSubscriptions, failedDeliveries24h] = await Promise.all([
+    const [
+      pendingOutbox,
+      failedOutbox,
+      recentOutbox,
+      invalidProviderSignatures,
+      providerEvents24h,
+      activeSubscriptions,
+      failedDeliveries24h
+    ] = await Promise.all([
       this.db.eventOutbox.count({ where: { status: "PENDING" } }),
       this.db.eventOutbox.count({ where: { status: "FAILED" } }),
       this.db.eventOutbox.count({ where: { createdAt: { gte: since } } }),
