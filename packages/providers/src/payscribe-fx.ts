@@ -43,23 +43,43 @@ function responseMessage(payload: PayscribeEnvelope) {
   return payload.description ?? "Payscribe API error.";
 }
 
-function arrayFromEnvelope(payload: unknown, key: string): unknown[] {
-  if (typeof payload !== "object" || payload === null) return [];
-  const envelope = payload as PayscribeEnvelope;
+function extractArrays(value: unknown, wantedKeys: string[], seen = new Set<object>()): unknown[][] {
+  if (typeof value !== "object" || value === null) return [];
+  if (seen.has(value)) return [];
+  seen.add(value);
 
-  if (Array.isArray(envelope.data)) return envelope.data;
-  if (typeof envelope.data === "object" && envelope.data !== null && key in envelope.data) {
-    const value = (envelope.data as Record<string, unknown>)[key];
-    if (Array.isArray(value)) return value;
+  const objectValue = value as Record<string, unknown>;
+  const found: unknown[][] = [];
+  for (const [key, child] of Object.entries(objectValue)) {
+    if (wantedKeys.includes(key) && Array.isArray(child)) found.push(child);
+    found.push(...extractArrays(child, wantedKeys, seen));
   }
-  if (Array.isArray(envelope.message)) return envelope.message;
-  if (typeof envelope.message === "object" && envelope.message !== null) {
-    const message = envelope.message as Record<string, unknown>;
-    if (Array.isArray(message.details)) return message.details;
-    if (Array.isArray(message.data)) return message.data;
-    if (Array.isArray(message[key])) return message[key];
+  return found;
+}
+
+function arrayFromEnvelope(payload: unknown, key: string): unknown[] {
+  const directMatches = extractArrays(payload, [key]);
+  if (directMatches.length > 0) return directMatches.flat();
+
+  const genericDetails = extractArrays(payload, ["details", "data"]);
+  return genericDetails[0] ?? [];
+}
+
+function findNestedNumber(value: unknown, key: string, seen = new Set<object>()): number | null {
+  const direct = parseNumber(value);
+  if (direct !== null) return direct;
+  if (typeof value !== "object" || value === null) return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  const objectValue = value as Record<string, unknown>;
+  const keyed = parseNumber(objectValue[key]);
+  if (keyed !== null) return keyed;
+  for (const child of Object.values(objectValue)) {
+    const nested = findNestedNumber(child, key, seen);
+    if (nested !== null) return nested;
   }
-  return [];
+  return null;
 }
 
 async function getJson(config: PayscribeFxConfig, path: string) {
@@ -117,6 +137,15 @@ async function resolveNgRateProduct(config: PayscribeFxConfig) {
           currentRate: parseNumber(product.current_rate)!
         };
       }
+
+      const nestedRate = findNestedNumber(productsPayload, "current_rate");
+      const nestedSku = findNestedString(productsPayload, "sku");
+      const nestedSend = findNestedString(productsPayload, "send_currency")?.toUpperCase();
+      const nestedReceive = findNestedString(productsPayload, "receive_currency")?.toUpperCase();
+      if (nestedSku && nestedRate && nestedRate > 0 && (nestedSend ?? "USD") === "USD" && nestedReceive === "NGN") {
+        return { providerCode, sku: nestedSku, currentRate: nestedRate };
+      }
+
       errors.push(`${providerCode}: no USD/NGN product with current_rate`);
     } catch (error) {
       errors.push(`${providerCode}: ${error instanceof Error ? error.message : String(error)}`);
@@ -124,6 +153,20 @@ async function resolveNgRateProduct(config: PayscribeFxConfig) {
   }
 
   throw new Error(`Payscribe returned no usable USD/NGN rate product (${errors.join("; ")}).`);
+}
+
+function findNestedString(value: unknown, key: string, seen = new Set<object>()): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  if (seen.has(value)) return null;
+  seen.add(value);
+
+  const objectValue = value as Record<string, unknown>;
+  if (typeof objectValue[key] === "string" && objectValue[key].trim()) return objectValue[key];
+  for (const child of Object.values(objectValue)) {
+    const nested = findNestedString(child, key, seen);
+    if (nested !== null) return nested;
+  }
+  return null;
 }
 
 export function createPayscribeFxProvider(config: PayscribeFxConfig): FxProvider {
