@@ -3,6 +3,8 @@ name: Apply UI facelift bundle
 on:
   push:
     branches: ["ops/ui-facelift-import"]
+  pull_request:
+    branches: ["main"]
 
 permissions:
   contents: write
