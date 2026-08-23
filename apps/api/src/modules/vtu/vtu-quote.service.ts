@@ -50,12 +50,25 @@ export class VtuQuoteService {
 
   /**
    * Create a price-locked quote for the given procurement.
-   * Enforces minimum margin: throws if the markup would be below the configured floor.
+   * Enforces minimum margin and, when configured, an admin-defined canonical SKU selling price.
    */
   async createQuote(request: QuoteRequest): Promise<QuoteResult> {
     const currency = request.currency ?? "NGN";
 
-    // Resolve markup and minimum margin from PricingRule table.
+    let minMarginBps = DEFAULT_MIN_MARGIN_BPS;
+    let sellingPriceOverrideMinor: number | null = null;
+
+    if (request.canonicalSkuId) {
+      const sku = await this.db.vtuCanonicalSku.findUnique({
+        where: { id: request.canonicalSkuId },
+        select: { minMarginBps: true, sellingPriceMinor: true }
+      });
+      if (sku) {
+        minMarginBps = sku.minMarginBps;
+        sellingPriceOverrideMinor = sku.sellingPriceMinor;
+      }
+    }
+
     const markupBps = await this.pricingRules.resolveMarkupBps(
       "VTU",
       {
@@ -63,30 +76,33 @@ export class VtuQuoteService {
         providerName: request.providerName,
         ...(request.network ? { network: request.network } : {})
       },
-      DEFAULT_MIN_MARGIN_BPS
+      minMarginBps
     );
 
-    const customerPriceMinor = Math.ceil(request.costMinor * (1 + markupBps / 10_000));
-    const markupMinor = customerPriceMinor - request.costMinor;
+    let customerPriceMinor = Math.ceil(request.costMinor * (1 + markupBps / 10_000));
 
-    // Enforce minimum margin — never sell below cost + floor.
-    if (markupBps < DEFAULT_MIN_MARGIN_BPS) {
-      // Check if there's a canonical SKU with a custom minimum.
-      let minMarginBps = DEFAULT_MIN_MARGIN_BPS;
-      if (request.canonicalSkuId) {
-        const sku = await this.db.vtuCanonicalSku.findUnique({
-          where: { id: request.canonicalSkuId },
-          select: { minMarginBps: true }
-        });
-        if (sku) minMarginBps = sku.minMarginBps;
-      }
-
-      if (markupBps < minMarginBps) {
+    if (sellingPriceOverrideMinor !== null) {
+      const floorPriceMinor = Math.ceil(
+        request.costMinor * (1 + minMarginBps / 10_000)
+      );
+      if (sellingPriceOverrideMinor < floorPriceMinor) {
         throw new BadRequestException(
-          `Margin protection: effective markup ${markupBps} bps is below the minimum ` +
-            `${minMarginBps} bps for this product. Update pricing rules or provider cost.`
+          `Configured selling price ₦${(sellingPriceOverrideMinor / 100).toFixed(2)} is below the minimum protected price ₦${(floorPriceMinor / 100).toFixed(2)} for this provider cost.`
         );
       }
+      customerPriceMinor = sellingPriceOverrideMinor;
+    }
+
+    const markupMinor = customerPriceMinor - request.costMinor;
+    const effectiveMarkupBps = request.costMinor > 0
+      ? Math.floor((markupMinor * 10_000) / request.costMinor)
+      : 0;
+
+    // Never sell below cost + the canonical SKU's configured floor.
+    if (effectiveMarkupBps < minMarginBps) {
+      throw new BadRequestException(
+        `Margin protection: effective markup ${effectiveMarkupBps} bps is below the minimum ${minMarginBps} bps for this product.`
+      );
     }
 
     const quoteId = uid("vquote");
@@ -103,7 +119,7 @@ export class VtuQuoteService {
         costMinor: request.costMinor,
         customerPriceMinor,
         markupMinor,
-        markupBps,
+        markupBps: effectiveMarkupBps,
         currency,
         expiresAt
       }
@@ -116,7 +132,7 @@ export class VtuQuoteService {
       costMinor: request.costMinor,
       customerPriceMinor,
       markupMinor,
-      markupBps,
+      markupBps: effectiveMarkupBps,
       currency,
       expiresAt
     };
