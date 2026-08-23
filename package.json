@@ -24,6 +24,7 @@
     "ops:phases": "node scripts/managed-ads-phases.ts",
     "ops:run-phases": "node scripts/managed-ads-phase-runner.ts",
     "ops:readiness": "tsx scripts/ops-readiness.ts",
+    "ops:seal": "tsx scripts/production-seal-check.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:deployed": "tsx scripts/deployed-smoke.ts",
     "ui:audit": "tsx scripts/ui-audit.ts"
