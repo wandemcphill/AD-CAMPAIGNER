@@ -1,0 +1,58 @@
+name: Release Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      smoke:
+        description: "Run the deployed smoke test when APP_URL is available"
+        required: false
+        default: false
+        type: boolean
+      strict:
+        description: "Require live operational ownership/evidence environment"
+        required: false
+        default: false
+        type: boolean
+  push:
+    branches: ["main"]
+
+jobs:
+  release-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.18.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm ops:release -- ${{ inputs.strict == true && '--strict' || '' }} ${{ inputs.smoke == true && '--smoke' || '' }}
+        env:
+          APP_URL: ${{ vars.RELEASE_SMOKE_APP_URL }}
+          NEXT_PUBLIC_API_URL: ${{ vars.RELEASE_SMOKE_API_URL }}
+          OPS_DEPLOY_OWNER: ${{ vars.OPS_DEPLOY_OWNER }}
+          OPS_API_OWNER: ${{ vars.OPS_API_OWNER }}
+          OPS_SUPPORT_OWNER: ${{ vars.OPS_SUPPORT_OWNER }}
+          OPS_INCIDENT_COMMANDER: ${{ vars.OPS_INCIDENT_COMMANDER }}
+          OPS_ROLLBACK_OWNER: ${{ vars.OPS_ROLLBACK_OWNER }}
+          OPS_LAUNCH_CHANNEL: ${{ vars.OPS_LAUNCH_CHANNEL }}
+          OPS_INCIDENT_CHANNEL: ${{ vars.OPS_INCIDENT_CHANNEL }}
+          OPS_SUPPORT_CHANNEL: ${{ vars.OPS_SUPPORT_CHANNEL }}
+          OPS_OWNER_ROSTER_URL: ${{ vars.OPS_OWNER_ROSTER_URL }}
+          OPS_LAUNCH_NOTES_URL: ${{ vars.OPS_LAUNCH_NOTES_URL }}
+          OPS_INCIDENT_RUNBOOK_URL: ${{ vars.OPS_INCIDENT_RUNBOOK_URL }}
+          OPS_ROLLBACK_PLAN_URL: ${{ vars.OPS_ROLLBACK_PLAN_URL }}
+
+      - name: Upload release packet
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-readiness-packet
+          path: artifacts/release-readiness/
+          if-no-files-found: error
