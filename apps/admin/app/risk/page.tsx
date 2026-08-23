@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, BadgeCheck, ShieldAlert, ShieldCheck } from "lucide-react";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
@@ -30,6 +31,23 @@ type RiskOverview = {
     metadata: unknown;
     createdAt: string;
   }>;
+};
+
+type GovernanceAlert = {
+  id: string;
+  severity: "danger" | "warning";
+  category: string;
+  title: string;
+  detail: string;
+  entityType: string;
+  entityId: string;
+  href: string;
+};
+
+type GovernanceAlerts = {
+  generatedAt: string;
+  totals: { all: number; danger: number; warning: number };
+  alerts: GovernanceAlert[];
 };
 
 type CampaignReview = {
@@ -74,6 +92,7 @@ export default function AdminRiskPage() {
   const { error: sessionError, loading: sessionLoading, session } = useApiSession();
   const [overview, setOverview] = useState<RiskOverview>();
   const [reviews, setReviews] = useState<CampaignReview[]>([]);
+  const [alerts, setAlerts] = useState<GovernanceAlerts>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
@@ -81,12 +100,14 @@ export default function AdminRiskPage() {
     setLoading(true);
     setError(undefined);
     try {
-      const [nextOverview, nextReviews] = await Promise.all([
+      const [nextOverview, nextReviews, nextAlerts] = await Promise.all([
         apiRequest<RiskOverview>("/admin/risk/overview"),
-        apiRequest<CampaignReview[]>("/admin/risk/campaign-reviews?limit=100")
+        apiRequest<CampaignReview[]>("/admin/risk/campaign-reviews?limit=100"),
+        apiRequest<GovernanceAlerts>("/admin/command-center/alerts")
       ]);
       setOverview(nextOverview);
       setReviews(nextReviews);
+      setAlerts(nextAlerts);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load the risk desk.");
     } finally {
@@ -115,7 +136,7 @@ export default function AdminRiskPage() {
               {overview ? <Badge tone={severityTone[overview.severity]}>{overview.severity.toLowerCase()}</Badge> : null}
             </div>
             <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-              One desk for campaign risk, payment exceptions, account security and verification workload.
+              One desk for campaign risk, payment exceptions, account security, verification workload and governance drift.
             </p>
           </div>
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
@@ -143,6 +164,30 @@ export default function AdminRiskPage() {
             </Panel>
           ))}
         </div>
+
+        <Panel className="mt-5 overflow-hidden p-0">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--ft-border)] p-4">
+            <div>
+              <div className="flex items-center gap-2"><ShieldAlert className="size-4 text-[var(--ft-yellow)]" /><span className="font-semibold">Governance alerts</span></div>
+              <div className="mt-1 text-xs text-[var(--ft-text-muted)]">Real control-plane drift and provider/product conditions requiring operator attention.</div>
+            </div>
+            <div className="flex gap-2"><Badge tone="danger">{alerts?.totals.danger ?? 0} critical</Badge><Badge tone="warning">{alerts?.totals.warning ?? 0} warnings</Badge></div>
+          </div>
+          {(alerts?.alerts.length ?? 0) === 0 ? (
+            <div className="p-6 text-sm text-[var(--ft-text-secondary)]"><BadgeCheck className="mr-2 inline size-4 text-[var(--ft-green)]" />No governance alerts are currently open.</div>
+          ) : (
+            alerts?.alerts.slice(0, 10).map((alert) => (
+              <div className="flex flex-col gap-3 border-b border-[var(--ft-border)] p-4 last:border-b-0 md:flex-row md:items-start md:justify-between" key={alert.id}>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2"><Badge tone={alert.severity}>{alert.severity}</Badge><span className="font-medium">{alert.title}</span></div>
+                  <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">{alert.detail}</p>
+                  <div className="mt-1 font-mono text-[11px] text-[var(--ft-text-muted)]">{alert.entityType}:{alert.entityId}</div>
+                </div>
+                <Link className="shrink-0 text-sm font-medium text-[var(--ft-accent)] hover:underline" href={alert.href}>Open control</Link>
+              </div>
+            ))
+          )}
+        </Panel>
 
         <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
           <Panel className="overflow-hidden p-0">
