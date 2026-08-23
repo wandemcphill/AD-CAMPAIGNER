@@ -1,17 +1,14 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import {
   AlertCircle,
   ArrowRight,
   BarChart3,
-  Bell,
   CheckCircle2,
   Database,
   Download,
   FileText,
-  HelpCircle,
-  Menu,
   MessageSquare,
   Plus,
   UploadCloud,
@@ -22,108 +19,7 @@ import {
 import { Badge, Panel, PlatformChip, StatusBadge as DesignStatusBadge, ThemeToggle, cn } from "@fliptrybe/ui";
 import type { Campaign, CampaignStatus, Money, Wallet } from "@fliptrybe/types";
 
-import { useApiSession } from "../lib/use-session";
-import { SessionPanel } from "../ui/session-panel";
-import { campaignNavGroups, campaignNavItems, destinationLabels, objectiveLabels, type ClientDataSource } from "./data";
-
-export function CampaignShell({ children, active }: { children: ReactNode; active: string }) {
-  const { loading, session } = useApiSession();
-
-  useEffect(() => {
-    if (!loading && !session) {
-      window.location.replace("/login");
-    }
-  }, [loading, session]);
-
-  if (loading || !session) {
-    return <main className="min-h-screen bg-[var(--ft-bg-base)]" />;
-  }
-
-  return (
-    <main className="ft-shell min-h-screen bg-[var(--ft-bg-base)] text-[var(--ft-text-primary)]">
-      <aside className="fixed inset-y-0 left-0 z-50 hidden w-[220px] border-r border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-4 md:block">
-        <a className="flex h-12 items-center gap-3 px-1" href="/campaigns">
-          <div className="flex size-9 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-[var(--ft-accent)] font-mono text-xs font-semibold text-[var(--ft-bg-base)]">
-            FT
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-[var(--ft-text-primary)]">Fliptrybe</div>
-            <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
-              Client desk
-            </div>
-          </div>
-        </a>
-
-        <nav className="mt-6 grid gap-4">
-          {campaignNavGroups.map((group) => (
-            <div className="grid gap-1" key={group.groupTitle}>
-              <p className="px-3 font-mono text-[10px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
-                {group.groupTitle}
-              </p>
-              {group.items.map((item) => (
-                <a
-                  className={cn(
-                    "relative flex h-11 items-center gap-3 rounded-[var(--radius-sm)] border-l-2 px-3 text-sm font-medium transition",
-                    active === item.href
-                      ? "border-l-[var(--ft-accent)] bg-[var(--ft-accent-subtle)] text-[var(--ft-accent)]"
-                      : "border-l-transparent text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
-                  )}
-                  href={item.href}
-                  key={item.href}
-                >
-                  <item.icon className="size-5 stroke-[1.5]" />
-                  <span>{item.label}</span>
-                </a>
-              ))}
-            </div>
-          ))}
-        </nav>
-
-        <SessionPanel />
-      </aside>
-
-      <div className="min-h-screen md:pl-[220px]">
-        <div className="sticky top-0 z-40 flex h-[52px] items-center justify-between border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)]/88 px-4 backdrop-blur-xl md:px-8">
-          <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
-            <Menu className="size-4 md:hidden" />
-            Campaigns / Managed ads
-          </div>
-          <div className="flex items-center gap-2 text-[var(--ft-text-secondary)]">
-            <ThemeToggle className="hidden sm:inline-flex" />
-            <a
-              aria-label="Notifications"
-              className={cn(
-                "grid size-10 place-items-center rounded-[var(--radius-sm)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-accent)]",
-                active === "/notifications" ? "text-[var(--ft-accent)]" : ""
-              )}
-              href="/notifications"
-            >
-              <Bell className="size-5 stroke-[1.5]" />
-            </a>
-            <HelpCircle className="size-5 stroke-[1.5]" />
-          </div>
-        </div>
-        <section className="px-4 py-5 pb-28 sm:px-6 lg:px-8">{children}</section>
-      </div>
-      <nav className="fixed inset-x-0 bottom-0 z-50 grid h-16 grid-cols-5 border-t border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pb-[env(safe-area-inset-bottom)] md:hidden">
-        {campaignNavItems.slice(0, 5).map((item) => (
-          <a
-            aria-label={item.label}
-            className={cn(
-              "grid place-items-center gap-0.5 py-1 text-[var(--ft-text-muted)]",
-              active === item.href ? "text-[var(--ft-accent)]" : ""
-            )}
-            href={item.href}
-            key={item.href}
-          >
-            <item.icon className="size-5 stroke-[1.5]" />
-            <span className="max-w-full truncate px-1 text-[10px]">{item.label.split(" ")[0]}</span>
-          </a>
-        ))}
-      </nav>
-    </main>
-  );
-}
+import { destinationLabels, objectiveLabels, type ClientDataSource } from "./data";
 
 export function PageHeader({
   action,

@@ -1,9 +1,19 @@
 "use client";
 
+import type { ComponentProps } from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@fliptrybe/ui";
+
+/**
+ * next.config sets `typedRoutes: true`, so Link's href is a generated union of
+ * real routes rather than `string`. Tab hrefs are authored as plain strings by
+ * callers, so they need a cast here. Deriving the type from Link itself keeps
+ * this correct if Next re-shapes that export.
+ */
+type LinkHref = ComponentProps<typeof Link>["href"];
 
 export type SectionTab = { label: string; href: string; icon: LucideIcon };
 
@@ -21,19 +31,19 @@ export function SectionTabs({ items }: { items: SectionTab[] }) {
         const active = pathname === item.href;
 
         return (
-          <a
+          <Link
             className={cn(
               "flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition",
               active
                 ? "border-[var(--ft-accent)] text-[var(--ft-accent)]"
                 : "border-transparent text-[var(--ft-text-secondary)] hover:text-[var(--ft-text-primary)]"
             )}
-            href={item.href}
+            href={item.href as LinkHref}
             key={item.href}
           >
             <item.icon className="size-4 stroke-[1.5]" />
             {item.label}
-          </a>
+          </Link>
         );
       })}
     </nav>

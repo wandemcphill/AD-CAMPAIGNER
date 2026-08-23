@@ -140,16 +140,16 @@ export default function ProfilePage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a
+            <Link
               className={`${secondaryLinkButtonClass} w-full sm:w-auto`}
               href={session ? "/os/wallet" : "/login"}
             >
               {session ? "Wallet & Billing" : "Sign in"}
-            </a>
-            <a className={`${linkButtonClass} w-full sm:w-auto`} href={session ? "/os/campaigns/new" : "/register"}>
+            </Link>
+            <Link className={`${linkButtonClass} w-full sm:w-auto`} href={session ? "/os/campaigns/new" : "/register"}>
               {session ? "Start Campaign" : "Create account"}
               <ArrowRight className="size-4 stroke-[1.5]" />
-            </a>
+            </Link>
           </div>
         }
         eyebrow={

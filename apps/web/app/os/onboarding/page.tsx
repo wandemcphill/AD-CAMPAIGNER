@@ -151,10 +151,10 @@ export default function OnboardingPage() {
               <RefreshCw className="size-4 stroke-[1.5]" />
               Refresh
             </Button>
-            <a className={`${session ? linkButtonClass : secondaryLinkButtonClass} w-full sm:w-auto`} href={session ? "/os/campaigns/new" : "/login"}>
+            <Link className={`${session ? linkButtonClass : secondaryLinkButtonClass} w-full sm:w-auto`} href={session ? "/os/campaigns/new" : "/login"}>
               {session ? "Start campaign" : "Sign in"}
               <ArrowRight className="size-4 stroke-[1.5]" />
-            </a>
+            </Link>
           </div>
         </div>
         <div className="mt-6">
@@ -203,7 +203,7 @@ export default function OnboardingPage() {
             Complete the workspace, destination, billing, and provider checks before campaign operators begin launch work.
           </p>
         </div>
-        <a
+        <Link
           className={`${secondaryLinkButtonClass} w-full sm:w-auto`}
           href={session ? (readySteps === stepStates.length ? "/os/campaigns/new" : "/os/wallet") : "/login"}
         >
@@ -213,7 +213,7 @@ export default function OnboardingPage() {
               : "Continue setup"
             : "Sign in"}
           <ArrowRight className="size-4 stroke-[1.5]" />
-        </a>
+        </Link>
       </section>
 
       <section className="mt-4 border-b border-[var(--ft-border)] pb-4">
