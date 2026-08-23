@@ -8,6 +8,7 @@ import { Badge, Button, Panel } from "@fliptrybe/ui";
 
 import { AdminShell } from "../admin-shell";
 import { apiRequest } from "../lib/api-client";
+import { asHref } from "../lib/nav";
 import { AdminAuthState } from "../ui/admin-auth-state";
 import { useApiSession } from "../lib/use-session";
 
@@ -240,7 +241,7 @@ export default function CommercialControlPage() {
                 <p className="mt-2 flex-1 text-sm leading-6 text-[var(--ft-text-muted)]">{area.detail}</p>
                 <Link
                   className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--ft-accent)] hover:underline"
-                  href={area.href}
+                  href={asHref(area.href)}
                 >
                   Open controls <ExternalLink className="size-4" />
                 </Link>
@@ -302,7 +303,7 @@ export default function CommercialControlPage() {
                 <h2 className="font-semibold">Current pricing rules</h2>
                 <p className="mt-1 text-sm text-[var(--ft-text-muted)]">The backend resolves specificity when multiple rules match.</p>
               </div>
-              <Link className="text-sm text-[var(--ft-accent)] hover:underline" href="/providers/">Open provider controls</Link>
+              <Link className="text-sm text-[var(--ft-accent)] hover:underline" href="/providers">Open provider controls</Link>
             </div>
 
             <div className="mt-4 grid gap-2">

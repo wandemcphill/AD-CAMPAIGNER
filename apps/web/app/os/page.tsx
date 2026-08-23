@@ -15,7 +15,7 @@ import {
 import { motion } from "framer-motion";
 import Link from "next/link";
 
-import { StatusBadge, ValueSkeleton } from "@fliptrybe/ui";
+import { EmptyState, StatusBadge, ValueSkeleton } from "@fliptrybe/ui";
 
 import {
   fallbackCurrency,
@@ -25,9 +25,10 @@ import {
   metricValue,
   totalBudgetMinor
 } from "../campaigns/api";
-import { EmptyState, LoadingBlock } from "../campaigns/components";
+import { LoadingBlock } from "../campaigns/components";
 import { useCampaignDashboardData } from "../campaigns/use-campaign-dashboard-data";
 import { useFeatureFlags } from "../lib/feature-flags";
+import { asHref } from "../lib/nav";
 import { useApiSession } from "../lib/use-session";
 import { formatNotificationTime } from "../notifications/api";
 import { useNotificationsData } from "../notifications/use-notifications-data";
@@ -40,9 +41,27 @@ type QuickAction = { icon: LucideIcon; label: string; href: string; color: strin
 const QUICK_ACTIONS: QuickAction[] = [
   { icon: Megaphone, label: "New Campaign", href: "/os/campaigns/new", color: "var(--ft-accent)" },
   { icon: Plus, label: "Fund Wallet", href: "/os/wallet", color: "var(--ft-yellow)" },
-  { icon: Phone, label: "Buy Airtime", href: "/os/airtime/airtime", color: "var(--ft-green)", flag: "vtu" },
-  { icon: Gift, label: "Gift Cards", href: "/os/digital-value", color: "var(--ft-purple)", flag: "giftCardSell" },
-  { icon: Send, label: "Send Money", href: "/os/financial-products/remittance", color: "var(--ft-blue)", flag: "remittance" },
+  {
+    icon: Phone,
+    label: "Buy Airtime",
+    href: "/os/airtime/airtime",
+    color: "var(--ft-green)",
+    flag: "vtu"
+  },
+  {
+    icon: Gift,
+    label: "Gift Cards",
+    href: "/os/digital-value",
+    color: "var(--ft-purple)",
+    flag: "giftCardSell"
+  },
+  {
+    icon: Send,
+    label: "Send Money",
+    href: "/os/financial-products/remittance",
+    color: "var(--ft-blue)",
+    flag: "remittance"
+  },
   { icon: Sparkles, label: "AI Studio", href: "/os/studio", color: "var(--ft-red)" }
 ];
 
@@ -67,7 +86,8 @@ function greeting(hour: number) {
 function summaryLine(live: number, awaiting: number) {
   const parts: string[] = [];
   parts.push(live === 1 ? "1 campaign live" : `${live} campaigns live`);
-  if (awaiting > 0) parts.push(awaiting === 1 ? "1 needs your input" : `${awaiting} need your input`);
+  if (awaiting > 0)
+    parts.push(awaiting === 1 ? "1 needs your input" : `${awaiting} need your input`);
   return parts.join(" · ");
 }
 
@@ -148,7 +168,7 @@ export default function DashboardPage() {
               "—"
             )}
           </div>
-          <p className="mt-2 text-caption text-[var(--ft-text-secondary)]">
+          <p className="text-caption mt-2 text-[var(--ft-text-secondary)]">
             {loading ? (
               <ValueSkeleton width="w-44" />
             ) : (
@@ -160,7 +180,7 @@ export default function DashboardPage() {
             )}
           </p>
           <Link
-            className="mt-4 inline-flex items-center gap-1 text-caption font-medium text-[var(--ft-accent)]"
+            className="text-caption mt-4 inline-flex items-center gap-1 font-medium text-[var(--ft-accent)]"
             href="/os/wallet"
           >
             Manage wallet <ArrowRight className="size-3" />
@@ -169,7 +189,7 @@ export default function DashboardPage() {
         </motion.section>
 
         <section>
-          <h2 className="mb-3 font-mono text-micro tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
+          <h2 className="text-micro mb-3 font-mono tracking-[0.15em] text-[var(--ft-text-muted)] uppercase">
             Quick actions
           </h2>
           <div className="grid grid-cols-3 gap-2">
@@ -182,15 +202,17 @@ export default function DashboardPage() {
               >
                 <Link
                   className="group flex h-full flex-col items-center gap-2 rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 transition hover:border-[var(--ft-accent)]/30 hover:shadow-[var(--shadow-md)]"
-                  href={action.href}
+                  href={asHref(action.href)}
                 >
                   <div
                     className="grid size-10 place-items-center rounded-[var(--radius-md)] transition group-hover:scale-110"
-                    style={{ backgroundColor: `color-mix(in srgb, ${action.color} 12%, transparent)` }}
+                    style={{
+                      backgroundColor: `color-mix(in srgb, ${action.color} 12%, transparent)`
+                    }}
                   >
                     <action.icon className="size-5" style={{ color: action.color }} />
                   </div>
-                  <span className="text-center text-caption font-medium">{action.label}</span>
+                  <span className="text-caption text-center font-medium">{action.label}</span>
                 </Link>
               </motion.div>
             ))}
@@ -206,7 +228,10 @@ export default function DashboardPage() {
               <h2 className="font-semibold">
                 {awaitingCampaigns.length > 0 ? "Needs you" : "Continue working"}
               </h2>
-              <Link className="text-caption font-medium text-[var(--ft-accent)]" href="/os/campaigns">
+              <Link
+                className="text-caption font-medium text-[var(--ft-accent)]"
+                href="/os/campaigns"
+              >
                 View all
               </Link>
             </div>
@@ -214,16 +239,14 @@ export default function DashboardPage() {
               {loading ? (
                 <LoadingBlock label="Loading campaigns" />
               ) : focusCampaigns.length === 0 ? (
-                <EmptyState
-                  copy="Start a campaign to see it tracked here."
-                  icon={Megaphone}
-                  title="No campaigns yet"
-                />
+                <EmptyState icon={Megaphone} title="No campaigns yet">
+                  Start a campaign to see it tracked here.
+                </EmptyState>
               ) : (
                 focusCampaigns.map((campaign) => (
                   <Link
                     className="flex items-center gap-4 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-3 transition hover:border-[var(--ft-accent)]/30"
-                    href={`/os/campaigns/${campaign.id}`}
+                    href={asHref(`/os/campaigns/${campaign.id}`)}
                     key={campaign.id}
                   >
                     <div className="min-w-0 flex-1">
@@ -231,7 +254,7 @@ export default function DashboardPage() {
                         <span className="text-sm font-medium">{campaign.name}</span>
                         <StatusBadge status={campaign.status} />
                       </div>
-                      <div className="mt-1 text-caption text-[var(--ft-text-muted)]">
+                      <div className="text-caption mt-1 text-[var(--ft-text-muted)]">
                         {formatCampaignMoney(campaign.budget)} · Starts{" "}
                         {formatDateTime(campaign.schedule?.startsAt ?? campaign.createdAt)}
                       </div>
@@ -248,7 +271,10 @@ export default function DashboardPage() {
           <section className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Portfolio</h2>
-              <Link className="text-caption font-medium text-[var(--ft-accent)]" href="/os/analytics">
+              <Link
+                className="text-caption font-medium text-[var(--ft-accent)]"
+                href="/os/analytics"
+              >
                 Analytics
               </Link>
             </div>
@@ -316,7 +342,9 @@ export default function DashboardPage() {
               {notifLoading ? (
                 <LoadingBlock label="Loading notifications" />
               ) : unreadNotifications.length === 0 ? (
-                <p className="text-caption text-[var(--ft-text-muted)]">You&apos;re all caught up.</p>
+                <p className="text-caption text-[var(--ft-text-muted)]">
+                  You&apos;re all caught up.
+                </p>
               ) : (
                 unreadNotifications.map((notification) => (
                   <div
@@ -326,7 +354,7 @@ export default function DashboardPage() {
                     <div className="mt-1 size-2 shrink-0 rounded-full bg-[var(--ft-accent)]" />
                     <div className="min-w-0">
                       <p className="text-caption leading-relaxed">{notification.title}</p>
-                      <p className="mt-1 text-micro text-[var(--ft-text-muted)]">
+                      <p className="text-micro mt-1 text-[var(--ft-text-muted)]">
                         {formatNotificationTime(notification.createdAt)}
                       </p>
                     </div>
