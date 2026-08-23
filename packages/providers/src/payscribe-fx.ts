@@ -201,6 +201,7 @@ export function createPayscribeFxProvider(config: PayscribeFxConfig): FxProvider
       return rates;
     },
     async getSupportedCurrencies() {
+      await Promise.resolve();
       return ["USD", "NGN"];
     },
     async healthCheck() {
