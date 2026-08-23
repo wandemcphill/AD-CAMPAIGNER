@@ -157,7 +157,7 @@ export default function OrdersPage() {
         ) : (
           grouped.map((group) => (
             <div key={group.month}>
-              <div className="sticky top-0 z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono text-[11px] font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
+              <div className="sticky top-0 z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono text-micro font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
                 {group.month}
               </div>
               {group.items.map((order) => (
@@ -174,7 +174,7 @@ export default function OrdersPage() {
                       {order.detail}
                     </div>
                   </div>
-                  <span className="w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono text-[10px] tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
+                  <span className="w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
                     {order.sourceLabel}
                   </span>
                   <StatusBadge status={order.status} />
@@ -186,7 +186,7 @@ export default function OrdersPage() {
                   </div>
                 </Link>
               ))}
-              <div className="px-4 pb-3 text-[11px] text-[var(--ft-text-muted)]">
+              <div className="px-4 pb-3 text-micro text-[var(--ft-text-muted)]">
                 {group.items.length} order{group.items.length === 1 ? "" : "s"} ·{" "}
                 {formatWhen(group.items[0]?.createdAt ?? "")}
               </div>

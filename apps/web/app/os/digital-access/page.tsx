@@ -60,7 +60,7 @@ export default function DigitalAccessPage() {
         </div>
         <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
           <div>
-            <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
+            <p className="font-mono text-micro tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
               Premium service gateway
             </p>
             <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">

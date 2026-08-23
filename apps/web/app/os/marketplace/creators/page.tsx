@@ -139,15 +139,15 @@ export default function CreatorMarketplacePage() {
               <div className="mt-4 grid grid-cols-3 gap-2">
                 <div className="rounded-[var(--radius-md)] bg-[var(--ft-bg-surface)] p-2 text-center">
                   <div className="text-sm font-bold">{formatFollowers(creator.followerCount)}</div>
-                  <div className="text-[10px] text-[var(--ft-text-muted)]">Followers</div>
+                  <div className="text-micro text-[var(--ft-text-muted)]">Followers</div>
                 </div>
                 <div className="rounded-[var(--radius-md)] bg-[var(--ft-bg-surface)] p-2 text-center">
                   <div className="text-sm font-bold text-[var(--ft-green)]">{formatEngagement(creator.engagementBps)}</div>
-                  <div className="text-[10px] text-[var(--ft-text-muted)]">Engagement</div>
+                  <div className="text-micro text-[var(--ft-text-muted)]">Engagement</div>
                 </div>
                 <div className="rounded-[var(--radius-md)] bg-[var(--ft-bg-surface)] p-2 text-center">
                   <div className="text-sm font-bold">{creator.pastCampaigns}</div>
-                  <div className="text-[10px] text-[var(--ft-text-muted)]">Campaigns</div>
+                  <div className="text-micro text-[var(--ft-text-muted)]">Campaigns</div>
                 </div>
               </div>
 

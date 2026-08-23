@@ -128,7 +128,7 @@ export default function ApprovalsQueuePage() {
 
       <div className="mt-5 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             Status
           </span>
           {statusFilters.map((filter) => (
@@ -147,7 +147,7 @@ export default function ApprovalsQueuePage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             Type
           </span>
           {typeFilters.map((filter) => (
@@ -168,7 +168,7 @@ export default function ApprovalsQueuePage() {
       </div>
 
       <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
-        <div className="hidden grid-cols-[1fr_140px_120px_100px_180px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
+        <div className="hidden grid-cols-[1fr_140px_120px_100px_180px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
           <div>Client / Reason</div>
           <div>Campaign Type</div>
           <div>Budget</div>
@@ -245,7 +245,7 @@ export default function ApprovalsQueuePage() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] p-5">
               <div>
-                <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   Approval detail
                 </div>
                 <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">{selected.action}</h2>
@@ -270,7 +270,7 @@ export default function ApprovalsQueuePage() {
               <Field label="Time in queue" value={timeInQueue(selected.createdAt)} />
 
               <div>
-                <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                   Risk score
                 </div>
                 <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">

@@ -165,7 +165,7 @@ export default function NotificationSettingsPage() {
                   <th className="w-full" />
                   {CHANNELS.map((channel) => (
                     <th
-                      className="px-3 pb-2 text-center font-mono text-[10px] font-normal uppercase tracking-[0.08em] text-[var(--ft-text-muted)]"
+                      className="px-3 pb-2 text-center font-mono text-micro font-normal uppercase tracking-[0.08em] text-[var(--ft-text-muted)]"
                       key={channel.key}
                     >
                       <span className="flex flex-col items-center gap-1">
@@ -180,7 +180,7 @@ export default function NotificationSettingsPage() {
                 {NOTIFICATION_GROUPS.map((group, gi) => (
                   <Fragment key={group.title}>
                     <tr key={`${group.title}-header`}>
-                      <td className="pt-4 pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--ft-text-muted)]" colSpan={CHANNELS.length + 1}>
+                      <td className="pt-4 pb-2 font-mono text-micro uppercase tracking-[0.08em] text-[var(--ft-text-muted)]" colSpan={CHANNELS.length + 1}>
                         {gi > 0 && <Divider />}
                         <div className={gi > 0 ? "mt-4" : ""}>{group.title}</div>
                       </td>

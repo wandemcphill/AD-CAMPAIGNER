@@ -362,7 +362,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
         <Link
           className={cn(
             "flex items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-sm font-medium transition",
-            mobile ? "h-10" : "h-9 text-[13px]",
+            mobile ? "h-10" : "h-9 text-label",
             active
               ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
               : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)]"
@@ -383,7 +383,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
             {(section.children ?? []).map((child) => (
               <Link
                 className={cn(
-                  "flex items-center gap-2 rounded-[var(--radius-md)] px-3 text-[13px] transition",
+                  "flex items-center gap-2 rounded-[var(--radius-md)] px-3 text-label transition",
                   mobile ? "h-9" : "h-8",
                   isActive(child.href)
                     ? "font-medium text-[var(--ft-accent)]"
@@ -462,7 +462,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
           <img alt="" className="size-8" src="/brand/icon-mark.svg" />
           <div>
             <div className="text-sm font-bold">FlipTrybe</div>
-            <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
               Growth OS
             </div>
           </div>
@@ -471,7 +471,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
         <button className={cn(searchTriggerClass, "mx-3 mt-3")} onClick={openCommand} type="button">
           <Search className="size-3.5" />
           <span className="flex-1 text-left">Search</span>
-          <kbd className="rounded border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-1.5 py-0.5 font-mono text-[10px]">
+          <kbd className="rounded border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-1.5 py-0.5 font-mono text-micro">
             ⌘K
           </kbd>
         </button>
@@ -482,7 +482,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
             {visibleAccount.map((item) => (
               <Link
                 className={cn(
-                  "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium transition",
+                  "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-label font-medium transition",
                   isActive(item.href)
                     ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
                     : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)]"
@@ -533,7 +533,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
             >
               <Menu className="size-5 text-[var(--ft-text-muted)]" />
             </button>
-            <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               {title}
             </div>
           </div>
@@ -583,7 +583,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
                 type="button"
               >
                 <item.icon className="size-5" />
-                <span className="text-[11px] font-medium">{item.label}</span>
+                <span className="text-micro font-medium">{item.label}</span>
               </button>
             ) : (
               <Link
@@ -595,7 +595,7 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
                 key={item.href}
               >
                 <item.icon className="size-5" />
-                <span className="text-[11px] font-medium">{item.label}</span>
+                <span className="text-micro font-medium">{item.label}</span>
               </Link>
             )
           )}
@@ -629,12 +629,12 @@ export function OsShellFixed({ children }: { children: ReactNode }) {
                 placeholder="Search campaigns, wallet, airtime, invoices"
                 value={commandQuery}
               />
-              <kbd className="hidden rounded border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ft-text-muted)] sm:block">
+              <kbd className="hidden rounded border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-1.5 py-0.5 font-mono text-micro text-[var(--ft-text-muted)] sm:block">
                 ESC
               </kbd>
             </div>
             <div className="max-h-[360px] overflow-y-auto p-2" ref={resultsRef}>
-              <p className="px-3 py-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+              <p className="px-3 py-2 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                 {commandQuery.trim() ? "Results" : "Go to"}
               </p>
               {commandResults.length === 0 ? (

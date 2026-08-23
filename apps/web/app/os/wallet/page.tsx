@@ -589,7 +589,7 @@ export default function BillingPage() {
             className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-surface)] p-4"
             key={item.label}
           >
-            <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
               {item.label}
             </div>
             <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
@@ -614,7 +614,7 @@ export default function BillingPage() {
 
           <form className="mt-5 grid gap-4" id="wallet-top-up-form" onSubmit={handleSubmit}>
             <div>
-              <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+              <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                 Preset amounts
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -723,7 +723,7 @@ export default function BillingPage() {
 
           {activeTab === "history" ? (
             <div>
-              <div className="hidden grid-cols-[132px_minmax(220px,1fr)_96px_132px_132px] gap-3 border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
+              <div className="hidden grid-cols-[132px_minmax(220px,1fr)_96px_132px_132px] gap-3 border-b border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
                 <div>Date</div>
                 <div>Description</div>
                 <div>Type</div>
@@ -751,7 +751,7 @@ export default function BillingPage() {
               ) : (
                 groupedActivity.map((group) => (
                   <div key={group.month}>
-                    <div className="sticky top-[52px] z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono text-[11px] font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
+                    <div className="sticky top-[52px] z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono text-micro font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
                       {group.month}
                     </div>
                     {group.items.map((item) => (
@@ -771,11 +771,11 @@ export default function BillingPage() {
                           <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                             Campaign-linked wallet movement
                           </div>
-                          <div className="mt-1 font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                          <div className="mt-1 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                             {item.status}
                           </div>
                         </div>
-                        <span className="w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono text-[10px] tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
+                        <span className="w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
                           {activityType(item)}
                         </span>
                         <div
@@ -790,7 +790,7 @@ export default function BillingPage() {
                           <div className="font-mono text-sm text-[var(--ft-text-muted)]">
                             {item.reference}
                           </div>
-                          <div className="flex gap-2 font-mono text-[10px] tracking-[0.04em] text-[var(--ft-accent)] uppercase">
+                          <div className="flex gap-2 font-mono text-micro tracking-[0.04em] text-[var(--ft-accent)] uppercase">
                             <span>Receipt</span>
                             <span>Statement</span>
                           </div>
@@ -984,7 +984,7 @@ export default function BillingPage() {
                     type="button"
                   >
                     Crypto
-                    <span className="ml-1 font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    <span className="ml-1 font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       Soon
                     </span>
                   </button>
@@ -1085,7 +1085,7 @@ export default function BillingPage() {
                         <div className="text-sm text-[var(--ft-text-secondary)]">
                           {row.recipientName} · {row.recipientAccountNumber}
                         </div>
-                        <div className="font-mono text-[11px] text-[var(--ft-text-muted)]">
+                        <div className="font-mono text-micro text-[var(--ft-text-muted)]">
                           {new Date(row.createdAt).toLocaleString()}
                           {row.providerReference ? ` · Ref ${row.providerReference}` : ""}
                         </div>
@@ -1132,7 +1132,7 @@ export default function BillingPage() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] p-5">
               <div>
-                <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   Ledger detail
                 </div>
                 <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">

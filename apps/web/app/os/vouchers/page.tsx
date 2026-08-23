@@ -325,7 +325,7 @@ export default function VouchersPage() {
               <div className="grid gap-3" key={voucher.id}>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={statusTone(voucher.status)}>{humanizeStatus(voucher.status)}</Badge>
-                  <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     {voucher.serialNumber}
                   </span>
                   <span className="text-sm text-[var(--ft-text-secondary)]">

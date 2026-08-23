@@ -111,7 +111,7 @@ export default function MoneyOverviewPage() {
 
         {/* Money tools */}
         <section>
-          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Tools</h2>
+          <h2 className="mb-3 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Tools</h2>
           <div className="grid gap-2 sm:grid-cols-2">
             {visibleEntries.map((entry) => (
               <Link
@@ -165,7 +165,7 @@ export default function MoneyOverviewPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">{item.label}</div>
-                      <div className="text-[11px] text-[var(--ft-text-muted)]">{formatDateTime(item.at)}</div>
+                      <div className="text-micro text-[var(--ft-text-muted)]">{formatDateTime(item.at)}</div>
                     </div>
                     <div className="text-right">
                       <div className={credit ? "font-mono text-sm text-[var(--ft-green)]" : "font-mono text-sm"}>{item.amount}</div>

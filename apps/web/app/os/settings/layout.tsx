@@ -83,7 +83,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
           <div className="sticky top-8 grid gap-6">
             {visibleNav.map((group) => (
               <div key={group.group}>
-                <div className="mb-1.5 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--ft-text-muted)]">
+                <div className="mb-1.5 font-mono text-micro uppercase tracking-[0.08em] text-[var(--ft-text-muted)]">
                   {group.group}
                 </div>
                 <div className="grid gap-0.5">

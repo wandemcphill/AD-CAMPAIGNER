@@ -71,7 +71,7 @@ export default function DigitalAccessRequestsPage() {
           </div>
           <Clock className="size-5 text-[var(--ft-blue)]" />
         </div>
-        <div className="hidden grid-cols-[1fr_auto_auto] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
+        <div className="hidden grid-cols-[1fr_auto_auto] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
           <div>Request</div>
           <div>Status</div>
           <div>Debit</div>

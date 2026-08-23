@@ -279,7 +279,7 @@ export default function InvoicesPage() {
           </div>
 
           <div className="mt-5">
-            <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Line items</div>
+            <div className="mb-2 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Line items</div>
             <div className="grid gap-2">
               {lines.map((line, index) => (
                 <InvoiceLineRow

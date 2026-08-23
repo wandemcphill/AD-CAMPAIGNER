@@ -80,7 +80,7 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
         {/* Wallet Summary */}
         <section>
-          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Wallet summary</h2>
+          <h2 className="mb-3 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Wallet summary</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <motion.div
               animate={{ opacity: 1, y: 0 }}
@@ -121,7 +121,7 @@ export default function DashboardPage() {
 
         {/* Quick Actions */}
         <section>
-          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Quick actions</h2>
+          <h2 className="mb-3 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Quick actions</h2>
           <div className="grid grid-cols-3 gap-2">
             {visibleQuickActions.map((action, i) => (
               <motion.a
@@ -199,7 +199,7 @@ export default function DashboardPage() {
               <div className="rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4" key={m.label}>
                 <m.icon className="size-4 text-[var(--ft-text-muted)]" />
                 <div className="mt-2 text-xl font-bold">{m.value}</div>
-                <div className="mt-0.5 text-[11px] text-[var(--ft-text-muted)]">{m.label}</div>
+                <div className="mt-0.5 text-micro text-[var(--ft-text-muted)]">{m.label}</div>
               </div>
             ))}
           </section>
@@ -275,7 +275,7 @@ export default function DashboardPage() {
                     <div className="mt-1 size-2 shrink-0 rounded-full bg-[var(--ft-accent)]" />
                     <div>
                       <p className="text-xs leading-relaxed">{n.title}</p>
-                      <p className="mt-1 text-[10px] text-[var(--ft-text-muted)]">{formatNotificationTime(n.createdAt)}</p>
+                      <p className="mt-1 text-micro text-[var(--ft-text-muted)]">{formatNotificationTime(n.createdAt)}</p>
                     </div>
                   </div>
                 ))

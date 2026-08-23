@@ -106,7 +106,7 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
             <div className="border-b border-[var(--ft-border)] p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-2xl">
-                  <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     Ledger summary
                   </div>
                   <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
@@ -166,7 +166,7 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-[var(--ft-border)] text-left text-sm">
                 <thead className="bg-[var(--ft-bg-muted)]">
-                  <tr className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  <tr className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 font-medium">Action</th>
                     <th className="px-4 py-3 font-medium">Amount</th>

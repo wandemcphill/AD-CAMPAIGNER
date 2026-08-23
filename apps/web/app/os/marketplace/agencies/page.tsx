@@ -139,17 +139,17 @@ export default function AgencyMarketplacePage() {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-[var(--radius-md)] bg-[var(--ft-bg-surface)] p-2 text-center">
                   <div className="text-sm font-bold">{agency.campaignCount}</div>
-                  <div className="text-[10px] text-[var(--ft-text-muted)]">Campaigns</div>
+                  <div className="text-micro text-[var(--ft-text-muted)]">Campaigns</div>
                 </div>
                 <div className="rounded-[var(--radius-md)] bg-[var(--ft-bg-surface)] p-2 text-center">
                   <div className="text-sm font-bold">{agency.teamSize}</div>
-                  <div className="text-[10px] text-[var(--ft-text-muted)]">Team size</div>
+                  <div className="text-micro text-[var(--ft-text-muted)]">Team size</div>
                 </div>
               </div>
 
               {agency.packages.length > 0 ? (
                 <div className="mt-3">
-                  <div className="mb-1 text-[10px] text-[var(--ft-text-muted)]">Packages</div>
+                  <div className="mb-1 text-micro text-[var(--ft-text-muted)]">Packages</div>
                   <div className="flex flex-wrap gap-1">
                     {agency.packages.map((p) => (
                       <Badge key={p} tone="neutral">{p}</Badge>

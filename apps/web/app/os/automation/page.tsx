@@ -239,7 +239,7 @@ export default function AutomationPage() {
                 <div className="text-xs text-[var(--ft-text-muted)]">
                   {triggerKindLabel[wf.triggerKind]}: {wf.triggerSummary} → {wf.actionSummary}
                 </div>
-                <div className="mt-1 text-[10px] text-[var(--ft-text-muted)]">
+                <div className="mt-1 text-micro text-[var(--ft-text-muted)]">
                   {wf.runCount} runs · {formatLastRun(wf.lastRunAt)}
                 </div>
               </div>

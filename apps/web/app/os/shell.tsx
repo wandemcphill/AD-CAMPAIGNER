@@ -305,7 +305,7 @@ export function OsShell({ children }: { children: ReactNode }) {
           <img alt="FlipTrybe" className="size-8" src="/brand/icon-mark.svg" />
           <div>
             <div className="text-sm font-bold">FlipTrybe</div>
-            <div className="font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
               Growth OS
             </div>
           </div>
@@ -319,7 +319,7 @@ export function OsShell({ children }: { children: ReactNode }) {
         >
           <Search className="size-3.5" />
           <span className="flex-1 text-left">Search...</span>
-          <kbd className="rounded border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>
+          <kbd className="rounded border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-1.5 py-0.5 font-mono text-micro">⌘K</kbd>
         </button>
 
         <nav className="flex-1 overflow-y-auto px-3 py-3">
@@ -330,7 +330,7 @@ export function OsShell({ children }: { children: ReactNode }) {
                 <div key={section.href}>
                   <a
                     className={cn(
-                      "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium transition",
+                      "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-label font-medium transition",
                       expanded
                         ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
                         : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
@@ -345,7 +345,7 @@ export function OsShell({ children }: { children: ReactNode }) {
                       {section.children.map((child) => (
                         <a
                           className={cn(
-                            "flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-[12.5px] transition",
+                            "flex h-8 items-center gap-2 rounded-[var(--radius-md)] px-3 text-caption transition",
                             isActive(child.href)
                               ? "font-medium text-[var(--ft-accent)]"
                               : "text-[var(--ft-text-secondary)] hover:text-[var(--ft-text-primary)]"
@@ -366,13 +366,13 @@ export function OsShell({ children }: { children: ReactNode }) {
 
           {visibleAccount.length > 0 && (
             <div className="mb-4">
-              <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+              <p className="mb-1 px-3 font-mono text-micro font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                 Account
               </p>
               {visibleAccount.map((item) => (
                 <a
                   className={cn(
-                    "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-[13px] font-medium transition",
+                    "flex h-9 items-center gap-2.5 rounded-[var(--radius-md)] px-3 text-label font-medium transition",
                     isActive(item.href)
                       ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
                       : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
@@ -395,7 +395,7 @@ export function OsShell({ children }: { children: ReactNode }) {
             </div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-medium">{session.user.name}</div>
-              <div className="truncate text-[11px] text-[var(--ft-text-muted)]">@{session.user.username}</div>
+              <div className="truncate text-micro text-[var(--ft-text-muted)]">@{session.user.username}</div>
             </div>
             <ThemeToggle />
           </div>
@@ -441,7 +441,7 @@ export function OsShell({ children }: { children: ReactNode }) {
                         {section.children.map((child) => (
                           <a
                             className={cn(
-                              "flex h-9 items-center gap-2 rounded-[var(--radius-md)] px-3 text-[13px] transition",
+                              "flex h-9 items-center gap-2 rounded-[var(--radius-md)] px-3 text-label transition",
                               isActive(child.href) ? "font-medium text-[var(--ft-accent)]" : "text-[var(--ft-text-secondary)]"
                             )}
                             href={child.href}
@@ -460,7 +460,7 @@ export function OsShell({ children }: { children: ReactNode }) {
             </div>
             {visibleAccount.length > 0 && (
               <div className="mb-4">
-                <p className="mb-1 px-3 font-mono text-[9px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Account</p>
+                <p className="mb-1 px-3 font-mono text-micro font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Account</p>
                 {visibleAccount.map((item) => (
                   <a
                     className={cn(
@@ -500,7 +500,7 @@ export function OsShell({ children }: { children: ReactNode }) {
             <button className="lg:hidden" onClick={() => setSidebarOpen(true)} type="button">
               <Menu className="size-5 text-[var(--ft-text-muted)]" />
             </button>
-            <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               {ALL_NAV_ITEMS.filter((i) => isActive(i.href)).sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "FlipTrybe"}
             </div>
           </div>
@@ -512,7 +512,7 @@ export function OsShell({ children }: { children: ReactNode }) {
             >
               <Search className="size-3" />
               Search
-              <kbd className="rounded border border-[var(--ft-border)] px-1 font-mono text-[9px]">⌘K</kbd>
+              <kbd className="rounded border border-[var(--ft-border)] px-1 font-mono text-micro">⌘K</kbd>
             </button>
             <Link
               className={cn(
@@ -552,7 +552,7 @@ export function OsShell({ children }: { children: ReactNode }) {
               onClick={item.label === "More" ? (e) => { e.preventDefault(); setSidebarOpen(true); } : undefined}
             >
               <item.icon className="size-5" />
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <span className="text-micro font-medium">{item.label}</span>
             </a>
           ))}
         </nav>
@@ -576,7 +576,7 @@ export function OsShell({ children }: { children: ReactNode }) {
                   </div>
                   <div>
                     <div className="text-sm font-semibold">Quick Navigator</div>
-                    <div className="text-[10px] text-[var(--ft-text-muted)]">Jump to any tool</div>
+                    <div className="text-micro text-[var(--ft-text-muted)]">Jump to any tool</div>
                   </div>
                 </div>
                 <button onClick={() => setAssistantOpen(false)} type="button">
@@ -667,10 +667,10 @@ export function OsShell({ children }: { children: ReactNode }) {
                 placeholder="Search for a page — campaigns, invoices, wallet, services..."
                 value={commandQuery}
               />
-              <kbd className="rounded border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--ft-text-muted)]">ESC</kbd>
+              <kbd className="rounded border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-1.5 py-0.5 font-mono text-micro text-[var(--ft-text-muted)]">ESC</kbd>
             </form>
             <div className="max-h-[360px] overflow-y-auto p-2">
-              <p className="px-3 py-2 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+              <p className="px-3 py-2 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                 {commandQuery.trim() ? "Results" : "Go to"}
               </p>
               {commandResults.length === 0 ? (

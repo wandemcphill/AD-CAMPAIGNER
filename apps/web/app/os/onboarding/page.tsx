@@ -135,7 +135,7 @@ export default function OnboardingPage() {
         </div>
         <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
           <div>
-            <p className="font-mono text-[11px] tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
+            <p className="font-mono text-micro tracking-[0.2em] text-[var(--ft-text-muted)] uppercase">
               Business setup desk
             </p>
             <h2 className="mt-3 max-w-3xl text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
@@ -226,7 +226,7 @@ export default function OnboardingPage() {
               <div className="flex items-center gap-2">
                 <span
                   className={cn(
-                    "grid size-7 shrink-0 place-items-center rounded-[var(--radius-sm)] border font-mono text-[11px]",
+                    "grid size-7 shrink-0 place-items-center rounded-[var(--radius-sm)] border font-mono text-micro",
                     step.ready
                       ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
                       : index === readySteps
@@ -253,7 +253,7 @@ export default function OnboardingPage() {
             </div>
           ))}
         </div>
-        <div className="mt-3 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="mt-3 font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Setup progress / {readySteps} of {stepStates.length} ready
         </div>
       </section>
@@ -299,7 +299,7 @@ export default function OnboardingPage() {
                 </div>
                 <div className="text-[var(--ft-text-secondary)]">{session.user.name}</div>
                 <div className="text-xs text-[var(--ft-text-muted)]">@{session.user.username}</div>
-                <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                   {session.role ?? "member"}
                 </div>
               </div>

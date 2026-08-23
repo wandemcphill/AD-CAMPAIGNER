@@ -60,7 +60,7 @@ function ConnectedServicesTab() {
       </div>
       {Object.entries(CONNECTED_SERVICES).map(([category, services]) => (
         <div key={category}>
-          <h3 className="mb-2 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--ft-text-muted)]">{category}</h3>
+          <h3 className="mb-2 font-mono text-micro uppercase tracking-[0.1em] text-[var(--ft-text-muted)]">{category}</h3>
           <div className="grid gap-2 sm:grid-cols-2">
             {services.map((service) => (
               <div

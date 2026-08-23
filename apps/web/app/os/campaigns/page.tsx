@@ -259,7 +259,7 @@ export default function CampaignsPage() {
       <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,rgba(0,102,255,0.16),transparent_38%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-micro uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
               Managed campaign desk
             </div>
             <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
@@ -305,7 +305,7 @@ export default function CampaignsPage() {
       </section>
 
       <section className="mt-4 flex flex-col gap-3 border-y border-[var(--ft-border)] py-3 lg:flex-row lg:items-center">
-        <div className="flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="flex items-center gap-2 font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           <Filter className="size-4 stroke-[1.5]" />
           Filters
         </div>
@@ -413,7 +413,7 @@ export default function CampaignsPage() {
 
                         <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[280px]">
                           <div className="border-t border-[var(--ft-border)] pt-3 sm:border-t-0 sm:pt-0">
-                            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                               Budget
                             </div>
                             <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">
@@ -421,7 +421,7 @@ export default function CampaignsPage() {
                             </div>
                           </div>
                           <div className="border-t border-[var(--ft-border)] pt-3 sm:border-t-0 sm:pt-0">
-                            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                               Launch window
                             </div>
                             <div className="mt-1 flex items-center gap-2 text-sm text-[var(--ft-text-secondary)]">
@@ -438,7 +438,7 @@ export default function CampaignsPage() {
                             <span className="font-medium text-[var(--ft-text-primary)]">
                               Fulfillment path
                             </span>
-                            <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                            <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                               {campaignProgress(campaign.status)}%
                             </span>
                           </div>
@@ -450,13 +450,13 @@ export default function CampaignsPage() {
                           />
                           <div className="mt-4 grid gap-3 text-sm text-[var(--ft-text-secondary)] md:grid-cols-3">
                             <div>
-                              <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                                 Next action
                               </div>
                               <div className="mt-1 leading-5">{campaignNextAction(campaign.status)}</div>
                             </div>
                             <div>
-                              <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                                 Provider
                               </div>
                               <div className="mt-1 font-medium text-[var(--ft-text-primary)]">
@@ -464,7 +464,7 @@ export default function CampaignsPage() {
                               </div>
                             </div>
                             <div>
-                              <div className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                              <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                                 Destination
                               </div>
                               <div className="mt-1 font-medium text-[var(--ft-text-primary)]">
@@ -584,7 +584,7 @@ export default function CampaignsPage() {
                     className="w-full rounded-t-[var(--radius-sm)] bg-[var(--ft-accent)]"
                     style={{ height: `${Math.max(18, (point.spendMinor / maxSpend) * 180)}px` }}
                   />
-                  <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     {point.day}
                   </div>
                 </div>

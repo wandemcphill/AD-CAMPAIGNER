@@ -132,7 +132,7 @@ export default function ServicesHubPage() {
 
         {visibleHistory.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
+            <span className="font-mono text-micro uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
               Your orders
             </span>
             {visibleHistory.map((entry) => (
@@ -159,7 +159,7 @@ export default function ServicesHubPage() {
         <div className="grid gap-8">
           {visibleCategories.map((category) => (
             <section key={category.title}>
-              <h2 className="mb-3 font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
+              <h2 className="mb-3 font-mono text-micro uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">
                 {category.title}
               </h2>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

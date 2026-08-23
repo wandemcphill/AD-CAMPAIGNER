@@ -121,7 +121,7 @@ export default function MyMarketplaceApplicationsPage() {
                         You're now listed in the Agency Marketplace.
                       </div>
                     ) : null}
-                    <div className="mt-2 text-[10px] text-[var(--ft-text-muted)]">
+                    <div className="mt-2 text-micro text-[var(--ft-text-muted)]">
                       Submitted {new Date(application.createdAt).toLocaleDateString()}
                     </div>
                   </div>
@@ -160,7 +160,7 @@ export default function MyMarketplaceApplicationsPage() {
                         You're now listed in the Creator Marketplace.
                       </div>
                     ) : null}
-                    <div className="mt-2 text-[10px] text-[var(--ft-text-muted)]">
+                    <div className="mt-2 text-micro text-[var(--ft-text-muted)]">
                       Submitted {new Date(application.createdAt).toLocaleDateString()}
                     </div>
                   </div>

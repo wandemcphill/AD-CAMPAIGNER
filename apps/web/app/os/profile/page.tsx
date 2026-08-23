@@ -207,7 +207,7 @@ export default function ProfilePage() {
                 <div className="font-mono text-4xl font-semibold text-[var(--ft-text-primary)]">
                   {completion}%
                 </div>
-                <div className="mt-1 font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="mt-1 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   profile readiness
                 </div>
               </div>

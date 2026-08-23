@@ -475,7 +475,7 @@ function UploadZone({ label, spec }: { label: string; spec: string }) {
       {fileName ? (
         <div className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-2 text-left">
           <span className="min-w-0 truncate text-sm text-[var(--ft-text-primary)]">{fileName}</span>
-          <span className="shrink-0 font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="shrink-0 font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             {fileSize}
           </span>
         </div>
@@ -754,7 +754,7 @@ export default function NewCampaignPage() {
         <aside className="hidden xl:block">
           <div className="sticky top-20 min-h-[520px] border-l border-[var(--ft-border)] bg-[var(--ft-bg-surface)] py-4">
             <div className="px-4 pb-4">
-              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+              <div className="font-mono text-micro font-medium uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                 Client brief
               </div>
               <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
@@ -785,7 +785,7 @@ export default function NewCampaignPage() {
                   >
                     <span
                       className={cn(
-                        "mt-0.5 grid size-7 place-items-center rounded-[var(--radius-sm)] border font-mono text-[11px]",
+                        "mt-0.5 grid size-7 place-items-center rounded-[var(--radius-sm)] border font-mono text-micro",
                         completed
                           ? "border-[var(--ft-accent)] bg-[var(--ft-accent)] text-[var(--ft-bg-base)]"
                           : current
@@ -814,7 +814,7 @@ export default function NewCampaignPage() {
           <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--ft-accent)]">
+                <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-accent)]">
                   Step {activeStep + 1} of {builderSteps.length}
                 </div>
                 <div className="mt-1 text-sm font-semibold text-[var(--ft-text-primary)]">
@@ -845,7 +845,7 @@ export default function NewCampaignPage() {
                 <div>
                   <div
                     className={cn(
-                      "inline-flex items-center gap-2 rounded-[var(--radius-sm)] border px-2 py-1 font-mono text-[11px] uppercase tracking-[0.04em]",
+                      "inline-flex items-center gap-2 rounded-[var(--radius-sm)] border px-2 py-1 font-mono text-micro uppercase tracking-[0.04em]",
                       createdCampaign.status === "REJECTED"
                         ? "border-[var(--ft-red)]/40 bg-[var(--ft-red-subtle)] text-[var(--ft-red)]"
                         : "border-[var(--ft-green)]/40 bg-[var(--ft-green-subtle)] text-[var(--ft-green)]"
@@ -870,7 +870,7 @@ export default function NewCampaignPage() {
 
               <div className="grid gap-4 lg:grid-cols-[1fr_0.75fr]">
                 <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                  <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+                  <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                     Reference ID
                   </div>
                   <div className="mt-2 break-all font-mono text-xl text-[var(--ft-text-primary)]">
@@ -897,7 +897,7 @@ export default function NewCampaignPage() {
                 </div>
 
                 <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-4">
-                  <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+                  <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                     Expected timeline
                   </div>
                   <div className="mt-4 grid gap-4">
@@ -1329,7 +1329,7 @@ export default function NewCampaignPage() {
 
                     <div className="grid gap-3 lg:grid-cols-3">
                       <div className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-muted)] p-4">
-                        <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+                        <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                           Duration
                         </div>
                         <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
@@ -1337,7 +1337,7 @@ export default function NewCampaignPage() {
                         </div>
                       </div>
                       <div className="rounded-[var(--radius-sm)] bg-[var(--ft-bg-muted)] p-4">
-                        <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+                        <div className="font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                           Daily spend est.
                         </div>
                         <div className="mt-2 font-mono text-2xl text-[var(--ft-text-primary)]">
@@ -1352,7 +1352,7 @@ export default function NewCampaignPage() {
                       <div
                         className="rounded-[var(--radius-sm)] border border-[var(--ft-border-strong)] bg-transparent p-4 text-left transition hover:bg-[var(--ft-bg-muted)]"
                       >
-                        <div className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
+                        <div className="flex items-center gap-2 font-mono text-micro uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">
                           <Calculator className="size-4 stroke-[1.5]" />
                           Estimate after review
                         </div>
@@ -1386,7 +1386,7 @@ export default function NewCampaignPage() {
                       <div className="mt-3 flex flex-wrap gap-3">
                         {allocation.map((item) => (
                           <span
-                            className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-secondary)]"
+                            className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-secondary)]"
                             key={item.label}
                           >
                             {item.label} {item.percentage}%

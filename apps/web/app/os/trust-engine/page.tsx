@@ -135,7 +135,7 @@ export default function TrustEnginePage() {
 
       <div className="mt-5 flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             Status
           </span>
           {statusFilters.map((filter) => (
@@ -154,7 +154,7 @@ export default function TrustEnginePage() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <span className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             Asset class
           </span>
           {assetClassFilters.map((filter) => (
@@ -175,7 +175,7 @@ export default function TrustEnginePage() {
       </div>
 
       <section className="mt-6 overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
-        <div className="hidden grid-cols-[1fr_120px_160px_120px_220px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
+        <div className="hidden grid-cols-[1fr_120px_160px_120px_220px] gap-3 border-b border-[var(--ft-border)] px-4 py-3 font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase sm:grid">
           <div>Submission</div>
           <div>Asset Class</div>
           <div>Verdict</div>
@@ -251,7 +251,7 @@ export default function TrustEnginePage() {
           >
             <div className="flex items-start justify-between gap-4 border-b border-[var(--ft-border)] p-5">
               <div>
-                <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="font-mono text-micro font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   Submission detail
                 </div>
                 <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">{selected.id}</h2>
@@ -280,7 +280,7 @@ export default function TrustEnginePage() {
               ) : null}
 
               <div>
-                <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                   7-stage pipeline
                 </div>
                 {stagesLoading ? (

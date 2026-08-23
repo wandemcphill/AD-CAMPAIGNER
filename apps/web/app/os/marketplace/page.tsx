@@ -168,7 +168,7 @@ export default function MarketplacePage() {
                     <div className="text-xs text-[var(--ft-text-muted)]">{c.niche} · {formatFollowers(c.followerCount)} followers</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-[10px] text-[var(--ft-text-muted)]">{formatEngagement(c.engagementBps)} eng.</div>
+                    <div className="text-micro text-[var(--ft-text-muted)]">{formatEngagement(c.engagementBps)} eng.</div>
                   </div>
                 </div>
               ))

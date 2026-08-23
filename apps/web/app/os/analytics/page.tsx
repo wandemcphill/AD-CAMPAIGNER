@@ -164,7 +164,7 @@ export default function CampaignAnalyticsPage() {
                       height: `${Math.max(18, (point.conversions / maxConversions) * 220)}px`
                     }}
                   />
-                  <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                  <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     {point.day}
                   </div>
                 </div>
@@ -251,7 +251,7 @@ export default function CampaignAnalyticsPage() {
             </p>
           </div>
           <div>
-            <div className="hidden grid-cols-[minmax(220px,1fr)_140px_140px_120px_120px_120px] gap-3 border-b border-[var(--ft-border)] px-4 py-2 font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)] xl:grid">
+            <div className="hidden grid-cols-[minmax(220px,1fr)_140px_140px_120px_120px_120px] gap-3 border-b border-[var(--ft-border)] px-4 py-2 font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)] xl:grid">
               <div>Campaign</div>
               <div>Status</div>
               <div>Platform</div>

@@ -218,7 +218,7 @@ export default function CreativeLibraryPage() {
                   <div className="truncate text-sm font-medium">
                     {asset.originalFilename ?? "Untitled asset"}
                   </div>
-                  <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--ft-text-muted)]">
+                  <div className="mt-1 flex items-center justify-between text-micro text-[var(--ft-text-muted)]">
                     <span>{assetDimensions(asset)}</span>
                     <span>{formatByteSize(asset.byteSize)}</span>
                   </div>

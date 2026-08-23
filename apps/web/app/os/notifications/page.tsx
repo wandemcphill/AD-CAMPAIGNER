@@ -162,7 +162,7 @@ export default function NotificationsPage() {
                     <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
                       {notification.body}
                     </p>
-                    <p className="mt-2 font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    <p className="mt-2 font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       {formatNotificationTime(notification.createdAt)}
                     </p>
                   </div>

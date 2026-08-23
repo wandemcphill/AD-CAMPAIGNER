@@ -442,7 +442,7 @@ function CampaignFinanceOpsPanel({
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Finance ops
         </div>
         <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
@@ -498,7 +498,7 @@ function CampaignFinanceOpsPanel({
 
           {holdIds.length > 0 ? (
             <div className="mt-2 grid gap-2">
-              <h4 className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+              <h4 className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                 Existing holds
               </h4>
               {holdIds.map((holdId) => {
@@ -514,7 +514,7 @@ function CampaignFinanceOpsPanel({
                     </span>
                     <div className="flex shrink-0 gap-1.5">
                       <Button
-                        className="h-7 px-2 text-[11px]"
+                        className="h-7 px-2 text-micro"
                         disabled={holdBusyId !== undefined}
                         onClick={() => void handleHoldAction(holdId, "capture")}
                         type="button"
@@ -523,7 +523,7 @@ function CampaignFinanceOpsPanel({
                         {holdBusyId === holdId ? "..." : "Capture"}
                       </Button>
                       <Button
-                        className="h-7 px-2 text-[11px]"
+                        className="h-7 px-2 text-micro"
                         disabled={holdBusyId !== undefined}
                         onClick={() => void handleHoldAction(holdId, "release")}
                         type="button"
@@ -565,7 +565,7 @@ function CampaignBudgetTransparency({
       <div className="border-b border-[var(--ft-border)] p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Budget
             </div>
             <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Campaign spend transparency</h2>
@@ -587,7 +587,7 @@ function CampaignBudgetTransparency({
       <div className="grid gap-px bg-[var(--ft-border)] md:grid-cols-2 xl:grid-cols-4">
         {cards.map((item) => (
           <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
-            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               {item.label}
             </div>
             <div className="mt-2 font-mono text-2xl font-medium text-[var(--ft-text-primary)]">{item.value}</div>
@@ -716,7 +716,7 @@ function ClientCampaignControls({
       <div className="border-b border-[var(--ft-border)] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Controls
             </div>
             <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Campaign controls</h2>
@@ -732,7 +732,7 @@ function ClientCampaignControls({
           { label: "Remaining Budget", value: formatCampaignMoney(remainingBudget) }
         ].map((item) => (
           <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
-            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               {item.label}
             </div>
             <div className="mt-2 break-words text-sm font-semibold text-[var(--ft-text-primary)]">{item.value}</div>
@@ -743,7 +743,7 @@ function ClientCampaignControls({
       <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="grid gap-3">
           <label className="grid gap-1">
-            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <span className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Action Note
             </span>
             <textarea
@@ -824,7 +824,7 @@ function ClientCampaignControls({
 
         <div className="grid content-start gap-3">
           <label className="grid gap-1">
-            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+            <span className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Budget Change
             </span>
             <input
@@ -1054,7 +1054,7 @@ function CampaignNotesPanel({
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Notes
         </div>
         <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Messages with your team</h2>
@@ -1115,7 +1115,7 @@ function CampaignReportsPanel({ loading, reports }: { loading: boolean; reports:
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Reports
         </div>
         <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Published reports</h2>
@@ -1149,7 +1149,7 @@ function CampaignReportsPanel({ loading, reports }: { loading: boolean; reports:
                   }
                 ].map((stat) => (
                   <div key={stat.label}>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       {stat.label}
                     </div>
                     <div className="mt-1 font-mono text-sm text-[var(--ft-text-primary)]">{stat.value}</div>
@@ -1198,7 +1198,7 @@ function CampaignOutcomePanel({ outcome }: { outcome: CampaignOutcome }) {
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Outcome
         </div>
         <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Reported results</h2>
@@ -1208,7 +1208,7 @@ function CampaignOutcomePanel({ outcome }: { outcome: CampaignOutcome }) {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {items.map((item) => (
               <div key={item.label}>
-                <div className="font-mono text-[10px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                   {item.label}
                 </div>
                 <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">{item.value}</div>
@@ -1258,7 +1258,7 @@ function FlightBar({ campaign }: { campaign: Campaign }) {
     <Panel className="p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+          <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             Flight
           </div>
           <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Launch window</h2>
@@ -1533,7 +1533,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
             <section className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,rgba(0,102,255,0.14),transparent_38%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-2xl">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-micro uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
                     Campaign record
                   </div>
                   <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
@@ -1587,7 +1587,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
               <div className="grid gap-px bg-[var(--ft-border)] md:grid-cols-2 xl:grid-cols-4">
                 {campaignMetrics(campaign, analytics).map((item) => (
                   <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
-                    <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       {item.label}
                     </div>
                     <div className="mt-2 font-mono text-2xl font-medium text-[var(--ft-text-primary)]">
@@ -1626,7 +1626,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
               <Panel className="p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
+                    <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       Creative
                     </div>
                     <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
@@ -1734,7 +1734,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
             </Panel>
 
             <Panel className="border-dashed p-5">
-              <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-accent)]">
+              <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-accent)]">
                 What happens next
               </div>
               <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">
