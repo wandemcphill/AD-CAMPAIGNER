@@ -94,9 +94,10 @@ export function AdminShell({
             </div>
           </Link>
 
-          <nav className="mt-6 grid grid-cols-2 gap-1 xl:grid-cols-1">
+          <nav className="mt-6 grid grid-cols-2 gap-1 xl:grid-cols-1" aria-label="Admin navigation">
             {ADMIN_NAV_ITEMS.map((item) => (
-              <a
+              <Link
+                aria-current={active === item.href ? "page" : undefined}
                 className={cn(
                   "flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium transition",
                   active === item.href
@@ -108,7 +109,7 @@ export function AdminShell({
               >
                 <item.icon className="size-4" />
                 <span>{item.label}</span>
-              </a>
+              </Link>
             ))}
           </nav>
 
