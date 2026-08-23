@@ -18,7 +18,15 @@ import {
   type InvoiceStatus
 } from "./api";
 
-type LineDraft = { description: string; quantity: string; unitPrice: string };
+type LineDraft = { id: string; description: string; quantity: string; unitPrice: string };
+
+type InvoiceLineRowProps = {
+  line: LineDraft;
+  index: number;
+  canRemove: boolean;
+  onCommit: (id: string, patch: Partial<LineDraft>) => void;
+  onRemove: (id: string) => void;
+};
 
 const STATUS_TONE: Record<InvoiceStatus, "neutral" | "info" | "success" | "warning" | "danger"> = {
   DRAFT: "neutral",
@@ -28,12 +36,83 @@ const STATUS_TONE: Record<InvoiceStatus, "neutral" | "info" | "success" | "warni
   VOID: "danger"
 };
 
-function emptyLine(): LineDraft {
-  return { description: "", quantity: "1", unitPrice: "" };
+const moneyInputClass =
+  "h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm text-[var(--ft-text-primary)] outline-none transition placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)] focus:ring-2 focus:ring-[var(--ft-accent-glow)]";
+
+function emptyLine(id: string): LineDraft {
+  return { id, description: "", quantity: "1", unitPrice: "" };
 }
 
 function invoiceStatusTone(status: string): "neutral" | "info" | "success" | "warning" | "danger" {
   return STATUS_TONE[status as InvoiceStatus] ?? "neutral";
+}
+
+function InvoiceLineRow({ line, index, canRemove, onCommit, onRemove }: InvoiceLineRowProps) {
+  const [description, setDescription] = useState(line.description);
+  const [quantity, setQuantity] = useState(line.quantity);
+  const [unitPrice, setUnitPrice] = useState(line.unitPrice);
+
+  useEffect(() => {
+    setDescription(line.description);
+    setQuantity(line.quantity);
+    setUnitPrice(line.unitPrice);
+  }, [line.description, line.quantity, line.unitPrice]);
+
+  function commit() {
+    onCommit(line.id, { description, quantity, unitPrice });
+  }
+
+  return (
+    <div className="grid grid-cols-[1fr_80px_120px_auto] items-end gap-2">
+      <div className="grid gap-1.5">
+        {index === 0 ? <label className="block text-sm font-medium text-[var(--ft-text-primary)]" htmlFor={`line-desc-${line.id}`}>Description</label> : null}
+        <input
+          className={moneyInputClass}
+          id={`line-desc-${line.id}`}
+          onBlur={commit}
+          onChange={(event) => setDescription(event.currentTarget.value)}
+          placeholder={index === 0 ? "What are you billing for?" : "Description"}
+          type="text"
+          value={description}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        {index === 0 ? <label className="block text-sm font-medium text-[var(--ft-text-primary)]" htmlFor={`line-qty-${line.id}`}>Qty</label> : null}
+        <input
+          className={moneyInputClass}
+          id={`line-qty-${line.id}`}
+          min="1"
+          onBlur={commit}
+          onChange={(event) => setQuantity(event.currentTarget.value)}
+          type="number"
+          value={quantity}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        {index === 0 ? <label className="block text-sm font-medium text-[var(--ft-text-primary)]" htmlFor={`line-price-${line.id}`}>Unit price</label> : null}
+        <input
+          className={moneyInputClass}
+          id={`line-price-${line.id}`}
+          min="0"
+          onBlur={commit}
+          onChange={(event) => setUnitPrice(event.currentTarget.value)}
+          placeholder="0.00"
+          step="0.01"
+          type="number"
+          value={unitPrice}
+        />
+      </div>
+      <button
+        aria-label="Remove line item"
+        className="mb-1 grid size-9 place-items-center rounded-[var(--radius-md)] border border-[var(--ft-border)] text-[var(--ft-text-muted)] transition hover:text-[var(--ft-red)] disabled:opacity-40"
+        disabled={!canRemove}
+        onClick={() => onRemove(line.id)}
+        type="button"
+      >
+        <Trash2 className="size-4" />
+      </button>
+    </div>
+  );
 }
 
 export default function InvoicesPage() {
@@ -48,7 +127,7 @@ export default function InvoicesPage() {
   const [currency, setCurrency] = useState("NGN");
   const [dueAt, setDueAt] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
+  const [lines, setLines] = useState<LineDraft[]>([emptyLine("line-1")]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string>();
 
@@ -82,8 +161,20 @@ export default function InvoicesPage() {
     setCurrency("NGN");
     setDueAt("");
     setNotes("");
-    setLines([emptyLine()]);
+    setLines([emptyLine("line-1")]);
     setFormError(undefined);
+  }
+
+  function commitLine(id: string, patch: Partial<LineDraft>) {
+    setLines((prev) => prev.map((line) => (line.id === id ? { ...line, ...patch } : line)));
+  }
+
+  function removeLine(id: string) {
+    setLines((prev) => (prev.length === 1 ? prev : prev.filter((line) => line.id !== id)));
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, emptyLine(`line-${Date.now()}-${prev.length}`)]);
   }
 
   async function submit() {
@@ -191,43 +282,19 @@ export default function InvoicesPage() {
             <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--ft-text-muted)]">Line items</div>
             <div className="grid gap-2">
               {lines.map((line, index) => (
-                <div className="grid grid-cols-[1fr_80px_120px_auto] items-end gap-2" key={index}>
-                  <Input
-                    id={`line-desc-${index}`}
-                    label={index === 0 ? "Description" : ""}
-                    onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, description: e.currentTarget.value } : l)))}
-                    type="text"
-                    value={line.description}
-                  />
-                  <Input
-                    id={`line-qty-${index}`}
-                    label={index === 0 ? "Qty" : ""}
-                    onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, quantity: e.currentTarget.value } : l)))}
-                    type="number"
-                    value={line.quantity}
-                  />
-                  <Input
-                    id={`line-price-${index}`}
-                    label={index === 0 ? `Unit price (${currency})` : ""}
-                    onChange={(e) => setLines((prev) => prev.map((l, i) => (i === index ? { ...l, unitPrice: e.currentTarget.value } : l)))}
-                    type="number"
-                    value={line.unitPrice}
-                  />
-                  <button
-                    aria-label="Remove line item"
-                    className="mb-1 grid size-9 place-items-center rounded-[var(--radius-md)] border border-[var(--ft-border)] text-[var(--ft-text-muted)] transition hover:text-[var(--ft-red)] disabled:opacity-40"
-                    disabled={lines.length === 1}
-                    onClick={() => setLines((prev) => prev.filter((_, i) => i !== index))}
-                    type="button"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
+                <InvoiceLineRow
+                  canRemove={lines.length > 1}
+                  index={index}
+                  key={line.id}
+                  line={line}
+                  onCommit={commitLine}
+                  onRemove={removeLine}
+                />
               ))}
             </div>
             <button
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[var(--ft-accent)]"
-              onClick={() => setLines((prev) => [...prev, emptyLine()])}
+              onClick={addLine}
               type="button"
             >
               <Plus className="size-3" /> Add line item
@@ -239,7 +306,7 @@ export default function InvoicesPage() {
             <textarea
               className="min-h-[70px] rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 text-sm outline-none focus:border-[var(--ft-accent)]"
               id="notes"
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => setNotes(e.currentTarget.value)}
               value={notes}
             />
           </div>
