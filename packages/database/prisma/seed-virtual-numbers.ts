@@ -23,10 +23,7 @@ type FiveSimCountry = {
   [key: string]: unknown;
 };
 
-type FiveSimPrices = Record<
-  string,
-  Record<string, Record<string, { cost?: number; count?: number; rate?: number }>>
->;
+type FiveSimPrices = Record<string, Record<string, Record<string, { cost?: number; count?: number; rate?: number }>>>;
 
 async function fiveSimGet<T>(path: string): Promise<T> {
   if (!TOKEN) throw new Error("FIVESIM_API_TOKEN is not configured.");
@@ -103,8 +100,7 @@ async function seedLive5SimCatalog(db: ReturnType<typeof createPrismaClient>) {
   let productsCreated = 0;
   let productsUpdated = 0;
 
-  for (let index = 0; index < rows.length; index += 1) {
-    const country = rows[index];
+  for (const [index, country] of rows.entries()) {
     const existing = await db.numberCountry.findUnique({ where: { isoCode: country.countryCode } });
 
     if (existing) {
