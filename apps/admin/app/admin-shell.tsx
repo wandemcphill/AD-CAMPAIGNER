@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, type ReactNode } from "react";
 import {
+  Activity,
   Banknote,
   Boxes,
   CircleDollarSign,
@@ -38,6 +39,7 @@ export type AdminNavItem = { label: string; href: string; icon: LucideIcon };
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Overview", href: "/", icon: Radar },
+  { label: "Operations Control Tower", href: "/operations-control-tower/", icon: Activity },
   { label: "Risk & Security", href: "/risk/", icon: ShieldAlert },
   { label: "Moderation", href: "/campaign-ops/", icon: ShieldCheck },
   { label: "Payments", href: "/payments/", icon: Banknote },
