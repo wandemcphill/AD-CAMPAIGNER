@@ -239,14 +239,21 @@ export class RmbService {
       // provider transaction. Reverse our local debit immediately. Network
       // errors, 429s and 5xx responses remain PROCESSING because the provider
       // outcome is ambiguous and must be reconciled before retrying.
-      if (err instanceof SogoRmbProviderError && err.statusCode >= 400 && err.statusCode < 500 && err.statusCode !== 409 && err.statusCode !== 429) {
+      if (
+        err instanceof SogoRmbProviderError &&
+        err.statusCode >= 400 &&
+        err.statusCode < 500 &&
+        err.statusCode !== 409 &&
+        err.statusCode !== 429
+      ) {
         const refundKey = `rmb_cancel_${order.id}`;
         await this.db.$transaction(async (tx) => {
           const existingRefund = await tx.ledgerEntry.findUnique({
             where: { idempotencyKey: refundKey }
           });
-          if (!existingRefund) {
-            await tx.ledgerEntry.create({
+          const refundEntry =
+            existingRefund ??
+            (await tx.ledgerEntry.create({
               data: {
                 id: uid("led"),
                 walletId: order.walletId,
@@ -259,11 +266,10 @@ export class RmbService {
                 sourceType: "RmbOrder",
                 sourceId: order.id
               }
-            });
-          }
+            }));
           await tx.rmbOrder.update({
             where: { id: order.id },
-            data: { status: "CANCELLED" }
+            data: { status: "CANCELLED", refundLedgerEntryId: refundEntry.id }
           });
         });
         return this.db.rmbOrder.findUniqueOrThrow({ where: { id: order.id } });
