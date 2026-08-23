@@ -11,14 +11,15 @@ export class AdminWebhookOperationsService {
   }
 
   async overview() {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const [pendingOutbox, failedOutbox, recentOutbox, invalidProviderSignatures, providerEvents24h, activeSubscriptions, failedDeliveries24h] = await Promise.all([
       this.db.eventOutbox.count({ where: { status: "PENDING" } }),
       this.db.eventOutbox.count({ where: { status: "FAILED" } }),
-      this.db.eventOutbox.count({ where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } }),
-      this.db.providerWebhookEvent.count({ where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, signatureValid: false } }),
-      this.db.providerWebhookEvent.count({ where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } } }),
+      this.db.eventOutbox.count({ where: { createdAt: { gte: since } } }),
+      this.db.providerWebhookEvent.count({ where: { createdAt: { gte: since }, signatureValid: false } }),
+      this.db.providerWebhookEvent.count({ where: { createdAt: { gte: since } } }),
       this.db.outgoingWebhookSubscription.count({ where: { isActive: true } }),
-      this.db.outgoingWebhookDelivery.count({ where: { createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, status: "FAILED" } })
+      this.db.outgoingWebhookDelivery.count({ where: { createdAt: { gte: since }, status: "FAILED" } })
     ]);
 
     const [failedEvents, invalidEvents, failedDeliveries] = await Promise.all([
