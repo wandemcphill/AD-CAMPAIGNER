@@ -1,19 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeftRight, Banknote, Bitcoin, CreditCard, Gift, Plane, Send, Tv } from "lucide-react";
+import { ArrowLeftRight, Banknote, Bitcoin, Compass, CreditCard, Gift, Plane, Send, Tv } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@fliptrybe/ui";
 
 const ACTIONS: Array<{ label: string; hint: string; href: string; icon: LucideIcon }> = [
-  { label: "Send money", hint: "International corridors", href: "/os/financial-products/remittance", icon: Send },
-  { label: "Buy RMB", hint: "Pay China", href: "/os/rmb", icon: Banknote },
-  { label: "USDT / USDC", hint: "Buy or sell", href: "/os/crypto", icon: Bitcoin },
-  { label: "Virtual card", hint: "Spend globally", href: "/os/financial-products/cards", icon: CreditCard },
+  { label: "Discover", hint: "Find what you need", href: "/os/discover", icon: Compass },
+  { label: "Send to Nigeria", hint: "USA · UK · Europe · Canada", href: "/os/financial-products/remittance", icon: Send },
+  { label: "Buy RMB & Pay China", hint: "Alipay · WeChat · suppliers", href: "/os/rmb", icon: Banknote },
+  { label: "USDT / USDC", hint: "Buy or sell stablecoins", href: "/os/crypto", icon: Bitcoin },
+  { label: "Virtual card", hint: "Pay global subscriptions", href: "/os/financial-products/cards", icon: CreditCard },
   { label: "Buy gift cards", hint: "Digital spending", href: "/os/digital-value", icon: Gift },
   { label: "Sell gift cards", hint: "Get paid for eligible cards", href: "/os/digital-value", icon: Gift },
-  { label: "Travel", hint: "Flights & tours", href: "/os/services", icon: Plane },
-  { label: "TikTok growth", hint: "Reach Nigerian viewers", href: "/os/growth/services", icon: Tv },
+  { label: "Travel", hint: "Flights · safaris · tours", href: "/os/travel", icon: Plane },
+  { label: "TikTok growth", hint: "Nigerian viewers & followers", href: "/os/growth/services", icon: Tv },
   { label: "Campaign", hint: "Create & launch", href: "/os/campaigns/new", icon: ArrowLeftRight }
 ];
 
