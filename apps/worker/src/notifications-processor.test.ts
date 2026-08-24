@@ -130,11 +130,13 @@ describe("processNotificationDispatchJob", () => {
 
     expect(result.outcome).toBe("sent");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
-    expect((requestInit.headers as Record<string, string>)["Idempotency-Key"]).toBe(
+    const requestInit = fetchMock.mock.calls[0]?.[1];
+    expect(requestInit).toBeDefined();
+    const headers = requestInit?.headers;
+    expect((headers as Record<string, string>)["Idempotency-Key"]).toBe(
       "payment_success#order_123:EMAIL"
     );
-    expect(JSON.parse(String(requestInit.body))).toMatchObject({
+    expect(JSON.parse(String(requestInit?.body ?? ""))).toMatchObject({
       from: "FlipTrybe <noreply@example.com>",
       to: ["guest@example.com"],
       subject: "Payment successful",
