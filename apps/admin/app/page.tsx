@@ -1,32 +1,92 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Banknote, FileSearch, Network, RefreshCcw, Users } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, Boxes, FileSearch, Network, RefreshCcw, ShieldAlert, Users } from "lucide-react";
 
 import { Badge, Button, MetricCard, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 
 import { AdminShell } from "./admin-shell";
-import { useAdminDashboard } from "./use-admin-dashboard";
+import { apiRequest } from "./lib/api-client";
+import { useApiSession } from "./lib/use-session";
+import { AdminAuthState } from "./ui/admin-auth-state";
+
+type CommandOverview = {
+  generatedAt: string;
+  users: { total: number; active: number; new24h: number; suspended: number };
+  campaigns: { active: number; pendingReview: number };
+  payments: { volumeMinor30d: number; pending: number; failed24h: number };
+  wallets: { active: number };
+  fulfilment: { growthOpen: number; vtuOpen: number; virtualNumbersOpen: number };
+  risk: { review: number; high: number };
+};
+
+type Alert = {
+  id: string;
+  severity: "danger" | "warning";
+  category: string;
+  title: string;
+  detail: string;
+  href: string;
+};
+
+type AlertsResponse = {
+  generatedAt: string;
+  totals: { all: number; danger: number; warning: number };
+  alerts: Alert[];
+};
 
 const QUICK_LINKS = [
-  { label: "Campaign operations", href: "/campaign-ops/" },
-  { label: "Users", href: "/users/" },
-  { label: "Payments", href: "/campaign-ops/reports/" },
-  { label: "Wallets", href: "/wallets/" },
-  { label: "Products & Pricing", href: "/commercial/" },
-  { label: "Providers", href: "/providers/" },
-  { label: "Reconciliation", href: "/reconciliation/" },
-  { label: "Audit", href: "/campaign-ops/activity/" }
+  { label: "Operations Control Tower", href: "/operations-control-tower/", icon: Network },
+  { label: "Risk & Security", href: "/risk/", icon: ShieldAlert },
+  { label: "Payments", href: "/payments/", icon: Banknote },
+  { label: "Fulfilment", href: "/fulfilment/", icon: Boxes },
+  { label: "Product Governance", href: "/product-governance/", icon: Boxes },
+  { label: "Provider Governance", href: "/provider-governance/", icon: Network },
+  { label: "Users", href: "/users/", icon: Users },
+  { label: "Audit Trail", href: "/audit/", icon: FileSearch }
 ];
 
+function money(minor: number) {
+  return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(minor / 100);
+}
+
 export default function AdminPage() {
-  const { data, error, isLoading, refresh } = useAdminDashboard();
-  const metrics = data?.metrics ?? [];
-  const queues = data?.queues ?? [];
-  const risks = data?.risk ?? [];
-  const audits = data?.audits ?? [];
-  const providers = data?.providers ?? [];
-  const healthyProviders = providers.filter((provider) => provider.healthy).length;
+  const { error: sessionError, loading: sessionLoading, session } = useApiSession();
+  const [overview, setOverview] = useState<CommandOverview>();
+  const [alerts, setAlerts] = useState<AlertsResponse>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>();
+
+  async function refresh() {
+    setLoading(true);
+    setError(undefined);
+    try {
+      const [nextOverview, nextAlerts] = await Promise.all([
+        apiRequest<CommandOverview>("/admin/command-center/overview"),
+        apiRequest<AlertsResponse>("/admin/command-center/alerts")
+      ]);
+      setOverview(nextOverview);
+      setAlerts(nextAlerts);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not load the admin command center.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (session?.isPlatformAdmin) void refresh();
+  }, [session]);
+
+  if (sessionLoading || !session?.isPlatformAdmin) {
+    return <AdminAuthState error={sessionError} loading={sessionLoading} title="Admin auth" />;
+  }
+
+  const riskCount = (overview?.risk.review ?? 0) + (overview?.risk.high ?? 0);
+  const fulfilmentOpen =
+    (overview?.fulfilment.growthOpen ?? 0) +
+    (overview?.fulfilment.vtuOpen ?? 0) +
+    (overview?.fulfilment.virtualNumbersOpen ?? 0);
 
   return (
     <AdminShell active="/" subtitle="Operations command center">
@@ -34,169 +94,96 @@ export default function AdminPage() {
         <header className="flex flex-col gap-4 border-b border-[var(--ft-border)] pb-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={data?.source === "api" ? "success" : "warning"}>
-                {data?.source === "api" ? "Live API telemetry" : "Partial telemetry"}
+              <Badge tone="success">Live API telemetry</Badge>
+              <Badge tone={alerts?.totals.danger ? "danger" : alerts?.totals.warning ? "warning" : "success"}>
+                {alerts ? `${alerts.totals.all} governance alerts` : "Loading governance"}
               </Badge>
-              <Badge tone="info">Platform administration</Badge>
             </div>
-            <h1 className="mt-3 text-3xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-4xl">
-              Operations command
-            </h1>
+            <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">Operations command</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--ft-text-secondary)]">
-              The control room for users, campaigns, money movement, product availability, provider health, and operator work.
+              The authoritative control room for users, campaigns, money movement, fulfilment, providers and governance.
             </p>
           </div>
-          <Button disabled={isLoading} onClick={() => void refresh()} variant="secondary">
+          <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
             <RefreshCcw className="size-4" />
-            {isLoading ? "Refreshing" : "Refresh"}
+            {loading ? "Refreshing" : "Refresh"}
           </Button>
         </header>
 
         {error ? (
-          <div className="mt-4 rounded-md border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
-            {error}
-          </div>
+          <div className="mt-4 rounded-md border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">{error}</div>
         ) : null}
 
-        <section className="mt-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.18)]">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="info">Command layer</Badge>
-            <Badge tone={providers.length === 0 || healthyProviders === providers.length ? "success" : "warning"}>
-              {providers.length === 0 ? "Provider health unavailable" : `${healthyProviders}/${providers.length} providers healthy`}
-            </Badge>
-          </div>
-          <div className="mt-5">
-            <SummaryStatStrip
-              items={[
-                { label: "open queues", value: String(queues.reduce((sum, queue) => sum + queue.depth, 0)) },
-                { label: "risk items", value: String(risks.filter((item) => item.risk !== "Low").length) },
-                { label: "providers", value: String(providers.length) },
-                { label: "audit events", value: String(audits.length) }
-              ]}
-            />
-          </div>
+        <section className="mt-6 overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5">
+          <SummaryStatStrip
+            items={[
+              { label: "users", value: String(overview?.users.total ?? "—") },
+              { label: "active campaigns", value: String(overview?.campaigns.active ?? "—") },
+              { label: "30d payment volume", value: overview ? money(overview.payments.volumeMinor30d) : "—" },
+              { label: "open fulfilment", value: String(fulfilmentOpen) },
+              { label: "risk items", value: String(riskCount) },
+              { label: "active wallets", value: String(overview?.wallets.active ?? "—") }
+            ]}
+          />
         </section>
 
         <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {metrics.length > 0 ? (
-            metrics.map((metric) => (
-              <MetricCard
-                detail={metric.detail}
-                key={metric.label}
-                label={metric.label}
-                tone={metric.tone}
-                value={metric.value}
-              />
-            ))
-          ) : (
-            <>
-              <MetricCard label="Users" value="Unavailable" detail="Waiting for admin telemetry" />
-              <MetricCard label="Payment volume" value="Unavailable" detail="Waiting for admin telemetry" />
-              <MetricCard label="Fraud signals" value="Unavailable" detail="Waiting for risk telemetry" />
-              <MetricCard label="Operational queue" value="Unavailable" detail="Waiting for campaign operations telemetry" />
-            </>
-          )}
+          <MetricCard label="Users" value={String(overview?.users.total ?? "—")} detail={overview ? `${overview.users.new24h} new in 24h · ${overview.users.suspended} suspended` : "Loading"} />
+          <MetricCard label="Campaign review" value={String(overview?.campaigns.pendingReview ?? "—")} detail={`${overview?.campaigns.active ?? 0} active campaigns`} />
+          <MetricCard label="Payments" value={String(overview?.payments.pending ?? "—")} detail={`${overview?.payments.failed24h ?? 0} failed in 24h`} />
+          <MetricCard label="Risk" value={String(riskCount)} detail={`${overview?.risk.high ?? 0} high-risk reviews`} tone={overview?.risk.high ? "danger" : "success"} />
         </section>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
           <Panel className="p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Operational queues</h2>
-                <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Work waiting for an operator or provider path.</p>
-              </div>
-              <Network className="size-5 text-[var(--ft-blue)]" />
-            </div>
-
-            <div className="mt-5 grid gap-3">
-              {queues.map((queue) => (
-                <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3" key={queue.name}>
-                  <div className="font-medium text-[var(--ft-text-primary)]">{queue.name}</div>
-                  <div className="text-sm text-[var(--ft-text-muted)]">{queue.depth} items</div>
-                  <Badge tone={queue.status === "healthy" ? "success" : "warning"}>{queue.status}</Badge>
-                </div>
-              ))}
-              {queues.length === 0 ? (
-                <div className="rounded-md border border-dashed border-[var(--ft-border)] p-5 text-sm text-[var(--ft-text-muted)]">
-                  No queue telemetry is currently available.
-                </div>
-              ) : null}
-            </div>
-          </Panel>
-
-          <Panel className="p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Risk desk</h2>
-                <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Exceptions surfaced from campaign operations.</p>
+                <h2 className="text-lg font-semibold">Governance alerts</h2>
+                <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Items requiring operator attention across the platform.</p>
               </div>
               <AlertTriangle className="size-5 text-[var(--ft-accent)]" />
             </div>
-
-            <div className="mt-5 divide-y divide-[var(--ft-border)]">
-              {risks.map((item) => (
-                <div className="grid gap-2 py-3 sm:grid-cols-[1fr_auto]" key={`${item.item}-${item.reason}`}>
+            <div className="mt-4 divide-y divide-[var(--ft-border)]">
+              {(alerts?.alerts ?? []).slice(0, 8).map((alert) => (
+                <Link className="grid gap-2 py-3 sm:grid-cols-[1fr_auto] hover:bg-[var(--ft-bg-muted)]" href={alert.href} key={alert.id}>
                   <div>
-                    <div className="font-medium text-[var(--ft-text-primary)]">{item.item}</div>
-                    <div className="mt-1 text-sm text-[var(--ft-text-muted)]">{item.reason}</div>
+                    <div className="font-medium">{alert.title}</div>
+                    <div className="mt-1 text-sm text-[var(--ft-text-muted)]">{alert.detail}</div>
                   </div>
-                  <Badge tone={item.risk === "High" ? "danger" : item.risk === "Medium" ? "warning" : "success"}>
-                    {item.risk}
-                  </Badge>
-                </div>
+                  <Badge tone={alert.severity === "danger" ? "danger" : "warning"}>{alert.severity}</Badge>
+                </Link>
               ))}
-              {risks.length === 0 ? <div className="py-6 text-sm text-[var(--ft-text-muted)]">No risk telemetry available.</div> : null}
+              {!alerts?.alerts.length ? <div className="py-6 text-sm text-[var(--ft-text-muted)]">No governance alerts.</div> : null}
             </div>
           </Panel>
-        </div>
-
-        <div className="mt-6 grid gap-4 xl:grid-cols-[1fr_1fr_1fr]">
-          <Panel className="p-4">
-            <Users className="size-5 text-[var(--ft-text-primary)]" />
-            <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">Account governance</h2>
-            <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Search users, inspect memberships, and manage account status.</p>
-            <Link className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--ft-accent)]" href="/users/">
-              Open Users <ArrowRight className="size-4" />
-            </Link>
-          </Panel>
 
           <Panel className="p-4">
-            <Banknote className="size-5 text-[var(--ft-text-primary)]" />
-            <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">Money operations</h2>
-            <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Payments, wallets, refunds, and reconciliation are kept behind dedicated desks.</p>
-            <Link className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--ft-accent)]" href="/reconciliation/">
-              Open Reconciliation <ArrowRight className="size-4" />
-            </Link>
-          </Panel>
-
-          <Panel className="p-4">
-            <FileSearch className="size-5 text-[var(--ft-text-primary)]" />
-            <h2 className="mt-4 text-lg font-semibold text-[var(--ft-text-primary)]">Audit trail</h2>
-            <div className="mt-4 space-y-2">
-              {audits.map((audit) => (
-                <div className="rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]" key={audit}>
-                  {audit}
+            <h2 className="text-lg font-semibold">Fulfilment posture</h2>
+            <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Open operational work by the major commercial lanes.</p>
+            <div className="mt-5 space-y-3">
+              {[
+                ["Growth", overview?.fulfilment.growthOpen ?? 0],
+                ["VTU / Bills", overview?.fulfilment.vtuOpen ?? 0],
+                ["Virtual Numbers", overview?.fulfilment.virtualNumbersOpen ?? 0]
+              ].map(([label, count]) => (
+                <div className="flex items-center justify-between rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3" key={String(label)}>
+                  <span>{label}</span>
+                  <Badge tone={Number(count) ? "warning" : "success"}>{String(count)} open</Badge>
                 </div>
               ))}
-              {audits.length === 0 ? <div className="text-sm text-[var(--ft-text-muted)]">No audit events returned.</div> : null}
             </div>
-            <Link className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--ft-accent)]" href="/campaign-ops/activity/">
-              Open Audit <ArrowRight className="size-4" />
+            <Link className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[var(--ft-accent)]" href="/fulfilment/">
+              Open Fulfilment <ArrowRight className="size-4" />
             </Link>
           </Panel>
         </div>
 
         <section className="mt-6">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-[var(--ft-text-primary)]">Admin workspaces</h2>
-              <p className="mt-1 text-sm text-[var(--ft-text-muted)]">Jump directly into the operational desks.</p>
-            </div>
-          </div>
+          <h2 className="mb-3 text-lg font-semibold">Admin workspaces</h2>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {QUICK_LINKS.map((item) => (
-              <Link className="flex items-center justify-between rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 text-sm font-medium text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)] hover:text-[var(--ft-text-primary)]" href={item.href} key={item.href}>
-                <span>{item.label}</span>
+            {QUICK_LINKS.map(({ label, href, icon: Icon }) => (
+              <Link className="flex items-center justify-between gap-3 rounded-md border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 py-3 text-sm font-medium transition hover:border-[var(--ft-accent)]" href={href} key={href}>
+                <span className="flex items-center gap-2"><Icon className="size-4" />{label}</span>
                 <ArrowRight className="size-4" />
               </Link>
             ))}
