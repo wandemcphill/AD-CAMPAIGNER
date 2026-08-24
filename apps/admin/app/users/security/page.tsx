@@ -1,15 +1,16 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, KeyRound, MonitorSmartphone, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { Badge, Button, Panel } from "@fliptrybe/ui";
 
-import { AdminShell } from "../../../admin-shell";
-import { apiRequest } from "../../../lib/api-client";
-import { useApiSession } from "../../../lib/use-session";
-import { AdminAuthState } from "../../../ui/admin-auth-state";
+import { AdminShell } from "../../admin-shell";
+import { apiRequest } from "../../lib/api-client";
+import { useApiSession } from "../../lib/use-session";
+import { AdminAuthState } from "../../ui/admin-auth-state";
 
 interface SecurityUser {
   id: string;
@@ -52,8 +53,9 @@ function sessionState(session: SecurityUser["sessions"][number]) {
   return "active";
 }
 
-export default function AdminUserSecurityPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function AdminUserSecurityPage() {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") ?? "";
   const { error: sessionError, loading: sessionLoading, session } = useApiSession();
   const [user, setUser] = useState<SecurityUser>();
   const [loading, setLoading] = useState(true);
@@ -62,6 +64,13 @@ export default function AdminUserSecurityPage({ params }: { params: Promise<{ id
   const [success, setSuccess] = useState<string>();
 
   const refresh = useCallback(async () => {
+    if (!id) {
+      setUser(undefined);
+      setError("A user ID is required.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(undefined);
     try {
