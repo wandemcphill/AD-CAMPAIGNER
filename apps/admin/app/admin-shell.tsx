@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, type ReactNode } from "react";
 import {
+  Activity,
   Banknote,
   Boxes,
   CircleDollarSign,
@@ -16,13 +17,14 @@ import {
   Phone,
   Radar,
   Scale,
+  ShieldAlert,
   ShieldCheck,
+  Tags,
   Users,
   Wallet,
   ShoppingCart,
   Smartphone,
   Store,
-  Tags,
   Webhook,
   type LucideIcon
 } from "lucide-react";
@@ -37,14 +39,19 @@ export type AdminNavItem = { label: string; href: string; icon: LucideIcon };
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Overview", href: "/", icon: Radar },
+  { label: "Operations Control Tower", href: "/operations-control-tower/", icon: Activity },
+  { label: "Risk & Security", href: "/risk/", icon: ShieldAlert },
   { label: "Moderation", href: "/campaign-ops/", icon: ShieldCheck },
-  { label: "Payments", href: "/campaign-ops/reports/", icon: Banknote },
+  { label: "Payments", href: "/payments/", icon: Banknote },
   { label: "Wallets", href: "/wallets/", icon: Wallet },
   { label: "Users", href: "/users/", icon: Users },
   { label: "Reconciliation", href: "/reconciliation/", icon: Scale },
+  { label: "Fulfilment", href: "/fulfilment/", icon: Boxes },
   { label: "Products & Pricing", href: "/commercial/", icon: Tags },
+  { label: "Product Governance", href: "/product-governance/", icon: Boxes },
+  { label: "Provider Governance", href: "/provider-governance/", icon: Network },
   { label: "Growth", href: "/growth-services/", icon: Boxes },
-  { label: "Audit", href: "/campaign-ops/activity/", icon: FileSearch },
+  { label: "Audit", href: "/audit/", icon: FileSearch },
   { label: "Access", href: "/digital-access/", icon: LockKeyhole },
   { label: "VTU", href: "/vtu/", icon: Smartphone },
   { label: "Providers", href: "/providers/", icon: Network },
@@ -52,7 +59,9 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Digital Value", href: "/digital-value/", icon: CircleDollarSign },
   { label: "Ad Accounts", href: "/ad-accounts/", icon: CreditCard },
   { label: "Telecom", href: "/telecom/", icon: Phone },
+  { label: "Webhook Operations", href: "/webhook-operations/", icon: Webhook },
   { label: "Webhooks", href: "/webhooks/", icon: Webhook },
+  { label: "Support Operations", href: "/support-ops/", icon: LifeBuoy },
   { label: "Support", href: "/support/", icon: LifeBuoy },
   { label: "Rewards", href: "/rewards/", icon: Gift },
   { label: "Marketplace", href: "/marketplace/applications/", icon: Store },
@@ -87,16 +96,15 @@ export function AdminShell({
           <Link className="flex items-center gap-3" href="/">
             <img alt="FlipTrybe" className="size-10" src="/brand/icon-mark.svg" />
             <div>
-              <div className="text-sm font-semibold text-[var(--ft-text-primary)]">
-                FlipTrybe Admin
-              </div>
+              <div className="text-sm font-semibold text-[var(--ft-text-primary)]">FlipTrybe Admin</div>
               <div className="text-xs text-[var(--ft-text-muted)]">{subtitle}</div>
             </div>
           </Link>
 
-          <nav className="mt-6 grid grid-cols-2 gap-1 xl:grid-cols-1">
+          <nav className="mt-6 grid grid-cols-2 gap-1 xl:grid-cols-1" aria-label="Admin navigation">
             {ADMIN_NAV_ITEMS.map((item) => (
-              <a
+              <Link
+                aria-current={active === item.href ? "page" : undefined}
                 className={cn(
                   "flex h-10 items-center gap-3 rounded-md px-3 text-left text-sm font-medium transition",
                   active === item.href
@@ -108,7 +116,7 @@ export function AdminShell({
               >
                 <item.icon className="size-4" />
                 <span>{item.label}</span>
-              </a>
+              </Link>
             ))}
           </nav>
 

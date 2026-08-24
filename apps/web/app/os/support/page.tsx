@@ -4,15 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { LifeBuoy, Send } from "lucide-react";
 import { motion } from "framer-motion";
 
-import {
-  Badge,
-  Button,
-  EmptyState,
-  Panel,
-  PermissionDenied
-} from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
 
-import { ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
 import {
   createSupportTicket,
@@ -49,9 +43,7 @@ export default function SupportPage() {
     try {
       setTickets(await listSupportTickets());
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "We could not load your support tickets."
-      );
+      setError(caught instanceof Error ? caught.message : "We could not load your support tickets.");
       setForbidden(isForbiddenError(caught));
     } finally {
       setLoading(false);
@@ -99,8 +91,8 @@ export default function SupportPage() {
   if (forbidden) {
     return (
       <PermissionDenied>
-        You do not have permission to view support for this workspace. Contact your workspace owner
-        if you believe this is a mistake.
+        You do not have permission to view support for this workspace. Contact your workspace
+        owner if you believe this is a mistake.
       </PermissionDenied>
     );
   }
@@ -127,9 +119,7 @@ export default function SupportPage() {
             <Panel className="p-5">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-semibold">{selected.subject}</h2>
-                <Badge tone={STATUS_TONE[selected.status] ?? "neutral"}>
-                  {selected.status.toLowerCase()}
-                </Badge>
+                <Badge tone={STATUS_TONE[selected.status] ?? "neutral"}>{selected.status.toLowerCase()}</Badge>
               </div>
               <div className="mt-4 grid gap-3">
                 <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm">
@@ -160,10 +150,7 @@ export default function SupportPage() {
                     placeholder="Write a reply..."
                     value={replyBody}
                   />
-                  <Button
-                    disabled={!replyBody.trim() || replying}
-                    onClick={() => void submitReply(selected.id)}
-                  >
+                  <Button disabled={!replyBody.trim() || replying} onClick={() => void submitReply(selected.id)}>
                     <Send className="size-4" />
                   </Button>
                 </div>
@@ -212,9 +199,7 @@ export default function SupportPage() {
               {loading ? (
                 <LoadingBlock label="Loading tickets" />
               ) : tickets.length === 0 ? (
-                <EmptyState icon={LifeBuoy} title="No tickets yet">
-                  Tickets you submit will show up here.
-                </EmptyState>
+                <EmptyState copy="Tickets you submit will show up here." icon={LifeBuoy} title="No tickets yet" />
               ) : (
                 <div className="grid gap-2">
                   {tickets.map((t) => (
@@ -230,9 +215,7 @@ export default function SupportPage() {
                           {new Date(t.createdAt).toLocaleDateString()} · {t.replies.length} replies
                         </div>
                       </div>
-                      <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>
-                        {t.status.toLowerCase()}
-                      </Badge>
+                      <Badge tone={STATUS_TONE[t.status] ?? "neutral"}>{t.status.toLowerCase()}</Badge>
                     </button>
                   ))}
                 </div>

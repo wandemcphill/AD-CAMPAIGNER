@@ -5,16 +5,9 @@ import type { Route } from "next";
 import Link from "next/link";
 import { AlertTriangle, ChevronRight, PackageSearch, RefreshCw } from "lucide-react";
 
-import {
-  Badge,
-  Button,
-  EmptyState,
-  Panel,
-  SkeletonBlock,
-  StatusBadge,
-  cn
-} from "@fliptrybe/ui";
+import { Badge, Button, Panel, SkeletonBlock, StatusBadge, cn } from "@fliptrybe/ui";
 
+import { EmptyState } from "../../campaigns/components";
 import { formatMoney } from "../../lib/api-client";
 import {
   loadAllOrders,
@@ -155,14 +148,16 @@ export default function OrdersPage() {
           </div>
         ) : visible.length === 0 ? (
           <div className="p-4">
-            <EmptyState icon={PackageSearch} title="No orders yet">
-              Airtime, data, bills, growth services and transfers you order will appear here.
-            </EmptyState>
+            <EmptyState
+              copy="Airtime, data, bills, growth services and transfers you order will appear here."
+              icon={PackageSearch}
+              title="No orders yet"
+            />
           </div>
         ) : (
           grouped.map((group) => (
             <div key={group.month}>
-              <div className="text-micro sticky top-0 z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
+              <div className="sticky top-0 z-10 border-b border-[var(--ft-border)] bg-[var(--ft-bg-base)] px-4 py-2 font-mono text-micro font-medium tracking-[0.08em] text-[var(--ft-text-muted)] uppercase">
                 {group.month}
               </div>
               {group.items.map((order) => (
@@ -179,7 +174,7 @@ export default function OrdersPage() {
                       {order.detail}
                     </div>
                   </div>
-                  <span className="text-micro w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
+                  <span className="w-fit rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-2 py-0.5 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
                     {order.sourceLabel}
                   </span>
                   <StatusBadge status={order.status} />
@@ -191,7 +186,7 @@ export default function OrdersPage() {
                   </div>
                 </Link>
               ))}
-              <div className="text-micro px-4 pb-3 text-[var(--ft-text-muted)]">
+              <div className="px-4 pb-3 text-micro text-[var(--ft-text-muted)]">
                 {group.items.length} order{group.items.length === 1 ? "" : "s"} ·{" "}
                 {formatWhen(group.items[0]?.createdAt ?? "")}
               </div>

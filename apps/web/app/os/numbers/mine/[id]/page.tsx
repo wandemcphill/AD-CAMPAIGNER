@@ -4,9 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { ChevronLeft, MessageSquare, Settings } from "lucide-react";
 
-import { Badge, EmptyState, Panel, PermissionDenied } from "@fliptrybe/ui";
+import { Badge, Panel, PermissionDenied } from "@fliptrybe/ui";
 
-import { ErrorNotice, LoadingBlock } from "../../../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock } from "../../../../campaigns/components";
 import { isForbiddenError } from "../../../../lib/api-client";
 import {
   loadMessages,
@@ -107,9 +107,11 @@ export default function NumberInboxPage() {
             <Panel className="mt-4 p-4">
               <h2 className="mb-3 text-sm font-medium text-[var(--ft-text-muted)]">Inbox</h2>
               {messages.length === 0 ? (
-                <EmptyState icon={MessageSquare} title="No messages yet">
-                  SMS sent to this number will appear here, usually within a minute.
-                </EmptyState>
+                <EmptyState
+                  copy="SMS sent to this number will appear here, usually within a minute."
+                  icon={MessageSquare}
+                  title="No messages yet"
+                />
               ) : (
                 <div className="grid gap-2">
                   {messages.map((m) => (

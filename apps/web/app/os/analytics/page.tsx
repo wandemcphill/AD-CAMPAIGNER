@@ -6,7 +6,6 @@ import { BarChart3, Eye, Lightbulb, RefreshCw, TrendingUp } from "lucide-react";
 import {
   Badge,
   Button,
-  EmptyState,
   MetricStrip,
   Panel,
   PermissionDenied,
@@ -18,10 +17,11 @@ import {
 import { apiRequest } from "../../lib/api-client";
 import { formatCampaignMoney, formatCompact, metricValue } from "../../campaigns/api";
 import {
-  CampaignSummaryCard,
+  EmptyState,
   ErrorNotice,
   LoadingBlock,
   PageHeader,
+  ReportCard,
   SourceBadge,
   destinationPlatform,
   secondaryLinkButtonClass
@@ -51,12 +51,8 @@ function usePlatformAnalytics() {
   const [overview, setOverview] = useState<PlatformAnalyticsOverview>();
 
   useEffect(() => {
-    void apiRequest<PlatformAiInsights>("/analytics/ai-insights")
-      .then(setAiInsights)
-      .catch(() => undefined);
-    void apiRequest<PlatformAnalyticsOverview>("/analytics/overview")
-      .then(setOverview)
-      .catch(() => undefined);
+    void apiRequest<PlatformAiInsights>("/analytics/ai-insights").then(setAiInsights).catch(() => undefined);
+    void apiRequest<PlatformAnalyticsOverview>("/analytics/overview").then(setOverview).catch(() => undefined);
   }, []);
 
   return { aiInsights, overview };
@@ -152,9 +148,11 @@ export default function CampaignAnalyticsPage() {
             </div>
           ) : trend.length === 0 ? (
             <div className="mt-5">
-              <EmptyState icon={BarChart3} title="No trend data">
-                Delivery trend points will appear after the team begins publishing campaign updates.
-              </EmptyState>
+              <EmptyState
+                copy="Delivery trend points will appear after the team begins publishing campaign updates."
+                icon={BarChart3}
+                title="No trend data"
+              />
             </div>
           ) : (
             <div className="mt-5 flex h-72 items-end gap-3 border-t border-[var(--ft-border)] pt-4">
@@ -166,7 +164,7 @@ export default function CampaignAnalyticsPage() {
                       height: `${Math.max(18, (point.conversions / maxConversions) * 220)}px`
                     }}
                   />
-                  <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                  <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     {point.day}
                   </div>
                 </div>
@@ -178,9 +176,7 @@ export default function CampaignAnalyticsPage() {
         <Panel className="p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
-                Managed insights
-              </h2>
+              <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Managed insights</h2>
               <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                 Signals grouped by campaign once reporting is published.
               </p>
@@ -194,23 +190,22 @@ export default function CampaignAnalyticsPage() {
               </div>
             ) : insights.length === 0 ? (
               <div className="py-4">
-                <EmptyState icon={Lightbulb} title="No insights">
-                  Campaign insights will appear after the team has enough delivery data to explain
-                  what changed.
-                </EmptyState>
+                <EmptyState
+                  copy="Campaign insights will appear after the team has enough delivery data to explain what changed."
+                  icon={Lightbulb}
+                  title="No insights"
+                />
               </div>
             ) : (
               insights.slice(0, 4).map((insight) => (
                 <div className="py-3" key={insight.id}>
                   <div className="font-medium text-[var(--ft-text-primary)]">{insight.label}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {Object.entries(insight.dimensions)
-                      .slice(0, 3)
-                      .map(([key, value]) => (
-                        <Badge key={key} tone="neutral">
-                          {String(value).replaceAll("_", " ")}
-                        </Badge>
-                      ))}
+                    {Object.entries(insight.dimensions).slice(0, 3).map(([key, value]) => (
+                      <Badge key={key} tone="neutral">
+                        {String(value).replaceAll("_", " ")}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
               ))
@@ -233,18 +228,15 @@ export default function CampaignAnalyticsPage() {
             <LoadingBlock label="Loading report snapshots" />
           </Panel>
         ) : campaigns.length === 0 ? (
-          <EmptyState icon={BarChart3} title="Your reports will appear here.">
-            We publish campaign reports at key milestones - usually halfway through your campaign
-            and at the end. Our team will notify you when your first report is ready.
-          </EmptyState>
+          <EmptyState
+            copy="We publish campaign reports at key milestones - usually halfway through your campaign and at the end. Our team will notify you when your first report is ready."
+            icon={BarChart3}
+            title="Your reports will appear here."
+          />
         ) : (
           <div className="grid gap-4">
             {campaigns.slice(0, 3).map((campaign) => (
-              <CampaignSummaryCard
-                campaign={campaign}
-                key={campaign.id}
-                metrics={analytics?.metrics}
-              />
+              <ReportCard campaign={campaign} key={campaign.id} metrics={analytics?.metrics} />
             ))}
           </div>
         )}
@@ -253,15 +245,13 @@ export default function CampaignAnalyticsPage() {
       <section className="mt-6">
         <Panel className="overflow-hidden">
           <div className="border-b border-[var(--ft-border)] p-4">
-            <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
-              Campaign breakdown
-            </h2>
+            <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Campaign breakdown</h2>
             <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
               Campaign-level report readiness and spend.
             </p>
           </div>
           <div>
-            <div className="text-micro hidden grid-cols-[minmax(220px,1fr)_140px_140px_120px_120px_120px] gap-3 border-b border-[var(--ft-border)] px-4 py-2 font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase xl:grid">
+            <div className="hidden grid-cols-[minmax(220px,1fr)_140px_140px_120px_120px_120px] gap-3 border-b border-[var(--ft-border)] px-4 py-2 font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)] xl:grid">
               <div>Campaign</div>
               <div>Status</div>
               <div>Platform</div>
@@ -275,9 +265,11 @@ export default function CampaignAnalyticsPage() {
               </div>
             ) : campaigns.length === 0 ? (
               <div className="p-4">
-                <EmptyState icon={BarChart3} title="No campaign breakdown">
-                  Campaign-level results will appear once our team publishes report-ready metrics.
-                </EmptyState>
+                <EmptyState
+                  copy="Campaign-level results will appear once our team publishes report-ready metrics."
+                  icon={BarChart3}
+                  title="No campaign breakdown"
+                />
               </div>
             ) : (
               campaigns.map((campaign) => (
@@ -301,10 +293,7 @@ export default function CampaignAnalyticsPage() {
                   <div className="font-mono text-sm text-[var(--ft-text-primary)]">
                     {formatCampaignMoney(campaign.budget)}
                   </div>
-                  <Link
-                    className={`${secondaryLinkButtonClass} h-9 px-3`}
-                    href={`/os/campaigns/${campaign.id}`}
-                  >
+                  <Link className={`${secondaryLinkButtonClass} h-9 px-3`} href={`/os/campaigns/${campaign.id}`}>
                     <Eye className="size-4 stroke-[1.5]" />
                     View brief
                   </Link>
@@ -326,10 +315,7 @@ export default function CampaignAnalyticsPage() {
             </div>
             <div className="mt-4 grid gap-3">
               {platform.aiInsights.items.map((item) => (
-                <div
-                  className="rounded-[var(--radius-md)] border border-[var(--ft-border)] p-3"
-                  key={item.id}
-                >
+                <div className="rounded-[var(--radius-md)] border border-[var(--ft-border)] p-3" key={item.id}>
                   <div className="font-medium text-[var(--ft-text-primary)]">{item.label}</div>
                   {item.reasons ? (
                     <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">

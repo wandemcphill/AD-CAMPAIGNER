@@ -3,21 +3,12 @@
 import { ArrowLeft, RefreshCw, ReceiptText } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  Badge,
-  Button,
-  EmptyState,
-  Panel,
-  SummaryStatStrip
-} from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip } from "@fliptrybe/ui";
 import type { CampaignBudgetSummary, CampaignLedgerEntry } from "@fliptrybe/types";
 
+import { formatCampaignMoney, formatDateTime, loadCampaignFinancialData } from "../../../../campaigns/api";
 import {
-  formatCampaignMoney,
-  formatDateTime,
-  loadCampaignFinancialData
-} from "../../../../campaigns/api";
-import {
+  EmptyState,
   ErrorNotice,
   LoadingBlock,
   PageHeader,
@@ -115,7 +106,7 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
             <div className="border-b border-[var(--ft-border)] p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-2xl">
-                  <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                  <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     Ledger summary
                   </div>
                   <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
@@ -131,18 +122,9 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
             <div className="p-4">
               <SummaryStatStrip
                 items={[
-                  {
-                    label: "total budget",
-                    value: formatCampaignMoney(state.budgetSummary.totalBudget)
-                  },
-                  {
-                    label: "funds used",
-                    value: formatCampaignMoney(state.budgetSummary.fundsUsed)
-                  },
-                  {
-                    label: "remaining",
-                    value: formatCampaignMoney(state.budgetSummary.remainingBalance)
-                  },
+                  { label: "total budget", value: formatCampaignMoney(state.budgetSummary.totalBudget) },
+                  { label: "funds used", value: formatCampaignMoney(state.budgetSummary.fundsUsed) },
+                  { label: "remaining", value: formatCampaignMoney(state.budgetSummary.remainingBalance) },
                   { label: "pending", value: formatCampaignMoney(state.budgetSummary.pendingSpend) }
                 ]}
               />
@@ -154,9 +136,7 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
           <div className="border-b border-[var(--ft-border)] p-5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
-                  Ledger entries
-                </h2>
+                <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Ledger entries</h2>
                 <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                   {state.loading ? "Loading entries..." : `${state.ledger.length} entries`}
                 </p>
@@ -177,18 +157,16 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
                     Back to campaign
                   </Link>
                 }
+                copy="No wallet funding, invoice payment, budget allocation, spend, refund, or adjustment has been recorded yet."
                 icon={ReceiptText}
                 title="No financial entries"
-              >
-                No wallet funding, invoice payment, budget allocation, spend, refund, or adjustment
-                has been recorded yet.
-              </EmptyState>
+              />
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-[var(--ft-border)] text-left text-sm">
                 <thead className="bg-[var(--ft-bg-muted)]">
-                  <tr className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                  <tr className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                     <th className="px-4 py-3 font-medium">Date</th>
                     <th className="px-4 py-3 font-medium">Action</th>
                     <th className="px-4 py-3 font-medium">Amount</th>
@@ -200,19 +178,15 @@ export function CampaignFinancialHistoryClient({ campaignId }: { campaignId: str
                 <tbody className="divide-y divide-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
                   {state.ledger.map((entry) => (
                     <tr key={entry.id}>
-                      <td className="px-4 py-4 whitespace-nowrap text-[var(--ft-text-secondary)]">
+                      <td className="whitespace-nowrap px-4 py-4 text-[var(--ft-text-secondary)]">
                         {formatDateTime(entry.occurredAt)}
                       </td>
-                      <td className="min-w-[220px] px-4 py-4 text-[var(--ft-text-primary)]">
-                        {actionLabel(entry)}
-                      </td>
-                      <td className={`px-4 py-4 font-mono whitespace-nowrap ${amountTone(entry)}`}>
+                      <td className="min-w-[220px] px-4 py-4 text-[var(--ft-text-primary)]">{actionLabel(entry)}</td>
+                      <td className={`whitespace-nowrap px-4 py-4 font-mono ${amountTone(entry)}`}>
                         {signedAmount(entry)}
                       </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-[var(--ft-text-secondary)]">
-                        {entry.category}
-                      </td>
-                      <td className="px-4 py-4 whitespace-nowrap text-[var(--ft-text-secondary)]">
+                      <td className="whitespace-nowrap px-4 py-4 text-[var(--ft-text-secondary)]">{entry.category}</td>
+                      <td className="whitespace-nowrap px-4 py-4 text-[var(--ft-text-secondary)]">
                         {operatorLabel(entry)}
                       </td>
                       <td className="min-w-[240px] px-4 py-4 text-[var(--ft-text-secondary)]">

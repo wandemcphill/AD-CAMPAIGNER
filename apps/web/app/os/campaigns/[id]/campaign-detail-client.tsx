@@ -28,7 +28,6 @@ import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
-  EmptyState,
   FulfillmentStrip,
   Panel,
   PlatformChip,
@@ -38,12 +37,7 @@ import {
   TimelineEvent,
   campaignStatusMeta
 } from "@fliptrybe/ui";
-import type {
-  Campaign,
-  CampaignBudgetSummary,
-  CampaignLedgerEntry,
-  CampaignSpendBreakdown
-} from "@fliptrybe/types";
+import type { Campaign, CampaignBudgetSummary, CampaignLedgerEntry, CampaignSpendBreakdown } from "@fliptrybe/types";
 
 import {
   addCampaignNote,
@@ -73,6 +67,7 @@ import {
   type CampaignPublishedReport
 } from "../../../campaigns/api";
 import {
+  EmptyState,
   ErrorNotice,
   Field,
   LoadingBlock,
@@ -81,11 +76,7 @@ import {
   linkButtonClass,
   secondaryLinkButtonClass
 } from "../../../campaigns/components";
-import {
-  destinationLabels,
-  objectiveLabels,
-  type CampaignAnalyticsOverview
-} from "../../../campaigns/data";
+import { destinationLabels, objectiveLabels, type CampaignAnalyticsOverview } from "../../../campaigns/data";
 import { useCampaignDashboardData } from "../../../campaigns/use-campaign-dashboard-data";
 import Link from "next/link";
 
@@ -108,8 +99,7 @@ const clientStatusCopy: Record<string, { headline: string; detail: string }> = {
   },
   CHANGES_REQUESTED: {
     headline: "Changes Requested - see your team's notes below",
-    detail:
-      "Reply with the requested details or upload revised creative assets before review continues."
+    detail: "Reply with the requested details or upload revised creative assets before review continues."
   },
   APPROVED: {
     headline: "Plan Ready - being prepared for launch",
@@ -145,8 +135,7 @@ const clientStatusCopy: Record<string, { headline: string; detail: string }> = {
   },
   CANCELLED: {
     headline: "Cancelled",
-    detail:
-      "Any unspent budget will be released back to your wallet according to the campaign terms."
+    detail: "Any unspent budget will be released back to your wallet according to the campaign terms."
   },
   FAILED: {
     headline: "Something went wrong - we've flagged it",
@@ -207,13 +196,7 @@ function processIndex(status: string) {
   if (status === "ACTIVE" || status === "RUNNING") return 3;
   if (status === "CREATIVE_IN_PROGRESS" || status === "IN_PRODUCTION") return 2;
   if (status === "APPROVED" || status === "PLAN_SENT" || status === "QUEUED") return 2;
-  if (
-    status === "PENDING_REVIEW" ||
-    status === "IN_REVIEW" ||
-    status === "CHANGES_REQUESTED" ||
-    status === "REJECTED"
-  )
-    return 1;
+  if (status === "PENDING_REVIEW" || status === "IN_REVIEW" || status === "CHANGES_REQUESTED" || status === "REJECTED") return 1;
   return 0;
 }
 
@@ -243,25 +226,15 @@ function statusCopy(campaign: Campaign) {
 
 function primaryActionHelper(status: string) {
   if (status === "DRAFT") return "Complete the brief when you are ready for team review.";
-  if (status === "CHANGES_REQUESTED")
-    return "The fastest next step is to review the team note and upload or edit the missing detail.";
-  if (status === "APPROVED")
-    return "Your plan is approved. Check funding details while the team prepares the launch handoff.";
+  if (status === "CHANGES_REQUESTED") return "The fastest next step is to review the team note and upload or edit the missing detail.";
+  if (status === "APPROVED") return "Your plan is approved. Check funding details while the team prepares the launch handoff.";
   if (status === "CREATIVE_IN_PROGRESS" || status === "QUEUED") {
     return "The Fliptrybe team is handling setup. The next visible update will be launch proof or a report milestone.";
   }
-  if (status === "ACTIVE" || status === "RUNNING")
-    return "Monitor performance while the team updates spend, proof, and pacing notes.";
-  if (status === "COMPLETED")
-    return "Review the final results and keep this record for follow-up planning.";
-  if (status === "PENDING_REVIEW")
-    return "Review is underway. You do not need to take action unless the team requests changes.";
-  if (
-    status === "REJECTED" ||
-    status === "FAILED" ||
-    status === "CANCELLED" ||
-    status === "PAUSED"
-  ) {
+  if (status === "ACTIVE" || status === "RUNNING") return "Monitor performance while the team updates spend, proof, and pacing notes.";
+  if (status === "COMPLETED") return "Review the final results and keep this record for follow-up planning.";
+  if (status === "PENDING_REVIEW") return "Review is underway. You do not need to take action unless the team requests changes.";
+  if (status === "REJECTED" || status === "FAILED" || status === "CANCELLED" || status === "PAUSED") {
     return "Check the activity rail before resubmitting, funding, or planning a replacement campaign.";
   }
 
@@ -320,10 +293,7 @@ function analyticsSpendMinor(analytics: CampaignAnalyticsOverview | null) {
 }
 
 function campaignMetrics(campaign: Campaign, analytics: CampaignAnalyticsOverview | null) {
-  const hasTeamResults =
-    campaign.status === "ACTIVE" ||
-    campaign.status === "RUNNING" ||
-    campaign.status === "COMPLETED";
+  const hasTeamResults = campaign.status === "ACTIVE" || campaign.status === "RUNNING" || campaign.status === "COMPLETED";
   const impressions = hasTeamResults ? analyticsMetric(analytics, "impressions") : 0;
   const clicks = hasTeamResults ? analyticsMetric(analytics, "clicks") : 0;
   const spendMinor = hasTeamResults ? analyticsSpendMinor(analytics) : 0;
@@ -332,9 +302,7 @@ function campaignMetrics(campaign: Campaign, analytics: CampaignAnalyticsOvervie
   return [
     {
       detail:
-        impressions > 0
-          ? `as of ${formatDateOnly(campaign.updatedAt)} - updated by team`
-          : "awaiting launch",
+        impressions > 0 ? `as of ${formatDateOnly(campaign.updatedAt)} - updated by team` : "awaiting launch",
       label: "Impressions",
       value: formatCompact(impressions)
     },
@@ -382,10 +350,7 @@ function budgetProgress(summary: CampaignBudgetSummary) {
     return 0;
   }
 
-  return Math.min(
-    100,
-    Math.round((summary.fundsUsed.amountMinor / summary.totalBudget.amountMinor) * 100)
-  );
+  return Math.min(100, Math.round((summary.fundsUsed.amountMinor / summary.totalBudget.amountMinor) * 100));
 }
 
 // payment:manage-gated — OWNER/ADMIN/FINANCE roles. No frontend role check,
@@ -416,11 +381,7 @@ function CampaignFinanceOpsPanel({
   const [holdOverrides, setHoldOverrides] = useState<Record<string, CampaignBudgetHold>>({});
 
   const holdIds = Array.from(
-    new Set(
-      financial.ledger
-        .map((entry) => entry.campaignBudgetHoldId)
-        .filter((id): id is string => Boolean(id))
-    )
+    new Set(financial.ledger.map((entry) => entry.campaignBudgetHoldId).filter((id): id is string => Boolean(id)))
   );
 
   async function handleCreateInvoice() {
@@ -432,9 +393,7 @@ function CampaignFinanceOpsPanel({
       const invoice = await createCampaignInvoice(campaign.id, {
         ...(amountMinor ? { subtotalMinor: amountMinor } : {})
       });
-      setInvoiceSuccess(
-        `Invoice ${invoice.number} issued for ${formatCampaignMoney({ amountMinor: invoice.totalMinor, currency: invoice.currency })}.`
-      );
+      setInvoiceSuccess(`Invoice ${invoice.number} issued for ${formatCampaignMoney({ amountMinor: invoice.totalMinor, currency: invoice.currency })}.`);
       setInvoiceAmount("");
       await onChanged();
     } catch (caught) {
@@ -483,7 +442,7 @@ function CampaignFinanceOpsPanel({
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Finance ops
         </div>
         <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
@@ -533,18 +492,13 @@ function CampaignFinanceOpsPanel({
               value={holdReason}
             />
           </div>
-          <Button
-            disabled={creatingHold}
-            onClick={() => void handleCreateHold()}
-            type="button"
-            variant="secondary"
-          >
+          <Button disabled={creatingHold} onClick={() => void handleCreateHold()} type="button" variant="secondary">
             {creatingHold ? "Creating..." : "Create hold"}
           </Button>
 
           {holdIds.length > 0 ? (
             <div className="mt-2 grid gap-2">
-              <h4 className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+              <h4 className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                 Existing holds
               </h4>
               {holdIds.map((holdId) => {
@@ -554,15 +508,13 @@ function CampaignFinanceOpsPanel({
                     className="flex items-center justify-between gap-2 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-2 text-xs"
                     key={holdId}
                   >
-                    <code className="truncate font-mono text-[var(--ft-text-secondary)]">
-                      {holdId}
-                    </code>
+                    <code className="truncate font-mono text-[var(--ft-text-secondary)]">{holdId}</code>
                     <span className="shrink-0 text-[var(--ft-text-muted)]">
                       {override ? override.status.toLowerCase() : ""}
                     </span>
                     <div className="flex shrink-0 gap-1.5">
                       <Button
-                        className="text-micro h-7 px-2"
+                        className="h-7 px-2 text-micro"
                         disabled={holdBusyId !== undefined}
                         onClick={() => void handleHoldAction(holdId, "capture")}
                         type="button"
@@ -571,7 +523,7 @@ function CampaignFinanceOpsPanel({
                         {holdBusyId === holdId ? "..." : "Capture"}
                       </Button>
                       <Button
-                        className="text-micro h-7 px-2"
+                        className="h-7 px-2 text-micro"
                         disabled={holdBusyId !== undefined}
                         onClick={() => void handleHoldAction(holdId, "release")}
                         type="button"
@@ -602,26 +554,10 @@ function CampaignBudgetTransparency({
   const summary = financial.budgetSummary ?? fallbackBudgetSummary(campaign);
   const timeline = financial.spendBreakdown?.timeline.slice(-4).reverse() ?? [];
   const cards = [
-    {
-      label: "Total Budget",
-      value: formatCampaignMoney(summary.totalBudget),
-      detail: "Approved campaign budget"
-    },
-    {
-      label: "Funds Used",
-      value: formatCampaignMoney(summary.fundsUsed),
-      detail: "Recorded spend and fees"
-    },
-    {
-      label: "Remaining Balance",
-      value: formatCampaignMoney(summary.remainingBalance),
-      detail: "Budget not used or refunded"
-    },
-    {
-      label: "Pending Spend",
-      value: formatCampaignMoney(summary.pendingSpend),
-      detail: "Held for campaign delivery"
-    }
+    { label: "Total Budget", value: formatCampaignMoney(summary.totalBudget), detail: "Approved campaign budget" },
+    { label: "Funds Used", value: formatCampaignMoney(summary.fundsUsed), detail: "Recorded spend and fees" },
+    { label: "Remaining Balance", value: formatCampaignMoney(summary.remainingBalance), detail: "Budget not used or refunded" },
+    { label: "Pending Spend", value: formatCampaignMoney(summary.pendingSpend), detail: "Held for campaign delivery" }
   ];
 
   return (
@@ -629,45 +565,33 @@ function CampaignBudgetTransparency({
       <div className="border-b border-[var(--ft-border)] p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Budget
             </div>
-            <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
-              Campaign spend transparency
-            </h2>
+            <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Campaign spend transparency</h2>
             <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
               {financial.loading
                 ? "Loading campaign financials..."
-                : (financial.error ?? `Updated ${formatDateTime(summary.updatedAt)}`)}
+                : financial.error ?? `Updated ${formatDateTime(summary.updatedAt)}`}
             </p>
           </div>
-          <Link
-            className={secondaryLinkButtonClass}
-            href={`/os/campaigns/${campaign.id}/financial-history`}
-          >
+          <Link className={secondaryLinkButtonClass} href={`/os/campaigns/${campaign.id}/financial-history`}>
             <ReceiptText className="size-4" />
             Financial History
           </Link>
         </div>
         <div className="mt-5 h-2 rounded-sm bg-[var(--ft-bg-muted)]">
-          <div
-            className="h-2 rounded-sm bg-[var(--ft-accent)]"
-            style={{ width: `${budgetProgress(summary)}%` }}
-          />
+          <div className="h-2 rounded-sm bg-[var(--ft-accent)]" style={{ width: `${budgetProgress(summary)}%` }} />
         </div>
       </div>
       <div className="grid gap-px bg-[var(--ft-border)] md:grid-cols-2 xl:grid-cols-4">
         {cards.map((item) => (
           <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
-            <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               {item.label}
             </div>
-            <div className="mt-2 font-mono text-2xl font-medium text-[var(--ft-text-primary)]">
-              {item.value}
-            </div>
-            <div className="mt-2 text-xs leading-5 text-[var(--ft-text-secondary)]">
-              {item.detail}
-            </div>
+            <div className="mt-2 font-mono text-2xl font-medium text-[var(--ft-text-primary)]">{item.value}</div>
+            <div className="mt-2 text-xs leading-5 text-[var(--ft-text-secondary)]">{item.detail}</div>
           </div>
         ))}
       </div>
@@ -680,16 +604,12 @@ function CampaignBudgetTransparency({
                 <div key={category.type}>
                   <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="text-[var(--ft-text-secondary)]">{category.label}</span>
-                    <span className="font-mono text-[var(--ft-text-primary)]">
-                      {formatCampaignMoney(category.amount)}
-                    </span>
+                    <span className="font-mono text-[var(--ft-text-primary)]">{formatCampaignMoney(category.amount)}</span>
                   </div>
                   <div className="mt-2 h-1.5 rounded-sm bg-[var(--ft-bg-muted)]">
                     <div
                       className="h-1.5 rounded-sm bg-[var(--ft-accent)]"
-                      style={{
-                        width: `${Math.min(100, Math.round(category.percentageBps / 100))}%`
-                      }}
+                      style={{ width: `${Math.min(100, Math.round(category.percentageBps / 100))}%` }}
                     />
                   </div>
                 </div>
@@ -712,13 +632,9 @@ function CampaignBudgetTransparency({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-sm text-[var(--ft-text-primary)]">{item.label}</span>
-                    <span className="font-mono text-sm text-[var(--ft-text-primary)]">
-                      {formatCampaignMoney(item.amount)}
-                    </span>
+                    <span className="font-mono text-sm text-[var(--ft-text-primary)]">{formatCampaignMoney(item.amount)}</span>
                   </div>
-                  <div className="mt-1 text-xs text-[var(--ft-text-secondary)]">
-                    {formatDateTime(item.date)}
-                  </div>
+                  <div className="mt-1 text-xs text-[var(--ft-text-secondary)]">{formatDateTime(item.date)}</div>
                 </div>
               ))
             ) : (
@@ -772,18 +688,13 @@ function ClientCampaignControls({
   const [pendingAction, setPendingAction] = useState<string>();
   const [message, setMessage] = useState<string>();
   const [actionError, setActionError] = useState<string>();
-  const summary =
-    financial.budgetSummary ?? campaign.budgetSummary ?? fallbackBudgetSummary(campaign);
+  const summary = financial.budgetSummary ?? campaign.budgetSummary ?? fallbackBudgetSummary(campaign);
   const remainingBudget = campaign.remainingBudget ?? summary.remainingBalance;
   const assignedOperator = campaign.assignedOperator?.name ?? "Unassigned";
   const note = controlNote.trim();
   const budgetDeltaMinor = amountToMinor(budgetDelta);
 
-  async function runAction(
-    action: string,
-    command: () => Promise<Campaign>,
-    successMessage: string
-  ) {
+  async function runAction(action: string, command: () => Promise<Campaign>, successMessage: string) {
     setPendingAction(action);
     setActionError(undefined);
     setMessage(undefined);
@@ -805,12 +716,10 @@ function ClientCampaignControls({
       <div className="border-b border-[var(--ft-border)] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Controls
             </div>
-            <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
-              Campaign controls
-            </h2>
+            <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Campaign controls</h2>
           </div>
           <StatusBadge status={campaign.status} />
         </div>
@@ -823,12 +732,10 @@ function ClientCampaignControls({
           { label: "Remaining Budget", value: formatCampaignMoney(remainingBudget) }
         ].map((item) => (
           <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
-            <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               {item.label}
             </div>
-            <div className="mt-2 text-sm font-semibold break-words text-[var(--ft-text-primary)]">
-              {item.value}
-            </div>
+            <div className="mt-2 break-words text-sm font-semibold text-[var(--ft-text-primary)]">{item.value}</div>
           </div>
         ))}
       </div>
@@ -836,7 +743,7 @@ function ClientCampaignControls({
       <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="grid gap-3">
           <label className="grid gap-1">
-            <span className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <span className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Action Note
             </span>
             <textarea
@@ -882,11 +789,7 @@ function ClientCampaignControls({
             </Button>
             <Button
               className="h-auto min-h-10 px-3 py-2 text-xs leading-5 sm:text-sm"
-              disabled={
-                !canRequestCampaignChanges(campaign.status) ||
-                pendingAction !== undefined ||
-                note.length === 0
-              }
+              disabled={!canRequestCampaignChanges(campaign.status) || pendingAction !== undefined || note.length === 0}
               onClick={() =>
                 void runAction(
                   "request_changes",
@@ -921,7 +824,7 @@ function ClientCampaignControls({
 
         <div className="grid content-start gap-3">
           <label className="grid gap-1">
-            <span className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <span className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               Budget Change
             </span>
             <input
@@ -996,8 +899,7 @@ function creativeFormatLabel(campaign: Campaign) {
 
   if (destination.includes("LIVE")) return "Live campaign proof";
   if (destination.includes("REEL") || destination.includes("TIKTOK")) return "9:16 video creative";
-  if (destination.includes("FACEBOOK") || destination.includes("INSTAGRAM"))
-    return "Feed and story creative";
+  if (destination.includes("FACEBOOK") || destination.includes("INSTAGRAM")) return "Feed and story creative";
   return "Campaign creative";
 }
 
@@ -1039,12 +941,7 @@ function buildActivityEvents(campaign: Campaign): ActivityEvent[] {
     });
   }
 
-  if (
-    campaign.approvedAt ||
-    ["APPROVED", "CREATIVE_IN_PROGRESS", "QUEUED", "ACTIVE", "RUNNING", "COMPLETED"].includes(
-      campaign.status
-    )
-  ) {
+  if (campaign.approvedAt || ["APPROVED", "CREATIVE_IN_PROGRESS", "QUEUED", "ACTIVE", "RUNNING", "COMPLETED"].includes(campaign.status)) {
     events.push({
       detail: "The brief cleared review and moved into launch preparation.",
       icon: CheckCircle2,
@@ -1055,9 +952,7 @@ function buildActivityEvents(campaign: Campaign): ActivityEvent[] {
     });
   }
 
-  if (
-    ["CREATIVE_IN_PROGRESS", "QUEUED", "ACTIVE", "RUNNING", "COMPLETED"].includes(campaign.status)
-  ) {
+  if (["CREATIVE_IN_PROGRESS", "QUEUED", "ACTIVE", "RUNNING", "COMPLETED"].includes(campaign.status)) {
     events.push({
       detail: "Assets and placement details are being checked before launch.",
       fileChip: creativeFormatLabel(campaign).toUpperCase(),
@@ -1069,11 +964,7 @@ function buildActivityEvents(campaign: Campaign): ActivityEvent[] {
     });
   }
 
-  if (
-    campaign.status === "ACTIVE" ||
-    campaign.status === "RUNNING" ||
-    campaign.status === "COMPLETED"
-  ) {
+  if (campaign.status === "ACTIVE" || campaign.status === "RUNNING" || campaign.status === "COMPLETED") {
     events.push({
       detail: `${formatCampaignMoney(campaign.budget)} is allocated from your wallet for this campaign.`,
       icon: WalletCards,
@@ -1163,12 +1054,10 @@ function CampaignNotesPanel({
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Notes
         </div>
-        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
-          Messages with your team
-        </h2>
+        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Messages with your team</h2>
         <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
           Anything you add here is visible to the Fliptrybe ops team working on this campaign.
         </p>
@@ -1188,9 +1077,7 @@ function CampaignNotesPanel({
               key={note.id}
             >
               <p className="text-sm leading-6 text-[var(--ft-text-primary)]">{note.body}</p>
-              <div className="mt-2 text-xs text-[var(--ft-text-muted)]">
-                {formatDateTime(note.createdAt)}
-              </div>
+              <div className="mt-2 text-xs text-[var(--ft-text-muted)]">{formatDateTime(note.createdAt)}</div>
             </div>
           ))
         )}
@@ -1220,13 +1107,7 @@ function CampaignNotesPanel({
   );
 }
 
-function CampaignReportsPanel({
-  loading,
-  reports
-}: {
-  loading: boolean;
-  reports: CampaignPublishedReport[];
-}) {
+function CampaignReportsPanel({ loading, reports }: { loading: boolean; reports: CampaignPublishedReport[] }) {
   if (!loading && reports.length === 0) {
     return null;
   }
@@ -1234,12 +1115,10 @@ function CampaignReportsPanel({
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Reports
         </div>
-        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
-          Published reports
-        </h2>
+        <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Published reports</h2>
       </div>
       <div className="grid gap-3 p-5">
         {loading ? (
@@ -1257,9 +1136,7 @@ function CampaignReportsPanel({
                 <Badge tone="neutral">Published {formatDateTime(report.publishedAt)}</Badge>
               </div>
               {report.summary ? (
-                <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                  {report.summary}
-                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">{report.summary}</p>
               ) : null}
               <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
@@ -1268,29 +1145,21 @@ function CampaignReportsPanel({
                   { label: "Conversions", value: formatCompact(report.conversions) },
                   {
                     label: "Spend",
-                    value: formatCampaignMoney({
-                      amountMinor: report.spendMinor,
-                      currency: report.currency
-                    })
+                    value: formatCampaignMoney({ amountMinor: report.spendMinor, currency: report.currency })
                   }
                 ].map((stat) => (
                   <div key={stat.label}>
-                    <div className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                    <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       {stat.label}
                     </div>
-                    <div className="mt-1 font-mono text-sm text-[var(--ft-text-primary)]">
-                      {stat.value}
-                    </div>
+                    <div className="mt-1 font-mono text-sm text-[var(--ft-text-primary)]">{stat.value}</div>
                   </div>
                 ))}
               </div>
               {report.screenshots.length > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {report.screenshots.map((screenshot) => {
-                    const url =
-                      screenshot.mediaAsset?.secureUrl ??
-                      screenshot.mediaAsset?.url ??
-                      screenshot.sourceUrl;
+                    const url = screenshot.mediaAsset?.secureUrl ?? screenshot.mediaAsset?.url ?? screenshot.sourceUrl;
                     return url ? (
                       <img
                         alt="Campaign proof screenshot"
@@ -1316,19 +1185,12 @@ function CampaignOutcomePanel({ outcome }: { outcome: CampaignOutcome }) {
   }
 
   const items = [
-    outcome.ordersCount !== null
-      ? { label: "Orders", value: formatCompact(outcome.ordersCount) }
-      : null,
-    outcome.messagesCount !== null
-      ? { label: "Messages", value: formatCompact(outcome.messagesCount) }
-      : null,
+    outcome.ordersCount !== null ? { label: "Orders", value: formatCompact(outcome.ordersCount) } : null,
+    outcome.messagesCount !== null ? { label: "Messages", value: formatCompact(outcome.messagesCount) } : null,
     outcome.estRevenueMinor !== null
       ? {
           label: "Est. revenue",
-          value: formatCampaignMoney({
-            amountMinor: outcome.estRevenueMinor,
-            currency: outcome.currency
-          })
+          value: formatCampaignMoney({ amountMinor: outcome.estRevenueMinor, currency: outcome.currency })
         }
       : null
   ].filter((item): item is { label: string; value: string } => item !== null);
@@ -1336,7 +1198,7 @@ function CampaignOutcomePanel({ outcome }: { outcome: CampaignOutcome }) {
   return (
     <Panel className="overflow-hidden">
       <div className="border-b border-[var(--ft-border)] p-5">
-        <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+        <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Outcome
         </div>
         <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Reported results</h2>
@@ -1346,12 +1208,10 @@ function CampaignOutcomePanel({ outcome }: { outcome: CampaignOutcome }) {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {items.map((item) => (
               <div key={item.label}>
-                <div className="text-micro font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                   {item.label}
                 </div>
-                <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">
-                  {item.value}
-                </div>
+                <div className="mt-1 font-mono text-lg text-[var(--ft-text-primary)]">{item.value}</div>
               </div>
             ))}
           </div>
@@ -1374,9 +1234,7 @@ function CampaignOutcomePanel({ outcome }: { outcome: CampaignOutcome }) {
           <p className="text-sm leading-6 text-[var(--ft-text-secondary)]">{outcome.notes}</p>
         ) : null}
         {outcome.capturedAt ? (
-          <div className="text-xs text-[var(--ft-text-muted)]">
-            Captured {formatDateTime(outcome.capturedAt)}
-          </div>
+          <div className="text-xs text-[var(--ft-text-muted)]">Captured {formatDateTime(outcome.capturedAt)}</div>
         ) : null}
       </div>
     </Panel>
@@ -1400,14 +1258,12 @@ function FlightBar({ campaign }: { campaign: Campaign }) {
     <Panel className="p-5">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+          <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             Flight
           </div>
           <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">Launch window</h2>
         </div>
-        <div className="font-mono text-xs text-[var(--ft-text-muted)]">
-          {campaign.schedule.timezone}
-        </div>
+        <div className="font-mono text-xs text-[var(--ft-text-muted)]">{campaign.schedule.timezone}</div>
       </div>
       <div className="mt-5">
         <div className="flex items-center justify-between gap-3 font-mono text-xs text-[var(--ft-text-secondary)]">
@@ -1415,10 +1271,7 @@ function FlightBar({ campaign }: { campaign: Campaign }) {
           <span>{flight.endLabel}</span>
         </div>
         <div className="mt-3 h-2 rounded-sm bg-[var(--ft-bg-muted)]">
-          <div
-            className="h-2 rounded-sm bg-[var(--ft-accent)]"
-            style={{ width: `${flight.progress}%` }}
-          />
+          <div className="h-2 rounded-sm bg-[var(--ft-accent)]" style={{ width: `${flight.progress}%` }} />
         </div>
       </div>
     </Panel>
@@ -1436,9 +1289,11 @@ function ActivityTimeline({ campaign }: { campaign: Campaign }) {
       </div>
       <div className="p-5">
         {events.length === 0 ? (
-          <EmptyState icon={Clock} title="Waiting to begin">
-            Your team will log updates here as soon as review starts.
-          </EmptyState>
+          <EmptyState
+            copy="Your team will log updates here as soon as review starts."
+            icon={Clock}
+            title="Waiting to begin"
+          />
         ) : (
           <div className="grid gap-5">
             {events.map((event) => (
@@ -1667,11 +1522,10 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
                 View campaigns
               </Link>
             }
+            copy="This campaign was not found in the active workspace."
             icon={CalendarClock}
             title="Campaign not found"
-          >
-            This campaign was not found in the active workspace.
-          </EmptyState>
+          />
         </section>
       ) : (
         <section className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
@@ -1679,15 +1533,14 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
             <section className="overflow-hidden rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--ft-accent)_14%,transparent),transparent_38%),linear-gradient(180deg,var(--ft-bg-surface),var(--ft-bg-muted))] p-5 shadow-[var(--shadow-sm)]">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                 <div className="max-w-2xl">
-                  <div className="text-micro inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono tracking-[0.18em] text-[var(--ft-text-muted)] uppercase">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-base)]/60 px-3 py-1 font-mono text-micro uppercase tracking-[0.18em] text-[var(--ft-text-muted)]">
                     Campaign record
                   </div>
                   <h2 className="mt-3 text-2xl font-semibold tracking-normal text-[var(--ft-text-primary)] sm:text-3xl">
                     {campaign.name}
                   </h2>
                   <p className="mt-2 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)]">
-                    One view for review state, delivery progress, spend transparency, and the latest
-                    team actions.
+                    One view for review state, delivery progress, spend transparency, and the latest team actions.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -1700,10 +1553,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
                 <SummaryStatStrip
                   items={[
                     { label: "budget", value: formatCampaignMoney(campaign.budget) },
-                    {
-                      label: "current spend",
-                      value: formatCompact(analyticsMetric(analytics, "impressions"))
-                    },
+                    { label: "current spend", value: formatCompact(analyticsMetric(analytics, "impressions")) },
                     { label: "launch window", value: flightWindow(campaign).startLabel }
                   ]}
                 />
@@ -1737,15 +1587,13 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
               <div className="grid gap-px bg-[var(--ft-border)] md:grid-cols-2 xl:grid-cols-4">
                 {campaignMetrics(campaign, analytics).map((item) => (
                   <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
-                    <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                    <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       {item.label}
                     </div>
                     <div className="mt-2 font-mono text-2xl font-medium text-[var(--ft-text-primary)]">
                       {item.value}
                     </div>
-                    <div className="mt-2 text-xs leading-5 text-[var(--ft-text-secondary)]">
-                      {item.detail}
-                    </div>
+                    <div className="mt-2 text-xs leading-5 text-[var(--ft-text-secondary)]">{item.detail}</div>
                   </div>
                 ))}
               </div>
@@ -1761,11 +1609,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
 
             <CampaignBudgetTransparency campaign={campaign} financial={financial} />
 
-            <CampaignFinanceOpsPanel
-              campaign={campaign}
-              financial={financial}
-              onChanged={refreshAfterControl}
-            />
+            <CampaignFinanceOpsPanel campaign={campaign} financial={financial} onChanged={refreshAfterControl} />
 
             <CampaignOutcomePanel outcome={extras.outcome} />
 
@@ -1775,16 +1619,14 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
               campaignId={campaign.id}
               loading={extras.loading}
               notes={extras.notes}
-              onAdded={(note) =>
-                setExtras((current) => ({ ...current, notes: [note, ...current.notes] }))
-              }
+              onAdded={(note) => setExtras((current) => ({ ...current, notes: [note, ...current.notes] }))}
             />
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
               <Panel className="p-5">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                    <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       Creative
                     </div>
                     <h2 className="mt-1 text-lg font-medium text-[var(--ft-text-primary)]">
@@ -1804,7 +1646,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
                         <div className="mx-auto grid size-10 place-items-center rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]">
                           <FileText className="size-5 stroke-[1.5] text-[var(--ft-text-muted)]" />
                         </div>
-                        <div className="mt-3 font-mono text-xs tracking-[0.04em] text-[var(--ft-text-secondary)] uppercase">
+                        <div className="mt-3 font-mono text-xs uppercase tracking-[0.04em] text-[var(--ft-text-secondary)]">
                           {creativeFormatLabel(campaign)}
                         </div>
                         <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--ft-text-muted)]">
@@ -1824,11 +1666,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
                         >
                           <div className="flex aspect-video items-center justify-center bg-[var(--ft-bg-surface)]">
                             {url ? (
-                              <img
-                                alt={asset.name}
-                                className="h-full w-full object-cover"
-                                src={url}
-                              />
+                              <img alt={asset.name} className="h-full w-full object-cover" src={url} />
                             ) : (
                               <ImageOff className="size-6 text-[var(--ft-text-muted)]" />
                             )}
@@ -1869,9 +1707,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
             <Panel className="p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">
-                    Campaign brief
-                  </h2>
+                  <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Campaign brief</h2>
                   <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
                     Managed setup details your team is working from.
                   </p>
@@ -1880,10 +1716,7 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
               </div>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <Field label="Campaign ID" value={campaign.id} />
-                <Field
-                  label="Provider reference"
-                  value={campaign.providerReference ?? "Team setup not started"}
-                />
+                <Field label="Provider reference" value={campaign.providerReference ?? "Team setup not started"} />
                 <Field label="Objective" value={objectiveLabels[campaign.objective]} />
                 <Field label="Budget" value={formatCampaignMoney(campaign.budget)} />
                 <Field label="Destination" value={destinationLabels[campaign.destination.kind]} />
@@ -1894,14 +1727,14 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
                   <LinkIcon className="size-4 text-[var(--ft-text-muted)]" />
                   Destination URL
                 </div>
-                <div className="mt-2 text-sm break-all text-[var(--ft-text-secondary)]">
+                <div className="mt-2 break-all text-sm text-[var(--ft-text-secondary)]">
                   {campaign.destination.url}
                 </div>
               </div>
             </Panel>
 
             <Panel className="border-dashed p-5">
-              <div className="text-micro font-mono font-medium tracking-[0.04em] text-[var(--ft-accent)] uppercase">
+              <div className="font-mono text-micro font-medium uppercase tracking-[0.04em] text-[var(--ft-accent)]">
                 What happens next
               </div>
               <h2 className="mt-2 text-lg font-medium text-[var(--ft-text-primary)]">
@@ -1912,9 +1745,8 @@ export function CampaignDetailClient({ campaignId }: { campaignId: string }) {
                     : "Fliptrybe Ops reviews the brief, confirms assets, then sends the launch plan."}
               </h2>
               <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
-                This is a managed service record. Platform setup, proof screenshots, manual ad
-                links, and report notes are added by the team as the campaign moves through
-                delivery.
+                This is a managed service record. Platform setup, proof screenshots, manual ad links, and report notes
+                are added by the team as the campaign moves through delivery.
               </p>
             </Panel>
           </div>

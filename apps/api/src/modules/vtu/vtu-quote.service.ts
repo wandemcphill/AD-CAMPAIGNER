@@ -65,7 +65,7 @@ export class VtuQuoteService {
       });
       if (sku) {
         minMarginBps = sku.minMarginBps;
-        sellingPriceOverrideMinor = sku.sellingPriceMinor;
+        sellingPriceOverrideMinor = sku.sellingPriceMinor ?? null;
       }
     }
 

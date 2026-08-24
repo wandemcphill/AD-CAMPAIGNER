@@ -6,15 +6,17 @@ import {
   ArrowRight,
   BarChart3,
   CheckCircle2,
+  Database,
   Download,
   FileText,
   MessageSquare,
   Plus,
   UploadCloud,
-  WalletCards
+  WalletCards,
+  type LucideIcon
 } from "lucide-react";
 
-import { Badge, EmptyState, Panel, PlatformChip, StatusBadge, cn } from "@fliptrybe/ui";
+import { Badge, Panel, PlatformChip, StatusBadge, cn } from "@fliptrybe/ui";
 import type { Campaign, Money, Wallet } from "@fliptrybe/types";
 
 import { destinationLabels, objectiveLabels, type ClientDataSource } from "./data";
@@ -70,8 +72,7 @@ export function campaignProgress(status: string) {
   if (status === "ACTIVE" || status === "RUNNING") return 72;
   if (status === "CREATIVE_IN_PROGRESS") return 58;
   if (status === "QUEUED" || status === "APPROVED" || status === "PLAN_SENT") return 44;
-  if (status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW")
-    return 26;
+  if (status === "PENDING_REVIEW" || status === "BRIEF_RECEIVED" || status === "IN_REVIEW") return 26;
   if (status === "CHANGES_REQUESTED") return 18;
 
   return 10;
@@ -92,16 +93,12 @@ function needsAttention(status: string) {
 
 function attentionReason(status: string) {
   if (status === "CHANGES_REQUESTED") return "Add the requested details so review can continue.";
-  if (status === "REJECTED" || status === "FAILED")
-    return "Check the record before funding or relaunching.";
+  if (status === "REJECTED" || status === "FAILED") return "Check the record before funding or relaunching.";
 
   return "Open the campaign to see what changed.";
 }
 
-export function buildRecommendedActions(
-  campaigns: Campaign[],
-  wallet: Wallet | null
-): RecommendedAction[] {
+export function buildRecommendedActions(campaigns: Campaign[], wallet: Wallet | null): RecommendedAction[] {
   const actions: RecommendedAction[] = [];
 
   for (const campaign of campaigns) {
@@ -124,8 +121,7 @@ export function buildRecommendedActions(
   if (activeBudgetMinor > 0 && availableMinor < activeBudgetMinor * 0.2) {
     actions.push({
       cta: "Fund wallet",
-      detail:
-        "Your live campaigns are outspending the funded balance. Top up to avoid a pacing pause.",
+      detail: "Your live campaigns are outspending the funded balance. Top up to avoid a pacing pause.",
       href: "/billing",
       id: "fund-wallet",
       title: "Wallet balance running low",
@@ -147,16 +143,18 @@ export function buildRecommendedActions(
   return actions.sort((a, b) => (a.tone === b.tone ? 0 : a.tone === "urgent" ? -1 : 1)).slice(0, 4);
 }
 
-export function RecommendedActionsPanel({ actions }: { actions: RecommendedAction[] }) {
+export function RecommendedActionsPanel({
+  actions
+}: {
+  actions: RecommendedAction[];
+}) {
   if (actions.length === 0) return null;
 
   return (
     <Panel className="mb-4 overflow-hidden border-l-4 border-l-[var(--ft-accent)] p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-[var(--ft-text-primary)]">
-          Needs your attention
-        </h2>
-        <span className="font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+        <h2 className="text-sm font-semibold text-[var(--ft-text-primary)]">Needs your attention</h2>
+        <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           {actions.length} {actions.length === 1 ? "item" : "items"}
         </span>
       </div>
@@ -174,12 +172,8 @@ export function RecommendedActionsPanel({ actions }: { actions: RecommendedActio
                 <Plus className="mt-0.5 size-4 shrink-0 stroke-[1.5] text-[var(--ft-accent)]" />
               )}
               <div className="min-w-0">
-                <div className="truncate text-sm font-medium text-[var(--ft-text-primary)]">
-                  {action.title}
-                </div>
-                <div className="mt-0.5 text-xs leading-5 text-[var(--ft-text-secondary)]">
-                  {action.detail}
-                </div>
+                <div className="truncate text-sm font-medium text-[var(--ft-text-primary)]">{action.title}</div>
+                <div className="mt-0.5 text-xs leading-5 text-[var(--ft-text-secondary)]">{action.detail}</div>
               </div>
             </div>
             <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-[var(--ft-accent)]">
@@ -222,10 +216,7 @@ function audienceSummary(targetAudience: Campaign["targetAudience"]) {
 
   return Object.entries(targetAudience)
     .filter(([, value]) => value !== undefined && value !== null && value !== "")
-    .map(
-      ([key, value]) =>
-        `${key.replaceAll("_", " ")}: ${Array.isArray(value) ? value.join(", ") : String(value)}`
-    )
+    .map(([key, value]) => `${key.replaceAll("_", " ")}: ${Array.isArray(value) ? value.join(", ") : String(value)}`)
     .join(" / ");
 }
 
@@ -243,8 +234,7 @@ function timelineIndex(status: string) {
   if (status === "ACTIVE" || status === "RUNNING") return 4;
   if (status === "CREATIVE_IN_PROGRESS" || status === "IN_PRODUCTION") return 3;
   if (status === "APPROVED" || status === "PLAN_SENT" || status === "QUEUED") return 2;
-  if (status === "PENDING_REVIEW" || status === "IN_REVIEW" || status === "CHANGES_REQUESTED")
-    return 1;
+  if (status === "PENDING_REVIEW" || status === "IN_REVIEW" || status === "CHANGES_REQUESTED") return 1;
 
   return 0;
 }
@@ -268,10 +258,7 @@ export function StatusTimeline({
           const isCurrent = index === current;
 
           return (
-            <div
-              className="relative grid grid-cols-[20px_1fr] gap-3 md:block md:text-center"
-              key={step}
-            >
+            <div className="relative grid grid-cols-[20px_1fr] gap-3 md:block md:text-center" key={step}>
               <span
                 className={cn(
                   "relative z-10 grid size-5 place-items-center rounded-full border",
@@ -287,27 +274,21 @@ export function StatusTimeline({
               <span
                 aria-hidden="true"
                 className={cn(
-                  "absolute top-5 left-[9px] h-[calc(100%+1rem)] w-px bg-[var(--ft-border)] last:hidden md:top-[10px] md:left-1/2 md:h-px md:w-full",
+                  "absolute left-[9px] top-5 h-[calc(100%+1rem)] w-px bg-[var(--ft-border)] last:hidden md:left-1/2 md:top-[10px] md:h-px md:w-full",
                   index >= timelineSteps.length - 1 ? "hidden" : ""
                 )}
               />
               <span>
                 <span
                   className={cn(
-                    "block font-mono text-[11px] font-medium tracking-[0.04em] uppercase",
-                    index <= current
-                      ? "text-[var(--ft-text-primary)]"
-                      : "text-[var(--ft-text-muted)]"
+                    "block font-mono text-[11px] font-medium uppercase tracking-[0.04em]",
+                    index <= current ? "text-[var(--ft-text-primary)]" : "text-[var(--ft-text-muted)]"
                   )}
                 >
                   {step}
                 </span>
                 <span className="mt-1 block font-mono text-[11px] text-[var(--ft-text-muted)]">
-                  {isCurrent
-                    ? formatDateValue(updatedAt ?? startsAt)
-                    : isCompleted
-                      ? "Complete"
-                      : "Upcoming"}
+                  {isCurrent ? formatDateValue(updatedAt ?? startsAt) : isCompleted ? "Complete" : "Upcoming"}
                 </span>
               </span>
             </div>
@@ -329,9 +310,7 @@ export function BriefSummaryPanel({ campaign }: { campaign: Campaign }) {
             <StatusBadge status={campaign.status} />
             <PlatformChip platform={platform} />
           </div>
-          <h2 className="mt-3 text-xl font-medium text-[var(--ft-text-primary)]">
-            {campaign.name}
-          </h2>
+          <h2 className="mt-3 text-xl font-medium text-[var(--ft-text-primary)]">{campaign.name}</h2>
         </div>
         <FileText className="size-5 shrink-0 stroke-[1.5] text-[var(--ft-accent)]" />
       </div>
@@ -347,7 +326,7 @@ export function BriefSummaryPanel({ campaign }: { campaign: Campaign }) {
       </div>
 
       <div className="border-t border-[var(--ft-border)] p-5">
-        <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+        <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
           Brief
         </div>
         <p className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">
@@ -364,9 +343,7 @@ export function AssetGridEmpty({ action }: { action?: ReactNode }) {
     <div className="grid min-h-60 place-items-center rounded-[var(--radius-md)] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] p-8 text-center">
       <div>
         <UploadCloud className="mx-auto size-8 stroke-[1.5] text-[var(--ft-text-muted)]" />
-        <h3 className="mt-4 text-lg font-medium text-[var(--ft-text-secondary)]">
-          No creative assets uploaded.
-        </h3>
+        <h3 className="mt-4 text-lg font-medium text-[var(--ft-text-secondary)]">No creative assets uploaded.</h3>
         <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--ft-text-muted)]">
           Add images or videos for this campaign when the brief is still editable.
         </p>
@@ -382,16 +359,16 @@ export function NotesPanel() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Team notes</h2>
-          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-            Client-visible updates from the ads desk.
-          </p>
+          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Client-visible updates from the ads desk.</p>
         </div>
         <MessageSquare className="size-5 stroke-[1.5] text-[var(--ft-accent)]" />
       </div>
       <div className="mt-5 border-y border-[var(--ft-border)] py-4">
-        <EmptyState icon={MessageSquare} title="No notes yet">
-          Notes and change requests will appear here once the team starts reviewing this campaign.
-        </EmptyState>
+        <EmptyState
+          copy="Notes and change requests will appear here once the team starts reviewing this campaign."
+          icon={MessageSquare}
+          title="No notes yet"
+        />
       </div>
     </Panel>
   );
@@ -403,29 +380,19 @@ export function PaymentSummaryPanel({ campaign }: { campaign: Campaign }) {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-medium text-[var(--ft-text-primary)]">Payment summary</h2>
-          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-            Budget is held in wallet before launch.
-          </p>
+          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Budget is held in wallet before launch.</p>
         </div>
         <WalletCards className="size-5 stroke-[1.5] text-[var(--ft-green)]" />
       </div>
       <div className="mt-5 divide-y divide-[var(--ft-border)] border-y border-[var(--ft-border)] text-sm">
         <div className="flex items-center justify-between gap-3 py-3">
           <span className="text-[var(--ft-text-secondary)]">Campaign budget</span>
-          <span className="font-mono text-[var(--ft-text-primary)]">
-            {formatMoneyValue(campaign.budget)}
-          </span>
+          <span className="font-mono text-[var(--ft-text-primary)]">{formatMoneyValue(campaign.budget)}</span>
         </div>
         <div className="flex items-center justify-between gap-3 py-3">
           <span className="text-[var(--ft-text-secondary)]">Invoice status</span>
-          <Badge
-            tone={
-              campaign.status === "RUNNING" || campaign.status === "ACTIVE" ? "success" : "warning"
-            }
-          >
-            {campaign.status === "RUNNING" || campaign.status === "ACTIVE"
-              ? "Held"
-              : "Invoice due later"}
+          <Badge tone={campaign.status === "RUNNING" || campaign.status === "ACTIVE" ? "success" : "warning"}>
+            {campaign.status === "RUNNING" || campaign.status === "ACTIVE" ? "Held" : "Invoice due later"}
           </Badge>
         </div>
       </div>
@@ -433,17 +400,7 @@ export function PaymentSummaryPanel({ campaign }: { campaign: Campaign }) {
   );
 }
 
-/**
- * A dense 6-metric KPI grid for one campaign. Despite the old name this is
- * not the same component as @fliptrybe/ui's ReportCard -- that one renders a
- * printable report with up to 3 metrics and a status-tinted border; this one
- * takes a full Campaign, always shows 6 metrics, and has its own header with
- * StatusBadge + PlatformChip. Renamed rather than merged: forcing one API
- * over both would mean either dropping metrics from this component or adding
- * campaign-shaped props to the design system's, for a shared name that was
- * never doing the same job.
- */
-export function CampaignSummaryCard({
+export function ReportCard({
   campaign,
   metrics
 }: {
@@ -477,7 +434,7 @@ export function CampaignSummaryCard({
           { label: "Updated", value: formatDateValue(campaign.updatedAt) }
         ].map((item) => (
           <div className="bg-[var(--ft-bg-surface)] p-4" key={item.label}>
-            <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+            <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
               {item.label}
             </div>
             <div className="mt-2 font-mono text-xl text-[var(--ft-text-primary)]">{item.value}</div>
@@ -487,7 +444,7 @@ export function CampaignSummaryCard({
       <div className="p-5">
         <div className="flex items-center justify-between gap-3 text-sm text-[var(--ft-text-secondary)]">
           <span>{destinationLabels[campaign.destination.kind]}</span>
-          <span className="font-mono text-[11px] tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+          <span className="font-mono text-[11px] uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
             {campaign.provider}
           </span>
         </div>
@@ -501,7 +458,11 @@ export function CampaignSummaryCard({
           <a className={secondaryLinkButtonClass} href={`/campaigns/${campaign.id}`}>
             View Report
           </a>
-          <button className={linkButtonClass} onClick={() => window.print()} type="button">
+          <button
+            className={linkButtonClass}
+            onClick={() => window.print()}
+            type="button"
+          >
             <Download className="size-4 stroke-[1.5]" />
             Download PDF
           </button>
@@ -534,6 +495,32 @@ export function ErrorNotice({ message }: { message?: string | undefined }) {
   );
 }
 
+export function EmptyState({
+  action,
+  copy,
+  icon: Icon = Database,
+  title
+}: {
+  action?: ReactNode;
+  copy: string;
+  icon?: LucideIcon;
+  title: string;
+}) {
+  return (
+    <div className="relative grid min-h-56 place-items-center overflow-hidden rounded-[var(--radius-md)] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] p-6 text-center">
+      <div className="pointer-events-none absolute -top-7 font-mono text-8xl font-semibold text-[var(--ft-border)]/50">
+        00
+      </div>
+      <div className="relative">
+        <Icon className="mx-auto size-7 stroke-[1.5] text-[var(--ft-text-muted)]" />
+        <div className="mt-3 font-semibold text-[var(--ft-text-primary)]">{title}</div>
+        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--ft-text-secondary)]">{copy}</p>
+        {action ? <div className="mt-4">{action}</div> : null}
+      </div>
+    </div>
+  );
+}
+
 // A lighter one-line stand-in for EmptyState, for secondary cards whose "no data" state
 // shares the same root cause (no campaigns yet) as a fuller EmptyState already shown
 // elsewhere on the page -- avoids repeating the same full-sentence explanation per card.
@@ -546,16 +533,20 @@ export function InlineEmptyNote({ label }: { label: string }) {
 }
 
 export function LoadingBlock({ label }: { label: string }) {
-  return <div className="skeleton p-5 text-sm text-[var(--ft-text-muted)]">{label}</div>;
+  return (
+    <div className="skeleton p-5 text-sm text-[var(--ft-text-muted)]">
+      {label}
+    </div>
+  );
 }
 
 export function Field({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="font-mono text-[11px] font-medium tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+      <div className="font-mono text-[11px] font-medium uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold break-words text-[var(--ft-text-primary)]">
+      <div className="mt-1 break-words text-sm font-semibold text-[var(--ft-text-primary)]">
         {value}
       </div>
     </div>

@@ -4,16 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Banknote, Clock, Landmark, QrCode, X } from "lucide-react";
 import { motion } from "framer-motion";
 
-import {
-  Badge,
-  Button,
-  EmptyState,
-  Panel,
-  PermissionDenied,
-  cn
-} from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 
-import { LoadingBlock } from "../../campaigns/components";
+import { EmptyState, LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
 import {
   createOrder,
@@ -77,11 +70,8 @@ export default function RmbPage() {
 
   const tier = useMemo(() => {
     if (!channelRates) return undefined;
-    const source =
-      channelRates.accountTypes.find((a) => a.type === accountType)?.rates ?? channelRates.rates;
-    return source.find(
-      (t) => rmbAmount >= t.minRmb && (t.maxRmb === null || rmbAmount <= t.maxRmb)
-    );
+    const source = channelRates.accountTypes.find((a) => a.type === accountType)?.rates ?? channelRates.rates;
+    return source.find((t) => rmbAmount >= t.minRmb && (t.maxRmb === null || rmbAmount <= t.maxRmb));
   }, [channelRates, accountType, rmbAmount]);
 
   const estimatedNgnMinor = tier ? Math.round(rmbAmount * tier.ngnPerRmb * 100) : undefined;
@@ -148,8 +138,8 @@ export default function RmbPage() {
   if (forbidden) {
     return (
       <PermissionDenied>
-        You do not have permission to view RMB for this workspace. Contact your workspace owner if
-        you believe this is a mistake.
+        You do not have permission to view RMB for this workspace. Contact your workspace owner
+        if you believe this is a mistake.
       </PermissionDenied>
     );
   }
@@ -245,9 +235,7 @@ export default function RmbPage() {
               </div>
 
               <div className="mt-4">
-                <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
-                  Recipient name
-                </label>
+                <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Recipient name</label>
                 <input
                   className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
                   onChange={(e) => setRecipientName(e.target.value)}
@@ -259,9 +247,7 @@ export default function RmbPage() {
               {isBank ? (
                 <>
                   <div className="mt-4">
-                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
-                      Bank name
-                    </label>
+                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Bank name</label>
                     <input
                       className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
                       onChange={(e) => setBankName(e.target.value)}
@@ -269,9 +255,7 @@ export default function RmbPage() {
                     />
                   </div>
                   <div className="mt-4">
-                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
-                      Bank account number
-                    </label>
+                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Bank account number</label>
                     <input
                       className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
                       onChange={(e) => setBankAccount(e.target.value)}
@@ -293,7 +277,7 @@ export default function RmbPage() {
                           src={qrPreviewUrl}
                         />
                         <button
-                          className="absolute -top-2 -right-2 grid size-6 place-items-center rounded-full bg-[var(--ft-bg-raised)] text-[var(--ft-text-muted)] shadow-[var(--shadow-sm)] hover:text-[var(--ft-text-primary)]"
+                          className="absolute -right-2 -top-2 grid size-6 place-items-center rounded-full bg-[var(--ft-bg-raised)] text-[var(--ft-text-muted)] shadow-[var(--shadow-sm)] hover:text-[var(--ft-text-primary)]"
                           onClick={() => {
                             selectQrFile(undefined);
                             if (fileInputRef.current) fileInputRef.current.value = "";
@@ -337,9 +321,7 @@ export default function RmbPage() {
               )}
 
               <div className="mt-4">
-                <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
-                  Description
-                </label>
+                <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Description</label>
                 <input
                   className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
                   onChange={(e) => setDescription(e.target.value)}
@@ -373,9 +355,7 @@ export default function RmbPage() {
             <Panel className="mt-6 p-5">
               <h2 className="mb-3 font-semibold">Recent orders</h2>
               {orders.length === 0 ? (
-                <EmptyState icon={Clock} title="No orders yet">
-                  RMB orders you place will show up here.
-                </EmptyState>
+                <EmptyState copy="RMB orders you place will show up here." icon={Clock} title="No orders yet" />
               ) : (
                 <div className="grid gap-2">
                   {orders.map((o) => (

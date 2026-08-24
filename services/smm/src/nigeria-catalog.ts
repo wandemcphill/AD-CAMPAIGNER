@@ -3,7 +3,7 @@ import { defaultGrowthServicesCatalog as baseGrowthServicesCatalog } from "./cor
 
 const NIGERIA_RISK = {
   platformPolicyRisk: "HIGH" as const,
-  accountRisk: "MEDIUM" as const,
+  accountRisk: "HIGH" as const,
   refundRisk: "MEDIUM" as const,
   reputationRisk: "HIGH" as const,
   summary: "Nigeria-focused growth delivery can drop or be filtered by platform integrity systems; use public destinations and monitor fulfillment.",
