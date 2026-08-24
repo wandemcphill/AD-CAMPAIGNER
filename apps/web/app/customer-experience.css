@@ -1,0 +1,56 @@
+.ft-cx-panel { animation: ft-cx-in .2s ease-out; }
+.ft-cx-launcher { animation: ft-cx-float 3.8s ease-in-out infinite; }
+
+@keyframes ft-cx-in {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ft-cx-float {
+  0%, 100% { box-shadow: var(--shadow-xl), 0 0 0 0 var(--ft-accent-glow); }
+  50% { box-shadow: var(--shadow-xl), 0 0 0 5px color-mix(in srgb, var(--ft-accent-glow) 38%, transparent); }
+}
+
+/* Keep high-value auth actions visibly branded in every theme. */
+.ft-auth-primary,
+.ft-marketing-primary {
+  background: var(--ft-accent) !important;
+  color: #fff !important;
+  border-color: var(--ft-accent) !important;
+  box-shadow: var(--shadow-md), 0 8px 24px var(--ft-accent-glow);
+}
+
+.ft-auth-primary:hover,
+.ft-marketing-primary:hover {
+  background: var(--ft-accent-dim) !important;
+  color: #fff !important;
+}
+
+.ft-auth-secondary {
+  background: var(--ft-bg-raised) !important;
+  color: var(--ft-text-primary) !important;
+  border-color: var(--ft-border-strong) !important;
+}
+
+.ft-choice-card {
+  border: 1px solid var(--ft-border);
+  background: color-mix(in srgb, var(--ft-bg-raised) 90%, transparent);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+
+.ft-choice-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--ft-accent) 38%, var(--ft-border));
+  background: var(--ft-bg-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.ft-choice-card[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--ft-accent) 72%, var(--ft-border));
+  background: var(--ft-accent-subtle);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ft-accent) 22%, transparent), var(--shadow-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ft-cx-panel, .ft-cx-launcher { animation: none; }
+}
