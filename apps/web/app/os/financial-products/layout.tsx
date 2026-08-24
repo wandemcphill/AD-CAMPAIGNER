@@ -14,7 +14,7 @@ import { MoneyTransactionControl } from "../components/money-transaction-control
 import { loadAccounts } from "./api";
 
 // Each tab is backed by its own feature flag and its own provider domain — a
-deployment can run remittance without virtual cards. Tabs whose flag is off
+// deployment can run remittance without virtual cards. Tabs whose flag is off
 // are not rendered at all, because their endpoints answer 503.
 const TABS = [
   { id: "accounts", label: "Accounts", flag: "virtualAccounts" },
