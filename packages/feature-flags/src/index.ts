@@ -79,23 +79,43 @@ export const featureFlagNames = Object.keys(featureFlagDefaults) as FeatureFlag[
 const TRUTHY = new Set(["true", "1", "yes", "on"]);
 const FALSY = new Set(["false", "0", "no", "off"]);
 
+const FINANCIAL_PROVIDER_SIGNOFF = "FINANCIAL_PROVIDER_SIGNOFF";
+const FINANCIAL_PRODUCT_FLAGS = new Set<FeatureFlag>([
+  "virtualAccounts",
+  "virtualCards",
+  "remittance",
+  "walletWithdrawals"
+]);
+
 /** `virtualAccounts` -> `FEATURE_VIRTUAL_ACCOUNTS` */
 export function featureFlagEnvName(flag: FeatureFlag): string {
   return `FEATURE_${flag.replace(/([a-z0-9])([A-Z])/g, "$1_$2").toUpperCase()}`;
 }
 
-function readEnvOverride(flag: FeatureFlag): boolean | undefined {
-  const raw =
-    typeof process !== "undefined" && process.env
-      ? process.env[featureFlagEnvName(flag)]
-      : undefined;
+function readEnvBoolean(name: string): boolean | undefined {
+  if (typeof process === "undefined" || !process.env) return undefined;
 
+  const raw = process.env[name];
   if (raw === undefined) return undefined;
 
   const normalized = raw.trim().toLowerCase();
   if (TRUTHY.has(normalized)) return true;
   if (FALSY.has(normalized)) return false;
   return undefined;
+}
+
+function readEnvOverride(flag: FeatureFlag): boolean | undefined {
+  const direct = readEnvBoolean(featureFlagEnvName(flag));
+
+  // High-risk financial capabilities require an explicit second gate so an
+  // accidental FEATURE_* override cannot expose a money-moving vertical before
+  // the real provider has passed integration sign-off.
+  if (FINANCIAL_PRODUCT_FLAGS.has(flag)) {
+    const signoff = readEnvBoolean(FINANCIAL_PROVIDER_SIGNOFF) === true;
+    if (!signoff) return false;
+  }
+
+  return direct;
 }
 
 export function resolveFeatureFlags(): Record<FeatureFlag, boolean> {
@@ -116,6 +136,9 @@ export function isFeatureEnabled(
   flag: FeatureFlag,
   overrides: Partial<Record<FeatureFlag, boolean>> = {}
 ) {
+  if (FINANCIAL_PRODUCT_FLAGS.has(flag) && readEnvBoolean(FINANCIAL_PROVIDER_SIGNOFF) !== true) {
+    return false;
+  }
   return overrides[flag] ?? featureFlags[flag];
 }
 
