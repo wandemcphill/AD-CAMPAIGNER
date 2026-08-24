@@ -11,6 +11,7 @@ import {
   ShoppingBag,
   Tv,
   Gift,
+  Gift,
   Megaphone,
   Phone,
   Plus,
@@ -61,7 +62,9 @@ const DISCOVERY_CARDS: DiscoveryCard[] = [
   { label: "Virtual cards", description: "Access supported card products for international online spending.", href: "/os/financial-products/cards", icon: CreditCard, eyebrow: "Spend globally", tone: "var(--ft-accent)", status: "Live" },
   { label: "USDT & USDC", description: "Buy and sell supported stablecoins as the digital-dollar layer comes online.", href: "/os/financial-products", icon: CircleDollarSign, eyebrow: "Digital dollars", tone: "var(--ft-green)", status: "Soon" },
   { label: "Flights, safaris & tours", description: "Discover travel booking experiences without leaving the FlipTrybe ecosystem.", href: "/os/services", icon: Plane, eyebrow: "Travel", tone: "var(--ft-blue)", status: "Soon" },
-  { label: "Pay China suppliers", description: "A future cross-border lane for Nigeria-to-China purchasing and settlement.", href: "/os/financial-products/remittance", icon: ShoppingBag, eyebrow: "China", tone: "var(--ft-yellow)", status: "Soon" },
+  { label: "Pay China suppliers", description: "Buy RMB for supported China payments and supplier settlement.", href: "/os/rmb", icon: ShoppingBag, eyebrow: "China payments", tone: "var(--ft-yellow)", status: "Live" },
+  { label: "Buy gift cards", description: "Buy supported gift cards for everyday digital spending.", href: "/os/digital-value", icon: Gift, eyebrow: "Gift cards", tone: "var(--ft-accent)", status: "Live" },
+  { label: "Sell your gift cards", description: "Sell supported gift cards to FlipTrybe and track the transaction.", href: "/os/digital-value", icon: Gift, eyebrow: "Gift cards", tone: "var(--ft-purple)", status: "Live" },
   { label: "Grow your TikTok", description: "Reach Nigerian viewers, grow followers and build creator campaigns.", href: "/os/growth/services", icon: Users, eyebrow: "Audience growth", tone: "var(--ft-purple)", status: "Live" },
   { label: "Promote your LIVE", description: "Turn audience-growth goals into managed growth campaigns.", href: "/os/growth/services", icon: Tv, eyebrow: "TikTok LIVE", tone: "var(--ft-red)", status: "Live" }
 ];
