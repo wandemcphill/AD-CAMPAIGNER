@@ -6,7 +6,13 @@ import {
   resolveFeatureFlags
 } from "./index";
 
-const TOUCHED = ["FEATURE_VIRTUAL_ACCOUNTS", "FEATURE_VTU", "FEATURE_LIVE_PROVIDER_INTEGRATIONS"];
+const TOUCHED = [
+  "FEATURE_VIRTUAL_ACCOUNTS",
+  "FEATURE_TRUST_ENGINE",
+  "FEATURE_VTU",
+  "FEATURE_LIVE_PROVIDER_INTEGRATIONS",
+  "FINANCIAL_PROVIDER_SIGNOFF"
+];
 
 afterEach(() => {
   for (const key of TOUCHED) {
@@ -30,6 +36,17 @@ describe("resolveFeatureFlags", () => {
   });
 
   it("turns a default-off vertical on from the environment", () => {
+    process.env["FEATURE_TRUST_ENGINE"] = "true";
+    expect(resolveFeatureFlags().trustEngine).toBe(true);
+  });
+
+  it("keeps financial product flags off without FINANCIAL_PROVIDER_SIGNOFF", () => {
+    process.env["FEATURE_VIRTUAL_ACCOUNTS"] = "true";
+    expect(resolveFeatureFlags().virtualAccounts).toBe(false);
+  });
+
+  it("turns a financial product flag on when FINANCIAL_PROVIDER_SIGNOFF is set", () => {
+    process.env["FINANCIAL_PROVIDER_SIGNOFF"] = "true";
     process.env["FEATURE_VIRTUAL_ACCOUNTS"] = "true";
     expect(resolveFeatureFlags().virtualAccounts).toBe(true);
   });
@@ -41,8 +58,8 @@ describe("resolveFeatureFlags", () => {
 
   it("accepts the common truthy and falsy spellings, case-insensitively", () => {
     for (const raw of ["1", "yes", "ON", " True "]) {
-      process.env["FEATURE_VIRTUAL_ACCOUNTS"] = raw;
-      expect(resolveFeatureFlags().virtualAccounts).toBe(true);
+      process.env["FEATURE_TRUST_ENGINE"] = raw;
+      expect(resolveFeatureFlags().trustEngine).toBe(true);
     }
     for (const raw of ["0", "no", "OFF", " False "]) {
       process.env["FEATURE_VTU"] = raw;
