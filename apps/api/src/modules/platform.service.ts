@@ -4,6 +4,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException
 } from "@nestjs/common";
@@ -436,6 +437,7 @@ function createSmmSupplierBundle() {
 
 @Injectable()
 export class PlatformService {
+  private readonly logger = new Logger(PlatformService.name);
   private readonly adsProvider = createMockAdsProvider();
   private readonly aiProvider = createMockAiProvider();
   private readonly aiBrain = AiBrainClient.fromEnv();
@@ -1411,6 +1413,39 @@ export class PlatformService {
           payload: { order: submittedSmmOrder }
         })
       );
+
+      // deliveryContact is captured and validated at order creation but was
+      // never actually used -- the customer had no way to know their order
+      // was ready beyond checking the dashboard themselves. createOrder's
+      // result only carries supplierReference/status, no credentials or
+      // access payload, so this is a completion confirmation, not a
+      // credentials-delivery email; whatever the service actually delivers
+      // happens through the supplier directly. Sent to deliveryContact via
+      // guestEmail, not the logged-in customer's own account email via
+      // userId: they can differ (delivering to someone else's inbox is the
+      // whole point of this destination kind).
+      if (isDeliveryContact && deliveryContact && status === "COMPLETED") {
+        try {
+          await this.notificationsService.send({
+            guestEmail: deliveryContact,
+            channels: ["EMAIL"],
+            template: "transaction_receipt",
+            vars: {
+              first_name: "there",
+              amount: (orderRow.amountMinor / 100).toFixed(2),
+              currency: orderRow.currency,
+              transaction_id: orderRow.id,
+              reference: orderRow.id,
+              status: "DELIVERED",
+              service: orderRow.serviceName,
+              date: new Date().toISOString()
+            },
+            idempotencyKey: `growth_delivery:${orderRow.id}`
+          });
+        } catch (err) {
+          this.logger.warn(`Failed to email growth order delivery for ${orderRow.id}: ${(err as Error).message}`);
+        }
+      }
 
       return {
         order: this.toGrowthOrder(updatedRow),

@@ -5,7 +5,7 @@ import type { SmmSupplierAdapter } from "@fliptrybe/providers";
 import { toCanonicalEvent } from "./ai-brain.client";
 import { PlatformService } from "./platform.service";
 import { PrismaService } from "./prisma.service";
-import type { NotificationsService } from "./notifications/notifications.service";
+import type { NotificationsService, SendNotificationInput } from "./notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "./request-context";
 
 const workspaceA: AuthenticatedRequestContext = {
@@ -197,8 +197,13 @@ async function fundWallet(
 
 function createTestService(db: Record<string, any> = createFakeDb()) {
   const prisma = new PrismaService(db as any);
-  const notifications = { send: vi.fn(() => Promise.resolve([])) } as unknown as NotificationsService;
-  return { service: new PlatformService(prisma, notifications), db };
+  // Kept as its own untyped local, not accessed via notifications.send later:
+  // once notifications is cast to NotificationsService, extracting .send from
+  // it trips @typescript-eslint/unbound-method (it looks like unbinding a
+  // real class instance method, even though this is a plain mock object).
+  const sendMock = vi.fn((_input: SendNotificationInput) => Promise.resolve([]));
+  const notifications = { send: sendMock } as unknown as NotificationsService;
+  return { service: new PlatformService(prisma, notifications), db, sendMock };
 }
 
 describe("PlatformService", () => {
@@ -540,6 +545,56 @@ describe("PlatformService", () => {
       ])
     );
     expect((await service.getGrowthOverview(workspaceA)).monitoring.failedSupplierOrders).toBe(1);
+  });
+
+  it("emails deliveryContact when a DELIVERY_CONTACT order completes", async () => {
+    const { service, db, sendMock } = createTestService();
+    await fundWallet(db, workspaceA.workspaceId, 10000000);
+    replaceSmmSupplier(
+      service,
+      createTestSupplier({
+        createOrder: () =>
+          Promise.resolve({ supplierReference: "sizzle_ig_1", status: "COMPLETED" })
+      })
+    );
+
+    const result = await service.createGrowthOrder(workspaceA, {
+      serviceCode: "social-account-instagram",
+      quantity: 1,
+      deliveryContact: "customer@example.com",
+      idempotencyKey: "growth-delivery-contact"
+    });
+
+    expect(result.order.status).toBe("COMPLETED");
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const call = sendMock.mock.calls[0]?.[0] as
+      | { guestEmail?: string; channels?: string[]; template?: string }
+      | undefined;
+    expect(call?.guestEmail).toBe("customer@example.com");
+    expect(call?.channels).toEqual(["EMAIL"]);
+    expect(call?.template).toBe("transaction_receipt");
+  });
+
+  it("does not email deliveryContact for a non-delivery-contact order, even on completion", async () => {
+    const { service, db, sendMock } = createTestService();
+    await fundWallet(db, workspaceA.workspaceId, 10000000);
+    replaceSmmSupplier(
+      service,
+      createTestSupplier({
+        createOrder: () =>
+          Promise.resolve({ supplierReference: "test_supplier_order", status: "COMPLETED" })
+      })
+    );
+
+    const result = await service.createGrowthOrder(workspaceA, {
+      serviceCode: "tiktok-views",
+      quantity: 100,
+      destinationUrl: "https://www.tiktok.com/@fliptrybe/video/104",
+      idempotencyKey: "growth-no-delivery-contact"
+    });
+
+    expect(result.order.status).toBe("COMPLETED");
+    expect(sendMock).not.toHaveBeenCalled();
   });
 
   it("captures completed Growth funds and records refund reversals", async () => {
