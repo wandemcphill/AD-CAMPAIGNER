@@ -38,7 +38,8 @@ const CATEGORIES: ServiceCategory[] = [
     { label: "My Numbers", description: "Manage your numbers", href: "/os/numbers/mine", icon: Smartphone, flag: "virtualNumbers" }
   ]},
   { title: "Digital Value", items: [
-    { label: "Gift Cards", description: "Buy and sell gift cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+    { label: "Buy Gift Cards", description: "Buy supported gift cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+    { label: "Sell Your Gift Cards", description: "Sell supported gift cards to FlipTrybe", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
     { label: "Digital Access", description: "Premium digital products", href: "/os/digital-access", icon: KeyRound, flag: "digitalAccess" }
   ]},
   { title: "Bills & Utilities", items: [
@@ -49,7 +50,7 @@ const CATEGORIES: ServiceCategory[] = [
   ]},
   { title: "Digital Assets", items: [
     { label: "Sell Crypto", description: "Convert crypto to cash", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell" },
-    { label: "Buy RMB", description: "Purchase Chinese yuan", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" }
+    { label: "Buy RMB", description: "Buy Chinese yuan for supported China payments", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" }
   ]}
 ];
 
