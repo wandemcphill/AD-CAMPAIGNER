@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeftRight, Banknote, Bitcoin, CreditCard, Gift, Plane, Send, Tv } from "lucide-react";
+import { ArrowLeftRight, Banknote, Bitcoin, Compass, CreditCard, Gift, Plane, Send, Tv } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@fliptrybe/ui";
 
 const ACTIONS: Array<{ label: string; hint: string; href: string; icon: LucideIcon }> = [
+  { label: "Discover", hint: "Find what you need", href: "/os/discover", icon: Compass },
   { label: "Send to Nigeria", hint: "USA · UK · Europe · Canada", href: "/os/financial-products/remittance", icon: Send },
   { label: "Buy RMB & Pay China", hint: "Alipay · WeChat · suppliers", href: "/os/rmb", icon: Banknote },
   { label: "USDT / USDC", hint: "Buy or sell stablecoins", href: "/os/crypto", icon: Bitcoin },
