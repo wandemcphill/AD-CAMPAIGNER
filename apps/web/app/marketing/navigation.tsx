@@ -35,17 +35,17 @@ export function MarketingNavigation() {
             <ThemeToggle />
           </span>
           <a
-            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-raised)] px-3.5 text-sm font-semibold text-[var(--ft-text-primary)] shadow-[var(--shadow-sm)] transition hover:border-[var(--ft-accent)]/50 hover:bg-[var(--ft-bg-muted)] sm:px-4"
+            className="ft-auth-secondary inline-flex h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold shadow-[var(--shadow-sm)] transition hover:border-[var(--ft-accent)]/50 hover:bg-[var(--ft-bg-muted)] sm:px-4"
             href="/login"
           >
             <LogIn className="size-3.5" />
             <span>Sign in</span>
           </a>
           <a
-            className="group flex h-10 items-center gap-2 rounded-full bg-[var(--ft-accent)] px-3.5 text-sm font-bold text-white shadow-[var(--shadow-md)] transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)] sm:px-4"
-            href="/register"
+            className="ft-marketing-primary group flex h-10 items-center gap-2 rounded-full px-3.5 text-sm font-bold shadow-[var(--shadow-md)] transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)] sm:px-4"
+            href="/start"
           >
-            <span>Create free account</span>
+            <span>Start with FlipTrybe</span>
             <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
           </a>
         </div>

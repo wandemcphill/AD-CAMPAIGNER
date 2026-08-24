@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 
 import { DEFAULT_THEME, themeInitScript } from "@fliptrybe/ui";
 import "./globals.css";
+import "./customer-experience.css";
 import { APP_URL } from "./lib/app-url";
+import { CustomerExperienceLayer } from "./components/customer-experience-layer";
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_URL),
@@ -30,7 +32,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html data-theme={DEFAULT_THEME} lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeInitScript }} /></head>
-      <body><div className="ft-page-frame min-h-screen bg-[var(--ft-bg-base)]">{children}</div></body>
+      <body>
+        <div className="ft-page-frame min-h-screen bg-[var(--ft-bg-base)]">
+          {children}
+          <CustomerExperienceLayer />
+        </div>
+      </body>
     </html>
   );
 }
