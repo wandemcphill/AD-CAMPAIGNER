@@ -305,7 +305,9 @@ export default function DigitalValuePage() {
   }
 
   if (forbidden) {
-    return (
+    const modeDescription = activeTab === "buy" ? "Choose a supported brand and buy a digital gift card." : activeTab === "sell" ? "Tell us what you have, get a quote, then submit the eligible card for settlement." : "Convert eligible airtime value through the supported cashout flow.";
+
+  return (
       <PermissionDenied>
         You do not have permission to view gift cards and cashout for this workspace. Contact your
         workspace owner if you believe this is a mistake.
@@ -350,7 +352,7 @@ export default function DigitalValuePage() {
         </section>
 
         <div className="mt-5">
-          <TabBar items={tabs} onChange={setActiveTab} value={activeTab} />
+          <div className="rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4 shadow-[var(--shadow-sm)]"><div className="flex items-start justify-between gap-4"><div><div className="font-mono text-[9px] uppercase tracking-[0.16em] text-[var(--ft-accent)]">Digital value</div><h1 className="mt-1 text-xl font-bold">Gift cards, your way</h1><p className="mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">{modeDescription}</p></div><Gift className="size-6 text-[var(--ft-accent)]" /></div></div><div className="mt-4"><TabBar items={tabs} onChange={setActiveTab} value={activeTab} />
         </div>
 
         {activeTab === "buy" ? (

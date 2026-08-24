@@ -144,7 +144,21 @@ const PRIMARY_NAV: NavSection[] = [
         href: "/os/financial-products/remittance",
         icon: Send,
         flag: "remittance",
-        keywords: "send money remit"
+        keywords: "send money remit usa uk europe canada nigeria"
+      },
+      {
+        label: "USDT & USDC",
+        href: "/os/crypto",
+        icon: Bitcoin,
+        flag: "cryptoSell",
+        keywords: "crypto stablecoin buy sell digital dollars"
+      },
+      {
+        label: "RMB / China Payments",
+        href: "/os/rmb",
+        icon: Banknote,
+        flag: "rmbBuy",
+        keywords: "china yuan alipay wechat supplier payment"
       }
     ]
   },
@@ -155,7 +169,8 @@ const PRIMARY_NAV: NavSection[] = [
     children: [
       { label: "Airtime", href: "/os/airtime/airtime", icon: Phone, flag: "vtu", keywords: "recharge credit" },
       { label: "Data", href: "/os/airtime/data", icon: Wifi, flag: "vtu", keywords: "internet bundle" },
-      { label: "Gift Cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell", keywords: "voucher" },
+      { label: "Buy Gift Cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell", keywords: "gift voucher purchase buy" },
+      { label: "Sell Gift Cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell", keywords: "gift voucher cash sell trade" },
       { label: "International Top-Up", href: "/os/telecom", icon: Globe, flag: "telecomGateway" },
       { label: "International Numbers", href: "/os/numbers", icon: Globe, flag: "virtualNumbers", keywords: "phone line" },
       { label: "My Numbers", href: "/os/numbers/mine", icon: Smartphone, flag: "virtualNumbers" },
