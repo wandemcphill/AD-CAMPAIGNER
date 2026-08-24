@@ -132,7 +132,7 @@ export default function AdminPage() {
           <MetricCard label="Users" value={String(overview?.users.total ?? "—")} detail={overview ? `${overview.users.new24h} new in 24h · ${overview.users.suspended} suspended` : "Loading"} />
           <MetricCard label="Campaign review" value={String(overview?.campaigns.pendingReview ?? "—")} detail={`${overview?.campaigns.active ?? 0} active campaigns`} />
           <MetricCard label="Payments" value={String(overview?.payments.pending ?? "—")} detail={`${overview?.payments.failed24h ?? 0} failed in 24h`} />
-          <MetricCard label="Risk" value={String(riskCount)} detail={`${overview?.risk.high ?? 0} high-risk reviews`} tone={overview?.risk.high ? "danger" : "success"} />
+          <MetricCard label="Risk" value={String(riskCount)} detail={`${overview?.risk.high ?? 0} high-risk reviews`} tone={overview?.risk.high ? "warning" : "success"} />
         </section>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
