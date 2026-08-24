@@ -351,6 +351,15 @@ export const customerUseCases: UseCase[] = [
     tag: "International transfers"
   },
   {
+    eyebrow: "Digital dollars",
+    title: "Buy and sell USDT and USDC.",
+    description: "A simple crypto on/off-ramp experience for buying and selling supported stablecoins, with availability shown clearly before you start.",
+    icon: CircleDollarSign,
+    href: "/register",
+    status: "soon",
+    tag: "USDT · USDC"
+  },
+  {
     eyebrow: "Multi-currency",
     title: "Keep USD, GBP and EUR balances in one place.",
     description: "A global money layer for people who earn, travel, subscribe and operate across currencies.",
