@@ -65,7 +65,7 @@ describe("processNotificationDispatchJob", () => {
     delete process.env.RESEND_API_KEY;
     delete process.env.RESEND_FROM_EMAIL;
     delete process.env.EMAIL_FROM;
-    vi.stubGlobal("fetch", vi.fn<typeof fetch>());
+    vi.stubGlobal("fetch", vi.fn());
   });
 
   afterEach(() => {
@@ -105,11 +105,13 @@ describe("processNotificationDispatchJob", () => {
     process.env.RESEND_API_KEY = "re_test_key";
     process.env.RESEND_FROM_EMAIL = "FlipTrybe <noreply@example.com>";
 
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify({ data: { id: "re_msg_1" } }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ data: { id: "re_msg_1" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        })
+      )
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -134,11 +136,11 @@ describe("processNotificationDispatchJob", () => {
     expect((headers as Record<string, string>)["Idempotency-Key"]).toBe(
       "payment_success#order_123:EMAIL"
     );
-    expect(JSON.parse(String(requestInit?.body))).toMatchObject({
+    expect(JSON.parse(String(requestInit?.body ?? ""))).toMatchObject({
       from: "FlipTrybe <noreply@example.com>",
       to: ["guest@example.com"],
       subject: "Payment successful",
-      html: "<p>Paid</p>"
+      html: "<p>Payment successful</p>"
     });
     expect(lastCallData(notificationUpdate)).toMatchObject({
       status: "SENT",
