@@ -1,0 +1,31 @@
+import type { CurrencyCode } from "@fliptrybe/types";
+
+export type ProviderOperation = "quote" | "fund" | "remittance" | "rmb" | "crypto_buy" | "crypto_sell" | "giftcard_buy" | "giftcard_sell" | "virtual_card" | "travel" | "growth";
+export type ProviderFailureClass = "retryable" | "unknown_delivery" | "rejected" | "configuration";
+export interface ProviderRequestContext { operation: ProviderOperation; idempotencyKey: string; currency: CurrencyCode; amountMinor?: number; provider?: string; }
+export interface ProviderResult<TResult> { result: TResult; providerReference?: string; idempotencyKey: string; }
+export interface ProviderFailure { class: ProviderFailureClass; retryable: boolean; message: string; providerReference?: string; }
+
+const RETRYABLE_STATUS_CODES = new Set([425]);
+function providerReference(input: { providerReference?: string }): { providerReference: string } | Record<string, never> {
+  return input.providerReference ? { providerReference: input.providerReference } : {};
+}
+export function buildProviderIdempotencyKey(operation: ProviderOperation, ownerId: string, requestId: string): string {
+  if (!ownerId || !requestId) throw new Error("Provider idempotency keys require ownerId and requestId");
+  return `ft:${operation}:${ownerId}:${requestId}`;
+}
+export function classifyProviderFailure(input: { statusCode?: number; timedOut?: boolean; message?: string; providerReference?: string }): ProviderFailure {
+  if (input.timedOut || input.statusCode === 408 || input.statusCode === 429 || (typeof input.statusCode === "number" && input.statusCode >= 500)) {
+    return { class: "unknown_delivery", retryable: false, message: input.message ?? "Provider response may have executed; reconcile before retrying", ...providerReference(input) };
+  }
+  if (typeof input.statusCode === "number" && RETRYABLE_STATUS_CODES.has(input.statusCode)) {
+    return { class: "retryable", retryable: true, message: input.message ?? `Provider returned HTTP ${input.statusCode}`, ...providerReference(input) };
+  }
+  if (typeof input.statusCode === "number" && input.statusCode >= 400 && input.statusCode < 500) {
+    return { class: "rejected", retryable: false, message: input.message ?? `Provider rejected the request with HTTP ${input.statusCode}`, ...providerReference(input) };
+  }
+  return { class: "configuration", retryable: false, message: input.message ?? "Provider operation failed and requires operator review", ...providerReference(input) };
+}
+export function assertProviderAmount(amountMinor: number): void {
+  if (!Number.isSafeInteger(amountMinor) || amountMinor <= 0) throw new Error("Provider amounts must be positive integer minor units");
+}
