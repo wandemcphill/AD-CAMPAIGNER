@@ -8,6 +8,7 @@ import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 
 import { EmptyState, LoadingBlock } from "../../campaigns/components";
 import { isForbiddenError } from "../../lib/api-client";
+import { CustomerTransactionJourney, type TransactionJourneyStage } from "../components/customer-transaction-journey";
 import {
   createOrder,
   loadOrders,
@@ -144,6 +145,8 @@ export default function RmbPage() {
     );
   }
 
+  const journey: TransactionJourneyStage = success ? "complete" : rmbAmount > 0 && tier ? "quote" : "choose";
+
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-2xl">
@@ -151,6 +154,8 @@ export default function RmbPage() {
           <Banknote className="size-5 text-[var(--ft-accent)]" />
           <div><h1 className="text-xl font-bold">Buy RMB & pay China</h1><p className="mt-1 text-sm text-[var(--ft-text-muted)]">Buy Chinese yuan for supported Alipay, WeChat Pay and Chinese bank-account payments.</p></div>
         </div>
+
+        <CustomerTransactionJourney className="mt-5" current={journey} />
 
         <div className="mt-5 grid grid-cols-3 gap-2"><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-3 text-center"><div className="text-sm font-semibold">¥ RMB</div><div className="mt-1 text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Buy</div></div><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-3 text-center"><div className="text-sm font-semibold">Alipay</div><div className="mt-1 text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Pay</div></div><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-3 text-center"><div className="text-sm font-semibold">WeChat</div><div className="mt-1 text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Pay</div></div></div>
 
@@ -169,12 +174,9 @@ export default function RmbPage() {
             <Landmark className="mx-auto size-10 text-[var(--ft-green)]" />
             <h2 className="mt-3 text-lg font-semibold">Order submitted</h2>
             <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-              {formatNaira(success.ngnAmountMinor)} debited for ¥{success.rmbAmount} to{" "}
-              {success.recipientName}.
+              {formatNaira(success.ngnAmountMinor)} debited for ¥{success.rmbAmount} to {success.recipientName}.
             </p>
-            <Button className="mt-4" onClick={() => setSuccess(undefined)} variant="secondary">
-              Buy another
-            </Button>
+            <Button className="mt-4" onClick={() => setSuccess(undefined)} variant="secondary">Buy another</Button>
           </Panel>
         ) : (
           <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
@@ -185,9 +187,7 @@ export default function RmbPage() {
                   <button
                     className={cn(
                       "rounded-[var(--radius-md)] border py-2 text-sm font-medium transition",
-                      channel === c
-                        ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5"
-                        : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
+                      channel === c ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5" : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
                     )}
                     disabled={!rates?.channels.find((r) => r.channel === c)?.isAvailable}
                     key={c}
@@ -205,9 +205,7 @@ export default function RmbPage() {
                     <button
                       className={cn(
                         "rounded-[var(--radius-md)] border py-2 text-sm font-medium transition",
-                        accountType === t
-                          ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5"
-                          : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
+                        accountType === t ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/5" : "border-[var(--ft-border)] hover:border-[var(--ft-accent)]/30"
                       )}
                       key={t}
                       onClick={() => setAccountType(t)}
@@ -221,168 +219,43 @@ export default function RmbPage() {
 
               <div className="mt-4">
                 <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Amount (¥)</label>
-                <input
-                  className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
-                  min={rates?.limits.minRmb}
-                  max={rates?.limits.maxRmb}
-                  onChange={(e) => setRmbAmount(Number(e.target.value))}
-                  type="number"
-                  value={rmbAmount}
-                />
-                {tier && estimatedNgnMinor !== undefined && (
-                  <p className="mt-1 text-xs text-[var(--ft-text-muted)]">
-                    Rate ₦{tier.ngnPerRmb}/¥ · You pay {formatNaira(estimatedNgnMinor)}
-                  </p>
-                )}
+                <input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]" min={rates?.limits.minRmb} max={rates?.limits.maxRmb} onChange={(e) => setRmbAmount(Number(e.target.value))} type="number" value={rmbAmount} />
+                {tier && estimatedNgnMinor !== undefined && <p className="mt-1 text-xs text-[var(--ft-text-muted)]">Rate ₦{tier.ngnPerRmb}/¥ · You pay {formatNaira(estimatedNgnMinor)}</p>}
               </div>
 
               <div className="mt-4">
                 <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Recipient name</label>
-                <input
-                  className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
-                  onChange={(e) => setRecipientName(e.target.value)}
-                  placeholder="Zhang Wei"
-                  value={recipientName}
-                />
+                <input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]" onChange={(e) => setRecipientName(e.target.value)} placeholder="Zhang Wei" value={recipientName} />
               </div>
 
               {isBank ? (
                 <>
-                  <div className="mt-4">
-                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Bank name</label>
-                    <input
-                      className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
-                      onChange={(e) => setBankName(e.target.value)}
-                      value={bankName}
-                    />
-                  </div>
-                  <div className="mt-4">
-                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Bank account number</label>
-                    <input
-                      className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
-                      onChange={(e) => setBankAccount(e.target.value)}
-                      value={bankAccount}
-                    />
-                  </div>
+                  <div className="mt-4"><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Bank name</label><input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]" onChange={(e) => setBankName(e.target.value)} value={bankName} /></div>
+                  <div className="mt-4"><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Bank account number</label><input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]" onChange={(e) => setBankAccount(e.target.value)} value={bankAccount} /></div>
                 </>
               ) : (
                 <>
                   <div className="mt-4">
-                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
-                      Receive QR code {recipientIdentifier.trim() ? "(optional)" : ""}
-                    </label>
-                    {qrPreviewUrl ? (
-                      <div className="relative mt-1 w-fit">
-                        <img
-                          alt="QR code preview"
-                          className="h-40 w-40 rounded-[var(--radius-md)] border border-[var(--ft-border)] object-contain"
-                          src={qrPreviewUrl}
-                        />
-                        <button
-                          className="absolute -right-2 -top-2 grid size-6 place-items-center rounded-full bg-[var(--ft-bg-raised)] text-[var(--ft-text-muted)] shadow-[var(--shadow-sm)] hover:text-[var(--ft-text-primary)]"
-                          onClick={() => {
-                            selectQrFile(undefined);
-                            if (fileInputRef.current) fileInputRef.current.value = "";
-                          }}
-                          type="button"
-                        >
-                          <X className="size-3.5" />
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="mt-1 flex h-24 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--ft-border)] text-sm text-[var(--ft-text-muted)] hover:border-[var(--ft-accent)]/50"
-                        onClick={() => fileInputRef.current?.click()}
-                        type="button"
-                      >
-                        <QrCode className="size-4" />
-                        Upload the recipient&apos;s receive QR code
-                      </button>
-                    )}
-                    <input
-                      accept="image/png,image/jpeg"
-                      className="hidden"
-                      onChange={(e) => selectQrFile(e.target.files?.[0])}
-                      ref={fileInputRef}
-                      type="file"
-                    />
+                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Receive QR code {recipientIdentifier.trim() ? "(optional)" : ""}</label>
+                    {qrPreviewUrl ? <div className="relative mt-1 w-fit"><img alt="QR code preview" className="h-40 w-40 rounded-[var(--radius-md)] border border-[var(--ft-border)] object-contain" src={qrPreviewUrl} /><button className="absolute -right-2 -top-2 grid size-6 place-items-center rounded-full bg-[var(--ft-bg-raised)] text-[var(--ft-text-muted)] shadow-[var(--shadow-sm)] hover:text-[var(--ft-text-primary)]" onClick={() => { selectQrFile(undefined); if (fileInputRef.current) fileInputRef.current.value = ""; }} type="button"><X className="size-3.5" /></button></div> : <button className="mt-1 flex h-24 w-full items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed border-[var(--ft-border)] text-sm text-[var(--ft-text-muted)] hover:border-[var(--ft-accent)]/50" onClick={() => fileInputRef.current?.click()} type="button"><QrCode className="size-4" />Upload the recipient&apos;s receive QR code</button>}
+                    <input accept="image/png,image/jpeg" className="hidden" onChange={(e) => selectQrFile(e.target.files?.[0])} ref={fileInputRef} type="file" />
                   </div>
-
-                  <div className="mt-4">
-                    <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">
-                      {channel === "wechat" ? "WeChat ID" : "Alipay account ID / email / phone"}{" "}
-                      {qrFile ? "(optional)" : ""}
-                    </label>
-                    <input
-                      className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
-                      onChange={(e) => setRecipientIdentifier(e.target.value)}
-                      value={recipientIdentifier}
-                    />
-                  </div>
+                  <div className="mt-4"><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">{channel === "wechat" ? "WeChat ID" : "Alipay account ID / email / phone"} {qrFile ? "(optional)" : ""}</label><input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]" onChange={(e) => setRecipientIdentifier(e.target.value)} value={recipientIdentifier} /></div>
                 </>
               )}
 
-              <div className="mt-4">
-                <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Description</label>
-                <input
-                  className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]"
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Invoice #2025-0045"
-                  value={description}
-                />
-              </div>
+              <div className="mt-4"><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Description</label><input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-lg outline-none focus:border-[var(--ft-accent)]" onChange={(e) => setDescription(e.target.value)} placeholder="Invoice #2025-0045" value={description} /></div>
 
-              <Button
-                className="mt-4 w-full justify-center"
-                disabled={
-                  submitting ||
-                  uploadingQr ||
-                  !recipientName.trim() ||
-                  !description.trim() ||
-                  rmbAmount <= 0 ||
-                  (isBank
-                    ? !bankName.trim() || !bankAccount.trim()
-                    : !recipientIdentifier.trim() && !qrFile)
-                }
-                onClick={() => void submit()}
-              >
-                {uploadingQr
-                  ? "Uploading QR code..."
-                  : submitting
-                    ? "Processing..."
-                    : `Buy ¥${rmbAmount.toLocaleString()}`}
+              <Button className="mt-4 w-full justify-center" disabled={submitting || uploadingQr || !recipientName.trim() || !description.trim() || rmbAmount < (rates?.limits.minRmb ?? 1) || (isBank ? !bankName.trim() || !bankAccount.trim() : !recipientIdentifier.trim() && !qrFile)} onClick={() => void submit()}>
+                {submitting ? "Submitting..." : "Confirm & pay RMB"}
               </Button>
-            </Panel>
-
-            <Panel className="mt-6 p-5">
-              <h2 className="mb-3 font-semibold">Recent orders</h2>
-              {orders.length === 0 ? (
-                <EmptyState copy="RMB orders you place will show up here." icon={Clock} title="No orders yet" />
-              ) : (
-                <div className="grid gap-2">
-                  {orders.map((o) => (
-                    <div
-                      className="flex items-center gap-4 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-3"
-                      key={o.id}
-                    >
-                      <div className="flex-1">
-                        <div className="text-sm font-medium">
-                          {formatNaira(o.ngnAmountMinor)} · ¥{o.rmbAmount}
-                        </div>
-                        <div className="text-xs text-[var(--ft-text-muted)]">
-                          {o.recipientName} · {new Date(o.createdAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <Badge tone={o.status === "COMPLETED" ? "success" : "neutral"}>
-                        {o.status.toLowerCase()}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
             </Panel>
           </motion.div>
         )}
+
+        <div className="mt-5">
+          {orders.length === 0 ? <Panel className="p-6"><EmptyState copy="Your China payment orders will appear here." icon={Clock} title="No RMB orders yet" /></Panel> : <div className="grid gap-2">{orders.map((order) => <Panel className="flex items-center gap-4 p-4" key={order.id}><div className="grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10"><Banknote className="size-4 text-[var(--ft-accent)]" /></div><div className="flex-1"><div className="font-semibold">¥{order.rmbAmount} · {order.recipientName}</div><div className="mt-0.5 text-xs text-[var(--ft-text-muted)]">{formatNaira(order.ngnAmountMinor)}</div></div><Badge tone={order.status === "COMPLETED" ? "success" : "neutral"}>{order.status.toLowerCase()}</Badge></Panel>)}</div>}
+        </div>
       </div>
     </div>
   );
