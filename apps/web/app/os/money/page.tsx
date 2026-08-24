@@ -12,6 +12,8 @@ import { useFeatureFlags } from "../../lib/feature-flags";
 type MoneyEntry = { label: string; description: string; href: Route; icon: LucideIcon; flag?: string };
 const ENTRIES: MoneyEntry[] = [
   { label: "Wallet", description: "Balance, funding & payouts", href: "/os/wallet", icon: Wallet },
+  { label: "USDT & USDC", description: "Buy and sell supported stablecoins", href: "/os/financial-products", icon: CircleDollarSign },
+  { label: "Global transfers", description: "Supported international money corridors", href: "/os/financial-products/remittance", icon: Globe2, flag: "remittance" },
   { label: "Invoices", description: "Bill customers and track payments", href: "/os/money/invoices", icon: FileText, flag: "invoicing" },
   { label: "Payment Links", description: "Collect payments with a shareable link", href: "/os/money/payment-links", icon: Link2, flag: "paymentLinks" },
   { label: "Virtual Accounts", description: "Collect payments to dedicated accounts", href: "/os/financial-products/accounts", icon: Building2, flag: "virtualAccounts" },
@@ -69,6 +71,11 @@ export default function MoneyOverviewPage() {
           </div>
         </section>
       </div>
+
+      <section className="mt-5 overflow-hidden rounded-[24px] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-5 shadow-[var(--shadow-sm)]">
+        <div className="flex items-start justify-between gap-4"><div><div className="ft-eyebrow">Global money</div><h2 className="mt-1 text-lg font-semibold">One money layer, multiple jobs</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-[var(--ft-text-muted)]">Keep the customer's mental model simple: hold, spend, send and exchange. Product availability is always shown before an action begins.</p></div><Globe2 className="size-5 text-[var(--ft-accent-2)]" /></div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3"><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4"><div className="font-mono text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Hold</div><div className="mt-1 text-sm font-semibold">USD · GBP · EUR</div></div><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4"><div className="font-mono text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Digital dollars</div><div className="mt-1 text-sm font-semibold">USDT · USDC</div></div><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4"><div className="font-mono text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Move</div><div className="mt-1 text-sm font-semibold">Global → Nigeria</div></div></div>
+      </section>
 
       <section className="ft-data-surface mt-5 rounded-[24px] p-5">
         <div className="flex items-center justify-between gap-3"><div><div className="ft-eyebrow">Ledger activity</div><h2 className="mt-1 text-lg font-semibold">Recent transactions</h2></div><Link className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--ft-accent)]" href="/os/wallet">View all <ArrowRight className="size-3" /></Link></div>
