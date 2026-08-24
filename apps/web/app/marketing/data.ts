@@ -284,11 +284,10 @@ export const guestServices = [
  * leading nowhere is worse than one missing.
  */
 export const navItems = [
-  { href: "#money", label: "Money" },
-  { href: "#services", label: "Services" },
-  { href: "#growth", label: "Grow" },
-  { href: "#marketplace", label: "Marketplace" },
-  { href: "#how-it-works", label: "How it works" },
+  { href: "#what-you-can-do", label: "What you can do" },
+  { href: "#global-money", label: "Global money" },
+  { href: "#platform", label: "Platform" },
+  { href: "#intelligence", label: "AI & growth" },
   { href: "/pricing", label: "Pricing" },
   { href: "/guest", label: "Pay a bill" }
 ];
