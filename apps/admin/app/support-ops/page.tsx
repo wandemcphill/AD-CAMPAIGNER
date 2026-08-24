@@ -43,12 +43,18 @@ export default function SupportOperationsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
+  const [overview, setOverview] = useState<{ totals: { open: number; inProgress: number; resolved: number; closed: number; urgentOpen: number }; oldestOpen: { id: string; subject: string; priority: TicketPriority; status: TicketStatus; createdAt: string } | null }>();
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      setTickets(await apiRequest<Ticket[]>("/admin/support/tickets?status=OPEN"));
+      const [nextTickets, nextOverview] = await Promise.all([
+        apiRequest<Ticket[]>("/admin/support/tickets?status=OPEN"),
+        apiRequest<typeof overview>("/admin/support/overview")
+      ]);
+      setTickets(nextTickets);
+      setOverview(nextOverview);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load the support queue.");
     } finally {
@@ -99,8 +105,9 @@ export default function SupportOperationsPage() {
 
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            ["Open queue", tickets.length, "Customer issues needing action"],
+            ["Open queue", overview?.totals.open ?? tickets.length, "Customer issues needing action"],
             ["Urgent", urgent, "Highest-priority tickets"],
+            ["In progress", overview?.totals.inProgress ?? 0, "Already being handled"],
             ["High priority", high, "Escalation candidates"],
             ["Unanswered", unanswered, "No support-team reply yet"]
           ].map(([label, value, detail]) => (
@@ -112,14 +119,14 @@ export default function SupportOperationsPage() {
           ))}
         </div>
 
-        {oldest ? (
+        {overview?.oldestOpen || oldest ? (
           <Panel className="mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <Clock3 className="mt-0.5 size-4 text-[var(--ft-yellow)]" />
               <div>
                 <div className="text-sm font-semibold">Oldest open issue</div>
-                <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">{oldest.subject}</div>
-                <div className="mt-1 font-mono text-xs text-[var(--ft-text-muted)]">{oldest.id} · {new Date(oldest.createdAt).toLocaleString()}</div>
+                <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">{(overview?.oldestOpen ?? oldest)!.subject}</div>
+                <div className="mt-1 font-mono text-xs text-[var(--ft-text-muted)]">{(overview?.oldestOpen ?? oldest)!.id} · {new Date((overview?.oldestOpen ?? oldest)!.createdAt).toLocaleString()}</div>
               </div>
             </div>
             <Link href={`/support/?ticket=${encodeURIComponent(oldest.id)}`} className="inline-flex items-center gap-2 text-sm font-medium text-[var(--ft-accent)]">
