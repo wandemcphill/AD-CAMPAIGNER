@@ -42,6 +42,10 @@ export interface ProviderFailure {
 
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
+function providerReference(input: { providerReference?: string }): { providerReference: string } | Record<string, never> {
+  return input.providerReference ? { providerReference: input.providerReference } : {};
+}
+
 /**
  * Build a deterministic idempotency key for a money-moving operation.
  * Callers should persist the key with the domain order/payment intent and
@@ -75,7 +79,7 @@ export function classifyProviderFailure(input: {
       class: "unknown_delivery",
       retryable: false,
       message: input.message ?? "Provider response timed out; reconcile before retrying",
-      providerReference: input.providerReference
+      ...providerReference(input)
     };
   }
 
@@ -84,7 +88,7 @@ export function classifyProviderFailure(input: {
       class: "retryable",
       retryable: true,
       message: input.message ?? `Provider returned HTTP ${input.statusCode}`,
-      providerReference: input.providerReference
+      ...providerReference(input)
     };
   }
 
@@ -93,7 +97,7 @@ export function classifyProviderFailure(input: {
       class: "rejected",
       retryable: false,
       message: input.message ?? `Provider rejected the request with HTTP ${input.statusCode}`,
-      providerReference: input.providerReference
+      ...providerReference(input)
     };
   }
 
@@ -101,7 +105,7 @@ export function classifyProviderFailure(input: {
     class: "configuration",
     retryable: false,
     message: input.message ?? "Provider operation failed and requires operator review",
-    providerReference: input.providerReference
+    ...providerReference(input)
   };
 }
 
