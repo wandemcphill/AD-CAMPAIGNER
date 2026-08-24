@@ -8,6 +8,7 @@ import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
+import { CustomerJourney } from "../../components/customer-journey";
 import {
   formatNaira,
   getRemittanceQuote,
@@ -55,192 +56,51 @@ export default function RemittanceTabPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void refreshTransfers();
-  }, [refreshTransfers]);
+  useEffect(() => { void refreshTransfers(); }, [refreshTransfers]);
 
   const submitGetQuote = useCallback(async () => {
-    setQuoting(true);
-    setError(undefined);
-    setQuote(undefined);
+    setQuoting(true); setError(undefined); setQuote(undefined);
     try {
-      setQuote(
-        await getRemittanceQuote({
-          sourceCurrency: "NGN",
-          destinationCurrency,
-          sourceAmountMinor: sourceNaira * 100
-        })
-      );
+      setQuote(await getRemittanceQuote({ sourceCurrency: "NGN", destinationCurrency, sourceAmountMinor: sourceNaira * 100 }));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not get a quote.");
-    } finally {
-      setQuoting(false);
-    }
+    } finally { setQuoting(false); }
   }, [destinationCurrency, sourceNaira]);
 
   const submitSendRemittance = useCallback(async () => {
     if (!quote) return;
-    setSending(true);
-    setError(undefined);
+    setSending(true); setError(undefined);
     try {
-      const result = await sendRemittance({
-        quoteId: quote.quoteId,
-        recipientName: recipientName.trim(),
-        recipientAccountNumber: recipientAccountNumber.trim(),
-        recipientBankCode: recipientBankCode.trim(),
-        recipientCountry
-      });
-      if (result.status !== "active") {
-        setError("Transfer was charged but could not be confirmed — check back shortly.");
-      }
-      setQuote(undefined);
-      setRecipientName("");
-      setRecipientAccountNumber("");
-      setRecipientBankCode("");
-      await refreshTransfers();
+      const result = await sendRemittance({ quoteId: quote.quoteId, recipientName: recipientName.trim(), recipientAccountNumber: recipientAccountNumber.trim(), recipientBankCode: recipientBankCode.trim(), recipientCountry });
+      if (result.status !== "active") setError("Transfer was charged but could not be confirmed — check back shortly.");
+      setQuote(undefined); setRecipientName(""); setRecipientAccountNumber(""); setRecipientBankCode(""); await refreshTransfers();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not send this transfer.");
-    } finally {
-      setSending(false);
-    }
+    } finally { setSending(false); }
   }, [quote, recipientAccountNumber, recipientBankCode, recipientCountry, recipientName, refreshTransfers]);
 
-  if (forbidden) {
-    return (
-      <PermissionDenied>
-        You do not have permission to view remittance for this workspace. Contact your workspace
-        owner if you believe this is a mistake.
-      </PermissionDenied>
-    );
-  }
+  if (forbidden) return <PermissionDenied>You do not have permission to view remittance for this workspace. Contact your workspace owner if you believe this is a mistake.</PermissionDenied>;
+
+  const journeySteps = [
+    { label: "Choose route", detail: "Set amount and destination currency.", state: quote ? "complete" : "current" },
+    { label: "Get quote", detail: "See fee, rate and recipient amount.", state: quote ? "complete" : "upcoming" },
+    { label: "Recipient", detail: "Enter the beneficiary details.", state: quote && recipientName ? "complete" : quote ? "current" : "upcoming" },
+    { label: "Confirm", detail: "Review and send the transfer.", state: sending ? "current" : quote && recipientName ? "current" : "upcoming" }
+  ] as const;
 
   return (
     <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
+      <CustomerJourney eyebrow="Global transfers" title="Send money with confidence" description="Build the transfer in clear steps. You see what leaves your account, what the recipient gets and the fee before you confirm." steps={journeySteps} trustNote="Your quote and recipient details are shown before the transfer is submitted." />
       <ErrorNotice message={error} />
-      <Panel className="p-5">
+      <Panel className="mt-4 p-5">
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Send (NGN)</label>
-            <input
-              className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
-              min={100}
-              onChange={(e) => setSourceNaira(Number(e.target.value))}
-              type="number"
-              value={sourceNaira}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-[var(--ft-text-muted)]">To</label>
-            <select
-              className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
-              onChange={(e) => setDestinationCurrency(e.target.value)}
-              value={destinationCurrency}
-            >
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-              <option value="EUR">EUR</option>
-            </select>
-          </div>
+          <div><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Send (NGN)</label><input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]" min={100} onChange={(e) => setSourceNaira(Number(e.target.value))} type="number" value={sourceNaira} /></div>
+          <div><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">To</label><select className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]" onChange={(e) => setDestinationCurrency(e.target.value)} value={destinationCurrency}><option value="USD">USD</option><option value="GBP">GBP</option><option value="EUR">EUR</option></select></div>
         </div>
-
-        <Button
-          className="mt-3 w-full justify-center"
-          disabled={sourceNaira < 100 || quoting}
-          onClick={() => void submitGetQuote()}
-          variant="secondary"
-        >
-          {quoting ? "Getting quote..." : "Get quote"}
-        </Button>
-
-        {quote && (
-          <div className="mt-4 space-y-3 rounded-[var(--radius-md)] border border-[var(--ft-border)] p-3">
-            <div className="text-sm">
-              Recipient gets{" "}
-              <span className="font-semibold">
-                {quote.destinationCurrency} {(quote.destinationAmountMinor / 100).toLocaleString()}
-              </span>{" "}
-              · fee {formatNaira(quote.feeMinor)}
-            </div>
-
-            {/* The debit can exceed the amount typed above once a markup applies,
-                so it is shown explicitly rather than left to be inferred. */}
-            <div className="text-xs text-[var(--ft-text-muted)]">
-              You&rsquo;ll be charged {formatNaira(quote.sourceAmountMinor)}
-              {!quote.isLocked && " · rate is indicative until the transfer completes"}
-            </div>
-
-            <input
-              className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
-              onChange={(e) => setRecipientName(e.target.value)}
-              placeholder="Recipient name"
-              value={recipientName}
-            />
-            <input
-              className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
-              onChange={(e) => setRecipientAccountNumber(e.target.value)}
-              placeholder="Account number"
-              value={recipientAccountNumber}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
-                onChange={(e) => setRecipientBankCode(e.target.value)}
-                placeholder="Bank code"
-                value={recipientBankCode}
-              />
-              <input
-                className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
-                onChange={(e) => setRecipientCountry(e.target.value)}
-                placeholder="Country (e.g. US)"
-                value={recipientCountry}
-              />
-            </div>
-
-            <Button
-              className="w-full justify-center"
-              disabled={
-                !recipientName.trim() || !recipientAccountNumber.trim() || !recipientBankCode.trim() || sending
-              }
-              onClick={() => void submitSendRemittance()}
-            >
-              <Send className="size-4" />
-              {sending ? "Sending..." : "Send transfer"}
-            </Button>
-          </div>
-        )}
+        <Button className="mt-3 w-full justify-center" disabled={sourceNaira < 100 || quoting} onClick={() => void submitGetQuote()} variant="secondary">{quoting ? "Getting quote..." : "Get quote"}</Button>
+        {quote && <div className="mt-4 space-y-3 rounded-[var(--radius-md)] border border-[var(--ft-border)] p-3"><div className="text-sm">Recipient gets <span className="font-semibold">{quote.destinationCurrency} {(quote.destinationAmountMinor / 100).toLocaleString()}</span> · fee {formatNaira(quote.feeMinor)}</div><div className="text-xs text-[var(--ft-text-muted)]">You&rsquo;ll be charged {formatNaira(quote.sourceAmountMinor)}{!quote.isLocked && " · rate is indicative until the transfer completes"}</div><input className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]" onChange={(e) => setRecipientName(e.target.value)} placeholder="Recipient name" value={recipientName} /><input className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]" onChange={(e) => setRecipientAccountNumber(e.target.value)} placeholder="Account number" value={recipientAccountNumber} /><div className="grid grid-cols-2 gap-2"><input className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]" onChange={(e) => setRecipientBankCode(e.target.value)} placeholder="Bank code" value={recipientBankCode} /><input className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]" onChange={(e) => setRecipientCountry(e.target.value)} placeholder="Country (e.g. US)" value={recipientCountry} /></div><Button className="w-full justify-center" disabled={!recipientName.trim() || !recipientAccountNumber.trim() || !recipientBankCode.trim() || sending} onClick={() => void submitSendRemittance()}><Send className="size-4" />{sending ? "Sending..." : "Review & send transfer"}</Button></div>}
       </Panel>
-
-      <div className="mt-4">
-        {transfersLoading ? (
-          <Panel className="p-6">
-            <LoadingBlock label="Loading your transfers" />
-          </Panel>
-        ) : transfers.length === 0 ? (
-          <Panel className="p-6">
-            <EmptyState copy="Transfers you send will show up here." icon={Send} title="No transfers yet" />
-          </Panel>
-        ) : (
-          <div className="grid gap-2">
-            {transfers.map((transfer) => (
-              <Panel className="flex items-center gap-4 p-4" key={transfer.id}>
-                <div className={cn("grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10")}>
-                  <Send className="size-4 text-[var(--ft-accent)]" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-semibold">{transfer.recipientName}</div>
-                  <div className="mt-0.5 text-xs text-[var(--ft-text-muted)]">
-                    {formatNaira(transfer.sourceAmountMinor)} → {transfer.destinationCurrency}{" "}
-                    {(transfer.destinationAmountMinor / 100).toLocaleString()}
-                  </div>
-                </div>
-                <Badge tone={REMITTANCE_STATUS_TONE[transfer.status]}>
-                  {transfer.status.toLowerCase()}
-                </Badge>
-              </Panel>
-            ))}
-          </div>
-        )}
-      </div>
+      <div className="mt-4">{transfersLoading ? <Panel className="p-6"><LoadingBlock label="Loading your transfers" /></Panel> : transfers.length === 0 ? <Panel className="p-6"><EmptyState copy="Transfers you send will show up here." icon={Send} title="No transfers yet" /></Panel> : <div className="grid gap-2">{transfers.map((transfer) => <Panel className="flex items-center gap-4 p-4" key={transfer.id}><div className="grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10"><Send className="size-4 text-[var(--ft-accent)]" /></div><div className="flex-1"><div className="font-semibold">{transfer.recipientName}</div><div className="mt-0.5 text-xs text-[var(--ft-text-muted)]">{formatNaira(transfer.sourceAmountMinor)} → {transfer.destinationCurrency} {(transfer.destinationAmountMinor / 100).toLocaleString()}</div></div><Badge tone={REMITTANCE_STATUS_TONE[transfer.status]}>{transfer.status.toLowerCase()}</Badge></Panel>)}</div>}</div>
     </motion.div>
   );
 }
