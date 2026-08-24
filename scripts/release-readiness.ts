@@ -63,6 +63,7 @@ const results: CheckResult[] = [];
 
 results.push(run("repository verification", "pnpm", ["verify"]));
 results.push(run("production Blueprint safety", "pnpm", ["ops:seal"]));
+results.push(run("admin surface and authorization audit", "pnpm", ["ops:admin-surface"]));
 
 const readinessConfigured = [
   "OPS_DEPLOY_OWNER",
