@@ -1578,6 +1578,14 @@ export class VtuService {
         await this.queue.enqueueVtuOpsReview(order.id);
       } else if (finalStatus === "SUBMITTED") {
         await this.queue.enqueueVtuPollStatus(order.id);
+      } else if (finalStatus === "DELIVERED") {
+        await this.sendPurchaseReceipt(ctx, {
+          id: order.id,
+          productType: "Electricity",
+          chargeMinor,
+          currency: order.currency,
+          createdAt: order.createdAt
+        });
       }
     } catch (err) {
       this.logger.error(`VTU electricity submit error for ${order.id}: ${String(err)}`);
@@ -1750,6 +1758,14 @@ export class VtuService {
         await this.queue.enqueueVtuOpsReview(order.id);
       } else if (finalStatus === "SUBMITTED") {
         await this.queue.enqueueVtuPollStatus(order.id);
+      } else if (finalStatus === "DELIVERED") {
+        await this.sendPurchaseReceipt(ctx, {
+          id: order.id,
+          productType: "Cable",
+          chargeMinor,
+          currency: order.currency,
+          createdAt: order.createdAt
+        });
       }
     } catch (err) {
       this.logger.error(`VTU cable submit error for ${order.id}: ${String(err)}`);
@@ -2063,6 +2079,14 @@ export class VtuService {
         await this.queue.enqueueVtuOpsReview(order.id);
       } else if (finalStatus === "SUBMITTED") {
         await this.queue.enqueueVtuPollStatus(order.id);
+      } else if (finalStatus === "DELIVERED") {
+        await this.sendPurchaseReceipt(ctx, {
+          id: order.id,
+          productType: "Education",
+          chargeMinor,
+          currency: order.currency,
+          createdAt: order.createdAt
+        });
       }
     } catch (err) {
       this.logger.error(`VTU education submit error for ${order.id}: ${String(err)}`);
