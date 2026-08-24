@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { ArrowLeft, KeyRound, MonitorSmartphone, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -53,7 +53,7 @@ function sessionState(session: SecurityUser["sessions"][number]) {
   return "active";
 }
 
-export default function AdminUserSecurityPage() {
+function AdminUserSecurityContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
   const { error: sessionError, loading: sessionLoading, session } = useApiSession();
@@ -217,5 +217,13 @@ export default function AdminUserSecurityPage() {
         )}
       </div>
     </AdminShell>
+  );
+}
+
+export default function AdminUserSecurityPage() {
+  return (
+    <Suspense fallback={<AdminAuthState loading title="Security auth" />}>
+      <AdminUserSecurityContent />
+    </Suspense>
   );
 }
