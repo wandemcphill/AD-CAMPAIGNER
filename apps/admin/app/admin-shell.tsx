@@ -47,7 +47,7 @@ export function AdminShell({ active, children, subtitle = "Control center" }: { 
   if (loading || !session?.isPlatformAdmin) return <AdminAuthState error={error} loading={loading} title="Admin auth" />;
 
   return (
-    <main className="ft-shell min-h-screen">
+    <main className="ft-admin-shell ft-shell min-h-screen">
       <div className="grid min-h-screen grid-cols-1 xl:grid-cols-[276px_1fr]">
         <aside className="ft-glass border-b border-[var(--ft-border)] px-4 py-5 xl:sticky xl:top-0 xl:h-screen xl:overflow-y-auto xl:border-r xl:border-b-0">
           <Link className="group flex items-center gap-3 rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-3 shadow-[var(--shadow-sm)]" href="/">
