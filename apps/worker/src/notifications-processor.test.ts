@@ -65,7 +65,7 @@ describe("processNotificationDispatchJob", () => {
     delete process.env.RESEND_API_KEY;
     delete process.env.RESEND_FROM_EMAIL;
     delete process.env.EMAIL_FROM;
-    vi.stubGlobal("fetch", vi.fn());
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>());
   });
 
   afterEach(() => {
@@ -105,13 +105,11 @@ describe("processNotificationDispatchJob", () => {
     process.env.RESEND_API_KEY = "re_test_key";
     process.env.RESEND_FROM_EMAIL = "FlipTrybe <noreply@example.com>";
 
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(
-        new Response(JSON.stringify({ data: { id: "re_msg_1" } }), {
-          status: 200,
-          headers: { "content-type": "application/json" }
-        })
-      )
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ data: { id: "re_msg_1" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -130,9 +128,7 @@ describe("processNotificationDispatchJob", () => {
 
     expect(result.outcome).toBe("sent");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const firstCall = fetchMock.mock.calls[0];
-    expect(firstCall).toBeDefined();
-    const requestInit = firstCall?.[1];
+    const requestInit = fetchMock.mock.calls[0]?.[1];
     expect(requestInit).toBeDefined();
     const headers = requestInit?.headers;
     expect((headers as Record<string, string>)["Idempotency-Key"]).toBe(
