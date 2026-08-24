@@ -6,9 +6,8 @@ import type { Route } from "next";
 import {
   ArrowUpRight,
   Banknote,
-  CreditCard,
-  Send,
   Bitcoin,
+  CreditCard,
   Gift,
   GraduationCap,
   Globe,
@@ -18,6 +17,7 @@ import {
   Lightbulb,
   Phone,
   Search,
+  Send,
   Smartphone,
   Sparkles,
   Trophy,
@@ -30,6 +30,15 @@ import { useFeatureFlags } from "../../lib/feature-flags";
 
 type ServiceCard = { label: string; description: string; href: Route; icon: LucideIcon; flag?: string };
 type ServiceCategory = { title: string; items: ServiceCard[] };
+
+const QUICK_JOBS: ServiceCard[] = [
+  { label: "Send money", description: "Start with a quote, recipient and confirmation.", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },
+  { label: "Buy gift cards", description: "Choose a supported brand and pay.", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+  { label: "Sell gift cards", description: "Submit an eligible card for settlement.", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+  { label: "Buy RMB & pay China", description: "Buy yuan for supported China payments.", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" },
+  { label: "USDT & USDC", description: "Buy or sell supported digital dollars.", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell" },
+  { label: "Virtual card", description: "Create and manage supported cards.", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" }
+];
 
 const CATEGORIES: ServiceCategory[] = [
   { title: "Connectivity", items: [
@@ -69,11 +78,8 @@ export default function ServicesHubPage() {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const isEnabled = (flag?: string) => !flag || (ready && flags[flag] === true);
-
-  const visibleCategories = useMemo(() => CATEGORIES.map((category) => ({
-    ...category,
-    items: category.items.filter((item) => isEnabled(item.flag) && (!normalizedQuery || item.label.toLowerCase().includes(normalizedQuery) || item.description.toLowerCase().includes(normalizedQuery)))
-  })).filter((category) => category.items.length > 0), [normalizedQuery, ready, flags]);
+  const visibleQuickJobs = QUICK_JOBS.filter((item) => isEnabled(item.flag) && (!normalizedQuery || item.label.toLowerCase().includes(normalizedQuery) || item.description.toLowerCase().includes(normalizedQuery)));
+  const visibleCategories = useMemo(() => CATEGORIES.map((category) => ({ ...category, items: category.items.filter((item) => isEnabled(item.flag) && (!normalizedQuery || item.label.toLowerCase().includes(normalizedQuery) || item.description.toLowerCase().includes(normalizedQuery))) })).filter((category) => category.items.length > 0), [normalizedQuery, ready, flags]);
   const visibleHistory = ORDER_HISTORY.filter((entry) => isEnabled(entry.flag));
   const resultCount = visibleCategories.reduce((sum, category) => sum + category.items.length, 0);
 
@@ -85,36 +91,28 @@ export default function ServicesHubPage() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-accent)]/20 bg-[var(--ft-accent-subtle)] px-3 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--ft-accent)]"><Sparkles className="size-3" /> Technology services</div>
-              <h1 className="mt-4 font-[var(--font-display)] text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">A service layer built around you.</h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)] sm:text-base">Money, connectivity, digital value, utilities and emerging services share one intelligent operating surface.</p>
+              <h1 className="mt-4 font-[var(--font-display)] text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">Do the thing. We handle the plumbing.</h1>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)] sm:text-base">Money, digital value, connectivity and everyday services share one operating surface. Start with the outcome, then follow the guided flow.</p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {[[String(resultCount).padStart(2, "0"), "available services"], ["01", "connected account"], ["24/7", "platform access"]].map(([value, label]) => <div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]/70 px-4 py-3" key={label}><div className="font-mono text-xl font-semibold tracking-[-0.04em]">{value}</div><div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">{label}</div></div>)}
+              {[[String(resultCount).padStart(2, "0"), "service modules"], ["01", "connected account"], ["24/7", "platform access"]].map(([value, label]) => <div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]/70 px-4 py-3" key={label}><div className="font-mono text-xl font-semibold tracking-[-0.04em]">{value}</div><div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">{label}</div></div>)}
             </div>
           </div>
-
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-md">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[var(--ft-text-muted)]" />
-              <input aria-label="Search services" className="h-12 w-full rounded-2xl border border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)] pl-10 pr-4 text-sm outline-none transition focus:border-[var(--ft-accent)] focus:shadow-[0_0_0_4px_var(--ft-accent-glow)]" onChange={(event) => setQuery(event.target.value)} placeholder="Search airtime, gift cards, utilities, numbers…" type="search" value={query} />
-            </div>
+            <div className="relative w-full sm:max-w-md"><Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[var(--ft-text-muted)]" /><input aria-label="Search services" className="h-12 w-full rounded-2xl border border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)] pl-10 pr-4 text-sm outline-none transition focus:border-[var(--ft-accent)] focus:shadow-[0_0_0_4px_var(--ft-accent-glow)]" onChange={(event) => setQuery(event.target.value)} placeholder="Search money, gift cards, RMB, crypto, airtime…" type="search" value={query} /></div>
             {visibleHistory.length > 0 ? <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-micro uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">Recent</span>{visibleHistory.map((entry) => <Link className="inline-flex items-center gap-1.5 rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)]/40 hover:text-[var(--ft-accent)]" href={entry.href} key={entry.href}><History className="size-3" />{entry.label}</Link>)}</div> : null}
           </div>
         </header>
 
+        <section className="mt-6 rounded-[26px] border border-[var(--ft-accent)]/20 bg-[var(--ft-accent-subtle)]/45 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3"><div><div className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--ft-accent)]">Start here</div><h2 className="mt-1 text-lg font-semibold">Popular jobs</h2></div><span className="text-xs text-[var(--ft-text-muted)]">Outcome-first</span></div>
+          {visibleQuickJobs.length > 0 ? <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{visibleQuickJobs.map((item) => <Link className="group flex items-center gap-3 rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-3 transition hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-sm)]" href={item.href} key={item.label}><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"><item.icon className="size-4" /></span><span className="min-w-0 flex-1"><span className="block text-xs font-semibold">{item.label}</span><span className="mt-0.5 block truncate text-[10px] text-[var(--ft-text-muted)]">{item.description}</span></span><ArrowUpRight className="size-4 text-[var(--ft-text-muted)] transition group-hover:text-[var(--ft-accent)]" /></Link>)}</div> : <p className="mt-3 text-xs text-[var(--ft-text-muted)]">No enabled quick jobs match this search.</p>}
+        </section>
+
         {visibleCategories.length === 0 ? (
           <div className="mt-7 rounded-[24px] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)] p-10 text-center"><Search className="mx-auto size-8 text-[var(--ft-text-muted)]" /><div className="mt-4 text-sm font-semibold">No services found</div><p className="mt-1 text-xs text-[var(--ft-text-muted)]">Try a broader search or check back as new services come online.</p></div>
         ) : (
-          <div className="mt-8 grid gap-10">
-            {visibleCategories.map((category, categoryIndex) => (
-              <section key={category.title}>
-                <div className="mb-4 flex items-end justify-between gap-3"><div><span className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--ft-accent)]">0{categoryIndex + 1}</span><h2 className="mt-1 text-lg font-semibold tracking-tight">{category.title}</h2></div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">{String(category.items.length).padStart(2, "0")} modules</span></div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {category.items.map((item, index) => <Link className="group relative overflow-hidden rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-5 shadow-[var(--shadow-sm)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-md)]" href={item.href} key={item.href}><div className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-[var(--ft-accent-glow)] blur-2xl opacity-0 transition group-hover:opacity-100" /><div className="relative flex items-start justify-between gap-3"><div className="grid size-11 place-items-center rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-accent)] transition group-hover:scale-105"><item.icon className="size-5" /></div><span className="font-mono text-[9px] text-[var(--ft-text-muted)]">0{index + 1}</span></div><div className="relative mt-6 text-sm font-semibold tracking-tight">{item.label}</div><div className="relative mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">{item.description}</div><div className="relative mt-5 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--ft-accent)]">Open service <ArrowUpRight className="size-3.5" /></div></Link>)}
-                </div>
-              </section>
-            ))}
-          </div>
+          <div className="mt-8 grid gap-10">{visibleCategories.map((category, categoryIndex) => <section key={category.title}><div className="mb-4 flex items-end justify-between gap-3"><div><span className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--ft-accent)]">0{categoryIndex + 1}</span><h2 className="mt-1 text-lg font-semibold tracking-tight">{category.title}</h2></div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">{String(category.items.length).padStart(2, "0")} modules</span></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{category.items.map((item, index) => <Link className="group relative overflow-hidden rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-5 shadow-[var(--shadow-sm)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-md)]" href={item.href} key={item.href}><div className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-[var(--ft-accent-glow)] blur-2xl opacity-0 transition group-hover:opacity-100" /><div className="relative flex items-start justify-between gap-3"><div className="grid size-11 place-items-center rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-accent)] transition group-hover:scale-105"><item.icon className="size-5" /></div><span className="font-mono text-[9px] text-[var(--ft-text-muted)]">0{index + 1}</span></div><div className="relative mt-6 text-sm font-semibold tracking-tight">{item.label}</div><div className="relative mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">{item.description}</div><div className="relative mt-5 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--ft-accent)]">Open service <ArrowUpRight className="size-3.5" /></div></Link>)}</div></section>)}</div>
         )}
       </div>
     </div>
