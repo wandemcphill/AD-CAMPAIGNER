@@ -61,6 +61,7 @@ export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Telecom", href: "/telecom/", icon: Phone },
   { label: "Webhook Operations", href: "/webhook-operations/", icon: Webhook },
   { label: "Webhooks", href: "/webhooks/", icon: Webhook },
+  { label: "Support Operations", href: "/support-ops/", icon: LifeBuoy },
   { label: "Support", href: "/support/", icon: LifeBuoy },
   { label: "Rewards", href: "/rewards/", icon: Gift },
   { label: "Marketplace", href: "/marketplace/applications/", icon: Store },
