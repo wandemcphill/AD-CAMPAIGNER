@@ -98,9 +98,6 @@ function createUnavailableProductionProvider(name: string): NotificationProvider
   };
 }
 
-// EMAIL_PROVIDER can override only the email transport, allowing Resend to
-// coexist with Termii for SMS/WhatsApp. When omitted, email keeps following
-// NOTIFICATION_PROVIDER for backwards compatibility.
 function adapterForChannel(
   channel: "EMAIL" | "SMS" | "WHATSAPP",
   idempotencyKey: string
@@ -112,14 +109,11 @@ function adapterForChannel(
   )?.trim().toLowerCase();
 
   if (channel === "EMAIL" && (provider === "resend" || provider === "live")) {
-    // "live" is retained as a backwards-compatible production value, but the
-    // actual email transport remains Resend when its credentials are present.
-    const resendConfig: ResendConfig = {
-      ...(process.env.RESEND_API_KEY ? { apiKey: process.env.RESEND_API_KEY } : {}),
-      ...(process.env.RESEND_FROM_EMAIL ?? process.env.EMAIL_FROM
-        ? { from: process.env.RESEND_FROM_EMAIL ?? process.env.EMAIL_FROM }
-        : {})
-    };
+    const resendConfig: ResendConfig = {};
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.RESEND_FROM_EMAIL ?? process.env.EMAIL_FROM;
+    if (apiKey) resendConfig.apiKey = apiKey;
+    if (from) resendConfig.from = from;
     return createResendEmailAdapter(resendConfig, idempotencyKey);
   }
 
@@ -156,8 +150,6 @@ export async function processNotificationDispatchJob(
   const { notificationId, channel } = job.data;
 
   if (channel === "IN_APP" || channel === "WEBSOCKET") {
-    // Neither is dispatched externally — IN_APP is delivered by row creation,
-    // WEBSOCKET goes through the realtime gateway, not this queue.
     return { notificationId, channel, outcome: "skipped:not_externally_dispatched" };
   }
 
@@ -195,8 +187,6 @@ export async function processNotificationDispatchJob(
   const adapter = adapterForChannel(channel, idempotencyKey);
 
   if (!adapter.isConfigured()) {
-    // Credentials/configuration genuinely absent — record as pending, not a
-    // fabricated success. A later retry (once configured) can still succeed.
     await db.notificationDeliveryAttempt.create({
       data: {
         notificationId,
@@ -254,10 +244,6 @@ export async function processNotificationDispatchJob(
       }
     });
 
-    // BullMQ retries this job per the "notifications" queue's retry policy
-    // (attempts: 6, exponential backoff) — only mark the Notification row
-    // FAILED once every attempt is exhausted, so it doesn't read as a
-    // terminal failure mid-retry.
     if (job.attemptsMade + 1 >= (job.opts.attempts ?? 1)) {
       await db.notification.update({
         where: { id: notificationId },
