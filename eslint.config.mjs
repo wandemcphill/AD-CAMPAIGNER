@@ -30,6 +30,6 @@ export default [
   },
   {
     files: ["apps/web/app/marketing/fliptribe-homepage.tsx"],
-    rules: { "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }] }
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^(?:_|CapabilityTile$)", caughtErrorsIgnorePattern: "^_" }] }
   }
 ];
