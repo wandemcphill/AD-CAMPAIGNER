@@ -73,11 +73,11 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (session?.isPlatformAdmin) void refresh();
-  }, [session]);
+  }, [session, refresh]);
 
   if (sessionLoading || !session?.isPlatformAdmin) {
     return <AdminAuthState error={sessionError} loading={sessionLoading} title="Admin auth" />;
