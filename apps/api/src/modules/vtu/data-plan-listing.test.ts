@@ -30,6 +30,7 @@ function buildService(opts: { routedProvider: string; plans: Array<Record<string
     undefined as never,
     undefined as never,
     undefined as never,
+    undefined as never,
     undefined as never
   );
 
@@ -98,6 +99,7 @@ describe("VtuService.listCablePackages", () => {
       undefined as never,
       undefined as never,
       undefined as never,
+      undefined as never,
       undefined as never
     );
     (service as unknown as { ensureDefaultCablePackages: () => Promise<void> }).ensureDefaultCablePackages =
@@ -119,6 +121,7 @@ describe("VtuService.listCablePackages", () => {
     const findMany = vi.fn();
     const service = new VtuService(
       { client: { vtuCablePackage: { findMany } } } as unknown as PrismaService,
+      undefined as never,
       undefined as never,
       undefined as never,
       undefined as never,

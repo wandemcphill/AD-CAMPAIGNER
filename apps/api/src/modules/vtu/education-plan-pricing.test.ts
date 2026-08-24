@@ -45,6 +45,7 @@ describe("VtuService education plan pricing", () => {
       undefined as never,
       undefined as never,
       undefined as never,
+      undefined as never,
       undefined as never
     );
   });

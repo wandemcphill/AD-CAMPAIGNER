@@ -25,6 +25,7 @@ import { PricingRuleService, type PricingRuleFilter } from "../providers/pricing
 import { VtuRouterService } from "./vtu-router.service";
 import { VtuQuoteService } from "./vtu-quote.service";
 import { normalizeNigerianMsisdn } from "./msisdn";
+import { NotificationsService } from "../notifications/notifications.service";
 import { featureFlags } from "@fliptrybe/feature-flags";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type {
@@ -166,12 +167,66 @@ export class VtuService {
     private readonly queue: QueueProducerService,
     private readonly pricingRules: PricingRuleService,
     private readonly vtuRouter: VtuRouterService,
-    private readonly vtuQuote: VtuQuoteService
+    private readonly vtuQuote: VtuQuoteService,
+    private readonly notifications: NotificationsService
   ) {}
 
   private get db(): DatabaseClient {
     return this.prismaService.client;
   }
+
+  /**
+   * Emails the logged-in customer a receipt for a completed VTU order.
+   *
+   * Guest (non-logged-in) purchases of these exact product types already get
+   * this via guest-checkout.service.ts's emailReceipt -- this is that same
+   * pattern for the main authenticated dashboard flows, which had no
+   * notification at all. Uses userId, not guestEmail: NotificationsService
+   * resolves it to the account's own email, so there is nothing to look up
+   * here.
+   *
+   * Call only for an order that has reached a final DELIVERED state. A
+   * still-pending SUBMITTED/AMBIGUOUS order is not: it is not yet known to
+   * have succeeded, so nothing is sent until the poll/ops-review path
+   * resolves it one way or the other. There is deliberately no matching
+   * failure-notification helper -- see the comment above applyMarkup for why.
+   */
+  private async sendPurchaseReceipt(
+    ctx: AuthenticatedRequestContext,
+    order: { id: string; productType: string; chargeMinor: number; currency: string; createdAt: Date }
+  ) {
+    try {
+      await this.notifications.send({
+        userId: ctx.userId,
+        channels: ["EMAIL"],
+        template: "transaction_receipt",
+        vars: {
+          first_name: ctx.userName ?? "there",
+          amount: (order.chargeMinor / 100).toFixed(2),
+          currency: order.currency,
+          transaction_id: order.id,
+          reference: order.id,
+          status: "DELIVERED",
+          service: order.productType,
+          date: order.createdAt.toISOString()
+        },
+        idempotencyKey: `vtu_receipt:${order.id}`
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to email VTU receipt for order ${order.id}: ${(err as Error).message}`);
+    }
+  }
+
+  // No sendPurchaseFailureNotification here, deliberately. runChargeSaga's
+  // only failurePolicy VTU uses is hold_and_flag (see packages/payments/src/
+  // saga.ts) -- both the in-execute AMBIGUOUS branch and the outer "held"
+  // branch mean the charge is RETAINED pending ops review, because the
+  // provider may have delivered despite an ambiguous or thrown response.
+  // There is no confirmed "nothing happened, no funds touched" state to
+  // accurately describe to the customer; payment_failed's "No funds have
+  // been deducted" copy would be false in every VTU non-delivery case. A
+  // failure notification belongs at the point ops actually resolves the
+  // order (refund or manual delivery confirmation), not here.
 
   // A PricingRule row (domain=VTU) overrides MARKUP_BPS when one matches; otherwise
   // this falls back to the same 2% margin that was hardcoded before.
@@ -506,6 +561,15 @@ export class VtuService {
           await this.queue.enqueueVtuOpsReview(order.id);
         } else if (finalStatus === "SUBMITTED") {
           await this.queue.enqueueVtuPollStatus(order.id);
+        } else if (finalStatus === "DELIVERED") {
+          const receiptOrder = order as { id: string; currency: string; createdAt: Date };
+          await this.sendPurchaseReceipt(ctx, {
+            id: receiptOrder.id,
+            productType: "Airtime",
+            chargeMinor,
+            currency: receiptOrder.currency,
+            createdAt: receiptOrder.createdAt
+          });
         }
 
         return result;
@@ -658,6 +722,15 @@ export class VtuService {
           await this.queue.enqueueVtuOpsReview(order.id);
         } else if (finalStatus === "SUBMITTED") {
           await this.queue.enqueueVtuPollStatus(order.id);
+        } else if (finalStatus === "DELIVERED") {
+          const receiptOrder = order as { id: string; currency: string; createdAt: Date };
+          await this.sendPurchaseReceipt(ctx, {
+            id: receiptOrder.id,
+            productType: "Data",
+            chargeMinor,
+            currency: receiptOrder.currency,
+            createdAt: receiptOrder.createdAt
+          });
         }
 
         return result;
