@@ -47,10 +47,16 @@ export function buildNotificationDedupeKey(input: {
 }
 
 export function createOperationalNotification(input: Omit<OperationalNotification, "severity" | "dedupeKey"> & { resourceId?: string }): OperationalNotification {
+  const dedupeKeyInput: { userId: string; event: OperationalEvent; resourceId?: string } = {
+    userId: input.userId,
+    event: input.event
+  };
+  if (input.resourceId !== undefined) dedupeKeyInput.resourceId = input.resourceId;
+
   return {
     ...input,
     severity: notificationSeverity(input.event),
-    dedupeKey: buildNotificationDedupeKey({ userId: input.userId, event: input.event, resourceId: input.resourceId })
+    dedupeKey: buildNotificationDedupeKey(dedupeKeyInput)
   };
 }
 
