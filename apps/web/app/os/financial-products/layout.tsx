@@ -1,8 +1,8 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
-import { Building2 } from "lucide-react";
+import { ArrowLeftRight, Building2 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { TabBar } from "@fliptrybe/ui/components";
 
@@ -12,9 +12,6 @@ import { useFeatureFlags } from "../../lib/feature-flags";
 import { AgeGateNotice } from "../age-gate-notice";
 import { loadAccounts } from "./api";
 
-// Each tab is backed by its own feature flag and its own provider domain — a
-// deployment can run remittance without virtual cards. Tabs whose flag is off
-// are not rendered at all, because their endpoints answer 503.
 const TABS = [
   { id: "accounts", label: "Accounts", flag: "virtualAccounts" },
   { id: "cards", label: "Cards", flag: "virtualCards" },
@@ -29,71 +26,42 @@ const TAB_ROUTES = {
 
 export default function FinancialProductsLayout({ children }: { children: ReactNode }) {
   const { flags, ready: flagsReady } = useFeatureFlags();
-  const availableTabs = TABS.filter((t) => flags[t.flag] === true);
+  const availableTabs = TABS.filter((tab) => flags[tab.flag] === true);
   const router = useRouter();
   const pathname = usePathname();
-  const activeTab =
-    TABS.find((t) => pathname.startsWith(`/os/financial-products/${t.id}`))?.id ?? "accounts";
-
-  // Financial products are 18+ (AgeGuard runs before the feature-flag gate, so this
-  // probe surfaces the age 403 regardless of which products are switched on). When
-  // the user has no verified date of birth, show the friendly prompt, not a raw error.
+  const activeTab = TABS.find((tab) => pathname.startsWith(`/os/financial-products/${tab.id}`))?.id ?? "accounts";
   const [ageRestricted, setAgeRestricted] = useState(false);
+
   useEffect(() => {
     void loadAccounts().catch((caught) => {
-      if (isAgeRestrictedError(caught)) {
-        setAgeRestricted(true);
-      }
+      if (isAgeRestrictedError(caught)) setAgeRestricted(true);
     });
   }, []);
 
-  const onChange = useCallback(
-    (id: string) => {
-      const target = TAB_ROUTES[id as keyof typeof TAB_ROUTES];
-      if (target) {
-        router.push(target);
-      }
-    },
-    [router]
-  );
+  const onChange = useCallback((id: string) => {
+    const target = TAB_ROUTES[id as keyof typeof TAB_ROUTES];
+    if (target) router.push(target);
+  }, [router]);
 
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-3xl">
-        <div className="flex items-center gap-2">
-          <Building2 className="size-5 text-[var(--ft-accent)]" />
-          <h1 className="text-xl font-bold">Financial Products</h1>
+      <div className="mx-auto max-w-5xl">
+        <div className="flex flex-col gap-4 rounded-[24px] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-accent)]"><Building2 className="size-5" /></span><div><div className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--ft-accent)]">Global money</div><h1 className="mt-1 text-xl font-bold tracking-[-0.02em]">Financial Products</h1><p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Hold supported foreign currencies, spend globally and move money through supported corridors.</p></div></div>
+          <div className="flex shrink-0 items-center gap-2 rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 py-2 text-[10px] font-semibold text-[var(--ft-text-muted)]"><ArrowLeftRight className="size-3.5" /> Review before you move money</div>
         </div>
-        <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-          Virtual accounts, virtual cards, and international transfers.
-        </p>
-        {/* Only warn about sandbox behaviour when this deployment has NOT turned
-            on live provider integrations. Showing it against a live provider
-            would tell customers their real money movement is fake. */}
+
         {flags["liveProviderIntegrations"] !== true && (
-          <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
-            These are sandbox/mock-backed in this environment — no real bank account, card, or
-            transfer is created yet.
-          </div>
+          <div className="mt-3 rounded-xl border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">Some financial products are sandbox/mock-backed in this environment. Availability is shown per product before you begin.</div>
         )}
 
         {ageRestricted ? (
-          <div className="mt-6">
-            <AgeGateNotice feature="Financial products" />
-          </div>
+          <div className="mt-6"><AgeGateNotice feature="Financial products" /></div>
         ) : flagsReady && availableTabs.length === 0 ? (
-          <div className="mt-6">
-            <EmptyState
-              copy="Virtual accounts, virtual cards, and international transfers are not switched on for this workspace yet. Contact support if you were expecting access."
-              title="Not available yet"
-            />
-          </div>
+          <div className="mt-6"><EmptyState copy="No financial products are switched on for this workspace yet. Contact support if you were expecting access." title="Not available yet" /></div>
         ) : (
           <>
-            <div className="mt-4">
-              <TabBar items={availableTabs} onChange={onChange} value={activeTab} />
-            </div>
-
+            <div className="mt-4"><TabBar items={availableTabs} onChange={onChange} value={activeTab} /></div>
             {children}
           </>
         )}
