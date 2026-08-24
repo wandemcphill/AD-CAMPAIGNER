@@ -18,6 +18,8 @@ describe("provider resilience", () => {
   });
   it("allows only explicitly safe retry responses to retry", () => {
     expect(classifyProviderFailure({ statusCode: 425 }).retryable).toBe(true);
+    expect(classifyProviderFailure({ statusCode: 503 }).retryable).toBe(false);
+    expect(classifyProviderFailure({ statusCode: 429 }).retryable).toBe(false);
     expect(classifyProviderFailure({ statusCode: 422 }).retryable).toBe(false);
     expect(classifyProviderFailure({ statusCode: 422 }).class).toBe("rejected");
   });
