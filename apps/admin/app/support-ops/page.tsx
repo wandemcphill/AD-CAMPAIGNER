@@ -24,6 +24,11 @@ type Ticket = {
   replies: Array<{ id: string; authorType: string; body: string; createdAt: string }>;
 };
 
+type SupportOverview = {
+  totals: { open: number; inProgress: number; resolved: number; closed: number; urgentOpen: number };
+  oldestOpen: { id: string; subject: string; priority: TicketPriority; status: TicketStatus; createdAt: string } | null;
+};
+
 const statusTone: Record<TicketStatus, "success" | "warning" | "neutral" | "info"> = {
   OPEN: "warning",
   IN_PROGRESS: "info",
@@ -43,7 +48,7 @@ export default function SupportOperationsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [overview, setOverview] = useState<{ totals: { open: number; inProgress: number; resolved: number; closed: number; urgentOpen: number }; oldestOpen: { id: string; subject: string; priority: TicketPriority; status: TicketStatus; createdAt: string } | null }>();
+  const [overview, setOverview] = useState<SupportOverview>();
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -51,7 +56,7 @@ export default function SupportOperationsPage() {
     try {
       const [nextTickets, nextOverview] = await Promise.all([
         apiRequest<Ticket[]>("/admin/support/tickets?status=OPEN"),
-        apiRequest<typeof overview>("/admin/support/overview")
+        apiRequest<SupportOverview>("/admin/support/overview")
       ]);
       setTickets(nextTickets);
       setOverview(nextOverview);
@@ -66,13 +71,13 @@ export default function SupportOperationsPage() {
     if (session?.isPlatformAdmin) void refresh();
   }, [session, refresh]);
 
-  const urgent = useMemo(() => tickets.filter((ticket) => ticket.priority === "URGENT").length, [tickets]);
+  const urgent = overview?.totals.urgentOpen ?? tickets.filter((ticket) => ticket.priority === "URGENT").length;
   const high = useMemo(() => tickets.filter((ticket) => ticket.priority === "HIGH").length, [tickets]);
   const unanswered = useMemo(
     () => tickets.filter((ticket) => !ticket.replies.some((reply) => reply.authorType === "ADMIN")).length,
     [tickets]
   );
-  const oldest = tickets.reduce<Ticket | undefined>((current, ticket) => {
+  const oldest = overview?.oldestOpen ?? tickets.reduce<Ticket | undefined>((current, ticket) => {
     if (!current) return ticket;
     return new Date(ticket.createdAt) < new Date(current.createdAt) ? ticket : current;
   }, undefined);
@@ -119,14 +124,14 @@ export default function SupportOperationsPage() {
           ))}
         </div>
 
-        {overview?.oldestOpen || oldest ? (
+        {oldest ? (
           <Panel className="mt-5 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <Clock3 className="mt-0.5 size-4 text-[var(--ft-yellow)]" />
               <div>
                 <div className="text-sm font-semibold">Oldest open issue</div>
-                <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">{(overview?.oldestOpen ?? oldest)!.subject}</div>
-                <div className="mt-1 font-mono text-xs text-[var(--ft-text-muted)]">{(overview?.oldestOpen ?? oldest)!.id} · {new Date((overview?.oldestOpen ?? oldest)!.createdAt).toLocaleString()}</div>
+                <div className="mt-1 text-sm text-[var(--ft-text-secondary)]">{oldest.subject}</div>
+                <div className="mt-1 font-mono text-xs text-[var(--ft-text-muted)]">{oldest.id} · {new Date(oldest.createdAt).toLocaleString()}</div>
               </div>
             </div>
             <Link href={`/support/?ticket=${encodeURIComponent(oldest.id)}`} className="inline-flex items-center gap-2 text-sm font-medium text-[var(--ft-accent)]">
