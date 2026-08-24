@@ -63,8 +63,9 @@ export function FliptribeHomepage() {
         <Fade><div>
           <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-[var(--ft-accent-2)]">Global money layer</span>
           <h2 className="mt-4 font-[var(--font-display)] text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">Nigeria should not feel like the edge of the map.</h2>
-          <p className="mt-5 max-w-xl text-base leading-7 text-[var(--ft-text-secondary)]">See the routes FlipTrybe is building toward: money coming home to Nigeria, supplier payments into China, and a multi-currency layer for people who live and work across borders.</p>
+          <p className="mt-5 max-w-xl text-base leading-7 text-[var(--ft-text-secondary)]">See the routes and digital-money products FlipTrybe is building toward: money coming home to Nigeria, supplier payments into China, USDT/USDC buying and selling, and a multi-currency layer for people who live and work across borders.</p>
           <div className="mt-7 flex flex-wrap gap-2">
+            <span className="rounded-full border border-[var(--ft-accent-2)]/35 bg-[var(--ft-accent-2)]/10 px-3 py-2 text-xs font-semibold text-[var(--ft-accent-2)]">USDT · USDC</span>
             <span className="rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 py-2 text-xs font-semibold">USD</span>
             <span className="rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 py-2 text-xs font-semibold">GBP</span>
             <span className="rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 py-2 text-xs font-semibold">EUR</span>
