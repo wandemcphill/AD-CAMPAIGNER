@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from "@nestjs/common";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { NotificationsService, SendNotificationInput } from "../notifications/notifications.service";
 import type { PrismaService } from "../prisma.service";
 import { PaymentLinksService } from "./payment-links.service";
 
@@ -39,7 +40,10 @@ type FakePayment = {
   updatedAt: Date;
 };
 
-function makeFakePrisma(linkSeed: Partial<FakeLink> = {}) {
+function makeFakePrisma(
+  linkSeed: Partial<FakeLink> = {},
+  opts: { ownerUserId?: string | null } = {}
+) {
   const links: FakeLink[] = [
     {
       id: "link_1",
@@ -69,6 +73,8 @@ function makeFakePrisma(linkSeed: Partial<FakeLink> = {}) {
         links.find((l) => (where.reference ? l.reference === where.reference : l.id === where.id)) ?? null
       );
     },
+    findUnique: (args: { where: { id: string } }) =>
+      Promise.resolve(links.find((l) => l.id === args.where.id) ?? null),
     update: (args: { where: { id: string }; data: Record<string, unknown> }) => {
       const link = links.find((l) => l.id === args.where.id);
       if (!link) throw new Error("not found");
@@ -82,6 +88,26 @@ function makeFakePrisma(linkSeed: Partial<FakeLink> = {}) {
       }
       return Promise.resolve(link);
     }
+  };
+
+  // One workspace/organization pair matching links[0]'s workspaceId, and one
+  // OWNER team member for it -- unless opts.ownerUserId is explicitly null,
+  // which simulates the "no OWNER team member" edge case.
+  const workspace = {
+    findUnique: (args: { where: { id: string } }) =>
+      Promise.resolve(
+        args.where.id === "ws_1" ? { id: "ws_1", organizationId: "org_1", name: "Test Workspace" } : null
+      )
+  };
+
+  const ownerUserId = opts.ownerUserId === undefined ? "user_owner_1" : opts.ownerUserId;
+  const teamMember = {
+    findFirst: (args: { where: { organizationId?: string; role?: string } }) =>
+      Promise.resolve(
+        ownerUserId && args.where.organizationId === "org_1" && args.where.role === "OWNER"
+          ? { id: "tm_1", userId: ownerUserId, organizationId: "org_1", role: "OWNER" }
+          : null
+      )
   };
 
   const paymentLinkPayment = {
@@ -122,6 +148,8 @@ function makeFakePrisma(linkSeed: Partial<FakeLink> = {}) {
     paymentLink: typeof paymentLink;
     paymentLinkPayment: typeof paymentLinkPayment;
     eventOutbox: typeof eventOutbox;
+    workspace: typeof workspace;
+    teamMember: typeof teamMember;
     $transaction: (fn: (tx: FakeClient) => Promise<unknown>) => Promise<unknown>;
   };
 
@@ -129,10 +157,19 @@ function makeFakePrisma(linkSeed: Partial<FakeLink> = {}) {
     paymentLink,
     paymentLinkPayment,
     eventOutbox,
+    workspace,
+    teamMember,
     $transaction: async (fn) => fn(client)
   };
 
   return { prisma: { client } as unknown as PrismaService, links, payments };
+}
+
+function buildService(
+  prisma: PrismaService,
+  notifications: Partial<NotificationsService> = { send: vi.fn(() => Promise.resolve([])) }
+) {
+  return new PaymentLinksService(prisma, notifications as NotificationsService);
 }
 
 describe("PaymentLinksService payments", () => {
@@ -143,7 +180,7 @@ describe("PaymentLinksService payments", () => {
 
   it("initiates a payment intent via the mock gateway and returns a checkoutUrl", async () => {
     const { prisma } = makeFakePrisma();
-    const service = new PaymentLinksService(prisma);
+    const service = buildService(prisma);
 
     const result = await service.initiatePayment("plk_test", {}, undefined);
 
@@ -153,14 +190,14 @@ describe("PaymentLinksService payments", () => {
 
   it("throws NotFoundException for a disabled link", async () => {
     const { prisma } = makeFakePrisma({ status: "DISABLED" });
-    const service = new PaymentLinksService(prisma);
+    const service = buildService(prisma);
 
     await expect(service.initiatePayment("plk_test", {}, undefined)).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it("requires an explicit amount for payer-set-amount links", async () => {
     const { prisma } = makeFakePrisma({ amountMinor: null });
-    const service = new PaymentLinksService(prisma);
+    const service = buildService(prisma);
 
     await expect(service.initiatePayment("plk_test", {}, undefined)).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -169,7 +206,7 @@ describe("PaymentLinksService payments", () => {
     process.env.NODE_ENV = "production";
     process.env.KORAPAY_WEBHOOK_SECRET = "test-secret";
     const { prisma } = makeFakePrisma();
-    const service = new PaymentLinksService(prisma);
+    const service = buildService(prisma);
 
     await expect(
       service.handleKorapayWebhook({ data: { reference: "ref_1", status: "success" } }, "bad-signature")
@@ -181,7 +218,8 @@ describe("PaymentLinksService payments", () => {
 
   it("credits the link and marks the payment PAID exactly once, even if the webhook is replayed", async () => {
     const { prisma, links, payments } = makeFakePrisma();
-    const service = new PaymentLinksService(prisma);
+    const send = vi.fn((_input: SendNotificationInput) => Promise.resolve([]));
+    const service = buildService(prisma, { send });
 
     const intent = await service.initiatePayment("plk_test", {}, undefined);
     const payment = payments.find((p) => p.reference === intent.reference)!;
@@ -194,7 +232,17 @@ describe("PaymentLinksService payments", () => {
     );
     expect(first.matched).toBe(true);
 
-    // Replay the identical webhook — must be a no-op, not a double-credit.
+    // The owner should be notified exactly once for the real payment.
+    expect(send).toHaveBeenCalledTimes(1);
+    const call = send.mock.calls[0]?.[0];
+    expect(call?.workspaceId).toBe("ws_1");
+    expect(call?.userId).toBe("user_owner_1");
+    expect(call?.channels).toEqual(["IN_APP", "EMAIL"]);
+    expect(call?.template).toBe("payment_link_paid");
+    expect(call?.vars).toMatchObject({ service: "Test invoice", currency: "NGN", amount: "1000.00" });
+
+    // Replay the identical webhook — must be a no-op, not a double-credit or a
+    // second notification.
     const outbox = (prisma.client as unknown as { eventOutbox: { findUnique: () => Promise<unknown> } }).eventOutbox;
     outbox.findUnique = () => Promise.resolve({ processedAt: new Date() });
 
@@ -203,9 +251,30 @@ describe("PaymentLinksService payments", () => {
       undefined
     );
     expect(second.duplicate).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
 
     expect(links[0]!.timesPaid).toBe(1);
     expect(links[0]!.totalCollectedMinor).toBe(100000);
+    expect(payments.find((p) => p.reference === intent.reference)!.status).toBe("PAID");
+  });
+
+  it("does not notify, and does not throw, when the workspace has no OWNER team member", async () => {
+    const { prisma, payments } = makeFakePrisma({}, { ownerUserId: null });
+    const send = vi.fn((_input: SendNotificationInput) => Promise.resolve([]));
+    const service = buildService(prisma, { send });
+
+    const intent = await service.initiatePayment("plk_test", {}, undefined);
+    const payment = payments.find((p) => p.reference === intent.reference)!;
+
+    const result = await service.handleKorapayWebhook(
+      { event: "charge.success", data: { reference: payment.paymentReference!, status: "success" } },
+      undefined
+    );
+
+    expect(result.matched).toBe(true);
+    expect(send).not.toHaveBeenCalled();
+    // The payment itself must still succeed -- a missing OWNER row is an
+    // operator data problem, not a reason to fail the customer's payment.
     expect(payments.find((p) => p.reference === intent.reference)!.status).toBe("PAID");
   });
 });

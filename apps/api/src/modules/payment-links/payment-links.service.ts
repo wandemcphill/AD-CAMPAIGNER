@@ -9,6 +9,7 @@ import {
 import type { CurrencyCode } from "@fliptrybe/types";
 
 import { PrismaService } from "../prisma.service";
+import { NotificationsService } from "../notifications/notifications.service";
 import type { AuthenticatedRequestContext } from "../request-context";
 import type { CreatePaymentLinkDto, PayPaymentLinkDto } from "./payment-links.dtos";
 
@@ -61,10 +62,74 @@ export class PaymentLinksService {
   private readonly logger = new Logger(PaymentLinksService.name);
   private readonly paymentGateway = getPaymentLinkGateway();
 
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService
+  ) {}
 
   private get db() {
     return this.prisma.client;
+  }
+
+  /**
+   * Notifies the workspace's owner that a payment link was paid. There was no
+   * notification of any kind here before -- the business owner's only signal
+   * that money arrived was checking the dashboard themselves.
+   *
+   * A PaymentLink only carries a workspaceId, not a single "owner" -- a
+   * workspace can have several team members. Resolves the actual owner via
+   * TeamMember's explicit OWNER role rather than a looser heuristic like
+   * "whoever has this as their default workspace," since that reflects a
+   * user's own UI preference, not who is accountable for the money.
+   *
+   * Sends both IN_APP and EMAIL: IN_APP alone (the pattern platform.service.ts
+   * already uses for team-invite notifications) would mean nothing reaches
+   * the owner until they next open the app, which defeats the point for a
+   * payment that just landed.
+   */
+  private async notifyOwnerOfPayment(
+    paymentLinkId: string,
+    payment: { id: string; amountMinor: number; currency: string; payerEmail: string | null; payerName: string | null }
+  ) {
+    try {
+      const link = await this.db.paymentLink.findUnique({ where: { id: paymentLinkId } });
+      if (!link) return;
+
+      const workspace = await this.db.workspace.findUnique({ where: { id: link.workspaceId } });
+      if (!workspace) return;
+
+      const owner = await this.db.teamMember.findFirst({
+        where: { organizationId: workspace.organizationId, role: "OWNER", deletedAt: null }
+      });
+      if (!owner) {
+        this.logger.warn(`No OWNER team member found for workspace ${workspace.id}; payment ${payment.id} not notified.`);
+        return;
+      }
+
+      const appUrl = (process.env.APP_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://fliptrybe.xyz").replace(
+        /\/+$/,
+        ""
+      );
+
+      await this.notifications.send({
+        workspaceId: workspace.id,
+        userId: owner.userId,
+        channels: ["IN_APP", "EMAIL"],
+        template: "payment_link_paid",
+        vars: {
+          payer_name: payment.payerName ?? payment.payerEmail ?? "Someone",
+          service: link.title,
+          reference: payment.id,
+          currency: payment.currency,
+          amount: (payment.amountMinor / 100).toFixed(2),
+          date: new Date().toISOString(),
+          view_url: `${appUrl}/os/money/payment-links`
+        },
+        idempotencyKey: `payment_link_paid:${payment.id}`
+      });
+    } catch (err) {
+      this.logger.warn(`Failed to notify owner of payment ${payment.id}: ${(err as Error).message}`);
+    }
   }
 
   async list(context: AuthenticatedRequestContext) {
@@ -277,6 +342,7 @@ export class PaymentLinksService {
           }
         });
       });
+      await this.notifyOwnerOfPayment(payment.paymentLinkId, payment);
     } else if (verified.status === "FAILED" && payment.status !== "PAID") {
       await this.db.paymentLinkPayment.update({
         where: { id: payment.id },

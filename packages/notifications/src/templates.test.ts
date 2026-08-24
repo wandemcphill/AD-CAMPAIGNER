@@ -234,4 +234,54 @@ describe("renderNotificationTemplate", () => {
     expect(rendered.emailBody).toContain(`href="#"`);
     expect(rendered.emailBody).not.toContain(`href="javascript:`);
   });
+
+  it("renders a payment_link_paid email with the payer, amount, and view link", () => {
+    const rendered = renderNotificationTemplate("payment_link_paid", {
+      payer_name: "John Client",
+      service: "Consulting deposit",
+      reference: "PL-0042",
+      currency: "NGN",
+      amount: "50,000.00",
+      date: "23 Aug 2026",
+      view_url: "https://fliptrybe.xyz/os/money/payment-links"
+    });
+
+    expect(rendered.subject).toBe("You were paid NGN 50,000.00 — PL-0042");
+    expect(rendered.emailBody).toContain("John Client");
+    expect(rendered.emailBody).toContain("Consulting deposit");
+    expect(rendered.emailBody).toContain("NGN 50,000.00");
+    expect(rendered.emailBody).toContain(`href="https://fliptrybe.xyz/os/money/payment-links"`);
+    expect(rendered.smsBody).toContain("John Client");
+    expect(rendered.smsBody).toContain("PL-0042");
+  });
+
+  it("escapes a hostile payer name in a payment_link_paid email without breaking the layout", () => {
+    const rendered = renderNotificationTemplate("payment_link_paid", {
+      payer_name: `<img src=x onerror=alert(1)>`,
+      service: "Deposit",
+      reference: "PL-0043",
+      currency: "NGN",
+      amount: "1,000.00",
+      date: "23 Aug 2026",
+      view_url: "https://fliptrybe.xyz/os/money/payment-links"
+    });
+
+    expect(rendered.emailBody).not.toContain("<img");
+    expect(rendered.emailBody).toContain("&lt;img");
+  });
+
+  it("neutralizes a javascript: view link so the payment_link_paid button is never live", () => {
+    const rendered = renderNotificationTemplate("payment_link_paid", {
+      payer_name: "John",
+      service: "Deposit",
+      reference: "PL-0044",
+      currency: "NGN",
+      amount: "1,000.00",
+      date: "23 Aug 2026",
+      view_url: "javascript:alert(document.cookie)"
+    });
+
+    expect(rendered.emailBody).toContain(`href="#"`);
+    expect(rendered.emailBody).not.toContain(`href="javascript:`);
+  });
 });

@@ -16,6 +16,8 @@ export interface NotificationTemplateVars {
   support_url?: string;
   business_name?: string;
   pay_url?: string;
+  view_url?: string;
+  payer_name?: string;
   [key: string]: string | undefined;
 }
 
@@ -224,6 +226,23 @@ export const notificationTemplates = {
     smsBody:
       "{{business_name}} sent you invoice {{reference}} for {{currency}} {{amount}}, due {{date}}. " +
       "Pay: {{pay_url}}"
+  },
+  payment_link_paid: {
+    subject: "You were paid {{currency}} {{amount}} — {{reference}}",
+    emailBody: EMAIL_WRAPPER(`
+      <p><strong>{{payer_name}}</strong> just paid your "{{service}}" payment link.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <tr><td style="padding: 4px 0; color: #666;">Amount</td><td style="text-align: right;">{{currency}} {{amount}}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Reference</td><td style="text-align: right;">{{reference}}</td></tr>
+        <tr><td style="padding: 4px 0; color: #666;">Date</td><td style="text-align: right;">{{date}}</td></tr>
+      </table>
+      <p style="margin: 24px 0;">
+        <a href="{{url:view_url}}" style="background: #d97706; color: #fff; padding: 12px 20px; border-radius: 8px; text-decoration: none; display: inline-block;">View payment links</a>
+      </p>
+    `),
+    smsBody:
+      '{{payer_name}} paid {{currency}} {{amount}} for your payment link "{{service}}" (ref {{reference}}). ' +
+      "{{support_url}}"
   }
 } as const satisfies Record<string, NotificationTemplate>;
 
