@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
   <defs>
-    <linearGradient id="fGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FFB65C"/>
-      <stop offset="100%" stop-color="#E8752A"/>
+    <linearGradient id="solar" x1="22" y1="18" x2="108" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB36F"/>
+      <stop offset="1" stop-color="#E8752A"/>
+    </linearGradient>
+    <linearGradient id="violet" x1="72" y1="26" x2="110" y2="76" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#B3A5FF"/>
+      <stop offset="1" stop-color="#7C5CFF"/>
     </linearGradient>
   </defs>
-  <rect x="20" y="14" width="15" height="72" rx="7.5" fill="url(#fGrad)"/>
-  <rect x="20" y="14" width="46" height="15" rx="7.5" fill="url(#fGrad)"/>
-  <rect x="20" y="41" width="34" height="14" rx="7" fill="url(#fGrad)"/>
-  <polyline points="68,30 82,8 96,30" fill="none" stroke="#8B5CF6" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="8" y="8" width="112" height="112" rx="34" fill="url(#solar)"/>
+  <path d="M38 89V39h35c13 0 21 8 21 18 0 10-8 18-21 18H53" stroke="#07080D" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M70 77 98 29" stroke="url(#violet)" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="99" cy="29" r="7" fill="#F5F7FB"/>
 </svg>

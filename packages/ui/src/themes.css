@@ -1,76 +1,83 @@
-/* Fliptrybe theme contract.
-   Components consume --ft-* tokens so Studio and Clay can swap without per-component branches. */
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+/* FlipTrybe Technology design system.
+   A dark-first operating-system aesthetic: calm, premium, luminous and precise. */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root,
 [data-theme="studio"] {
   color-scheme: light;
   --font-display:
-    "Sora", "Noto Sans", "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Space Grotesk", "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
+  --font-body:
+    "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono:
-    "IBM Plex Mono", "Geist Mono", "Noto Sans", "JetBrains Mono", "Cascadia Code", ui-monospace,
-    SFMono-Regular, Menlo, monospace;
-  --ft-accent-2: #8b5cf6;
-  --ft-accent-2-subtle: #ede9fe;
-  --ft-accent-2-glow: rgba(139, 92, 246, 0.16);
-  /* Cool neutral surfaces: the light theme reads as premium fintech rather than
-     the warm beige it used to be. Brand character comes from the purple/orange
-     accents below, not from tinting every background. */
-  --ft-bg-base: #f6f7f9;
-  --ft-bg-surface: #ffffff;
+    "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --ft-bg-base: #f4f6fa;
+  --ft-bg-surface: rgba(255, 255, 255, 0.76);
   --ft-bg-raised: #ffffff;
-  --ft-bg-muted: #eef0f4;
-  --ft-bg-sunken: #e6e9ef;
-  --ft-bg-page-gradient: linear-gradient(180deg, #f8f9fb 0%, #f1f3f7 54%, #f8f9fb 100%);
-  --ft-border: #e4e7ec;
-  --ft-border-strong: #cfd5df;
-  --ft-border-emphasis: #9aa4b5;
-  --ft-text-primary: #0f1420;
-  --ft-text-secondary: #4a5365;
-  --ft-text-muted: #8b93a3;
+  --ft-bg-muted: #e9edf5;
+  --ft-bg-sunken: #dfe5ef;
+  --ft-bg-page-gradient: radial-gradient(circle at 10% 0%, rgba(139,92,246,.08), transparent 30%), radial-gradient(circle at 90% 8%, rgba(239,157,60,.10), transparent 30%), linear-gradient(180deg, #f8f9fc 0%, #f1f4f9 48%, #f8f9fc 100%);
+
+  --ft-border: rgba(20, 28, 45, 0.10);
+  --ft-border-strong: rgba(20, 28, 45, 0.16);
+  --ft-border-emphasis: rgba(20, 28, 45, 0.28);
+
+  --ft-text-primary: #111827;
+  --ft-text-secondary: #556074;
+  --ft-text-muted: #8c96a8;
   --ft-text-inverse: #ffffff;
-  --ft-accent: #d97706;
-  --ft-accent-dim: #b45309;
-  --ft-accent-strong: #92400e;
-  --ft-accent-subtle: #fff8ee;
-  --ft-accent-glow: rgba(217, 119, 6, 0.14);
-  --ft-green: #16a34a;
-  --ft-green-subtle: #dcfce7;
-  --ft-green-glow: rgba(22, 163, 74, 0.22);
-  --ft-red: #dc2626;
-  --ft-red-subtle: #fee2e2;
-  --ft-red-hover: #fff1f2;
-  --ft-yellow: #ea580c;
-  --ft-yellow-subtle: #ffedd5;
+
+  --ft-accent: #e8752a;
+  --ft-accent-dim: #c95d17;
+  --ft-accent-strong: #9a3f0c;
+  --ft-accent-subtle: #fff2e8;
+  --ft-accent-glow: rgba(232,117,42,.18);
+  --ft-accent-2: #7c5cff;
+  --ft-accent-2-subtle: #f0edff;
+  --ft-accent-2-glow: rgba(124,92,255,.18);
+
+  --ft-green: #0e9f6e;
+  --ft-green-subtle: #e4f8f1;
+  --ft-green-glow: rgba(14,159,110,.20);
+  --ft-red: #d9344f;
+  --ft-red-subtle: #fdecef;
+  --ft-red-hover: #fff3f5;
+  --ft-yellow: #d97706;
+  --ft-yellow-subtle: #fff4dc;
   --ft-blue: #2563eb;
-  --ft-blue-subtle: #dbeafe;
+  --ft-blue-subtle: #e9f0ff;
   --ft-purple: #7c3aed;
-  --ft-purple-subtle: #ede9fe;
+  --ft-purple-subtle: #f0eaff;
   --ft-slate: #64748b;
-  --ft-slate-subtle: #f1f5f9;
+  --ft-slate-subtle: #edf1f6;
+
   --ft-platform-default-bg: var(--ft-bg-muted);
   --ft-platform-default-border: var(--ft-border-strong);
   --ft-platform-default-text: var(--ft-text-secondary);
-  --ft-platform-instagram-bg: #fdf4ff;
-  --ft-platform-instagram-border: #e9d5ff;
-  --ft-platform-instagram-text: #7e22ce;
-  --ft-platform-meta-bg: #e8f0fe;
-  --ft-platform-meta-border: #bfd1ff;
-  --ft-platform-meta-text: #1a44c2;
-  --ft-platform-tiktok-bg: #fff0f5;
-  --ft-platform-tiktok-border: #ffb3ce;
-  --ft-platform-tiktok-text: #c9063e;
-  --radius-xs: 3px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 20px;
-  --shadow-xs: 0 1px 2px rgba(15, 20, 32, 0.06);
-  --shadow-sm: 0 1px 4px rgba(15, 20, 32, 0.08), 0 0 0 1px rgba(15, 20, 32, 0.04);
-  --shadow-md: 0 4px 12px rgba(15, 20, 32, 0.1), 0 1px 3px rgba(15, 20, 32, 0.06);
-  --shadow-lg: 0 8px 24px rgba(15, 20, 32, 0.12), 0 2px 6px rgba(15, 20, 32, 0.06);
-  --shadow-xl: 0 20px 48px rgba(15, 20, 32, 0.14);
+  --ft-platform-instagram-bg: #fff1f8;
+  --ft-platform-instagram-border: #f1c9df;
+  --ft-platform-instagram-text: #a42f70;
+  --ft-platform-meta-bg: #eaf1ff;
+  --ft-platform-meta-border: #c8d8ff;
+  --ft-platform-meta-text: #2450ba;
+  --ft-platform-tiktok-bg: #eef7f8;
+  --ft-platform-tiktok-border: #c9e0e3;
+  --ft-platform-tiktok-text: #0b6872;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
+
+  --shadow-xs: 0 1px 2px rgba(15,23,42,.05);
+  --shadow-sm: 0 4px 16px rgba(15,23,42,.06), 0 0 0 1px rgba(15,23,42,.03);
+  --shadow-md: 0 10px 28px rgba(15,23,42,.09), 0 0 0 1px rgba(15,23,42,.04);
+  --shadow-lg: 0 20px 48px rgba(15,23,42,.12), 0 0 0 1px rgba(15,23,42,.05);
+  --shadow-xl: 0 32px 80px rgba(15,23,42,.15), 0 0 0 1px rgba(15,23,42,.06);
+
   --background: var(--ft-bg-base);
   --foreground: var(--ft-text-primary);
   --muted: var(--ft-text-secondary);
@@ -79,75 +86,77 @@
 
 [data-theme="clay"] {
   color-scheme: dark;
-  --ft-bg-base: #0a0a0b;
-  --ft-bg-surface: #151517;
-  --ft-bg-raised: #1c1c1f;
-  --ft-bg-muted: #242427;
-  --ft-bg-sunken: #08080a;
-  --ft-bg-page-gradient: linear-gradient(180deg, #0a0a0b 0%, #0e0e10 52%, #0a0a0b 100%);
-  --ft-border: rgba(255, 255, 255, 0.08);
-  --ft-border-strong: rgba(255, 255, 255, 0.16);
-  --ft-border-emphasis: rgba(255, 255, 255, 0.28);
-  --ft-text-primary: #f5f5f7;
-  --ft-text-secondary: #9c9ca3;
-  --ft-text-muted: #5c5c63;
-  --ft-text-inverse: #0a0a0b;
-  --ft-accent: #ef9d3c;
-  --ft-accent-dim: #ffb65c;
-  --ft-accent-strong: #e8752a;
-  --ft-accent-subtle: #241505;
-  --ft-accent-glow: rgba(239, 157, 60, 0.28);
-  --ft-accent-2: #8b5cf6;
-  --ft-accent-2-subtle: #18102a;
-  --ft-accent-2-glow: rgba(139, 92, 246, 0.28);
-  --ft-green: #16a34a;
-  --ft-green-subtle: #102416;
-  --ft-green-glow: rgba(22, 163, 74, 0.32);
-  --ft-red: #dc2626;
-  --ft-red-subtle: #2a0d0d;
-  --ft-red-hover: #3a1111;
-  --ft-yellow: #ea580c;
-  --ft-yellow-subtle: #2a1605;
-  --ft-blue: #2563eb;
-  --ft-blue-subtle: #0c1731;
-  --ft-purple: #9b72cf;
-  --ft-purple-subtle: #18102a;
-  --ft-slate: #7a8899;
-  --ft-slate-subtle: #111418;
+  --ft-bg-base: #07080d;
+  --ft-bg-surface: rgba(15, 17, 25, 0.72);
+  --ft-bg-raised: #11141d;
+  --ft-bg-muted: #171b26;
+  --ft-bg-sunken: #05060a;
+  --ft-bg-page-gradient: radial-gradient(circle at 12% 0%, rgba(124,92,255,.16), transparent 32%), radial-gradient(circle at 88% 6%, rgba(232,117,42,.13), transparent 30%), linear-gradient(180deg, #07080d 0%, #0b0e15 48%, #07080d 100%);
+
+  --ft-border: rgba(255,255,255,.085);
+  --ft-border-strong: rgba(255,255,255,.15);
+  --ft-border-emphasis: rgba(255,255,255,.26);
+  --ft-text-primary: #f5f7fb;
+  --ft-text-secondary: #a5adbd;
+  --ft-text-muted: #667084;
+  --ft-text-inverse: #07080d;
+
+  --ft-accent: #ff9e52;
+  --ft-accent-dim: #ffb36f;
+  --ft-accent-strong: #ff7c2c;
+  --ft-accent-subtle: #26180f;
+  --ft-accent-glow: rgba(255,158,82,.26);
+  --ft-accent-2: #8c72ff;
+  --ft-accent-2-subtle: #17132d;
+  --ft-accent-2-glow: rgba(140,114,255,.27);
+
+  --ft-green: #38d39f;
+  --ft-green-subtle: #0f2c22;
+  --ft-green-glow: rgba(56,211,159,.24);
+  --ft-red: #ff6e86;
+  --ft-red-subtle: #33141d;
+  --ft-red-hover: #411923;
+  --ft-yellow: #ffae45;
+  --ft-yellow-subtle: #32230e;
+  --ft-blue: #6e9cff;
+  --ft-blue-subtle: #101d38;
+  --ft-purple: #b39cff;
+  --ft-purple-subtle: #1b1636;
+  --ft-slate: #8190a8;
+  --ft-slate-subtle: #131821;
+
   --ft-platform-default-bg: var(--ft-bg-muted);
   --ft-platform-default-border: var(--ft-border);
   --ft-platform-default-text: var(--ft-text-secondary);
   --ft-platform-instagram-bg: var(--ft-bg-muted);
-  --ft-platform-instagram-border: rgba(155, 69, 109, 0.45);
-  --ft-platform-instagram-text: #d58aa9;
+  --ft-platform-instagram-border: rgba(188,96,157,.45);
+  --ft-platform-instagram-text: #e0a2c6;
   --ft-platform-meta-bg: var(--ft-bg-muted);
-  --ft-platform-meta-border: rgba(93, 127, 180, 0.45);
-  --ft-platform-meta-text: #9fb7df;
+  --ft-platform-meta-border: rgba(95,130,190,.45);
+  --ft-platform-meta-text: #a6bce3;
   --ft-platform-tiktok-bg: var(--ft-bg-muted);
   --ft-platform-tiktok-border: var(--ft-border-strong);
   --ft-platform-tiktok-text: var(--ft-text-primary);
-  --radius-xs: 3px;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.35);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 20px 48px rgba(0, 0, 0, 0.65);
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-sm: 0 5px 18px rgba(0,0,0,.32), 0 0 0 1px rgba(255,255,255,.03);
+  --shadow-md: 0 14px 34px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.035);
+  --shadow-lg: 0 24px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
+  --shadow-xl: 0 40px 90px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.05);
 }
 
-html {
-  background: var(--ft-bg-base);
-  transition: background-color 150ms ease;
-}
+html { background: var(--ft-bg-base); transition: background-color 150ms ease; }
+body { background: var(--ft-bg-page-gradient); font-family: var(--font-body); }
 
-body {
-  background: var(--ft-bg-page-gradient);
-}
+.ft-shell { background: var(--ft-bg-page-gradient); }
+.ft-glass { background: var(--ft-bg-surface); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px); }
+.ft-hairline { border: 1px solid var(--ft-border); }
+.ft-grid-bg { background-image: linear-gradient(var(--ft-border) 1px, transparent 1px), linear-gradient(90deg, var(--ft-border) 1px, transparent 1px); background-size: 32px 32px; mask-image: linear-gradient(to bottom, black, transparent 88%); }
 
 [data-theme="studio"] .ft-only-clay,
-[data-theme="clay"] .ft-only-studio {
-  display: none;
-}
+[data-theme="clay"] .ft-only-studio { display: none; }

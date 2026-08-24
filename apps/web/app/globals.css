@@ -2,186 +2,117 @@
 @import "../../../packages/ui/src/themes.css";
 @source "../../../packages/ui/src";
 
-/**
- * Customer-facing type scale.
- *
- * Screens had drifted to 124 one-off sizes (text-[9px] through text-[13px])
- * with no rule about which meant what. These three steps cover every use those
- * one-offs served, and the smallest is 11px: 9px and 10px uppercase labels were
- * below comfortable reading size on a phone, which is where most of this
- * product is used.
- *
- * Tailwind v4 turns the --text-* namespace into utilities, so these are
- * available as text-micro / text-caption / text-label.
- */
 @theme {
-  /* Uppercase eyebrows, badge text, metric labels. */
   --text-micro: 0.6875rem;
   --text-micro--line-height: 1rem;
-  /* Timestamps, helper text, secondary metadata. */
   --text-caption: 0.75rem;
   --text-caption--line-height: 1.125rem;
-  /* Dense UI text: nav items, table cells, compact rows. */
   --text-label: 0.8125rem;
   --text-label--line-height: 1.25rem;
 }
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; }
+html { min-width: 320px; background: var(--ft-bg-base); scroll-behavior: smooth; }
+body { margin: 0; min-height: 100vh; overflow-x: clip; color: var(--ft-text-primary); font-family: var(--font-display); letter-spacing: 0; -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
+button, input, select, textarea { font: inherit; }
+a { color: inherit; text-decoration: none; }
+:where(a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible { outline: 2px solid var(--ft-accent); outline-offset: 2px; }
+::placeholder { color: var(--ft-text-muted); opacity: 1; }
+::selection { background: var(--ft-accent); color: var(--ft-bg-base); }
+
+@keyframes ft-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes ft-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--ft-green-glow); } 50% { box-shadow: 0 0 0 4px transparent; } }
+
+.bg-white, .bg-white\/90, .bg-white\/88, .bg-zinc-50, .bg-zinc-100 { background-color: var(--ft-bg-surface) !important; }
+.bg-zinc-950, .bg-zinc-900 { background-color: var(--ft-accent) !important; color: var(--ft-bg-base) !important; }
+.text-zinc-950, .text-zinc-900, .text-zinc-800 { color: var(--ft-text-primary) !important; }
+.text-zinc-700, .text-zinc-600, .text-zinc-500, .text-zinc-400 { color: var(--ft-text-secondary) !important; }
+.border-zinc-200, .border-zinc-300, .divide-zinc-200 > :not([hidden]) ~ :not([hidden]) { border-color: var(--ft-border) !important; }
+.shadow-sm { box-shadow: var(--shadow-sm) !important; }
+.font-data { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.skeleton { animation: ft-shimmer 1.5s infinite; background: linear-gradient(90deg, var(--ft-bg-muted) 25%, var(--ft-border-strong) 50%, var(--ft-bg-muted) 75%); background-size: 200% 100%; border-radius: 2px; }
+
+.ft-shell, .ft-technology-frame, .ft-page-frame { position: relative; isolation: isolate; }
+.ft-shell::before, .ft-technology-frame::before, .ft-page-frame::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.35; background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px); background-size: 72px 72px; mask-image: linear-gradient(180deg, rgba(0,0,0,0.8), transparent 80%); }
+.ft-shell > *, .ft-technology-frame > *, .ft-page-frame > * { position: relative; z-index: 1; }
+.ft-glass { background: color-mix(in srgb, var(--ft-bg-raised) 78%, transparent); border: 1px solid color-mix(in srgb, var(--ft-border-strong) 58%, transparent); box-shadow: var(--shadow-lg); backdrop-filter: blur(22px); }
+.ft-hairline { height: 1px; background: linear-gradient(90deg, transparent, var(--ft-border-emphasis), transparent); }
+.ft-status-live { animation: ft-pulse 2.6s ease-in-out infinite; }
+.ft-eyebrow { font-family: var(--font-mono); font-size: 10px; font-weight: 600; letter-spacing: .18em; line-height: 1rem; text-transform: uppercase; color: var(--ft-text-muted); }
+.ft-live-pill { display: inline-flex; align-items: center; gap: .5rem; width: fit-content; border: 1px solid var(--ft-border); border-radius: 999px; background: var(--ft-bg-surface); padding: .45rem .7rem; font-family: var(--font-mono); font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--ft-text-muted); backdrop-filter: blur(16px); }
+.ft-live-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--ft-green); box-shadow: 0 0 12px var(--ft-green-glow); }
+.ft-page-hero { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--ft-border); padding-bottom: 1.35rem; }
+.ft-hero-surface { border: 1px solid var(--ft-border-strong); background: linear-gradient(135deg, color-mix(in srgb, var(--ft-bg-raised) 88%, transparent), color-mix(in srgb, var(--ft-bg-surface) 75%, transparent)); box-shadow: var(--shadow-xl); }
+.ft-system-card { border: 1px solid var(--ft-border); background: color-mix(in srgb, var(--ft-bg-raised) 84%, transparent); box-shadow: var(--shadow-xs); transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background-color .22s ease; }
+.ft-system-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--ft-accent) 42%, var(--ft-border)); box-shadow: var(--shadow-md); background: var(--ft-bg-raised); }
+.ft-data-surface { border: 1px solid var(--ft-border); background: color-mix(in srgb, var(--ft-bg-raised) 86%, transparent); box-shadow: var(--shadow-sm); }
+.ft-ledger-row { display: flex; align-items: center; gap: .75rem; border: 1px solid var(--ft-border); border-radius: 14px; background: var(--ft-bg-surface); padding: .75rem; transition: border-color .2s ease, background-color .2s ease; }
+.ft-ledger-row:hover { border-color: var(--ft-border-strong); background: var(--ft-bg-raised); }
+
+/* Platform-wide visual upgrade for the three high-frequency customer domains:
+   Campaign Builder, Campaign detail/analytics, and Money/Wallet. These selectors
+   intentionally target the existing shared utility classes so the redesign lands
+   without changing business logic or data contracts. */
+[class*="rounded-[var(--radius-md)]"][class*="border-[var(--ft-border)]"][class*="bg-[var(--ft-bg-raised)]"] {
+  box-shadow: var(--shadow-sm);
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease, transform .2s ease;
+}
+[class*="rounded-[var(--radius-md)]"][class*="border-[var(--ft-border)]"][class*="bg-[var(--ft-raised)]"]:hover {
+  border-color: var(--ft-border-strong);
+}
+[class*="rounded-[var(--radius-xl)]"][class*="border-[var(--ft-border)]"] {
+  box-shadow: var(--shadow-md);
 }
 
-html {
-  min-width: 320px;
-  background: var(--ft-bg-base);
-  scroll-behavior: smooth;
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  border-radius: 14px;
+  border-color: var(--ft-border-strong);
+  background: color-mix(in srgb, var(--ft-bg-raised) 78%, var(--ft-bg-muted));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+  border-color: color-mix(in srgb, var(--ft-accent) 62%, var(--ft-border-strong));
+  box-shadow: 0 0 0 4px var(--ft-accent-glow), inset 0 1px 0 rgba(255,255,255,.04);
 }
 
-body {
-  margin: 0;
-  min-height: 100vh;
-  overflow-x: clip;
-  color: var(--ft-text-primary);
-  font-family: var(--font-display);
-  letter-spacing: 0;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: geometricPrecision;
+button[class*="rounded-[var(--radius-sm)]"],
+a[class*="rounded-[var(--radius-sm)]"] {
+  border-radius: 12px;
+}
+button[class*="rounded-[var(--radius-md)]"]:hover,
+a[class*="rounded-[var(--radius-md)]"]:hover {
+  transform: translateY(-1px);
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-:where(a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])):focus-visible {
-  outline: 2px solid var(--ft-accent);
-  outline-offset: 2px;
-}
-
-::placeholder {
-  color: var(--ft-text-muted);
-  opacity: 1;
-}
-
-::selection {
-  background: var(--ft-accent);
-  color: var(--ft-bg-base);
-}
-
-@keyframes ft-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-@keyframes ft-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 var(--ft-green-glow);
-  }
-  50% {
-    box-shadow: 0 0 0 4px transparent;
-  }
-}
-
-/* Compatibility layer for existing route markup while screens move to token components. */
-.bg-white,
-.bg-white\/90,
-.bg-white\/88,
-.bg-zinc-50,
-.bg-zinc-100 {
-  background-color: var(--ft-bg-surface) !important;
-}
-
-.bg-zinc-950,
-.bg-zinc-900 {
-  background-color: var(--ft-accent) !important;
-  color: var(--ft-bg-base) !important;
-}
-
-.text-zinc-950,
-.text-zinc-900,
-.text-zinc-800 {
-  color: var(--ft-text-primary) !important;
-}
-
-.text-zinc-700,
-.text-zinc-600,
-.text-zinc-500,
-.text-zinc-400 {
-  color: var(--ft-text-secondary) !important;
-}
-
-.border-zinc-200,
-.border-zinc-300,
-.divide-zinc-200 > :not([hidden]) ~ :not([hidden]) {
-  border-color: var(--ft-border) !important;
-}
-
-.shadow-sm {
-  box-shadow: var(--shadow-sm) !important;
-}
-
-.font-data {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.skeleton {
-  animation: ft-shimmer 1.5s infinite;
-  background: linear-gradient(
-    90deg,
-    var(--ft-bg-muted) 25%,
-    var(--ft-border-strong) 50%,
-    var(--ft-bg-muted) 75%
-  );
-  background-size: 200% 100%;
-  border-radius: 2px;
-}
-
-.ft-shell {
+/* Campaign builder: make the wizard feel like a guided product system, not a form dump. */
+form > section[class*="rounded-"] {
   position: relative;
-  isolation: isolate;
+  overflow: hidden;
 }
-
-.ft-shell::before {
+form > section[class*="rounded-"]::before {
   content: "";
   position: absolute;
-  inset: 0;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(180deg, var(--ft-accent), var(--ft-accent-2));
+  opacity: .55;
   pointer-events: none;
-  opacity: 0.4;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7), transparent 88%);
 }
 
-.ft-shell > * {
-  position: relative;
-  z-index: 1;
+/* Campaign detail/analytics and Money: elevate primary financial/performance surfaces. */
+[class*="font-mono"][class*="text-3xl"] {
+  letter-spacing: -0.045em;
+}
+[class*="text-2xl"][class*="font-bold"], [class*="text-3xl"][class*="font-semibold"] {
+  letter-spacing: -0.04em;
+}
+
+@media (max-width: 767px) {
+  [class*="rounded-[var(--radius-xl)]"][class*="p-6"] { border-radius: 20px; }
+  [class*="rounded-[var(--radius-lg)]"][class*="p-5"] { border-radius: 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.001ms !important;
-  }
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
 }
