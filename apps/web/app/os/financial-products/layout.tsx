@@ -10,7 +10,7 @@ import { EmptyState } from "../../campaigns/components";
 import { isAgeRestrictedError } from "../../lib/api-client";
 import { useFeatureFlags } from "../../lib/feature-flags";
 import { AgeGateNotice } from "../age-gate-notice";
-import { MoneyTransactionControl } from "../components/money-transaction-control";
+import { MoneyTransactionControl } from "../components/money-transaction-control-v2";
 import { loadAccounts } from "./api";
 
 // Each tab is backed by its own feature flag and its own provider domain — a
