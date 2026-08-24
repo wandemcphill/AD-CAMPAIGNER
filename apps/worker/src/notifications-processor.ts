@@ -1,5 +1,4 @@
 import type { Job } from "bullmq";
-
 import { createPrismaClient, type DatabaseClient } from "@fliptrybe/database";
 import {
   createTermiiEmailAdapter,
@@ -18,40 +17,117 @@ function getDb(): DatabaseClient {
   return dbSingleton;
 }
 
-// The mock adapter reports every send as accepted. Running it in production
-// would silently discard real password resets and security alerts while
-// recording them as SENT (see NotificationDeliveryAttempt), so it is gated
-// behind the same ALLOW_MOCK_PROVIDERS escape hatch platform.service.ts uses
-// for every other provider — the API's legacyMockProvidersAllowed().
-function mockNotificationsAllowed(): boolean {
-  return process.env.NODE_ENV !== "production" || process.env.ALLOW_MOCK_PROVIDERS === "true";
+interface ResendConfig {
+  apiKey?: string;
+  from?: string;
+  fetcher?: typeof fetch;
 }
 
-// "live" is the one canonical provider sentinel — PAYMENT_PROVIDER,
-// ADS_PROVIDER, and SMM_PROVIDER in render.yaml all use it, and it's the only
-// value packages/config/src/index.ts's NOTIFICATION_PROVIDER schema accepts
-// besides "mock"/"sandbox". "termii" was never a schema-valid value and no
-// deployed environment sets it — it was this file's own unvalidated,
-// out-of-band check, and the mismatch with the "live" every real deploy
-// actually sends is what let the mock provider run in production unnoticed
-// (see the production-sealing report, F-01). Anything other than exactly
-// "live" must fall through to the mock/PENDING_CONFIGURATION path below,
-// never select Termii.
-//
-// Returns undefined when no live transport is configured and the mock is not
-// permitted — the caller records that as PENDING_CONFIGURATION rather than
-// fabricating a delivery.
-function adapterForChannel(
-  channel: "EMAIL" | "SMS" | "WHATSAPP"
-): NotificationProviderAdapter | undefined {
-  const liveRequested = process.env.NOTIFICATION_PROVIDER === "live";
+interface ResendEmailResponse {
+  data?: { id?: string };
+  error?: { message?: string; name?: string };
+}
 
-  if (!liveRequested || !process.env.TERMII_API_KEY) {
-    return mockNotificationsAllowed() ? createMockNotificationProvider() : undefined;
+function createResendEmailAdapter(
+  config: ResendConfig,
+  idempotencyKey: string
+): NotificationProviderAdapter {
+  return {
+    name: "resend",
+    isConfigured() {
+      return Boolean(config.apiKey && config.from);
+    },
+    async send(input) {
+      if (!config.apiKey || !config.from) {
+        throw new Error("Resend Email is not configured (missing RESEND_API_KEY or RESEND_FROM_EMAIL).");
+      }
+
+      const response = await (config.fetcher ?? fetch)("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": idempotencyKey.slice(0, 256)
+        },
+        body: JSON.stringify({
+          from: config.from,
+          to: [input.to],
+          subject: input.title,
+          html: input.body
+        })
+      });
+
+      let payload: ResendEmailResponse = {};
+      try {
+        payload = (await response.json()) as ResendEmailResponse;
+      } catch {
+        // Preserve the transport status as the useful diagnostic when the
+        // provider returns non-JSON content.
+      }
+
+      if (!response.ok || payload.error) {
+        throw new Error(
+          `Resend Email send failed (HTTP ${response.status}): ${
+            payload.error?.message ?? payload.error?.name ?? JSON.stringify(payload)
+          }`
+        );
+      }
+
+      const messageId = payload.data?.id;
+      if (!messageId) {
+        throw new Error("Resend Email send failed: provider returned no message id.");
+      }
+
+      return {
+        id: messageId,
+        accepted: true,
+        providerStatus: "sent",
+        raw: payload
+      };
+    }
+  };
+}
+
+function createUnavailableProductionProvider(name: string): NotificationProviderAdapter {
+  return {
+    name,
+    isConfigured: () => false,
+    send() {
+      return Promise.reject(new Error(`${name} notification provider is not configured for production.`));
+    }
+  };
+}
+
+function adapterForChannel(
+  channel: "EMAIL" | "SMS" | "WHATSAPP",
+  idempotencyKey: string
+): NotificationProviderAdapter {
+  const provider = (
+    channel === "EMAIL"
+      ? process.env.EMAIL_PROVIDER ?? process.env.NOTIFICATION_PROVIDER
+      : process.env.NOTIFICATION_PROVIDER
+  )?.trim().toLowerCase();
+
+  if (channel === "EMAIL" && (provider === "resend" || provider === "live")) {
+    const resendConfig: ResendConfig = {};
+    const apiKey = process.env.RESEND_API_KEY;
+    const from = process.env.RESEND_FROM_EMAIL ?? process.env.EMAIL_FROM;
+    if (apiKey) resendConfig.apiKey = apiKey;
+    if (from) resendConfig.from = from;
+    return createResendEmailAdapter(resendConfig, idempotencyKey);
+  }
+
+  const useTermii = (provider === "termii" || provider === "live") && Boolean(process.env.TERMII_API_KEY);
+
+  if (!useTermii) {
+    if ((process.env.NODE_ENV || "").trim().toLowerCase() === "production") {
+      return createUnavailableProductionProvider(provider || "notification");
+    }
+    return createMockNotificationProvider();
   }
 
   const termiiConfig = {
-    apiKey: process.env.TERMII_API_KEY,
+    apiKey: process.env.TERMII_API_KEY!,
     ...(process.env.TERMII_BASE_URL ? { baseUrl: process.env.TERMII_BASE_URL } : {}),
     ...(process.env.TERMII_SMS_SENDER_ID ? { smsSenderId: process.env.TERMII_SMS_SENDER_ID } : {}),
     ...(process.env.TERMII_EMAIL_CONFIGURATION_ID
@@ -109,23 +185,19 @@ export async function processNotificationDispatchJob(
     return { notificationId, channel, outcome: "failed:no_destination" };
   }
 
-  const adapter = adapterForChannel(channel);
+  const idempotencyKey = `${notification.idempotencyKey}:${channel}`;
+  const adapter = adapterForChannel(channel, idempotencyKey);
 
-  if (!adapter || !adapter.isConfigured()) {
-    // Credentials/configuration genuinely absent, or (in production, with
-    // ALLOW_MOCK_PROVIDERS unset) no live provider requested and the mock is
-    // not permitted to stand in. Either way: record as pending, not a
-    // fabricated success — the Notification row stays QUEUED so it reads as
-    // visibly undelivered. A later retry, once configured, can still succeed.
+  if (!adapter.isConfigured()) {
+    // Credentials/configuration genuinely absent — record as pending, not a
+    // fabricated success. A later retry (once configured) can still succeed.
     await db.notificationDeliveryAttempt.create({
       data: {
         notificationId,
         channel,
-        provider: adapter?.name ?? "none",
+        provider: adapter.name,
         status: "PENDING_CONFIGURATION",
-        errorMessage: adapter
-          ? `${adapter.name} is not configured for this channel.`
-          : "No live notification provider is configured, and the mock provider is not permitted in production."
+        errorMessage: `${adapter.name} is not configured for this channel.`
       }
     });
     return { notificationId, channel, outcome: "pending:provider_not_configured" };

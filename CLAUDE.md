@@ -51,11 +51,11 @@ apps/
   worker/    BullMQ    — background job processor
 packages/
   database/  Prisma schema + generated client (@fliptrybe/database)
-  providers/ All external adapter implementations (@fliptrybe/providers)
+  providers/ External adapter implementations (@fliptrybe/providers)
   events/    Typed PlatformEvent union + job factories (@fliptrybe/events)
   types/     Domain types shared across all apps (@fliptrybe/types)
   payments/  Wallet/ledger helpers + calculateAvailableBalance
-  feature-flags/ Runtime flags object (currently static)
+  feature-flags/ Runtime flags resolved from code defaults + FEATURE_* environment overrides
   auth/      Auth utilities
   ui/        Shared component library
   config/    Shared TS/ESLint/Prettier config
@@ -64,16 +64,19 @@ services/    Bounded domain contracts (not yet runtime-separated)
 
 ### Provider adapter pattern
 
-`packages/providers/src/index.ts` contains **all** external adapter implementations and factory functions. Every adapter type is defined as an interface in this file and consumed throughout the codebase:
+`packages/providers/src/index.ts` contains the external adapter contracts and their implementations/factories. The current repository is no longer a mock-only provider architecture.
 
-- `AdsProviderAdapter` — campaign ad platforms (mock only; real integrations behind `liveProviderIntegrations` flag)
-- `PaymentGatewayAdapter` — Korapay (`createKorapayPaymentGateway`) + mock
-- `SmmSupplierAdapter` — SMM panels via Perfect Panel API (`createPerfectPanelSmmSupplier`) + mock + router (`createRoutedSmmSupplier`)
-- `OtpProviderAdapter` — TextVerified, 5sim, sms-man, sms-activate-compatible + mock (these are the OTP/phone-number adapters; see below for planned replacement)
-- `StorageProviderAdapter` — Cloudinary + mock
-- `NotificationProviderAdapter` / `AiGenerationAdapter` — mock only
+- `AdsProviderAdapter` — ad-platform execution adapters; live execution is governed by the runtime provider configuration/feature flags.
+- `PaymentGatewayAdapter` — real payment gateways including Korapay, Paystack and Payscribe paths, plus explicit non-production/test fallbacks where applicable.
+- `SmmSupplierAdapter` — routed SMM supplier adapters with real supplier implementations and explicit test/development fallbacks.
+- `OtpProviderAdapter` — OTP/virtual-number supplier adapters used by the dedicated virtual-number/OTP domain.
+- `StorageProviderAdapter` — Cloudinary-backed production storage with test/development fallback support.
+- `NotificationProviderAdapter` — runtime notification delivery contract; production notifications must use a genuinely configured provider and must never report success against an absent provider.
+- `AiGenerationAdapter` — AI generation contract; production deployments use the configured live AI provider when the AI feature is enabled.
 
 When adding a new external integration, implement the relevant interface here and export a factory function. The adapter takes a config struct (never reads env vars directly) and an optional `fetcher` for testability.
+
+**Production rule:** mocks/stubs may exist for tests and local development, but they must not be reachable as silent production providers. A missing provider credential/config must fail closed or leave the capability explicitly unavailable rather than fabricate a successful transaction, quote, delivery, or notification.
 
 ### Ledger and wallet pattern
 
@@ -93,21 +96,33 @@ Add new queues by extending all three exports. New queues should be feature-flag
 
 ### Feature flags
 
-`packages/feature-flags/src/index.ts` — static object for now. All new verticals must add a flag here and gate both API endpoints and worker queue registration behind it. Current flags: `liveProviderIntegrations`, `manualPaymentReview`, `aiCampaignAssistant`, `globalSearch`, `realtimeCampaignUpdates`, `digitalAccess`, `digitalAccessAdmin`.
+`packages/feature-flags/src/index.ts` resolves code defaults and then applies per-environment `FEATURE_*` overrides at process startup. The API exposes the resolved public flag state for browser clients. Do not describe the flags as static-only.
+
+Current flag groups include live provider integrations, AI, search, realtime updates, digital access, virtual numbers, VTU, bills, rewards, gift cards, crypto/RMB flows, telecom, guest checkout, support, invoicing/payment links, and provider-gated financial products.
+
+Financial-product flags such as `virtualAccounts`, `virtualCards`, `remittance`, and `walletWithdrawals` intentionally default to `false` until the corresponding provider has passed the required end-to-end verification. They may be enabled per environment only after that verification; the flag alone does not manufacture provider capability.
 
 ### NestJS API module structure
 
-Each vertical in `apps/api/src/modules/` follows the same shape: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dtos.ts`, `*.service.test.ts`. `digital-access/` is the canonical example to copy from. `PrismaService` is injected for DB access; `QueueProducerService` for queue dispatch.
+Each vertical in `apps/api/src/modules/` follows the same shape: `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.dtos.ts`, `*.service.test.ts`. `digital-access/` is a canonical example to copy from. `PrismaService` is injected for DB access; `QueueProducerService` for queue dispatch.
 
 `platform.service.ts` / `platform.controllers.ts` handle cross-cutting concerns (workspaces, campaigns, SMM orders, payments). `realtime.gateway.ts` is a Socket.IO gateway for live updates.
 
 ### Otp* infrastructure
 
-`packages/database/prisma/schema.prisma` contains `OtpService`, `OtpProviderConfig`, `OtpOrder`, `OtpMessage`, `OtpProviderHealth`, `OtpWalletCharge`, `OtpRoutingAttempt`. **These are being replaced** by `Provider*` / `VirtualNumber*` / `Vtu*` models as part of the Digital Products build. `ENABLE_OTP_MODULE=false` and there are zero call sites. Treat the existing `OtpProviderAdapter` interface and its adapters in `packages/providers` as a reference shape, not live functionality.
+`packages/database/prisma/schema.prisma` contains legacy Otp* entities used by the existing OTP/virtual-number domain. Do not remove or resurrect old models based only on this note; inspect current call sites and feature flags before changing them. Provider implementations remain the reference shape for real supplier routing.
+
+### Notification + email
+
+Transactional notifications are persisted and delivered by the worker rather than being treated as fire-and-forget controller side effects. Keep notification persistence, queueing, provider delivery, retry, and idempotency as separate concerns.
+
+The production email channel uses Resend when `RESEND_API_KEY` plus the configured sender are present. Resend sends must use stable idempotency keys so retries cannot intentionally create duplicate provider sends. Do not make application business state depend on an email provider call succeeding synchronously.
 
 ### Deployment
 
-`render.yaml` is the Render Blueprint. Provisions API, web, admin, worker, PostgreSQL, and Redis-compatible Render Key Value. See `docs/DEPLOYMENT.md` for the full GitHub → Render flow.
+`render.yaml` is the Render Blueprint. The production web, API, admin, worker, PostgreSQL and Redis-compatible Render resources are deployed from Render. The repository is not a Vercel production target.
+
+See `docs/DEPLOYMENT.md` for the full GitHub → Render flow.
 
 ### Money convention
 

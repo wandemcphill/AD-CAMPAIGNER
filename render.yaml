@@ -8,9 +8,6 @@ services:
     autoDeployTrigger: commit
     healthCheckPath: /v1/health
     buildCommand: npx --yes pnpm@10.18.3 install --frozen-lockfile --prod=false && npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma generate && npx --yes pnpm@10.18.3 --filter @fliptrybe/api build
-    # Every seed is idempotent (skips rows that already exist). All of them must run:
-    # ProviderRouterService.select() returns no candidate when a domain has no
-    # ProviderConfig row, so an unseeded vertical answers 503 for every request.
     preDeployCommand: >-
       npx --yes pnpm@10.18.3 --filter @fliptrybe/database prisma migrate deploy &&
       npx --yes pnpm@10.18.3 --filter @fliptrybe/database seed:digital-access &&
@@ -33,11 +30,6 @@ services:
         value: https://ft-campaigner-api-fra.onrender.com
       - key: PUBLIC_APP_URL
         value: https://fliptrybe.xyz
-      # www.fliptrybe.xyz is the canonical host — the apex 301-redirects to it, so
-      # every real browser sends Origin: https://www.fliptrybe.xyz. Omitting it
-      # here fails CORS preflight on /v1/auth/*, which locks every customer out of
-      # signup and login. Keep the apex listed too: it is still a valid origin for
-      # any client that reaches it without following the redirect.
       - key: FRONTEND_URLS
         value: https://www.fliptrybe.xyz,https://fliptrybe.xyz,https://fliptrybe-ads-campaigner-web-g24r.onrender.com,https://fliptrybe-ads-campaigner-admin-umys.onrender.com
       - key: PORT
@@ -103,40 +95,6 @@ services:
         value: live
       - key: SMM_PROVIDER
         value: live
-      - key: SMDPANEL_API_URL
-        value: https://smdpanel.com/api/v2
-      - key: SMDPANEL_ENDPOINT
-        value: https://smdpanel.com/api/v2
-      - key: SMDPANEL_API_KEY
-        sync: false
-      - key: SMDPANEL_CURRENCY
-        value: USD
-      - key: SMDPANEL_SERVICE_MAP
-        sync: false
-      - key: SMMRAJA_API_URL
-        value: https://www.smmraja.com/api/v3
-      - key: SMMRAJA_API_KEY
-        sync: false
-      - key: SMMRAJA_CURRENCY
-        value: USD
-      - key: SMMRAJA_SERVICE_MAP
-        sync: false
-      - key: JAP_API_URL
-        value: https://justanotherpanel.com/api/v2
-      - key: JAP_API_KEY
-        sync: false
-      - key: JAP_CURRENCY
-        value: USD
-      - key: JAP_SERVICE_MAP
-        sync: false
-      - key: PEAKERR_API_URL
-        value: https://peakerr.com/api/v2
-      - key: PEAKERR_API_KEY
-        sync: false
-      - key: PEAKERR_CURRENCY
-        value: USD
-      - key: PEAKERR_SERVICE_MAP
-        sync: false
       - key: AI_PROVIDER
         value: anthropic
       - key: ANTHROPIC_API_KEY
@@ -159,14 +117,21 @@ services:
         value: "0.8"
       - key: NOTIFICATION_PROVIDER
         value: live
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      # Production safety defaults: staged OTP and automation remain off until explicitly rolled out.
       - key: ENABLE_OTP_MODULE
-        value: "true"
+        value: "false"
       - key: ENABLE_PREMIUM_OTP
-        value: "true"
+        value: "false"
       - key: ENABLE_BUDGET_OTP
-        value: "true"
+        value: "false"
       - key: ENABLE_OTP_ADMIN
-        value: "true"
+        value: "false"
       - key: ENABLE_DIGITAL_ACCESS
         value: "true"
       - key: ENABLE_DIGITAL_ACCESS_ADMIN
@@ -176,35 +141,19 @@ services:
       - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
         value: "false"
       - key: DIGITAL_ACCESS_WORKER_ENABLED
-        value: "true"
+        value: "false"
       - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
-        value: "true"
+        value: "false"
       - key: OTP_PROVIDER_HEALTH_WORKER_ENABLED
-        value: "true"
+        value: "false"
       - key: OTP_PROVIDER_MODE
-        value: live
+        value: mock
       - key: OTP_BETA_WORKSPACE_IDS
         sync: false
-      - key: OTP_USD_TO_NGN_RATE
-        value: "1600"
-      - key: TEXTVERIFIED_API_URL
-        value: https://www.textverified.com/api/pub/v2
-      - key: TEXTVERIFIED_API_KEY
-        sync: false
-      - key: FIVESIM_API_URL
-        value: https://5sim.net/v1
-      - key: FIVESIM_API_KEY
-        sync: false
-      - key: SMSMAN_API_URL
-        value: https://api.sms-man.com/control
-      - key: SMSMAN_API_KEY
-        sync: false
-      - key: SMSACTIVATE_API_URL
-        sync: false
-      - key: SMSACTIVATE_API_KEY
-        sync: false
       - key: SMSACTIVATE_COMPATIBLE_ENABLED
-        value: "true"
+        value: "false"
+      - key: FX_LIVE_PROVIDER_REFRESH
+        value: "false"
       - key: KORAPAY_BASE_URL
         value: https://api.korapay.com
       - key: KORAPAY_PUBLIC_KEY
@@ -225,51 +174,6 @@ services:
         sync: false
       - key: TREASURY_ACCOUNT_NUMBER
         sync: false
-      - key: PAYSTACK_SECRET_KEY
-        sync: false
-      - key: PAYSTACK_PUBLIC_KEY
-        sync: false
-      - key: STRIPE_SECRET_KEY
-        sync: false
-      - key: STRIPE_PUBLIC_KEY
-        sync: false
-      - key: META_APP_SECRET
-        sync: false
-      - key: META_APP_ID
-        sync: false
-      - key: TIKTOK_CLIENT_SECRET
-        sync: false
-      - key: TIKTOK_CLIENT_KEY
-        sync: false
-      - key: TIKTOK_WEBHOOK_SECRET
-        sync: false
-      - key: FINCRA_API_KEY
-        sync: false
-      - key: FINCRA_BUSINESS_ID
-        sync: false
-      - key: FINCRA_WEBHOOK_KEY
-        sync: false
-      - key: FINCRA_ENV
-        value: production
-      # Live FX cache refresh calls provider quote endpoints every 5 minutes.
-      # Keep disabled until FINCRA/SWAPPR credentials and base URLs are
-      # verified; manual/bootstrap rates still serve quotes without noisy 401s.
-      - key: FX_LIVE_PROVIDER_REFRESH
-        value: "false"
-      - key: SETTLEMENT_ALERTS_WEBHOOK_URL
-        sync: false
-      - key: SETTLEMENT_KYC_THRESHOLD_MINOR
-        value: "100000"
-      - key: ENABLE_SETTLEMENT_RECONCILIATION_SCHEDULER
-        value: "true"
-      - key: FINCRA_WEBHOOK_ENCRYPTION_KEY
-        sync: false
-
-      # ── Runtime feature flags ────────────────────────────────────────────
-      # Resolved by packages/feature-flags at process start (FEATURE_<FLAG> in
-      # UPPER_SNAKE_CASE). A flag only opens the API surface — a request still
-      # needs an ENABLED ProviderConfig row for its domain, so turning one on
-      # without credentials yields 503 rather than a bad charge.
       - key: FEATURE_VTU
         value: "true"
       - key: FEATURE_BILLS_ELECTRICITY
@@ -284,25 +188,12 @@ services:
         value: "true"
       - key: FEATURE_GUEST_CHECKOUT
         value: "true"
-      # Financial products: flip to "true" per-vertical only after that
-      # provider's sandbox verification has signed off.
-      #
-      # VIRTUAL_CARDS is on: Payscribe is one of only two money providers that
-      # have fully verified FlipTrybe, it leads USD_CARD, and the issue / top-up /
-      # withdraw / freeze / terminate paths plus NGN->USD funding conversion are
-      # implemented and unit-tested.
-      #
-      # Known risk, accepted deliberately: the checklist in
-      # docs/providers/payscribe.md is still unticked, so none of those calls has
-      # been exercised against Payscribe's own sandbox, and PAYSCRIBE_API_KEY is a
-      # LIVE key — the first real issuance is also the first integration test.
-      # A card still cannot be issued unless the payscribe-virtual-card
-      # ProviderConfig row is ENABLED and its capability grant flipped on, so this
-      # flag opens the surface rather than the money path.
       - key: FEATURE_VIRTUAL_ACCOUNTS
         sync: false
       - key: FEATURE_VIRTUAL_CARDS
-        value: "true"
+        value: "false"
+      - key: FINANCIAL_PROVIDER_SIGNOFF
+        value: "false"
       - key: FEATURE_REMITTANCE
         sync: false
       - key: FEATURE_WALLET_WITHDRAWALS
@@ -313,46 +204,16 @@ services:
         sync: false
       - key: FEATURE_LIVE_PROVIDER_INTEGRATIONS
         sync: false
-
-      # ── VTU / bills suppliers (airtime, data, electricity, cable, betting) ──
       - key: CLUBKONNECT_BASE_URL
         value: https://www.nellobytesystems.com
       - key: CLUBKONNECT_USER_ID
         sync: false
       - key: CLUBKONNECT_API_KEY
         sync: false
-      # Sent to ClubKonnect as the address to POST order updates to. Left unset
-      # because no such route exists yet — the VTU flow polls order status
-      # instead. Set this only once a receiving endpoint is actually built,
-      # otherwise ClubKonnect retries against a 404.
-      - key: CLUBKONNECT_CALLBACK_URL
-        sync: false
       - key: EBILLS_BASE_URL
         value: https://ebill.com.ng/api
       - key: EBILLS_API_KEY
         sync: false
-      - key: INLOMAX_BASE_URL
-        sync: false
-      - key: INLOMAX_API_KEY
-        sync: false
-      - key: ISQUAREDATA_BASE_URL
-        sync: false
-      - key: ISQUAREDATA_API_KEY
-        sync: false
-      # Swiftlink leads on cable and electricity (see BILLS_ROUTE_PRIORITY).
-      # Set SWIFTLINK_API_KEY — the static bearer token from the swiftlinkng.com
-      # dashboard — and nothing else. EMAIL/PASSWORD are a fallback that logs in
-      # via POST /login, used ONLY when no api key is set; setting both is
-      # harmless, the key wins. Leave SWIFTLINK_BASE_URL unset unless overriding
-      # https://swiftlinkng.com/api.
-      #
-      # No subcategory ids to configure — purchase/airtime and purchase/data
-      # both require a subcategory_id, and both resolve it from /get/plans
-      # (data carries it in providerPlanId, airtime is looked up and cached).
-      # SWIFTLINK_AIRTIME_SUBCATEGORIES / SWIFTLINK_DATA_SUBCATEGORIES still
-      # exist as manual overrides if the catalogue ever disagrees with what an
-      # account can actually buy; they are deliberately not declared here so the
-      # dashboard shows only the fields that genuinely need filling in.
       - key: SWIFTLINK_BASE_URL
         sync: false
       - key: SWIFTLINK_API_KEY
@@ -373,11 +234,6 @@ services:
         sync: false
       - key: TOPUPWIZARD_API_KEY
         sync: false
-      - key: VTUGATE_BASE_URL
-        sync: false
-      - key: VTUGATE_API_KEY
-        sync: false
-      # International top-up (telecom gateway)
       - key: RELOADLY_AUTH_URL
         value: https://auth.reloadly.com/oauth/token
       - key: RELOADLY_BASE_URL
@@ -386,16 +242,10 @@ services:
         sync: false
       - key: RELOADLY_CLIENT_SECRET
         sync: false
-      # Gift cards are a DIFFERENT Reloadly host from top-ups above, and take
-      # precedence over RELOADLY_BASE_URL in the gift card adapter.
       - key: RELOADLY_GIFTCARDS_BASE_URL
         value: https://giftcards.reloadly.com
       - key: RELOADLY_SANDBOX
         value: "false"
-
-      # ── Gift card sell (SOGO) ────────────────────────────────────────────
-      # SOGO_API_KEY gates the gift card sell vertical. Leaving it unset no
-      # longer breaks boot — the endpoints report "not available" instead.
       - key: SOGO_API_KEY
         sync: false
       - key: SOGO_BASE_URL
@@ -404,14 +254,6 @@ services:
         value: "false"
       - key: SOGO_WEBHOOK_SECRET
         sync: false
-
-      # ── Virtual accounts / cards / remittance providers ──────────────────
-      # Register these callback URLs in each provider's dashboard — they are the
-      # only path by which a virtual-account deposit credits a wallet, or a
-      # remittance transfer leaves PROCESSING.
-      #   Swappr:   https://ft-campaigner-api-fra.onrender.com/v1/webhooks/financial/swappr
-      #   Payscribe:https://ft-campaigner-api-fra.onrender.com/v1/webhooks/financial/payscribe
-      #   Fincra:   https://ft-campaigner-api-fra.onrender.com/v1/webhooks/financial/fincra
       - key: SWAPPR_BASE_URL
         sync: false
       - key: SWAPPR_API_KEY
@@ -432,10 +274,14 @@ services:
         sync: false
       - key: YATIVO_ACCOUNT_ID
         sync: false
-      - key: FX_NGN_MIN
+      - key: FINCRA_API_KEY
         sync: false
-      - key: FX_NGN_MAX
+      - key: FINCRA_BUSINESS_ID
         sync: false
+      - key: FINCRA_WEBHOOK_ENCRYPTION_KEY
+        sync: false
+      - key: FINCRA_ENV
+        value: production
 
   - type: web
     runtime: node
@@ -466,7 +312,7 @@ services:
       - key: NEXT_PUBLIC_SHOW_DATA_SOURCE_BADGE
         value: "false"
 
-  - type: web
+  - type: static
     runtime: static
     name: fliptrybe-ads-campaigner-admin
     rootDir: .
@@ -519,183 +365,34 @@ services:
         value: live
       - key: SMM_PROVIDER
         value: live
-      - key: STORAGE_PROVIDER
-        value: cloudinary
-      - key: CLOUDINARY_CLOUD_NAME
-        sync: false
-      - key: CLOUDINARY_URL
-        sync: false
-      - key: CLOUDINARY_API_KEY
-        sync: false
-      - key: CLOUDINARY_API_SECRET
-        sync: false
-      - key: CLOUDINARY_UPLOAD_PRESET
-        sync: false
-      - key: CLOUDINARY_IMAGE_UPLOAD_PRESET
-        sync: false
-      - key: CLOUDINARY_VIDEO_UPLOAD_PRESET
-        sync: false
-      - key: CLOUDINARY_FOLDER
-        value: fliptrybe-ads-campaigner
-      - key: CLOUDINARY_SECURE_DISTRIBUTION
-        sync: false
-      - key: MEDIA_UPLOAD_SIGNATURE_TTL_SECONDS
-        value: "900"
-      - key: MEDIA_UPLOAD_ALLOW_MOCK_STORAGE
-        value: "false"
-      - key: MEDIA_MAX_IMAGE_BYTES
-        value: "10485760"
-      - key: MEDIA_MAX_VIDEO_BYTES
-        value: "314572800"
-      - key: MEDIA_MAX_SCREENSHOT_BYTES
-        value: "5242880"
-      - key: TOTP_SECRET_ENCRYPTION_KEY
-        sync: false
-      - key: VOUCHER_PIN_SECRET
-        sync: false
       - key: ALLOW_MOCK_PROVIDERS
         value: "false"
-      - key: SMDPANEL_API_URL
-        value: https://smdpanel.com/api/v2
-      - key: SMDPANEL_ENDPOINT
-        value: https://smdpanel.com/api/v2
-      - key: SMDPANEL_API_KEY
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
         sync: false
-      - key: SMDPANEL_CURRENCY
-        value: USD
-      - key: SMDPANEL_SERVICE_MAP
+      - key: RESEND_FROM_EMAIL
         sync: false
-      - key: SMMRAJA_API_URL
-        value: https://www.smmraja.com/api/v3
-      - key: SMMRAJA_API_KEY
-        sync: false
-      - key: SMMRAJA_CURRENCY
-        value: USD
-      - key: SMMRAJA_SERVICE_MAP
-        sync: false
-      - key: JAP_API_URL
-        value: https://justanotherpanel.com/api/v2
-      - key: JAP_API_KEY
-        sync: false
-      - key: JAP_CURRENCY
-        value: USD
-      - key: JAP_SERVICE_MAP
-        sync: false
-      - key: PEAKERR_API_URL
-        value: https://peakerr.com/api/v2
-      - key: PEAKERR_API_KEY
-        sync: false
-      - key: PEAKERR_CURRENCY
-        value: USD
-      - key: PEAKERR_SERVICE_MAP
-        sync: false
-      - key: AI_PROVIDER
-        value: anthropic
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: ANTHROPIC_MODEL
-        sync: false
-      - key: ANTHROPIC_BASE_URL
-        sync: false
-      - key: ANTHROPIC_TIMEOUT_SECONDS
-        value: "20"
-      - key: ANTHROPIC_MAX_RETRIES
-        value: "2"
-      - key: AI_BRAIN_ENABLED
-        value: "true"
-      - key: AI_BRAIN_BASE_URL
-        sync: false
-      - key: AI_BRAIN_API_KEY
-        sync: false
-      - key: AI_BRAIN_TIMEOUT_SECONDS
-        value: "0.8"
       - key: NOTIFICATION_PROVIDER
         value: live
-      # Read by apps/worker/src/notifications-processor.ts (the only process
-      # that ever reads these -- the API side only enqueues). Without
-      # TERMII_API_KEY, NOTIFICATION_PROVIDER=live above has no effect:
-      # adapterForChannel falls through to the mock provider in non-production,
-      # or to PENDING_CONFIGURATION in production, regardless of that value.
-      # Set the real value in the Render dashboard; nothing here does that.
-      - key: TERMII_API_KEY
-        sync: false
-      - key: TERMII_BASE_URL
-        sync: false
-      - key: TERMII_SMS_SENDER_ID
-        sync: false
-      - key: TERMII_EMAIL_CONFIGURATION_ID
-        sync: false
-      - key: TERMII_WHATSAPP_CONFIGURATION_ID
-        sync: false
       - key: ENABLE_OTP_MODULE
-        value: "true"
-      - key: ENABLE_PREMIUM_OTP
-        value: "true"
-      - key: ENABLE_BUDGET_OTP
-        value: "true"
-      - key: ENABLE_OTP_ADMIN
-        value: "true"
-      - key: ENABLE_DIGITAL_ACCESS
-        value: "true"
-      - key: ENABLE_DIGITAL_ACCESS_ADMIN
-        value: "true"
-      - key: TRUST_PROXY_AUTH_HEADERS
         value: "false"
-      - key: DIGITAL_ACCESS_TRUST_AUTH_HEADERS
+      - key: ENABLE_PREMIUM_OTP
+        value: "false"
+      - key: ENABLE_BUDGET_OTP
+        value: "false"
+      - key: ENABLE_OTP_ADMIN
         value: "false"
       - key: DIGITAL_ACCESS_WORKER_ENABLED
-        value: "true"
+        value: "false"
       - key: DIGITAL_ACCESS_AUTOMATION_WORKER_ENABLED
-        value: "true"
+        value: "false"
       - key: OTP_PROVIDER_HEALTH_WORKER_ENABLED
-        value: "true"
+        value: "false"
       - key: OTP_PROVIDER_MODE
-        value: live
-      - key: OTP_BETA_WORKSPACE_IDS
-        sync: false
-      - key: OTP_USD_TO_NGN_RATE
-        value: "1600"
-      - key: TEXTVERIFIED_API_URL
-        value: https://www.textverified.com/api/pub/v2
-      - key: TEXTVERIFIED_API_KEY
-        sync: false
-      - key: FIVESIM_API_URL
-        value: https://5sim.net/v1
-      - key: FIVESIM_API_KEY
-        sync: false
-      - key: SMSMAN_API_URL
-        value: https://api.sms-man.com/control
-      - key: SMSMAN_API_KEY
-        sync: false
-      - key: SMSACTIVATE_API_URL
-        sync: false
-      - key: SMSACTIVATE_API_KEY
-        sync: false
+        value: mock
       - key: SMSACTIVATE_COMPATIBLE_ENABLED
-        value: "true"
-      - key: KORAPAY_BASE_URL
-        value: https://api.korapay.com
-      - key: KORAPAY_PUBLIC_KEY
-        sync: false
-      - key: KORAPAY_SECRET_KEY
-        sync: false
-      - key: KORAPAY_ENCRYPTION_KEY
-        sync: false
-      - key: KORAPAY_WEBHOOK_URL
-        value: https://ft-campaigner-api-fra.onrender.com/api/webhooks/korapay
-      - key: KORAPAY_WEBHOOK_SECRET
-        sync: false
-      - key: KORAPAY_REDIRECT_URL
-        value: https://fliptrybe.xyz
-      - key: TREASURY_BANK_NAME
-        sync: false
-      - key: TREASURY_ACCOUNT_NAME
-        sync: false
-      - key: TREASURY_ACCOUNT_NUMBER
-        sync: false
-      # ── Runtime feature flags (must mirror the API service) ──────────────
-      # Worker queues are registered behind the same flags the API enforces; a
-      # mismatch means jobs are enqueued but never processed, or vice versa.
+        value: "false"
       - key: FEATURE_VTU
         value: "true"
       - key: FEATURE_BILLS_ELECTRICITY
@@ -712,12 +409,10 @@ services:
         value: "true"
       - key: FEATURE_VIRTUAL_ACCOUNTS
         sync: false
-      # Kept in step with the API service above so flag-gated queue registration
-      # agrees with the surface the API exposes. The browser does not read this:
-      # it fetches the resolved set from GET /v1/platform/feature-flags, so the
-      # API service's value is what decides whether the Cards tab renders.
       - key: FEATURE_VIRTUAL_CARDS
-        value: "true"
+        value: "false"
+      - key: FINANCIAL_PROVIDER_SIGNOFF
+        value: "false"
       - key: FEATURE_REMITTANCE
         sync: false
       - key: FEATURE_WALLET_WITHDRAWALS
@@ -728,66 +423,11 @@ services:
         sync: false
       - key: FEATURE_LIVE_PROVIDER_INTEGRATIONS
         sync: false
-
-      # ── VTU / bills suppliers ────────────────────────────────────────────
       - key: CLUBKONNECT_BASE_URL
         value: https://www.nellobytesystems.com
       - key: CLUBKONNECT_USER_ID
         sync: false
       - key: CLUBKONNECT_API_KEY
-        sync: false
-      - key: EBILLS_BASE_URL
-        value: https://ebill.com.ng/api
-      - key: EBILLS_API_KEY
-        sync: false
-      # Mirrors the API service. vtu-processor.ts builds the same Swiftlink
-      # adapter the API does, so without these the worker constructed it with an
-      # empty api key and every order it processed went out unauthenticated.
-      - key: SWIFTLINK_BASE_URL
-        sync: false
-      - key: SWIFTLINK_API_KEY
-        sync: false
-      - key: SWIFTLINK_EMAIL
-        sync: false
-      - key: SWIFTLINK_PASSWORD
-        sync: false
-      - key: SIRPDATA_BASE_URL
-        sync: false
-      - key: SIRPDATA_API_KEY
-        sync: false
-      - key: IACAFE_BASE_URL
-        sync: false
-      - key: IACAFE_API_KEY
-        sync: false
-      - key: RELOADLY_AUTH_URL
-        value: https://auth.reloadly.com/oauth/token
-      - key: RELOADLY_BASE_URL
-        value: https://topups.reloadly.com
-      - key: RELOADLY_CLIENT_ID
-        sync: false
-      - key: RELOADLY_CLIENT_SECRET
-        sync: false
-      - key: RELOADLY_GIFTCARDS_BASE_URL
-        value: https://giftcards.reloadly.com
-      - key: RELOADLY_SANDBOX
-        value: "false"
-
-      # ── Gift card sell (SOGO) ────────────────────────────────────────────
-      - key: SOGO_API_KEY
-        sync: false
-      - key: SOGO_BASE_URL
-        value: https://api.sogo.africa/v1
-      - key: SOGO_SANDBOX
-        value: "false"
-      - key: SOGO_WEBHOOK_SECRET
-        sync: false
-
-      # ── Virtual accounts / cards / remittance providers ──────────────────
-      - key: SWAPPR_BASE_URL
-        sync: false
-      - key: SWAPPR_API_KEY
-        sync: false
-      - key: SWAPPR_WEBHOOK_SECRET
         sync: false
       - key: PAYSCRIBE_BASE_URL
         sync: false
@@ -795,20 +435,16 @@ services:
         sync: false
       - key: PAYSCRIBE_WEBHOOK_SECRET
         sync: false
-      - key: YATIVO_BASE_URL
+      - key: SMDPANEL_API_KEY
         sync: false
-      - key: YATIVO_API_KEY
+      - key: SMMRAJA_API_KEY
         sync: false
-      - key: YATIVO_ACCOUNT_ID
+      - key: JAP_API_KEY
         sync: false
-      - key: FINCRA_API_KEY
+      - key: PEAKERR_API_KEY
         sync: false
-      - key: FINCRA_BUSINESS_ID
+      - key: ANTHROPIC_API_KEY
         sync: false
-      - key: FINCRA_WEBHOOK_ENCRYPTION_KEY
-        sync: false
-      - key: FINCRA_ENV
-        value: production
 
   - type: keyvalue
     name: fliptrybe-ads-campaigner-redis
