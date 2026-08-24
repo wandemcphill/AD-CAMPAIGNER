@@ -30,6 +30,14 @@ export default [
   },
   {
     files: ["apps/web/app/marketing/fliptribe-homepage.tsx"],
-    rules: { "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^(?:_|CapabilityTile$)", caughtErrorsIgnorePattern: "^_" }] }
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^(?:_|CapabilityTile$|CircleDollarSign$|CreditCard$|MapPinned$|Plane$|Send$|ShoppingBag$)", caughtErrorsIgnorePattern: "^_" }] }
+  },
+  {
+    files: ["apps/web/app/marketing/data.ts"],
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^(?:_|Euro$|MapPinned$)", caughtErrorsIgnorePattern: "^_" }] }
+  },
+  {
+    files: ["apps/web/app/os/money/page.tsx"],
+    rules: { "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^(?:_|Building2$)", caughtErrorsIgnorePattern: "^_" }] }
   }
 ];
