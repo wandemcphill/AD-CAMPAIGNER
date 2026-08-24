@@ -22,6 +22,17 @@ export {
   type ProviderResult
 } from "./provider-resilience.js";
 
+export {
+  buildNotificationDedupeKey,
+  createOperationalNotification,
+  notificationSeverity,
+  supportActionForFailure,
+  type OperationalEvent,
+  type OperationalNotification,
+  type OperationalSeverity,
+  type SupportContext
+} from "./operations.js";
+
 export function money(amountMinor: number, currency: CurrencyCode): Money {
   if (!Number.isInteger(amountMinor)) {
     throw new Error("Money values must be stored in minor units");
