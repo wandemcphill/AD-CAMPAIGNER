@@ -4,6 +4,7 @@ import {
   Banknote,
   CircleDollarSign,
   Euro,
+  Gift,
   BarChart3,
   CreditCard,
   FileText,
@@ -388,12 +389,21 @@ export const customerUseCases: UseCase[] = [
   },
   {
     eyebrow: "China",
-    title: "Pay suppliers and businesses in China.",
-    description: "A cross-border purchasing and settlement lane designed for people and businesses buying from China.",
+    title: "Buy RMB and pay China.",
+    description: "Buy Chinese yuan for supported China payments and supplier settlement.",
     icon: ShoppingBag,
     href: "/register",
-    status: "soon",
-    tag: "China payments"
+    status: "live",
+    tag: "RMB · China payments"
+  },
+  {
+    eyebrow: "Gift cards",
+    title: "Buy gift cards or sell yours to us.",
+    description: "Buy supported gift cards for digital spending or sell eligible gift cards through FlipTrybe.",
+    icon: Gift,
+    href: "/register",
+    status: "live",
+    tag: "Buy · Sell"
   },
   {
     eyebrow: "TikTok growth",
