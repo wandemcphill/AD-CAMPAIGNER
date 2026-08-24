@@ -200,8 +200,8 @@ export function createPayscribeFxProvider(config: PayscribeFxConfig): FxProvider
       }
       return rates;
     },
-    async getSupportedCurrencies() {
-      return ["USD", "NGN"];
+    getSupportedCurrencies() {
+      return Promise.resolve(["USD", "NGN"]);
     },
     async healthCheck() {
       if (!config.apiKey) return { healthy: false, message: "PAYSCRIBE_API_KEY is not configured." };
