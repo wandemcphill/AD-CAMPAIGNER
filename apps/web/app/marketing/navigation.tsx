@@ -1,4 +1,4 @@
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, LogIn, Sparkles } from "lucide-react";
 
 import { ThemeToggle } from "@fliptrybe/ui";
 
@@ -35,20 +35,32 @@ export function MarketingNavigation() {
             <ThemeToggle />
           </span>
           <a
-            className="hidden h-10 items-center rounded-full border border-[var(--ft-border)] px-4 text-sm font-medium text-[var(--ft-text-primary)] transition hover:border-[var(--ft-accent)]/40 hover:bg-[var(--ft-bg-muted)] sm:flex"
+            className="inline-flex h-10 items-center gap-1.5 rounded-full border border-[var(--ft-border-strong)] bg-[var(--ft-bg-raised)] px-3.5 text-sm font-semibold text-[var(--ft-text-primary)] shadow-[var(--shadow-sm)] transition hover:border-[var(--ft-accent)]/50 hover:bg-[var(--ft-bg-muted)] sm:px-4"
             href="/login"
           >
-            Sign in
+            <LogIn className="size-3.5" />
+            <span>Sign in</span>
           </a>
           <a
-            className="group flex h-10 items-center gap-2 rounded-full bg-[var(--ft-text-primary)] px-4 text-sm font-semibold text-[var(--ft-text-inverse)] shadow-[var(--shadow-sm)] transition hover:-translate-y-0.5"
+            className="group flex h-10 items-center gap-2 rounded-full bg-[var(--ft-accent)] px-3.5 text-sm font-bold text-white shadow-[var(--shadow-md)] transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-lg)] sm:px-4"
             href="/register"
           >
-            <span>Enter platform</span>
+            <span>Create free account</span>
             <ArrowRight className="size-4 transition group-hover:translate-x-0.5" />
           </a>
         </div>
       </nav>
+      <div className="ft-glass mx-auto mt-2 flex max-w-7xl gap-1 overflow-x-auto rounded-2xl border border-[var(--ft-border)] p-1 lg:hidden">
+        {navItems.map((item) => (
+          <a
+            className="shrink-0 rounded-xl px-3 py-2 text-[11px] font-semibold text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
+            href={item.href}
+            key={item.label}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
     </header>
   );
 }
