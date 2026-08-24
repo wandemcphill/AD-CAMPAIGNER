@@ -6,9 +6,8 @@ import type { Route } from "next";
 import {
   ArrowUpRight,
   Banknote,
-  CreditCard,
-  Send,
   Bitcoin,
+  CreditCard,
   Gift,
   GraduationCap,
   Globe,
@@ -18,43 +17,55 @@ import {
   Lightbulb,
   Phone,
   Search,
+  Send,
   Smartphone,
   Sparkles,
   Trophy,
   Tv,
+  Wallet,
   Wifi,
   type LucideIcon
 } from "lucide-react";
 
 import { useFeatureFlags } from "../../lib/feature-flags";
 
-type ServiceCard = { label: string; description: string; href: Route; icon: LucideIcon; flag?: string };
+type ServiceCard = { label: string; description: string; href: Route; icon: LucideIcon; flag?: string; keywords?: string };
 type ServiceCategory = { title: string; items: ServiceCard[] };
+type QuickAction = { label: string; description: string; href: Route; icon: LucideIcon; flag?: string };
+
+const QUICK_ACTIONS: QuickAction[] = [
+  { label: "Send money", description: "Move money through supported global corridors", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" },
+  { label: "Buy a gift card", description: "Choose a supported brand and pay", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+  { label: "Sell my gift card", description: "Submit an eligible card for settlement", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
+  { label: "Buy RMB", description: "Get yuan for supported China payments", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" },
+  { label: "Buy or sell USDT / USDC", description: "Review supported digital-dollar routes", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell" },
+  { label: "Get a virtual card", description: "Spend on supported international services", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" }
+];
 
 const CATEGORIES: ServiceCategory[] = [
   { title: "Connectivity", items: [
-    { label: "Airtime", description: "Top up any network instantly", href: "/os/airtime/airtime", icon: Phone, flag: "vtu" },
-    { label: "Data", description: "Buy data bundles", href: "/os/airtime/data", icon: Wifi, flag: "vtu" },
-    { label: "International Top-Up", description: "Send airtime abroad", href: "/os/telecom", icon: Globe2, flag: "telecomGateway" },
-    { label: "International Numbers", description: "Get numbers worldwide", href: "/os/numbers", icon: Globe, flag: "virtualNumbers" },
-    { label: "My Numbers", description: "Manage your numbers", href: "/os/numbers/mine", icon: Smartphone, flag: "virtualNumbers" }
+    { label: "Airtime", description: "Top up any network instantly", href: "/os/airtime/airtime", icon: Phone, flag: "vtu", keywords: "recharge phone mobile" },
+    { label: "Data", description: "Buy data bundles", href: "/os/airtime/data", icon: Wifi, flag: "vtu", keywords: "internet bundle mobile" },
+    { label: "International Top-Up", description: "Send airtime abroad", href: "/os/telecom", icon: Globe2, flag: "telecomGateway", keywords: "foreign international recharge" },
+    { label: "International Numbers", description: "Get numbers worldwide", href: "/os/numbers", icon: Globe, flag: "virtualNumbers", keywords: "phone number foreign" },
+    { label: "My Numbers", description: "Manage your numbers", href: "/os/numbers/mine", icon: Smartphone, flag: "virtualNumbers", keywords: "manage phone number" }
   ]},
   { title: "Digital Value", items: [
-    { label: "Buy Gift Cards", description: "Buy supported gift cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
-    { label: "Sell Gift Cards", description: "Sell eligible gift cards to FlipTrybe", href: "/os/digital-value", icon: Gift, flag: "giftCardSell" },
-    { label: "Digital Access", description: "Premium digital products", href: "/os/digital-access", icon: KeyRound, flag: "digitalAccess" }
+    { label: "Buy Gift Cards", description: "Buy supported gift cards", href: "/os/digital-value", icon: Gift, flag: "giftCardSell", keywords: "voucher purchase amazon apple steam" },
+    { label: "Sell Gift Cards", description: "Sell eligible gift cards to FlipTrybe", href: "/os/digital-value", icon: Gift, flag: "giftCardSell", keywords: "cash out voucher trade" },
+    { label: "Digital Access", description: "Premium digital products", href: "/os/digital-access", icon: KeyRound, flag: "digitalAccess", keywords: "subscriptions premium access" }
   ]},
   { title: "Bills & Utilities", items: [
-    { label: "Electricity", description: "Pay electricity bills", href: "/os/utilities/electricity", icon: Lightbulb, flag: "billsElectricity" },
-    { label: "Cable TV", description: "Renew your subscription", href: "/os/utilities/cable", icon: Tv, flag: "billsCable" },
-    { label: "Education", description: "Pay education fees", href: "/os/utilities/education", icon: GraduationCap, flag: "billsEducation" },
-    { label: "Bet Funding", description: "Fund betting wallets", href: "/os/utilities/betting", icon: Trophy, flag: "billsBetting" }
+    { label: "Electricity", description: "Pay electricity bills", href: "/os/utilities/electricity", icon: Lightbulb, flag: "billsElectricity", keywords: "power prepaid token" },
+    { label: "Cable TV", description: "Renew your subscription", href: "/os/utilities/cable", icon: Tv, flag: "billsCable", keywords: "dstv gotv television" },
+    { label: "Education", description: "Pay education fees", href: "/os/utilities/education", icon: GraduationCap, flag: "billsEducation", keywords: "school fees education" },
+    { label: "Bet Funding", description: "Fund betting wallets", href: "/os/utilities/betting", icon: Trophy, flag: "billsBetting", keywords: "bet sportsbook" }
   ]},
   { title: "Global Money", items: [
-    { label: "USDT & USDC", description: "Buy and sell supported stablecoins", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell" },
-    { label: "Buy RMB & Pay China", description: "Buy yuan for supported China payments", href: "/os/rmb", icon: Banknote, flag: "rmbBuy" },
-    { label: "Virtual Cards", description: "Spend on supported international subscriptions", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards" },
-    { label: "Global Transfers", description: "Send money through supported corridors", href: "/os/financial-products/remittance", icon: Send, flag: "remittance" }
+    { label: "USDT & USDC", description: "Buy and sell supported stablecoins", href: "/os/crypto", icon: Bitcoin, flag: "cryptoSell", keywords: "crypto stablecoin digital dollar buy sell" },
+    { label: "Buy RMB & Pay China", description: "Buy yuan for supported China payments", href: "/os/rmb", icon: Banknote, flag: "rmbBuy", keywords: "china yuan alipay wechat supplier" },
+    { label: "Virtual Cards", description: "Spend on supported international subscriptions", href: "/os/financial-products/cards", icon: CreditCard, flag: "virtualCards", keywords: "card foreign subscription netflix software" },
+    { label: "Global Transfers", description: "Send money through supported corridors", href: "/os/financial-products/remittance", icon: Send, flag: "remittance", keywords: "usa uk canada europe nigeria remit" }
   ]}
 ];
 
@@ -69,11 +80,13 @@ export default function ServicesHubPage() {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
   const isEnabled = (flag?: string) => !flag || (ready && flags[flag] === true);
+  const matches = (item: ServiceCard) => !normalizedQuery || [item.label, item.description, item.keywords ?? ""].join(" ").toLowerCase().includes(normalizedQuery);
 
   const visibleCategories = useMemo(() => CATEGORIES.map((category) => ({
     ...category,
-    items: category.items.filter((item) => isEnabled(item.flag) && (!normalizedQuery || item.label.toLowerCase().includes(normalizedQuery) || item.description.toLowerCase().includes(normalizedQuery)))
+    items: category.items.filter((item) => isEnabled(item.flag) && matches(item))
   })).filter((category) => category.items.length > 0), [normalizedQuery, ready, flags]);
+  const visibleQuickActions = QUICK_ACTIONS.filter((item) => isEnabled(item.flag));
   const visibleHistory = ORDER_HISTORY.filter((entry) => isEnabled(entry.flag));
   const resultCount = visibleCategories.reduce((sum, category) => sum + category.items.length, 0);
 
@@ -84,9 +97,9 @@ export default function ServicesHubPage() {
         <header className="overflow-hidden rounded-[28px] border border-[var(--ft-border-strong)] bg-[var(--ft-bg-raised)]/80 p-5 shadow-[var(--shadow-lg)] backdrop-blur-xl sm:p-7">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-accent)]/20 bg-[var(--ft-accent-subtle)] px-3 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--ft-accent)]"><Sparkles className="size-3" /> Technology services</div>
-              <h1 className="mt-4 font-[var(--font-display)] text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">A service layer built around you.</h1>
-              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)] sm:text-base">Money, connectivity, digital value, utilities and emerging services share one intelligent operating surface.</p>
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--ft-accent)]/20 bg-[var(--ft-accent-subtle)] px-3 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-[var(--ft-accent)]"><Sparkles className="size-3" /> FlipTrybe Technology</div>
+              <h1 className="mt-4 font-[var(--font-display)] text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">Start with the job. We’ll handle the product.</h1>
+              <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--ft-text-secondary)] sm:text-base">Send money, buy or sell digital value, pay China, get a virtual card, stay connected and manage everyday services from one account.</p>
             </div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {[[String(resultCount).padStart(2, "0"), "available services"], ["01", "connected account"], ["24/7", "platform access"]].map(([value, label]) => <div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]/70 px-4 py-3" key={label}><div className="font-mono text-xl font-semibold tracking-[-0.04em]">{value}</div><div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">{label}</div></div>)}
@@ -96,21 +109,28 @@ export default function ServicesHubPage() {
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="relative w-full sm:max-w-md">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[var(--ft-text-muted)]" />
-              <input aria-label="Search services" className="h-12 w-full rounded-2xl border border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)] pl-10 pr-4 text-sm outline-none transition focus:border-[var(--ft-accent)] focus:shadow-[0_0_0_4px_var(--ft-accent-glow)]" onChange={(event) => setQuery(event.target.value)} placeholder="Search airtime, gift cards, utilities, numbers…" type="search" value={query} />
+              <input aria-label="Search services" className="h-12 w-full rounded-2xl border border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)] pl-10 pr-4 text-sm outline-none transition focus:border-[var(--ft-accent)] focus:shadow-[0_0_0_4px_var(--ft-accent-glow)]" onChange={(event) => setQuery(event.target.value)} placeholder="Try “send money”, “China”, “gift card” or “USDC”…" type="search" value={query} />
             </div>
             {visibleHistory.length > 0 ? <div className="flex flex-wrap items-center gap-2"><span className="font-mono text-micro uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">Recent</span>{visibleHistory.map((entry) => <Link className="inline-flex items-center gap-1.5 rounded-full border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--ft-text-secondary)] transition hover:border-[var(--ft-accent)]/40 hover:text-[var(--ft-accent)]" href={entry.href} key={entry.href}><History className="size-3" />{entry.label}</Link>)}</div> : null}
           </div>
         </header>
 
+        <section className="mt-7">
+          <div className="mb-4 flex items-end justify-between gap-3"><div><span className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--ft-accent)]">Quick start</span><h2 className="mt-1 text-lg font-semibold tracking-tight">What are you here to do?</h2></div><span className="hidden text-xs text-[var(--ft-text-muted)] sm:block">Popular actions</span></div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {visibleQuickActions.map((item) => <Link className="group flex min-h-[118px] items-start gap-4 rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4 shadow-[var(--shadow-sm)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-md)]" href={item.href} key={item.label}><div className="grid size-10 shrink-0 place-items-center rounded-xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-accent)]"><item.icon className="size-5" /></div><div className="min-w-0"><div className="flex items-center gap-2 text-sm font-semibold">{item.label}<ArrowUpRight className="size-3.5 text-[var(--ft-text-muted)] transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[var(--ft-accent)]" /></div><p className="mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">{item.description}</p></div></Link>)}
+          </div>
+        </section>
+
         {visibleCategories.length === 0 ? (
           <div className="mt-7 rounded-[24px] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-surface)] p-10 text-center"><Search className="mx-auto size-8 text-[var(--ft-text-muted)]" /><div className="mt-4 text-sm font-semibold">No services found</div><p className="mt-1 text-xs text-[var(--ft-text-muted)]">Try a broader search or check back as new services come online.</p></div>
         ) : (
-          <div className="mt-8 grid gap-10">
+          <div className="mt-10 grid gap-10">
             {visibleCategories.map((category, categoryIndex) => (
               <section key={category.title}>
                 <div className="mb-4 flex items-end justify-between gap-3"><div><span className="font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--ft-accent)]">0{categoryIndex + 1}</span><h2 className="mt-1 text-lg font-semibold tracking-tight">{category.title}</h2></div><span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--ft-text-muted)]">{String(category.items.length).padStart(2, "0")} modules</span></div>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {category.items.map((item, index) => <Link className="group relative overflow-hidden rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-5 shadow-[var(--shadow-sm)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-md)]" href={item.href} key={item.href}><div className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-[var(--ft-accent-glow)] blur-2xl opacity-0 transition group-hover:opacity-100" /><div className="relative flex items-start justify-between gap-3"><div className="grid size-11 place-items-center rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-accent)] transition group-hover:scale-105"><item.icon className="size-5" /></div><span className="font-mono text-[9px] text-[var(--ft-text-muted)]">0{index + 1}</span></div><div className="relative mt-6 text-sm font-semibold tracking-tight">{item.label}</div><div className="relative mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">{item.description}</div><div className="relative mt-5 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--ft-accent)]">Open service <ArrowUpRight className="size-3.5" /></div></Link>)}
+                  {category.items.map((item, index) => <Link className="group relative overflow-hidden rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-5 shadow-[var(--shadow-sm)] transition duration-300 hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-md)]" href={item.href} key={item.label}><div className="pointer-events-none absolute -right-8 -top-8 size-24 rounded-full bg-[var(--ft-accent-glow)] blur-2xl opacity-0 transition group-hover:opacity-100" /><div className="relative flex items-start justify-between gap-3"><div className="grid size-11 place-items-center rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] text-[var(--ft-accent)] transition group-hover:scale-105"><item.icon className="size-5" /></div><span className="font-mono text-[9px] text-[var(--ft-text-muted)]">0{index + 1}</span></div><div className="relative mt-6 text-sm font-semibold tracking-tight">{item.label}</div><div className="relative mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">{item.description}</div><div className="relative mt-5 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--ft-accent)]">Open service <ArrowUpRight className="size-3.5" /></div></Link>)}
                 </div>
               </section>
             ))}
