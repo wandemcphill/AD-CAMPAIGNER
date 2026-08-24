@@ -17,6 +17,7 @@ import {
   type RemittanceStatus,
   type RemittanceTransfer
 } from "../api";
+import { CustomerTransactionJourney } from "../../components/customer-transaction-journey";
 
 const REMITTANCE_STATUS_TONE: Record<RemittanceStatus, "success" | "warning" | "danger" | "neutral"> = {
   QUOTED: "neutral",
@@ -116,6 +117,7 @@ export default function RemittanceTabPage() {
 
   return (
     <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
+      <CustomerTransactionJourney current={quote ? "review" : "choose"} className="mb-4" />
       <ErrorNotice message={error} />
       <Panel className="p-5">
         <div className="grid grid-cols-2 gap-3">
@@ -161,14 +163,10 @@ export default function RemittanceTabPage() {
               </span>{" "}
               · fee {formatNaira(quote.feeMinor)}
             </div>
-
-            {/* The debit can exceed the amount typed above once a markup applies,
-                so it is shown explicitly rather than left to be inferred. */}
             <div className="text-xs text-[var(--ft-text-muted)]">
               You&rsquo;ll be charged {formatNaira(quote.sourceAmountMinor)}
               {!quote.isLocked && " · rate is indicative until the transfer completes"}
             </div>
-
             <input
               className="h-11 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
               onChange={(e) => setRecipientName(e.target.value)}
@@ -195,12 +193,9 @@ export default function RemittanceTabPage() {
                 value={recipientCountry}
               />
             </div>
-
             <Button
               className="w-full justify-center"
-              disabled={
-                !recipientName.trim() || !recipientAccountNumber.trim() || !recipientBankCode.trim() || sending
-              }
+              disabled={!recipientName.trim() || !recipientAccountNumber.trim() || !recipientBankCode.trim() || sending}
               onClick={() => void submitSendRemittance()}
             >
               <Send className="size-4" />
@@ -212,18 +207,14 @@ export default function RemittanceTabPage() {
 
       <div className="mt-4">
         {transfersLoading ? (
-          <Panel className="p-6">
-            <LoadingBlock label="Loading your transfers" />
-          </Panel>
+          <Panel className="p-6"><LoadingBlock label="Loading your transfers" /></Panel>
         ) : transfers.length === 0 ? (
-          <Panel className="p-6">
-            <EmptyState copy="Transfers you send will show up here." icon={Send} title="No transfers yet" />
-          </Panel>
+          <Panel className="p-6"><EmptyState copy="Transfers you send will show up here." icon={Send} title="No transfers yet" /></Panel>
         ) : (
           <div className="grid gap-2">
             {transfers.map((transfer) => (
               <Panel className="flex items-center gap-4 p-4" key={transfer.id}>
-                <div className={cn("grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10")}>
+                <div className="grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10">
                   <Send className="size-4 text-[var(--ft-accent)]" />
                 </div>
                 <div className="flex-1">
@@ -233,9 +224,7 @@ export default function RemittanceTabPage() {
                     {(transfer.destinationAmountMinor / 100).toLocaleString()}
                   </div>
                 </div>
-                <Badge tone={REMITTANCE_STATUS_TONE[transfer.status]}>
-                  {transfer.status.toLowerCase()}
-                </Badge>
+                <Badge tone={REMITTANCE_STATUS_TONE[transfer.status]}>{transfer.status.toLowerCase()}</Badge>
               </Panel>
             ))}
           </div>
