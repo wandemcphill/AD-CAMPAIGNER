@@ -240,7 +240,7 @@ export default function AdminUsersPage() {
               ) : (
                 <Button disabled={busy} onClick={() => void setStatus(selected, "ACTIVE")}><ShieldCheck className="size-4" /> Reactivate</Button>
               )}
-              <Link href={`/users/${encodeURIComponent(selected.id)}/security`}>
+              <Link href={`/users/security?id=${encodeURIComponent(selected.id)}`}>
                 <Button variant="secondary"><ExternalLink className="size-4" /> Security posture</Button>
               </Link>
             </div>
