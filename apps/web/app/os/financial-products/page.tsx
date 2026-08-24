@@ -1,34 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { ArrowRight, Bitcoin, Building2, CreditCard, Globe2, Send, WalletCards } from "lucide-react";
+import { Panel } from "@fliptrybe/ui";
 
-import { useFeatureFlags } from "../../lib/feature-flags";
-
-const TAB_ORDER = [
-  { id: "accounts", flag: "virtualAccounts" },
-  { id: "cards", flag: "virtualCards" },
-  { id: "remittance", flag: "remittance" }
+const MONEY_JOBS = [
+  { title: "Multi-currency accounts", eyebrow: "HOLD", description: "Explore supported USD, GBP and EUR account products and keep global money organised.", href: "/os/financial-products/accounts", icon: Building2, tone: "var(--ft-purple)", status: "Available where enabled" },
+  { title: "Virtual cards", eyebrow: "SPEND", description: "Create supported virtual cards for international online spending and subscriptions.", href: "/os/financial-products/cards", icon: CreditCard, tone: "var(--ft-accent)", status: "Available where enabled" },
+  { title: "Send money internationally", eyebrow: "MOVE", description: "Choose a supported corridor, see the recipient amount and review the transfer before confirmation.", href: "/os/financial-products/remittance", icon: Send, tone: "var(--ft-blue)", status: "Live" },
+  { title: "USDT & USDC", eyebrow: "DIGITAL DOLLARS", description: "Buy and sell supported stablecoins with the rate and settlement experience clearly separated.", href: "/os/crypto", icon: Bitcoin, tone: "var(--ft-green)", status: "Available where enabled" }
 ];
 
-const TAB_ROUTES = {
-  accounts: "/os/financial-products/accounts",
-  cards: "/os/financial-products/cards",
-  remittance: "/os/financial-products/remittance"
-} as const satisfies Record<(typeof TAB_ORDER)[number]["id"], string>;
-
-// Bare "/os/financial-products" (old default tab, and any stale bookmark/link)
-// redirects to the first tab this deployment has switched on, falling back to
-// "accounts" once flags are known so the URL always resolves to a real route.
 export default function FinancialProductsIndexPage() {
-  const router = useRouter();
-  const { flags, ready } = useFeatureFlags();
-
-  useEffect(() => {
-    if (!ready) return;
-    const firstAvailable = TAB_ORDER.find((t) => flags[t.flag] === true)?.id ?? "accounts";
-    router.replace(TAB_ROUTES[firstAvailable as keyof typeof TAB_ROUTES]);
-  }, [ready, flags, router]);
-
-  return null;
+  return <div className="mt-6 space-y-5"><Panel className="overflow-hidden p-0"><div className="relative border-b border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-6 sm:p-8"><div className="pointer-events-none absolute -right-20 -top-28 size-72 rounded-full bg-[var(--ft-accent)]/10 blur-3xl" /><div className="relative flex items-start gap-4"><div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"><WalletCards className="size-6" /></div><div><div className="font-mono text-[9px] font-semibold uppercase tracking-[.18em] text-[var(--ft-accent)]">Global money</div><h1 className="mt-1 text-2xl font-bold tracking-tight">Move, hold and spend money globally</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-muted)]">One place for the money jobs customers actually care about. Choose an outcome, understand the cost, then enter the service flow.</p></div></div></div></Panel><div className="grid gap-3 sm:grid-cols-2">{MONEY_JOBS.map((job) => <Link href={job.href} key={job.title} className="group"><Panel className="h-full p-5 transition duration-300 hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-md)]"><div className="flex items-start justify-between gap-3"><span className="grid size-11 place-items-center rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]" style={{ color: job.tone }}><job.icon className="size-5" /></span><span className="rounded-full bg-[var(--ft-bg-muted)] px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">{job.status}</span></div><div className="mt-5 font-mono text-[9px] uppercase tracking-[.16em] text-[var(--ft-text-muted)]">{job.eyebrow}</div><h2 className="mt-1 text-base font-semibold">{job.title}</h2><p className="mt-2 text-xs leading-5 text-[var(--ft-text-muted)]">{job.description}</p><div className="mt-4 flex items-center gap-1 text-xs font-semibold text-[var(--ft-accent)]">Open service <ArrowRight className="size-3.5 transition group-hover:translate-x-1" /></div></Panel></Link>)}</div><Panel className="p-5"><div className="flex items-center gap-3"><Globe2 className="size-5 text-[var(--ft-accent)]" /><div><div className="text-sm font-semibold">Start with the job, not the product</div><p className="mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">Rates, fees, eligibility and verification requirements should appear before a customer commits to a transaction.</p></div></div></Panel></div>;
 }
