@@ -17,6 +17,7 @@ import {
   type RemittanceStatus,
   type RemittanceTransfer
 } from "../api";
+import { CustomerTransactionJourney } from "../../components/customer-transaction-journey";
 
 const REMITTANCE_STATUS_TONE: Record<RemittanceStatus, "success" | "warning" | "danger" | "neutral"> = {
   QUOTED: "neutral",
@@ -116,6 +117,7 @@ export default function RemittanceTabPage() {
 
   return (
     <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
+      <CustomerTransactionJourney current={quote ? "review" : "choose"} className="mb-4" />
       <ErrorNotice message={error} />
       <Panel className="p-5">
         <div className="grid grid-cols-2 gap-3">
