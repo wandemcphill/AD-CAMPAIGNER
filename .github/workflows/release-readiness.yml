@@ -41,8 +41,10 @@ jobs:
       - name: Run release readiness
         run: pnpm ops:release -- ${{ inputs.strict == true && '--strict' || '' }} ${{ (inputs.smoke == true || github.event_name == 'push') && '--smoke' || '' }}
         env:
-          APP_URL: ${{ vars.RELEASE_SMOKE_APP_URL }}
-          NEXT_PUBLIC_API_URL: ${{ vars.RELEASE_SMOKE_API_URL }}
+          APP_URL: ${{ vars.RELEASE_SMOKE_APP_URL || 'https://fliptrybe.xyz' }}
+          API_URL: ${{ vars.RELEASE_SMOKE_API_URL || 'https://ft-campaigner-api-fra.onrender.com' }}
+          ADMIN_URL: ${{ vars.RELEASE_SMOKE_ADMIN_URL || 'https://fliptrybe-ads-campaigner-admin-umys.onrender.com' }}
+          NEXT_PUBLIC_API_URL: ${{ vars.RELEASE_SMOKE_API_URL || 'https://ft-campaigner-api-fra.onrender.com' }}
           OPS_DEPLOY_OWNER: ${{ vars.OPS_DEPLOY_OWNER }}
           OPS_API_OWNER: ${{ vars.OPS_API_OWNER }}
           OPS_SUPPORT_OWNER: ${{ vars.OPS_SUPPORT_OWNER }}
