@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Bitcoin, Clock, Copy } from "lucide-react";
+import { AlertTriangle, Bitcoin, Clock, Copy, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { Badge, Button, Panel, PermissionDenied } from "@fliptrybe/ui";
@@ -125,7 +125,12 @@ export default function CryptoPage() {
       <div className="mx-auto max-w-2xl">
         <div className="flex items-center gap-2">
           <Bitcoin className="size-5 text-[var(--ft-accent)]" />
-          <h1 className="text-xl font-bold">Sell Crypto</h1>
+          <div><h1 className="text-xl font-bold">Crypto</h1><p className="mt-1 text-sm text-[var(--ft-text-muted)]">Buy and sell supported digital assets with clear rates and transaction history.</p></div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4"><div className="flex items-center gap-2 text-sm font-semibold"><ArrowDownToLine className="size-4 text-[var(--ft-green)]" /> Buy crypto</div><p className="mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">Choose a supported asset and review the live quote before you fund a purchase.</p><span className="mt-3 inline-block rounded-full bg-[var(--ft-green)]/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[var(--ft-green)]">Available where enabled</span></div>
+          <div className="rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-4"><div className="flex items-center gap-2 text-sm font-semibold"><ArrowUpFromLine className="size-4 text-[var(--ft-accent)]" /> Sell crypto</div><p className="mt-1 text-xs leading-5 text-[var(--ft-text-muted)]">Estimate your payout, generate a deposit address and track settlement.</p><span className="mt-3 inline-block rounded-full bg-[var(--ft-accent)]/10 px-2 py-1 font-mono text-[9px] uppercase tracking-wider text-[var(--ft-accent)]">Supported assets</span></div>
         </div>
 
         {error && (
