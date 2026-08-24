@@ -140,7 +140,7 @@ describe("processNotificationDispatchJob", () => {
       from: "FlipTrybe <noreply@example.com>",
       to: ["guest@example.com"],
       subject: "Payment successful",
-      html: "<p>Payment successful</p>"
+      html: "<p>Paid</p>"
     });
     expect(lastCallData(notificationUpdate)).toMatchObject({
       status: "SENT",
