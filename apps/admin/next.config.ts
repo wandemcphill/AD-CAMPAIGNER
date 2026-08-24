@@ -11,7 +11,11 @@ const nextConfig: NextConfig = {
   output: "export",
   trailingSlash: true,
   transpilePackages: ["@fliptrybe/ui", "@fliptrybe/design-system"],
-  typedRoutes: true,
+  // The admin shell already uses the generated Route type where practical,
+  // but the app is exported with trailingSlash. Keep Next's route checker
+  // off here until the generated route literals and export-path convention
+  // can be made identical across every Admin navigation surface.
+  typedRoutes: false,
   webpack(config: WebpackConfig, { isServer }: { isServer: boolean }) {
     if (isServer && config.output) {
       config.output.chunkFilename = "chunks/[name].js";
