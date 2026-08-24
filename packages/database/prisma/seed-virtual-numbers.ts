@@ -103,8 +103,7 @@ async function seedLive5SimCatalog(db: ReturnType<typeof createPrismaClient>) {
   let productsCreated = 0;
   let productsUpdated = 0;
 
-  for (let index = 0; index < rows.length; index += 1) {
-    const country = rows[index];
+  for (const [index, country] of rows.entries()) {
     const existing = await db.numberCountry.findUnique({ where: { isoCode: country.countryCode } });
 
     if (existing) {
