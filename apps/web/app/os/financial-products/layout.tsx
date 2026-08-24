@@ -10,10 +10,11 @@ import { EmptyState } from "../../campaigns/components";
 import { isAgeRestrictedError } from "../../lib/api-client";
 import { useFeatureFlags } from "../../lib/feature-flags";
 import { AgeGateNotice } from "../age-gate-notice";
+import { MoneyTransactionControl } from "../components/money-transaction-control";
 import { loadAccounts } from "./api";
 
 // Each tab is backed by its own feature flag and its own provider domain — a
-// deployment can run remittance without virtual cards. Tabs whose flag is off
+deployment can run remittance without virtual cards. Tabs whose flag is off
 // are not rendered at all, because their endpoints answer 503.
 const TABS = [
   { id: "accounts", label: "Accounts", flag: "virtualAccounts" },
@@ -57,6 +58,8 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
     [router]
   );
 
+  const isRemittance = pathname.startsWith("/os/financial-products/remittance");
+
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-3xl">
@@ -67,9 +70,6 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
         <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
           Virtual accounts, virtual cards, and international transfers.
         </p>
-        {/* Only warn about sandbox behaviour when this deployment has NOT turned
-            on live provider integrations. Showing it against a live provider
-            would tell customers their real money movement is fake. */}
         {flags["liveProviderIntegrations"] !== true && (
           <div className="mt-3 rounded-[var(--radius-md)] border border-[var(--ft-yellow)]/30 bg-[var(--ft-yellow-subtle)] p-3 text-xs leading-5 text-[var(--ft-text-secondary)]">
             These are sandbox/mock-backed in this environment — no real bank account, card, or
@@ -93,6 +93,10 @@ export default function FinancialProductsLayout({ children }: { children: ReactN
             <div className="mt-4">
               <TabBar items={availableTabs} onChange={onChange} value={activeTab} />
             </div>
+
+            {!isRemittance ? (
+              <MoneyTransactionControl className="mt-4" current="Choose" />
+            ) : null}
 
             {children}
           </>
