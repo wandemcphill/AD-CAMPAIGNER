@@ -50,6 +50,17 @@ export function MarketingNavigation() {
           </a>
         </div>
       </nav>
+      <div className="ft-glass mx-auto mt-2 flex max-w-7xl gap-1 overflow-x-auto rounded-2xl border border-[var(--ft-border)] p-1 lg:hidden">
+        {navItems.map((item) => (
+          <a
+            className="shrink-0 rounded-xl px-3 py-2 text-[11px] font-semibold text-[var(--ft-text-secondary)] transition hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
+            href={item.href}
+            key={item.label}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
     </header>
   );
 }
