@@ -49,6 +49,69 @@ a { color: inherit; text-decoration: none; }
 .ft-ledger-row { display: flex; align-items: center; gap: .75rem; border: 1px solid var(--ft-border); border-radius: 14px; background: var(--ft-bg-surface); padding: .75rem; transition: border-color .2s ease, background-color .2s ease; }
 .ft-ledger-row:hover { border-color: var(--ft-border-strong); background: var(--ft-bg-raised); }
 
+/* Platform-wide visual upgrade for the three high-frequency customer domains:
+   Campaign Builder, Campaign detail/analytics, and Money/Wallet. These selectors
+   intentionally target the existing shared utility classes so the redesign lands
+   without changing business logic or data contracts. */
+[class*="rounded-[var(--radius-md)]"][class*="border-[var(--ft-border)]"][class*="bg-[var(--ft-bg-raised)]"] {
+  box-shadow: var(--shadow-sm);
+  transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease, transform .2s ease;
+}
+[class*="rounded-[var(--radius-md)]"][class*="border-[var(--ft-border)]"][class*="bg-[var(--ft-raised)]"]:hover {
+  border-color: var(--ft-border-strong);
+}
+[class*="rounded-[var(--radius-xl)]"][class*="border-[var(--ft-border)]"] {
+  box-shadow: var(--shadow-md);
+}
+
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  border-radius: 14px;
+  border-color: var(--ft-border-strong);
+  background: color-mix(in srgb, var(--ft-bg-raised) 78%, var(--ft-bg-muted));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+  border-color: color-mix(in srgb, var(--ft-accent) 62%, var(--ft-border-strong));
+  box-shadow: 0 0 0 4px var(--ft-accent-glow), inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+button[class*="rounded-[var(--radius-sm)]"],
+a[class*="rounded-[var(--radius-sm)]"] {
+  border-radius: 12px;
+}
+button[class*="rounded-[var(--radius-md)]"]:hover,
+a[class*="rounded-[var(--radius-md)]"]:hover {
+  transform: translateY(-1px);
+}
+
+/* Campaign builder: make the wizard feel like a guided product system, not a form dump. */
+form > section[class*="rounded-"] {
+  position: relative;
+  overflow: hidden;
+}
+form > section[class*="rounded-"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(180deg, var(--ft-accent), var(--ft-accent-2));
+  opacity: .55;
+  pointer-events: none;
+}
+
+/* Campaign detail/analytics and Money: elevate primary financial/performance surfaces. */
+[class*="font-mono"][class*="text-3xl"] {
+  letter-spacing: -0.045em;
+}
+[class*="text-2xl"][class*="font-bold"], [class*="text-3xl"][class*="font-semibold"] {
+  letter-spacing: -0.04em;
+}
+
+@media (max-width: 767px) {
+  [class*="rounded-[var(--radius-xl)]"][class*="p-6"] { border-radius: 20px; }
+  [class*="rounded-[var(--radius-lg)]"][class*="p-5"] { border-radius: 18px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
