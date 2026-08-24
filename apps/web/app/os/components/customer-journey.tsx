@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Check } from "lucide-react";
 
@@ -15,7 +16,7 @@ type CustomerJourneyProps = {
   icon: LucideIcon;
   steps: JourneyStep[];
   currentStep?: number;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
 };
 
