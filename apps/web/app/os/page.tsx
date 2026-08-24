@@ -3,6 +3,13 @@
 import {
   ArrowRight,
   Bell,
+  Plane,
+  CreditCard,
+  Globe2,
+  CircleDollarSign,
+  Users,
+  ShoppingBag,
+  Tv,
   Gift,
   Megaphone,
   Phone,
@@ -45,6 +52,20 @@ const QUICK_ACTIONS: QuickAction[] = [
 ];
 
 const AWAITING_CUSTOMER = new Set(["CHANGES_REQUESTED", "PENDING_REVIEW", "PLAN_SENT", "READY", "REQUIRES_ACTION"]);
+
+type DiscoveryCard = { label: string; description: string; href: string; icon: LucideIcon; eyebrow: string; tone: string; status?: "Live" | "Soon" };
+
+const DISCOVERY_CARDS: DiscoveryCard[] = [
+  { label: "Send money internationally", description: "Explore supported routes from the US, UK, Europe and Canada to Nigeria.", href: "/os/financial-products/remittance", icon: Send, eyebrow: "Global money", tone: "var(--ft-blue)", status: "Live" },
+  { label: "Multi-currency accounts", description: "Manage supported foreign-currency account products from one workspace.", href: "/os/financial-products/accounts", icon: Globe2, eyebrow: "Currencies", tone: "var(--ft-purple)", status: "Live" },
+  { label: "Virtual cards", description: "Access supported card products for international online spending.", href: "/os/financial-products/cards", icon: CreditCard, eyebrow: "Spend globally", tone: "var(--ft-accent)", status: "Live" },
+  { label: "USDT & USDC", description: "Buy and sell supported stablecoins as the digital-dollar layer comes online.", href: "/os/financial-products", icon: CircleDollarSign, eyebrow: "Digital dollars", tone: "var(--ft-green)", status: "Soon" },
+  { label: "Flights, safaris & tours", description: "Discover travel booking experiences without leaving the FlipTrybe ecosystem.", href: "/os/services", icon: Plane, eyebrow: "Travel", tone: "var(--ft-blue)", status: "Soon" },
+  { label: "Pay China suppliers", description: "A future cross-border lane for Nigeria-to-China purchasing and settlement.", href: "/os/financial-products/remittance", icon: ShoppingBag, eyebrow: "China", tone: "var(--ft-yellow)", status: "Soon" },
+  { label: "Grow your TikTok", description: "Reach Nigerian viewers, grow followers and build creator campaigns.", href: "/os/growth/services", icon: Users, eyebrow: "Audience growth", tone: "var(--ft-purple)", status: "Live" },
+  { label: "Promote your LIVE", description: "Turn audience-growth goals into managed growth campaigns.", href: "/os/growth/services", icon: Tv, eyebrow: "TikTok LIVE", tone: "var(--ft-red)", status: "Live" }
+];
+
 
 function greeting(hour: number) {
   if (hour < 12) return "Good morning";
@@ -155,6 +176,20 @@ export default function DashboardPage() {
           </div>
         </section>
       </div>
+
+      <section className="relative mt-5 overflow-hidden rounded-[28px] border border-[var(--ft-border)] bg-[var(--ft-bg-raised)]/90 p-5 shadow-[var(--shadow-md)] backdrop-blur-xl sm:p-6">
+        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 size-72 rounded-full bg-[var(--ft-accent)]/8 blur-3xl" />
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div><div className="font-mono text-micro font-semibold uppercase tracking-[0.18em] text-[var(--ft-accent)]">Your FlipTrybe command center</div><h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em]">What do you want to do?</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ft-text-secondary)]">Money, travel, cards, creator growth and campaigns are becoming one connected experience. Pick the outcome, not the product department.</p></div>
+          <Link className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-[var(--ft-accent)]" href="/os/services">Explore services <ArrowRight className="size-3.5" /></Link>
+        </div>
+        <div className="relative mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {DISCOVERY_CARDS.map((card) => <Link className="group relative flex min-h-[156px] flex-col rounded-[22px] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] p-4 transition duration-300 hover:-translate-y-0.5 hover:border-[var(--ft-accent)]/35 hover:shadow-[var(--shadow-md)]" href={card.href} key={card.label}>
+            <div className="flex items-start justify-between"><span className="grid size-10 place-items-center rounded-xl border border-[var(--ft-border)] bg-[var(--ft-bg-muted)]" style={{ color: card.tone }}><card.icon className="size-5" /></span><span className={card.status === "Live" ? "rounded-full bg-[var(--ft-green)]/10 px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wider text-[var(--ft-green)]" : "rounded-full bg-[var(--ft-yellow)]/10 px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wider text-[var(--ft-yellow)]"}>{card.status}</span></div>
+            <div className="mt-4 font-mono text-[9px] uppercase tracking-[0.16em] text-[var(--ft-text-muted)]">{card.eyebrow}</div><div className="mt-1 text-sm font-semibold">{card.label}</div><p className="mt-1 flex-1 text-xs leading-5 text-[var(--ft-text-muted)]">{card.description}</p><ArrowRight className="mt-3 size-4 text-[var(--ft-text-muted)] transition group-hover:translate-x-1 group-hover:text-[var(--ft-accent)]" />
+          </Link>)}
+        </div>
+      </section>
 
       <div className="relative mt-5 grid gap-5 xl:grid-cols-[1fr_370px]">
         <div className="grid gap-5">
