@@ -1,9 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Banknote, Bitcoin, CreditCard, Gift, Globe2, Megaphone, Plane, Search, Send, Sparkles, Tv, Users } from "lucide-react";
+import type { Route } from "next";
+import { ArrowRight, Banknote, Bitcoin, CreditCard, Gift, Globe2, Megaphone, Plane, Search, Send, Sparkles, Tv, Users, type LucideIcon } from "lucide-react";
 
-const JOBS = [
+type DiscoveryJob = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  href: Route;
+  icon: LucideIcon;
+  tags: string;
+};
+
+const JOBS: DiscoveryJob[] = [
   { eyebrow: "MOVE MONEY", title: "Send money to Nigeria", description: "Start with supported USA, UK, Europe and Canada corridors.", href: "/os/financial-products/remittance", icon: Send, tags: "USA UK Europe Canada Nigeria" },
   { eyebrow: "CHINA", title: "Pay China", description: "Buy RMB and use supported China payment channels for suppliers and purchases.", href: "/os/rmb", icon: Banknote, tags: "RMB yuan Alipay WeChat China" },
   { eyebrow: "DIGITAL DOLLARS", title: "Buy or sell USDT / USDC", description: "Access supported stablecoin journeys from one clear starting point.", href: "/os/crypto", icon: Bitcoin, tags: "crypto stablecoin USDT USDC buy sell" },
@@ -15,7 +25,7 @@ const JOBS = [
   { eyebrow: "CONNECT", title: "Stay connected", description: "Top up airtime, buy data or manage international numbers.", href: "/os/services", icon: Globe2, tags: "airtime data phone number telecom" },
 ];
 
-const POPULAR = [
+const POPULAR: Array<[string, Route]> = [
   ["Send $ to Nigeria", "/os/financial-products/remittance"],
   ["Pay a Chinese supplier", "/os/rmb"],
   ["Buy USDT", "/os/crypto"],
