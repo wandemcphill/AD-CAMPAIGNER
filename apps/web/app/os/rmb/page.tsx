@@ -149,8 +149,10 @@ export default function RmbPage() {
       <div className="mx-auto max-w-2xl">
         <div className="flex items-center gap-2">
           <Banknote className="size-5 text-[var(--ft-accent)]" />
-          <h1 className="text-xl font-bold">Buy RMB</h1>
+          <div><h1 className="text-xl font-bold">Buy RMB & pay China</h1><p className="mt-1 text-sm text-[var(--ft-text-muted)]">Buy Chinese yuan for supported Alipay, WeChat Pay and Chinese bank-account payments.</p></div>
         </div>
+
+        <div className="mt-5 grid grid-cols-3 gap-2"><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-3 text-center"><div className="text-sm font-semibold">¥ RMB</div><div className="mt-1 text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Buy</div></div><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-3 text-center"><div className="text-sm font-semibold">Alipay</div><div className="mt-1 text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Pay</div></div><div className="rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-raised)] p-3 text-center"><div className="text-sm font-semibold">WeChat</div><div className="mt-1 text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">Pay</div></div></div>
 
         {error && (
           <div className="mt-4 rounded-[var(--radius-md)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">
