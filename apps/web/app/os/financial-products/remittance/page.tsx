@@ -8,6 +8,7 @@ import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 
 import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
+import { JourneyStepper } from "../../components/journey-stepper";
 import {
   formatNaira,
   getRemittanceQuote,
@@ -74,12 +75,15 @@ export default function RemittanceTabPage() {
 
   if (forbidden) return <PermissionDenied>You do not have permission to view remittance for this workspace. Contact your workspace owner if you believe this is a mistake.</PermissionDenied>;
 
+  const journey = reviewing ? "review" : quote ? "quote" : "choose";
+
   return (
     <motion.div animate={{ opacity: 1 }} className="mt-6" initial={{ opacity: 0 }}>
       <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Panel className="overflow-hidden p-0">
           <div className="border-b border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-5 sm:p-6">
             <div className="flex items-start gap-3"><div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"><Send className="size-5" /></div><div><div className="font-mono text-[9px] font-semibold uppercase tracking-[.18em] text-[var(--ft-accent)]">Global transfers</div><h1 className="mt-1 text-xl font-bold tracking-tight">Send money internationally</h1><p className="mt-1 max-w-xl text-sm leading-6 text-[var(--ft-text-muted)]">Choose a corridor, see what the recipient gets, then review before anything is charged.</p></div></div>
+            <JourneyStepper className="mt-5" current={journey} />
             <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {CORRIDORS.map((corridor) => <button className={cn("rounded-2xl border p-3 text-left transition", recipientCountry === corridor.code ? "border-[var(--ft-accent)] bg-[var(--ft-accent)]/8" : "border-[var(--ft-border)] bg-[var(--ft-bg-surface)] hover:border-[var(--ft-accent)]/30")} key={corridor.code} onClick={() => { setRecipientCountry(corridor.code); setDestinationCurrency(corridor.currency); setQuote(undefined); setReviewing(false); }} type="button"><div className="text-sm font-semibold">{corridor.label}</div><div className="mt-1 font-mono text-[9px] uppercase tracking-wider text-[var(--ft-text-muted)]">{corridor.currency}</div></button>)}
             </div>
@@ -87,7 +91,6 @@ export default function RemittanceTabPage() {
 
           <div className="p-5 sm:p-6">
             <ErrorNotice message={error} />
-            <div className="mb-4 grid grid-cols-3 gap-2 text-center"><div className="rounded-xl bg-[var(--ft-accent)]/8 p-2"><div className="font-mono text-[9px] uppercase tracking-wider text-[var(--ft-accent)]">1</div><div className="mt-1 text-[10px] font-semibold">Quote</div></div><div className={cn("rounded-xl p-2", quote ? "bg-[var(--ft-accent)]/8" : "bg-[var(--ft-bg-muted)]")}><div className="font-mono text-[9px] uppercase tracking-wider text-[var(--ft-accent)]">2</div><div className="mt-1 text-[10px] font-semibold">Review</div></div><div className={cn("rounded-xl p-2", reviewing ? "bg-[var(--ft-green)]/10" : "bg-[var(--ft-bg-muted)]")}><div className="font-mono text-[9px] uppercase tracking-wider text-[var(--ft-green)]">3</div><div className="mt-1 text-[10px] font-semibold">Confirm</div></div></div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">You send · NGN</label><input className="h-12 w-full rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]" min={100} onChange={(e) => setSourceNaira(Number(e.target.value))} type="number" value={sourceNaira} /></div>
               <div><label className="mb-1 block text-xs text-[var(--ft-text-muted)]">Recipient gets · {destinationCurrency}</label><div className="flex h-12 items-center rounded-[var(--radius-lg)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-4 text-sm text-[var(--ft-text-muted)]">{quote ? `${quote.destinationCurrency} ${(quote.destinationAmountMinor / 100).toLocaleString()}` : "Get a quote first"}</div></div>
