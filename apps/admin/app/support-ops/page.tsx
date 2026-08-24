@@ -24,11 +24,6 @@ type Ticket = {
   replies: Array<{ id: string; authorType: string; body: string; createdAt: string }>;
 };
 
-type SupportOverview = {
-  totals: { open: number; inProgress: number; resolved: number; closed: number; urgentOpen: number };
-  oldestOpen: { id: string; subject: string; priority: TicketPriority; status: TicketStatus; createdAt: string } | null;
-};
-
 const statusTone: Record<TicketStatus, "success" | "warning" | "neutral" | "info"> = {
   OPEN: "warning",
   IN_PROGRESS: "info",
@@ -48,18 +43,12 @@ export default function SupportOperationsPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
-  const [overview, setOverview] = useState<SupportOverview>();
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      const [nextTickets, nextOverview] = await Promise.all([
-        apiRequest<Ticket[]>("/admin/support/tickets?status=OPEN"),
-        apiRequest<SupportOverview>("/admin/support/overview")
-      ]);
-      setTickets(nextTickets);
-      setOverview(nextOverview);
+      setTickets(await apiRequest<Ticket[]>("/admin/support/tickets?status=OPEN"));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load the support queue.");
     } finally {
@@ -71,13 +60,14 @@ export default function SupportOperationsPage() {
     if (session?.isPlatformAdmin) void refresh();
   }, [session, refresh]);
 
-  const urgent = overview?.totals.urgentOpen ?? tickets.filter((ticket) => ticket.priority === "URGENT").length;
+  const urgent = useMemo(() => tickets.filter((ticket) => ticket.priority === "URGENT").length, [tickets]);
   const high = useMemo(() => tickets.filter((ticket) => ticket.priority === "HIGH").length, [tickets]);
+  const inProgress = useMemo(() => tickets.filter((ticket) => ticket.status === "IN_PROGRESS").length, [tickets]);
   const unanswered = useMemo(
     () => tickets.filter((ticket) => !ticket.replies.some((reply) => reply.authorType === "ADMIN")).length,
     [tickets]
   );
-  const oldest = overview?.oldestOpen ?? tickets.reduce<Ticket | undefined>((current, ticket) => {
+  const oldest = tickets.reduce<Ticket | undefined>((current, ticket) => {
     if (!current) return ticket;
     return new Date(ticket.createdAt) < new Date(current.createdAt) ? ticket : current;
   }, undefined);
@@ -108,11 +98,11 @@ export default function SupportOperationsPage() {
 
         {error ? <p className="mt-4 rounded-md border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-red)]">{error}</p> : null}
 
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {[
-            ["Open queue", overview?.totals.open ?? tickets.length, "Customer issues needing action"],
+            ["Open queue", tickets.length, "Customer issues needing action"],
             ["Urgent", urgent, "Highest-priority tickets"],
-            ["In progress", overview?.totals.inProgress ?? 0, "Already being handled"],
+            ["In progress", inProgress, "Already being handled"],
             ["High priority", high, "Escalation candidates"],
             ["Unanswered", unanswered, "No support-team reply yet"]
           ].map(([label, value, detail]) => (
