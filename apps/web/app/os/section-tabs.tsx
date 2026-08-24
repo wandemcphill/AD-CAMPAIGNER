@@ -7,43 +7,30 @@ import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@fliptrybe/ui";
 
-/**
- * next.config sets `typedRoutes: true`, so Link's href is a generated union of
- * real routes rather than `string`. Tab hrefs are authored as plain strings by
- * callers, so they need a cast here. Deriving the type from Link itself keeps
- * this correct if Next re-shapes that export.
- */
 type LinkHref = ComponentProps<typeof Link>["href"];
-
 const asHref = (href: string) => href as LinkHref;
 
 export type SectionTab = { label: string; href: string; icon: LucideIcon };
 
-/**
- * Horizontal sub-navigation for multi-page sections inside the OS shell.
- * Replaces the per-section sidebars those sections carried before the shell
- * was unified, so a section keeps its own navigation without a second rail.
- */
 export function SectionTabs({ items }: { items: SectionTab[] }) {
   const pathname = usePathname();
 
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b border-[var(--ft-border)] pb-px">
+    <nav className="ft-section-tabs flex gap-1 overflow-x-auto rounded-2xl border border-[var(--ft-border)] bg-[var(--ft-bg-surface)]/70 p-1 shadow-[var(--shadow-sm)] backdrop-blur-xl">
       {items.map((item) => {
         const active = pathname === item.href;
-
         return (
           <Link
             className={cn(
-              "flex shrink-0 items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition",
+              "flex shrink-0 items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition",
               active
-                ? "border-[var(--ft-accent)] text-[var(--ft-accent)]"
-                : "border-transparent text-[var(--ft-text-secondary)] hover:text-[var(--ft-text-primary)]"
+                ? "bg-[var(--ft-accent)] text-white shadow-[var(--shadow-sm)]"
+                : "text-[var(--ft-text-secondary)] hover:bg-[var(--ft-bg-muted)] hover:text-[var(--ft-text-primary)]"
             )}
             href={asHref(item.href)}
             key={item.href}
           >
-            <item.icon className="size-4 stroke-[1.5]" />
+            <item.icon className="size-3.5" />
             {item.label}
           </Link>
         );
