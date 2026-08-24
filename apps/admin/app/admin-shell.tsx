@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useEffect, type ReactNode } from "react";
 import { Activity, Banknote, Boxes, CircleDollarSign, CreditCard, FileSearch, Gift, Globe, LifeBuoy, LockKeyhole, Network, Phone, Radar, Scale, ShieldAlert, ShieldCheck, Tags, Users, Wallet, ShoppingCart, Smartphone, Store, Webhook, type LucideIcon } from "lucide-react";
 import { ThemeToggle, cn } from "@fliptrybe/ui";
+import type { Route } from "next";
 import { useApiSession } from "./lib/use-session";
 import { AdminAuthState } from "./ui/admin-auth-state";
 import { SessionPanel } from "./ui/session-panel";
 
-export type AdminNavItem = { label: string; href: string; icon: LucideIcon };
+export type AdminNavItem = { label: string; href: Route; icon: LucideIcon };
 
 export const ADMIN_NAV_ITEMS: AdminNavItem[] = [
   { label: "Overview", href: "/", icon: Radar },
