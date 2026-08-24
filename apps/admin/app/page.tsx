@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, Banknote, Boxes, FileSearch, Network, RefreshCcw, ShieldAlert, Users } from "lucide-react";
 
@@ -58,7 +58,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
