@@ -11,6 +11,17 @@ export {
   type CompensateStep
 } from "./saga.js";
 
+export {
+  assertProviderAmount,
+  buildProviderIdempotencyKey,
+  classifyProviderFailure,
+  type ProviderFailure,
+  type ProviderFailureClass,
+  type ProviderOperation,
+  type ProviderRequestContext,
+  type ProviderResult
+} from "./provider-resilience.js";
+
 export function money(amountMinor: number, currency: CurrencyCode): Money {
   if (!Number.isInteger(amountMinor)) {
     throw new Error("Money values must be stored in minor units");
