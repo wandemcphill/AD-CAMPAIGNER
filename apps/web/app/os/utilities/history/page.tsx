@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { Clock, GraduationCap, Trophy, Tv, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, EmptyState, Panel, humanizeStatus } from "@fliptrybe/ui";
+import { Badge, Panel, humanizeStatus } from "@fliptrybe/ui";
 
-import { LoadingBlock } from "../../../campaigns/components";
+import { EmptyState, LoadingBlock } from "../../../campaigns/components";
 import { loadBillsOrders, type BillsOrder } from "../vtu-api";
 
 function formatNaira(amountMinor: number) {
@@ -32,9 +32,11 @@ export default function UtilitiesHistoryPage() {
         {loading ? (
           <LoadingBlock label="Loading history" />
         ) : orders.length === 0 ? (
-          <EmptyState icon={Clock} title="No purchases yet">
-            Electricity and cable purchases you make will show up here.
-          </EmptyState>
+          <EmptyState
+            copy="Electricity and cable purchases you make will show up here."
+            icon={Clock}
+            title="No purchases yet"
+          />
         ) : (
           <div className="grid gap-2">
             {orders.map((o) => (

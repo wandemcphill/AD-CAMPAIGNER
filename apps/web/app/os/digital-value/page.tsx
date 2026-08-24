@@ -3,19 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Gift, RefreshCw, Send, Smartphone, Tags } from "lucide-react";
 
-import {
-  Badge,
-  Button,
-  EmptyState,
-  Panel,
-  PermissionDenied,
-  SummaryStatStrip,
-  ValueSkeleton,
-  cn
-} from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, SummaryStatStrip, ValueSkeleton, cn } from "@fliptrybe/ui";
 import { TabBar } from "@fliptrybe/ui/components";
 
-import { ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import { apiRequest, isForbiddenError } from "../../lib/api-client";
 
 type GiftCardProduct = {
@@ -247,18 +238,13 @@ export default function DigitalValuePage() {
     setBusy("cashout-verify");
     setCashoutError(undefined);
     try {
-      const result = await apiRequest<{
-        verified: boolean;
-        airtimeBalanceNgn: number;
-        sessionId: string;
-      }>("/digital-value/airtime/cashout/verify", {
-        method: "POST",
-        body: JSON.stringify({
-          network: cashoutNetwork,
-          phone: cashoutPhone.trim(),
-          otp: cashoutOtp.trim()
-        })
-      });
+      const result = await apiRequest<{ verified: boolean; airtimeBalanceNgn: number; sessionId: string }>(
+        "/digital-value/airtime/cashout/verify",
+        {
+          method: "POST",
+          body: JSON.stringify({ network: cashoutNetwork, phone: cashoutPhone.trim(), otp: cashoutOtp.trim() })
+        }
+      );
       setCashoutSessionId(result.sessionId);
       setCashoutBalanceNgn(result.airtimeBalanceNgn);
     } catch (caught) {
@@ -356,18 +342,9 @@ export default function DigitalValuePage() {
         <section className="mt-5">
           <SummaryStatStrip
             items={[
-              {
-                label: "gift card products",
-                value: loading ? <ValueSkeleton width="w-10" /> : products.length
-              },
-              {
-                label: "available to buy",
-                value: loading ? <ValueSkeleton width="w-10" /> : availableProducts.length
-              },
-              {
-                label: "cashout networks",
-                value: loading ? <ValueSkeleton width="w-10" /> : networks.length
-              }
+              { label: "gift card products", value: loading ? <ValueSkeleton width="w-10" /> : products.length },
+              { label: "available to buy", value: loading ? <ValueSkeleton width="w-10" /> : availableProducts.length },
+              { label: "cashout networks", value: loading ? <ValueSkeleton width="w-10" /> : networks.length }
             ]}
           />
         </section>
@@ -384,9 +361,11 @@ export default function DigitalValuePage() {
               </Panel>
             ) : availableProducts.length === 0 ? (
               <Panel className="p-5">
-                <EmptyState icon={Tags} title="No gift cards available">
-                  Gift cards are temporarily unavailable. Please try again shortly.
-                </EmptyState>
+                <EmptyState
+                  copy="Gift cards are temporarily unavailable. Please try again shortly."
+                  icon={Tags}
+                  title="No gift cards available"
+                />
               </Panel>
             ) : (
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -507,202 +486,190 @@ export default function DigitalValuePage() {
 
         {activeTab === "airtime" ? (
           <>
-            <Panel className="mt-5 p-5">
+          <Panel className="mt-5 p-5">
+            <div className="flex items-center gap-2">
+              <Smartphone className="size-5 text-[var(--ft-accent)]" />
+              <h2 className="text-lg font-semibold">Airtime cashout networks</h2>
+            </div>
+            {loading ? (
+              <div className="mt-4">
+                <LoadingBlock label="Loading networks" />
+              </div>
+            ) : networks.length === 0 ? (
+              <EmptyState
+                copy="No airtime cashout networks are currently exposed by the provider."
+                icon={Smartphone}
+                title="No cashout networks"
+              />
+            ) : (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
+                {networks.map((network, index) => (
+                  <div
+                    className={cn(
+                      "rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm font-semibold",
+                      "text-[var(--ft-text-primary)]"
+                    )}
+                    key={`${networkLabel(network)}-${index}`}
+                  >
+                    {networkLabel(network)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel className="mt-4 p-5">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Smartphone className="size-5 text-[var(--ft-accent)]" />
-                <h2 className="text-lg font-semibold">Airtime cashout networks</h2>
+                <Send className="size-5 text-[var(--ft-accent)]" />
+                <h2 className="text-lg font-semibold">Cash out airtime</h2>
               </div>
-              {loading ? (
-                <div className="mt-4">
-                  <LoadingBlock label="Loading networks" />
-                </div>
-              ) : networks.length === 0 ? (
-                <EmptyState icon={Smartphone} title="No cashout networks">
-                  No airtime cashout networks are currently exposed by the provider.
-                </EmptyState>
-              ) : (
-                <div className="mt-4 grid gap-2 sm:grid-cols-2 md:grid-cols-4">
-                  {networks.map((network, index) => (
-                    <div
-                      className={cn(
-                        "rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm font-semibold",
-                        "text-[var(--ft-text-primary)]"
-                      )}
-                      key={`${networkLabel(network)}-${index}`}
-                    >
-                      {networkLabel(network)}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Panel>
-
-            <Panel className="mt-4 p-5">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Send className="size-5 text-[var(--ft-accent)]" />
-                  <h2 className="text-lg font-semibold">Cash out airtime</h2>
-                </div>
-                {cashoutSessionId ? (
-                  <Button onClick={resetCashoutFlow} variant="secondary">
-                    Start over
-                  </Button>
-                ) : null}
-              </div>
-
-              {cashoutError ? (
-                <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-text-primary)]">
-                  {cashoutError}
-                </div>
+              {cashoutSessionId ? (
+                <Button onClick={resetCashoutFlow} variant="secondary">
+                  Start over
+                </Button>
               ) : null}
+            </div>
 
-              {cashoutResult ? (
-                <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3 text-sm text-[var(--ft-text-primary)]">
-                  Cashout {cashoutResult.transactionId} is {cashoutResult.status.toLowerCase()}.
-                  Payout lands in your wallet once the network confirms.
+            {cashoutError ? (
+              <div className="mt-3 rounded-[var(--radius-sm)] border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-3 text-sm text-[var(--ft-text-primary)]">
+                {cashoutError}
+              </div>
+            ) : null}
+
+            {cashoutResult ? (
+              <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3 text-sm text-[var(--ft-text-primary)]">
+                Cashout {cashoutResult.transactionId} is {cashoutResult.status.toLowerCase()}. Payout lands in
+                your wallet once the network confirms.
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
+                    Network
+                    <select
+                      className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                      disabled={busy !== undefined || Boolean(cashoutSessionId)}
+                      onChange={(event) => setCashoutNetwork(event.target.value)}
+                      value={cashoutNetwork}
+                    >
+                      <option value="">Choose a network</option>
+                      {networks.map((network, index) => {
+                        const value = network.code ?? network.id ?? networkLabel(network);
+                        return (
+                          <option key={`${value}-${index}`} value={value}>
+                            {networkLabel(network)}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
+                    Phone number
+                    <input
+                      className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                      disabled={busy !== undefined || Boolean(cashoutSessionId)}
+                      onChange={(event) => setCashoutPhone(event.target.value)}
+                      placeholder="080..."
+                      value={cashoutPhone}
+                    />
+                  </label>
                 </div>
-              ) : (
-                <div className="mt-4 grid gap-4">
-                  <div className="grid gap-3 sm:grid-cols-2">
+
+                {!cashoutSessionId ? (
+                  <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                     <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
-                      Network
-                      <select
-                        className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
-                        disabled={busy !== undefined || Boolean(cashoutSessionId)}
-                        onChange={(event) => setCashoutNetwork(event.target.value)}
-                        value={cashoutNetwork}
-                      >
-                        <option value="">Choose a network</option>
-                        {networks.map((network, index) => {
-                          const value = network.code ?? network.id ?? networkLabel(network);
-                          return (
-                            <option key={`${value}-${index}`} value={value}>
-                              {networkLabel(network)}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </label>
-                    <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
-                      Phone number
+                      Verification code
                       <input
                         className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
-                        disabled={busy !== undefined || Boolean(cashoutSessionId)}
-                        onChange={(event) => setCashoutPhone(event.target.value)}
-                        placeholder="080..."
-                        value={cashoutPhone}
+                        disabled={busy !== undefined}
+                        onChange={(event) => setCashoutOtp(event.target.value)}
+                        placeholder="Sent to your phone"
+                        value={cashoutOtp}
                       />
                     </label>
+                    <div className="flex gap-2">
+                      <Button
+                        disabled={busy !== undefined || !cashoutNetwork || !cashoutPhone.trim()}
+                        onClick={() => void requestCashoutOtp()}
+                        variant="secondary"
+                      >
+                        {busy === "cashout-otp" ? "Sending..." : "Send code"}
+                      </Button>
+                      <Button disabled={busy !== undefined || !cashoutOtp.trim()} onClick={() => void verifyCashoutOtp()}>
+                        {busy === "cashout-verify" ? "Verifying..." : "Verify"}
+                      </Button>
+                    </div>
                   </div>
+                ) : (
+                  <>
+                    <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]">
+                      Verified. Available balance:{" "}
+                      <span className="font-semibold text-[var(--ft-text-primary)]">
+                        {cashoutBalanceNgn !== undefined ? formatNgn(cashoutBalanceNgn * 100) : "—"}
+                      </span>
+                    </div>
 
-                  {!cashoutSessionId ? (
                     <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                       <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
-                        Verification code
+                        Amount to cash out (NGN)
                         <input
                           className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
                           disabled={busy !== undefined}
-                          onChange={(event) => setCashoutOtp(event.target.value)}
-                          placeholder="Sent to your phone"
-                          value={cashoutOtp}
+                          onChange={(event) => setCashoutAmountNgn(Number(event.target.value) || 0)}
+                          type="number"
+                          value={cashoutAmountNgn}
                         />
                       </label>
-                      <div className="flex gap-2">
-                        <Button
-                          disabled={busy !== undefined || !cashoutNetwork || !cashoutPhone.trim()}
-                          onClick={() => void requestCashoutOtp()}
-                          variant="secondary"
-                        >
-                          {busy === "cashout-otp" ? "Sending..." : "Send code"}
-                        </Button>
-                        <Button
-                          disabled={busy !== undefined || !cashoutOtp.trim()}
-                          onClick={() => void verifyCashoutOtp()}
-                        >
-                          {busy === "cashout-verify" ? "Verifying..." : "Verify"}
-                        </Button>
-                      </div>
+                      <Button disabled={busy !== undefined} onClick={() => void getCashoutQuote()} variant="secondary">
+                        {busy === "cashout-quote" ? "Quoting..." : "Get quote"}
+                      </Button>
                     </div>
-                  ) : (
-                    <>
-                      <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3 text-sm text-[var(--ft-text-secondary)]">
-                        Verified. Available balance:{" "}
-                        <span className="font-semibold text-[var(--ft-text-primary)]">
-                          {cashoutBalanceNgn !== undefined
-                            ? formatNgn(cashoutBalanceNgn * 100)
-                            : "—"}
-                        </span>
-                      </div>
 
-                      <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                    {cashoutQuote ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
+                            <div className="text-xs text-[var(--ft-text-muted)]">Amount</div>
+                            <div className="font-semibold text-[var(--ft-text-primary)]">
+                              {formatNgn(cashoutQuote.amountNgn * 100)}
+                            </div>
+                          </div>
+                          <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
+                            <div className="text-xs text-[var(--ft-text-muted)]">Fee</div>
+                            <div className="font-semibold text-[var(--ft-text-primary)]">
+                              {formatNgn(cashoutQuote.feeNgn * 100)}
+                            </div>
+                          </div>
+                          <div className="rounded-[var(--radius-sm)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3">
+                            <div className="text-xs text-[var(--ft-text-muted)]">You receive</div>
+                            <div className="font-semibold text-[var(--ft-text-primary)]">
+                              {formatNgn(cashoutQuote.payoutNgn * 100)}
+                            </div>
+                          </div>
+                        </div>
                         <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
-                          Amount to cash out (NGN)
+                          PIN (if your network requires one)
                           <input
-                            className="h-10 rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
+                            className="h-10 max-w-xs rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
                             disabled={busy !== undefined}
-                            onChange={(event) =>
-                              setCashoutAmountNgn(Number(event.target.value) || 0)
-                            }
-                            type="number"
-                            value={cashoutAmountNgn}
+                            onChange={(event) => setCashoutPin(event.target.value)}
+                            type="password"
+                            value={cashoutPin}
                           />
                         </label>
-                        <Button
-                          disabled={busy !== undefined}
-                          onClick={() => void getCashoutQuote()}
-                          variant="secondary"
-                        >
-                          {busy === "cashout-quote" ? "Quoting..." : "Get quote"}
-                        </Button>
-                      </div>
-
-                      {cashoutQuote ? (
-                        <>
-                          <div className="grid grid-cols-3 gap-2 text-sm">
-                            <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
-                              <div className="text-xs text-[var(--ft-text-muted)]">Amount</div>
-                              <div className="font-semibold text-[var(--ft-text-primary)]">
-                                {formatNgn(cashoutQuote.amountNgn * 100)}
-                              </div>
-                            </div>
-                            <div className="rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] p-3">
-                              <div className="text-xs text-[var(--ft-text-muted)]">Fee</div>
-                              <div className="font-semibold text-[var(--ft-text-primary)]">
-                                {formatNgn(cashoutQuote.feeNgn * 100)}
-                              </div>
-                            </div>
-                            <div className="rounded-[var(--radius-sm)] border border-[var(--ft-green)]/30 bg-[var(--ft-green-subtle)] p-3">
-                              <div className="text-xs text-[var(--ft-text-muted)]">You receive</div>
-                              <div className="font-semibold text-[var(--ft-text-primary)]">
-                                {formatNgn(cashoutQuote.payoutNgn * 100)}
-                              </div>
-                            </div>
-                          </div>
-                          <label className="grid gap-1.5 text-xs font-medium text-[var(--ft-text-secondary)]">
-                            PIN (if your network requires one)
-                            <input
-                              className="h-10 max-w-xs rounded-[var(--radius-sm)] border border-[var(--ft-border)] bg-[var(--ft-bg-muted)] px-3 text-sm text-[var(--ft-text-primary)]"
-                              disabled={busy !== undefined}
-                              onChange={(event) => setCashoutPin(event.target.value)}
-                              type="password"
-                              value={cashoutPin}
-                            />
-                          </label>
-                          <div>
-                            <Button
-                              disabled={busy !== undefined}
-                              onClick={() => void initiateCashout()}
-                            >
-                              {busy === "cashout-initiate" ? "Starting..." : "Cash out now"}
-                            </Button>
-                          </div>
-                        </>
-                      ) : null}
-                    </>
-                  )}
-                </div>
-              )}
-            </Panel>
+                        <div>
+                          <Button disabled={busy !== undefined} onClick={() => void initiateCashout()}>
+                            {busy === "cashout-initiate" ? "Starting..." : "Cash out now"}
+                          </Button>
+                        </div>
+                      </>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            )}
+          </Panel>
           </>
         ) : null}
       </div>

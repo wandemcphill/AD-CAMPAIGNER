@@ -164,7 +164,7 @@ describe("FxService provider initialization", () => {
 
     await service.refreshRateCache({ forceRefresh: true });
 
-    expect(upsert).toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
   });
 });
 

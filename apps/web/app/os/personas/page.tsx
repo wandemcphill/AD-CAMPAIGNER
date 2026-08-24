@@ -15,10 +15,10 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 
-import { Badge, Button, EmptyState, cn } from "@fliptrybe/ui";
+import { Badge, Button, cn } from "@fliptrybe/ui";
 import { Drawer, Input, TabBar, Toggle } from "@fliptrybe/ui/components";
 
-import { ErrorNotice, LoadingBlock } from "../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock } from "../../campaigns/components";
 import {
   createPersona,
   deletePersona,
@@ -34,13 +34,13 @@ const TABS = [
   { id: "all", label: "All" },
   { id: "SYNTHETIC", label: "Synthetic" },
   { id: "VERIFIED", label: "Verified" },
-  { id: "CAST", label: "Cast Members" }
+  { id: "CAST", label: "Cast Members" },
 ];
 
 const TYPE_OPTIONS: Array<{ value: PersonaType; label: string }> = [
   { value: "SYNTHETIC", label: "Synthetic (AI-generated)" },
   { value: "VERIFIED", label: "Verified (real identity, consented)" },
-  { value: "CAST", label: "Cast member (campaign actor)" }
+  { value: "CAST", label: "Cast member (campaign actor)" },
 ];
 
 const emptyForm: CreatePersonaInput = { name: "", role: "", type: "SYNTHETIC", description: "" };
@@ -139,9 +139,7 @@ export default function AiPersonasPage() {
             <Bot className="size-5 text-[var(--ft-accent)]" />
             <h1 className="text-xl font-bold">AI Personas</h1>
           </div>
-          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">
-            Manage synthetic & verified personas for campaigns
-          </p>
+          <p className="mt-1 text-sm text-[var(--ft-text-secondary)]">Manage synthetic & verified personas for campaigns</p>
         </div>
         <div className="flex gap-2">
           <Button disabled={loading} onClick={() => void refresh()} variant="secondary">
@@ -169,9 +167,9 @@ export default function AiPersonasPage() {
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <TabBar items={TABS} onChange={setTab} value={tab} />
         <div className="relative">
-          <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-[var(--ft-text-muted)]" />
+          <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-[var(--ft-text-muted)]" />
           <input
-            className="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pr-3 pl-9 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
+            className="h-9 w-56 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] pl-9 pr-3 text-sm outline-none placeholder:text-[var(--ft-text-muted)] focus:border-[var(--ft-accent)]"
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search personas..."
             value={search}
@@ -186,16 +184,11 @@ export default function AiPersonasPage() {
       ) : filtered.length === 0 ? (
         <div className="mt-4">
           <EmptyState
-            action={
-              <Button onClick={() => setShowCreate(true)}>
-                <Plus className="size-4" /> Create persona
-              </Button>
-            }
+            action={<Button onClick={() => setShowCreate(true)}><Plus className="size-4" /> Create persona</Button>}
+            copy="Create a synthetic, verified, or cast persona to attach to campaigns."
             icon={Bot}
             title="No personas yet"
-          >
-            Create a synthetic, verified, or cast persona to attach to campaigns.
-          </EmptyState>
+          />
         </div>
       ) : (
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -208,21 +201,15 @@ export default function AiPersonasPage() {
               transition={{ delay: i * 0.03 }}
             >
               <div className="flex items-start gap-3">
-                <div
-                  className={cn(
-                    "grid size-14 place-items-center rounded-full text-lg font-bold",
-                    persona.type === "SYNTHETIC"
-                      ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
-                      : persona.type === "VERIFIED"
-                        ? "bg-[var(--ft-green)]/10 text-[var(--ft-green)]"
-                        : "bg-[var(--ft-blue)]/10 text-[var(--ft-blue)]"
-                  )}
-                >
-                  {persona.type === "SYNTHETIC" ? (
-                    <Bot className="size-6" />
-                  ) : (
-                    <User className="size-6" />
-                  )}
+                <div className={cn(
+                  "grid size-14 place-items-center rounded-full text-lg font-bold",
+                  persona.type === "SYNTHETIC"
+                    ? "bg-[var(--ft-accent)]/10 text-[var(--ft-accent)]"
+                    : persona.type === "VERIFIED"
+                      ? "bg-[var(--ft-green)]/10 text-[var(--ft-green)]"
+                      : "bg-[var(--ft-blue)]/10 text-[var(--ft-blue)]"
+                )}>
+                  {persona.type === "SYNTHETIC" ? <Bot className="size-6" /> : <User className="size-6" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -233,38 +220,20 @@ export default function AiPersonasPage() {
                   </div>
                   <div className="text-xs text-[var(--ft-text-muted)]">{persona.role}</div>
                   {persona.description ? (
-                    <p className="mt-1 text-xs text-[var(--ft-text-secondary)]">
-                      {persona.description}
-                    </p>
+                    <p className="mt-1 text-xs text-[var(--ft-text-secondary)]">{persona.description}</p>
                   ) : null}
                 </div>
               </div>
 
               <div className="mt-3 flex flex-wrap gap-1.5">
-                <Badge
-                  tone={
-                    persona.type === "SYNTHETIC"
-                      ? "info"
-                      : persona.type === "VERIFIED"
-                        ? "success"
-                        : "neutral"
-                  }
-                >
+                <Badge tone={persona.type === "SYNTHETIC" ? "info" : persona.type === "VERIFIED" ? "success" : "neutral"}>
                   {persona.type.toLowerCase()}
                 </Badge>
                 <Badge tone={persona.status === "ACTIVE" ? "success" : "neutral"}>
                   {persona.status.toLowerCase()}
                 </Badge>
-                {persona.hasVoice && (
-                  <Badge tone="neutral">
-                    <Mic className="mr-1 inline size-2.5" /> Voice
-                  </Badge>
-                )}
-                {persona.hasMotion && (
-                  <Badge tone="neutral">
-                    <Video className="mr-1 inline size-2.5" /> Motion
-                  </Badge>
-                )}
+                {persona.hasVoice && <Badge tone="neutral"><Mic className="mr-1 inline size-2.5" /> Voice</Badge>}
+                {persona.hasMotion && <Badge tone="neutral"><Video className="mr-1 inline size-2.5" /> Motion</Badge>}
                 {persona.type === "VERIFIED" && !persona.consentedAt && (
                   <Badge tone="warning">Consent needed</Badge>
                 )}
@@ -318,9 +287,7 @@ export default function AiPersonasPage() {
             value={form.role}
           />
           <div className="grid gap-1.5">
-            <label className="text-sm font-medium" htmlFor="persona-type">
-              Type
-            </label>
+            <label className="text-sm font-medium" htmlFor="persona-type">Type</label>
             <select
               className="h-11 rounded-[var(--radius-md)] border border-[var(--ft-border)] bg-[var(--ft-bg-surface)] px-4 text-sm outline-none focus:border-[var(--ft-accent)]"
               id="persona-type"
@@ -328,9 +295,7 @@ export default function AiPersonasPage() {
               value={form.type}
             >
               {TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
           </div>

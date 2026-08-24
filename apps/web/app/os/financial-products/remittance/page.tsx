@@ -4,16 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Send } from "lucide-react";
 import { motion } from "framer-motion";
 
-import {
-  Badge,
-  Button,
-  EmptyState,
-  Panel,
-  PermissionDenied,
-  cn
-} from "@fliptrybe/ui";
+import { Badge, Button, Panel, PermissionDenied, cn } from "@fliptrybe/ui";
 
-import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
 import {
   formatNaira,
@@ -25,10 +18,7 @@ import {
   type RemittanceTransfer
 } from "../api";
 
-const REMITTANCE_STATUS_TONE: Record<
-  RemittanceStatus,
-  "success" | "warning" | "danger" | "neutral"
-> = {
+const REMITTANCE_STATUS_TONE: Record<RemittanceStatus, "success" | "warning" | "danger" | "neutral"> = {
   QUOTED: "neutral",
   CHARGED: "neutral",
   PROCESSING: "warning",
@@ -113,14 +103,7 @@ export default function RemittanceTabPage() {
     } finally {
       setSending(false);
     }
-  }, [
-    quote,
-    recipientAccountNumber,
-    recipientBankCode,
-    recipientCountry,
-    recipientName,
-    refreshTransfers
-  ]);
+  }, [quote, recipientAccountNumber, recipientBankCode, recipientCountry, recipientName, refreshTransfers]);
 
   if (forbidden) {
     return (
@@ -216,10 +199,7 @@ export default function RemittanceTabPage() {
             <Button
               className="w-full justify-center"
               disabled={
-                !recipientName.trim() ||
-                !recipientAccountNumber.trim() ||
-                !recipientBankCode.trim() ||
-                sending
+                !recipientName.trim() || !recipientAccountNumber.trim() || !recipientBankCode.trim() || sending
               }
               onClick={() => void submitSendRemittance()}
             >
@@ -237,19 +217,13 @@ export default function RemittanceTabPage() {
           </Panel>
         ) : transfers.length === 0 ? (
           <Panel className="p-6">
-            <EmptyState icon={Send} title="No transfers yet">
-              Transfers you send will show up here.
-            </EmptyState>
+            <EmptyState copy="Transfers you send will show up here." icon={Send} title="No transfers yet" />
           </Panel>
         ) : (
           <div className="grid gap-2">
             {transfers.map((transfer) => (
               <Panel className="flex items-center gap-4 p-4" key={transfer.id}>
-                <div
-                  className={cn(
-                    "grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10"
-                  )}
-                >
+                <div className={cn("grid size-10 place-items-center rounded-full bg-[var(--ft-accent)]/10")}>
                   <Send className="size-4 text-[var(--ft-accent)]" />
                 </div>
                 <div className="flex-1">

@@ -16,7 +16,6 @@ import {
   Badge,
   Button,
   ContextualHelpCard,
-  EmptyState,
   Panel,
   PermissionDenied,
   PlatformChip,
@@ -26,6 +25,7 @@ import {
 } from "@fliptrybe/ui";
 
 import {
+  EmptyState,
   ErrorNotice,
   LoadingBlock,
   PageHeader,
@@ -146,10 +146,7 @@ export default function ProfilePage() {
             >
               {session ? "Wallet & Billing" : "Sign in"}
             </Link>
-            <Link
-              className={`${linkButtonClass} w-full sm:w-auto`}
-              href={session ? "/os/campaigns/new" : "/register"}
-            >
+            <Link className={`${linkButtonClass} w-full sm:w-auto`} href={session ? "/os/campaigns/new" : "/register"}>
               {session ? "Start Campaign" : "Create account"}
               <ArrowRight className="size-4 stroke-[1.5]" />
             </Link>
@@ -210,27 +207,21 @@ export default function ProfilePage() {
                 <div className="font-mono text-4xl font-semibold text-[var(--ft-text-primary)]">
                   {completion}%
                 </div>
-                <div className="text-micro mt-1 font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                <div className="mt-1 font-mono text-micro tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
                   profile readiness
                 </div>
               </div>
             </div>
 
             <div className="p-5">
-              <SummaryStatStrip
+                <SummaryStatStrip
                 items={[
                   {
                     label: "workspace",
                     value: sessionLoading ? "Checking" : session ? "Ready" : "Signed out"
                   },
-                  {
-                    label: "destinations",
-                    value: loading ? <ValueSkeleton width="w-10" /> : destinations.length
-                  },
-                  {
-                    label: "setup gaps",
-                    value: loading ? <ValueSkeleton width="w-10" /> : setupGapCount
-                  }
+                  { label: "destinations", value: loading ? <ValueSkeleton width="w-10" /> : destinations.length },
+                  { label: "setup gaps", value: loading ? <ValueSkeleton width="w-10" /> : setupGapCount }
                 ]}
               />
             </div>
@@ -308,12 +299,10 @@ export default function ProfilePage() {
                   <ArrowRight className="size-4 stroke-[1.5]" />
                 </Link>
               }
+              copy="A signed-in session connects this profile to campaign briefs, invoices, reports, and operator updates."
               icon={ShieldCheck}
               title="Sign in required"
-            >
-              A signed-in session connects this profile to campaign briefs, invoices, reports, and
-              operator updates.
-            </EmptyState>
+            />
           ) : null}
 
           <ContextualHelpCard title="Why this profile matters">
@@ -403,9 +392,11 @@ export default function ProfilePage() {
             <div className="mt-5 grid gap-2">
               {loading ? <LoadingBlock label="Loading destinations" /> : null}
               {!loading && destinations.length === 0 ? (
-                <EmptyState icon={Link2} title="No destinations yet">
-                  Add campaign destinations so the team knows where ads should send people.
-                </EmptyState>
+                <EmptyState
+                  copy="Add campaign destinations so the team knows where ads should send people."
+                  icon={Link2}
+                  title="No destinations yet"
+                />
               ) : null}
               {!loading
                 ? destinations.slice(0, 6).map((destination) => (

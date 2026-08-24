@@ -36,6 +36,15 @@ import {
   WalletController,
   WebhooksController
 } from "./platform.controllers";
+import { AdminCommandCenterController } from "./admin-command-center.controller";
+import { AdminCommandCenterService } from "./admin-command-center.service";
+import { AdminOperationsControlTowerController } from "./admin-operations-control-tower.controller";
+import { AdminOperationsControlTowerService } from "./admin-operations-control-tower.service";
+import { AdminAuditModule } from "./admin-audit/admin-audit.module";
+import { AdminFinanceModule } from "./admin-finance/admin-finance.module";
+import { AdminIdentityModule } from "./admin-identity/admin-identity.module";
+import { AdminReconciliationModule } from "./admin-reconciliation/admin-reconciliation.module";
+import { AdminRiskModule } from "./admin-risk/admin-risk.module";
 import { ManagedAdsService } from "./managed-ads.service";
 import { PlatformService } from "./platform.service";
 import { AuthSessionService } from "./auth-session.service";
@@ -77,18 +86,15 @@ import { NotificationsModule } from "./notifications/notifications.module";
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
-      {
-        name: "short",
-        ttl: 60000,
-        limit: 100
-      },
-      {
-        name: "long",
-        ttl: 900000,
-        limit: 1000
-      }
+      { name: "short", ttl: 60000, limit: 100 },
+      { name: "long", ttl: 900000, limit: 1000 }
     ]),
     PrismaModule,
+    AdminAuditModule,
+    AdminFinanceModule,
+    AdminIdentityModule,
+    AdminReconciliationModule,
+    AdminRiskModule,
     ApprovalsModule,
     DigitalAccessModule,
     InvoicesModule,
@@ -142,6 +148,8 @@ import { NotificationsModule } from "./notifications/notifications.module";
     MediaController,
     SearchController,
     AdminController,
+    AdminCommandCenterController,
+    AdminOperationsControlTowerController,
     AdminUsersController,
     AdminWalletsController,
     AdminGrowthController,
@@ -151,6 +159,8 @@ import { NotificationsModule } from "./notifications/notifications.module";
   providers: [
     AuthSessionService,
     PlatformService,
+    AdminCommandCenterService,
+    AdminOperationsControlTowerService,
     ManagedAdsService,
     RealtimeGateway,
     {

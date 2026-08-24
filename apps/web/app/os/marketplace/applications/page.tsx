@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { Briefcase, FileText, Globe, RefreshCw } from "lucide-react";
 
-import { Badge, Button, EmptyState, humanizeStatus } from "@fliptrybe/ui";
+import { Badge, Button, humanizeStatus } from "@fliptrybe/ui";
 
-import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import {
   loadMyMarketplaceApplications,
   type MarketplaceAgencyApplicationRecord,
@@ -21,12 +21,8 @@ const STATUS_TONE: Record<MarketplaceApplicationStatus, "success" | "warning" | 
 };
 
 export default function MyMarketplaceApplicationsPage() {
-  const [agencyApplications, setAgencyApplications] = useState<
-    MarketplaceAgencyApplicationRecord[]
-  >([]);
-  const [creatorApplications, setCreatorApplications] = useState<
-    MarketplaceCreatorApplicationRecord[]
-  >([]);
+  const [agencyApplications, setAgencyApplications] = useState<MarketplaceAgencyApplicationRecord[]>([]);
+  const [creatorApplications, setCreatorApplications] = useState<MarketplaceCreatorApplicationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
 
@@ -86,12 +82,10 @@ export default function MyMarketplaceApplicationsPage() {
                 </Link>
               </div>
             }
+            copy="You haven't applied to be listed in the Marketplace yet. Submit an agency or creator application to get started."
             icon={FileText}
             title="No applications yet"
-          >
-            You haven't applied to be listed in the Marketplace yet. Submit an agency or creator
-            application to get started.
-          </EmptyState>
+          />
         </div>
       ) : (
         <div className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -102,9 +96,7 @@ export default function MyMarketplaceApplicationsPage() {
             </div>
             <div className="mt-3 grid gap-2">
               {agencyApplications.length === 0 ? (
-                <p className="text-xs text-[var(--ft-text-muted)]">
-                  No agency applications submitted.
-                </p>
+                <p className="text-xs text-[var(--ft-text-muted)]">No agency applications submitted.</p>
               ) : (
                 agencyApplications.map((application) => (
                   <div
@@ -113,16 +105,12 @@ export default function MyMarketplaceApplicationsPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium">{application.name}</div>
-                      <Badge tone={STATUS_TONE[application.status]}>
-                        {humanizeStatus(application.status)}
-                      </Badge>
+                      <Badge tone={STATUS_TONE[application.status]}>{humanizeStatus(application.status)}</Badge>
                     </div>
                     <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
                       {application.specialty} · {application.location}
                     </div>
-                    <p className="mt-2 text-xs text-[var(--ft-text-secondary)]">
-                      {application.description}
-                    </p>
+                    <p className="mt-2 text-xs text-[var(--ft-text-secondary)]">{application.description}</p>
                     {application.status === "REJECTED" && application.rejectionReason ? (
                       <div className="mt-3 rounded-md border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-2 text-xs text-[var(--ft-red)]">
                         {application.rejectionReason}
@@ -133,7 +121,7 @@ export default function MyMarketplaceApplicationsPage() {
                         You're now listed in the Agency Marketplace.
                       </div>
                     ) : null}
-                    <div className="text-micro mt-2 text-[var(--ft-text-muted)]">
+                    <div className="mt-2 text-micro text-[var(--ft-text-muted)]">
                       Submitted {new Date(application.createdAt).toLocaleDateString()}
                     </div>
                   </div>
@@ -149,9 +137,7 @@ export default function MyMarketplaceApplicationsPage() {
             </div>
             <div className="mt-3 grid gap-2">
               {creatorApplications.length === 0 ? (
-                <p className="text-xs text-[var(--ft-text-muted)]">
-                  No creator applications submitted.
-                </p>
+                <p className="text-xs text-[var(--ft-text-muted)]">No creator applications submitted.</p>
               ) : (
                 creatorApplications.map((application) => (
                   <div
@@ -160,16 +146,10 @@ export default function MyMarketplaceApplicationsPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-medium">{application.name}</div>
-                      <Badge tone={STATUS_TONE[application.status]}>
-                        {humanizeStatus(application.status)}
-                      </Badge>
+                      <Badge tone={STATUS_TONE[application.status]}>{humanizeStatus(application.status)}</Badge>
                     </div>
-                    <div className="mt-1 text-xs text-[var(--ft-text-muted)]">
-                      {application.niche}
-                    </div>
-                    <p className="mt-2 text-xs text-[var(--ft-text-secondary)]">
-                      {application.bio}
-                    </p>
+                    <div className="mt-1 text-xs text-[var(--ft-text-muted)]">{application.niche}</div>
+                    <p className="mt-2 text-xs text-[var(--ft-text-secondary)]">{application.bio}</p>
                     {application.status === "REJECTED" && application.rejectionReason ? (
                       <div className="mt-3 rounded-md border border-[var(--ft-red)]/30 bg-[var(--ft-red-subtle)] p-2 text-xs text-[var(--ft-red)]">
                         {application.rejectionReason}
@@ -180,7 +160,7 @@ export default function MyMarketplaceApplicationsPage() {
                         You're now listed in the Creator Marketplace.
                       </div>
                     ) : null}
-                    <div className="text-micro mt-2 text-[var(--ft-text-muted)]">
+                    <div className="mt-2 text-micro text-[var(--ft-text-muted)]">
                       Submitted {new Date(application.createdAt).toLocaleDateString()}
                     </div>
                   </div>

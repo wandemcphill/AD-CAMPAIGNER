@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
-import { Database, type LucideIcon } from "lucide-react";
 
 export function cn(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
@@ -381,28 +380,22 @@ function PlatformGlyph({ kind }: { kind: "default" | "instagram" | "meta" | "tik
 export function EmptyState({
   action,
   children,
-  icon: Icon = Database,
   title
 }: {
   action?: ReactNode;
-  /** The message body. A plain string works; so does any other ReactNode. */
   children: ReactNode;
-  icon?: LucideIcon;
   title: string;
 }) {
   return (
-    <div className="relative grid min-h-56 place-items-center overflow-hidden rounded-[var(--radius-md)] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] p-6 text-center">
-      <div className="pointer-events-none absolute -top-7 font-mono text-8xl font-semibold text-[var(--ft-border)]/50">
+    <div className="relative mx-auto grid min-h-56 max-w-md place-items-center overflow-hidden rounded-[var(--radius-md)] border border-dashed border-[var(--ft-border-strong)] bg-[var(--ft-bg-muted)] p-8 text-center">
+      <div className="pointer-events-none absolute -top-6 font-mono text-8xl font-semibold text-[var(--ft-border)]/50">
         00
       </div>
       <div className="relative">
-        <Icon className="mx-auto size-7 stroke-[1.5] text-[var(--ft-text-muted)]" />
-        <div className="mt-3 font-semibold text-[var(--ft-text-primary)]">{title}</div>
-        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-[var(--ft-text-secondary)]">
-          {children}
-        </p>
-        {action ? <div className="mt-4">{action}</div> : null}
+        <div className="text-base font-medium text-[var(--ft-text-primary)]">{title}</div>
+        <div className="mt-2 text-sm leading-6 text-[var(--ft-text-secondary)]">{children}</div>
       </div>
+      {action ? <div className="mt-5">{action}</div> : null}
     </div>
   );
 }

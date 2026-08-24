@@ -12,17 +12,9 @@ import {
   Zap
 } from "lucide-react";
 
-import {
-  Badge,
-  Button,
-  EmptyState,
-  Panel,
-  SummaryStatStrip,
-  ValueSkeleton,
-  cn
-} from "@fliptrybe/ui";
+import { Badge, Button, Panel, SummaryStatStrip, ValueSkeleton, cn } from "@fliptrybe/ui";
 
-import { ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock, PageHeader } from "../../campaigns/components";
 import {
   formatNotificationTime,
   markAllNotificationsRead,
@@ -107,10 +99,7 @@ export default function NotificationsPage() {
       <section className="mt-6">
         <SummaryStatStrip
           items={[
-            {
-              label: "total notifications",
-              value: loading ? <ValueSkeleton width="w-10" /> : notifications.length
-            },
+            { label: "total notifications", value: loading ? <ValueSkeleton width="w-10" /> : notifications.length },
             { label: "unread", value: loading ? <ValueSkeleton width="w-10" /> : unreadCount },
             {
               label: "read",
@@ -137,9 +126,11 @@ export default function NotificationsPage() {
           </div>
         ) : notifications.length === 0 ? (
           <div className="p-4">
-            <EmptyState icon={Bell} title="No notifications yet">
-              You'll see campaign updates, wallet events, and service notices here as they happen.
-            </EmptyState>
+            <EmptyState
+              copy="You'll see campaign updates, wallet events, and service notices here as they happen."
+              icon={Bell}
+              title="No notifications yet"
+            />
           </div>
         ) : (
           <div className="divide-y divide-[var(--ft-border)]">
@@ -171,7 +162,7 @@ export default function NotificationsPage() {
                     <p className="mt-1 text-sm leading-6 text-[var(--ft-text-secondary)]">
                       {notification.body}
                     </p>
-                    <p className="text-micro mt-2 font-mono tracking-[0.04em] text-[var(--ft-text-muted)] uppercase">
+                    <p className="mt-2 font-mono text-micro uppercase tracking-[0.04em] text-[var(--ft-text-muted)]">
                       {formatNotificationTime(notification.createdAt)}
                     </p>
                   </div>

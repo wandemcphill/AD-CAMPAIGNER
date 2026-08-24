@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Globe, MessageSquare, Smartphone } from "lucide-react";
 
-import { Badge, EmptyState, Panel, PermissionDenied } from "@fliptrybe/ui";
+import { Badge, Panel, PermissionDenied } from "@fliptrybe/ui";
 
-import { ErrorNotice, LoadingBlock } from "../../../campaigns/components";
+import { EmptyState, ErrorNotice, LoadingBlock } from "../../../campaigns/components";
 import { isForbiddenError } from "../../../lib/api-client";
 import { loadMyNumbers, type VirtualNumber, type VirtualNumberStatus } from "../api";
 import Link from "next/link";
@@ -87,9 +87,11 @@ export default function MyNumbersPage() {
             </Panel>
           ) : numbers.length === 0 ? (
             <Panel className="p-6">
-              <EmptyState icon={Globe} title="No numbers yet">
-                Numbers you purchase will show up here with their status and SMS inbox.
-              </EmptyState>
+              <EmptyState
+                copy="Numbers you purchase will show up here with their status and SMS inbox."
+                icon={Globe}
+                title="No numbers yet"
+              />
             </Panel>
           ) : (
             <div className="grid gap-2">
