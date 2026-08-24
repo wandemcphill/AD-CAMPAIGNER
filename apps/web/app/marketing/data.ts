@@ -2,6 +2,8 @@ import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeftRight,
   Banknote,
+  CircleDollarSign,
+  Euro,
   BarChart3,
   CreditCard,
   FileText,
@@ -11,14 +13,18 @@ import {
   Landmark,
   Link2,
   Megaphone,
+  MapPinned,
+  Plane,
   Palette,
   Receipt,
   Send,
   Signal,
+  ShoppingBag,
   Smartphone,
   Sparkles,
   Store,
   Tv,
+  PlayCircle,
   Users,
   Wallet,
   Zap
@@ -322,4 +328,98 @@ export const trustSignals = [
   { icon: Sparkles, label: "Every transaction gets a receipt and reference" },
   { icon: Wallet, label: "Ledger-backed balances" },
   { icon: CreditCard, label: "Card details never touch our servers" }
+];
+
+
+export type UseCase = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  href: string;
+  status: CapabilityStatus;
+  tag: string;
+};
+
+export const customerUseCases: UseCase[] = [
+  {
+    eyebrow: "Global money",
+    title: "Send money home from the US, UK, Europe or Canada.",
+    description: "Move money into Nigeria through supported corridors, with the route and availability shown before you start.",
+    icon: Send,
+    href: "/register",
+    status: "soon",
+    tag: "International transfers"
+  },
+  {
+    eyebrow: "Multi-currency",
+    title: "Keep USD, GBP and EUR balances in one place.",
+    description: "A global money layer for people who earn, travel, subscribe and operate across currencies.",
+    icon: CircleDollarSign,
+    href: "/register",
+    status: "soon",
+    tag: "USD · GBP · EUR"
+  },
+  {
+    eyebrow: "Global spending",
+    title: "Use a virtual card for subscriptions and foreign websites.",
+    description: "A future-ready card layer for software, streaming, travel and other international online payments.",
+    icon: CreditCard,
+    href: "/register",
+    status: "soon",
+    tag: "Virtual card"
+  },
+  {
+    eyebrow: "Travel",
+    title: "Flights, safaris, tours and experiences.",
+    description: "Discover travel products from one platform instead of stitching together multiple booking journeys.",
+    icon: Plane,
+    href: "/register",
+    status: "soon",
+    tag: "Travel"
+  },
+  {
+    eyebrow: "China",
+    title: "Pay suppliers and businesses in China.",
+    description: "A cross-border purchasing and settlement lane designed for people and businesses buying from China.",
+    icon: ShoppingBag,
+    href: "/register",
+    status: "soon",
+    tag: "China payments"
+  },
+  {
+    eyebrow: "TikTok growth",
+    title: "Put Nigerian viewers around your TikTok LIVE.",
+    description: "Use growth services to reach Nigerian audiences, build visibility and support creator growth.",
+    icon: PlayCircle,
+    href: "/register",
+    status: "live",
+    tag: "TikTok LIVE"
+  },
+  {
+    eyebrow: "Audience growth",
+    title: "Grow your Nigerian TikTok following.",
+    description: "Campaign and creator-growth infrastructure designed around measurable audience acquisition.",
+    icon: Users,
+    href: "/register",
+    status: "live",
+    tag: "Followers & reach"
+  },
+  {
+    eyebrow: "Everyday Nigeria",
+    title: "Airtime, data, electricity, cable and more.",
+    description: "Handle everyday services from the same account that powers your bigger money and growth workflows.",
+    icon: Zap,
+    href: "/guest",
+    status: "live",
+    tag: "Everyday services"
+  }
+];
+
+export const moneyRoutes = [
+  { from: "🇺🇸 United States", code: "USD", to: "🇳🇬 Nigeria", toCode: "NGN", status: "soon" as CapabilityStatus },
+  { from: "🇬🇧 United Kingdom", code: "GBP", to: "🇳🇬 Nigeria", toCode: "NGN", status: "soon" as CapabilityStatus },
+  { from: "🇪🇺 Europe", code: "EUR", to: "🇳🇬 Nigeria", toCode: "NGN", status: "soon" as CapabilityStatus },
+  { from: "🇨🇦 Canada", code: "CAD", to: "🇳🇬 Nigeria", toCode: "NGN", status: "soon" as CapabilityStatus },
+  { from: "🇳🇬 Nigeria", code: "NGN", to: "🇨🇳 China", toCode: "CNY", status: "soon" as CapabilityStatus }
 ];
