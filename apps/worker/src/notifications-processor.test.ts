@@ -138,7 +138,9 @@ describe("processNotificationDispatchJob", () => {
     expect((headers as Record<string, string>)["Idempotency-Key"]).toBe(
       "payment_success#order_123:EMAIL"
     );
-    const requestBody = requestInit?.body;\n    const requestBodyText = typeof requestBody === "string" ? requestBody : JSON.stringify(requestBody ?? "");\n    expect(JSON.parse(requestBodyText)).toMatchObject({
+    const requestBody = requestInit?.body;
+    const requestBodyText = typeof requestBody === "string" ? requestBody : JSON.stringify(requestBody ?? "");
+    expect(JSON.parse(requestBodyText)).toMatchObject({
       from: "FlipTrybe <noreply@example.com>",
       to: ["guest@example.com"],
       subject: "Payment successful",
