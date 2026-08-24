@@ -30,7 +30,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html data-theme={DEFAULT_THEME} lang="en" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeInitScript }} /></head>
-      <body><div className="min-h-screen bg-[var(--ft-bg-base)]">{children}</div></body>
+      <body><div className="ft-page-frame min-h-screen bg-[var(--ft-bg-base)]">{children}</div></body>
     </html>
   );
 }
