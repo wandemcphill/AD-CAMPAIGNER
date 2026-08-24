@@ -105,7 +105,9 @@ describe("processNotificationDispatchJob", () => {
     process.env.RESEND_API_KEY = "re_test_key";
     process.env.RESEND_FROM_EMAIL = "FlipTrybe <noreply@example.com>";
 
-    const fetchMock = vi.fn<typeof fetch>(() =>
+    const fetchMock = vi.fn<
+      (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+    >(() =>
       Promise.resolve(
         new Response(JSON.stringify({ data: { id: "re_msg_1" } }), {
           status: 200,
