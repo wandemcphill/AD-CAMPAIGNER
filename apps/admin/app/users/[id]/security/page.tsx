@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import { ArrowLeft, KeyRound, MonitorSmartphone, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
@@ -52,7 +52,8 @@ function sessionState(session: SecurityUser["sessions"][number]) {
   return "active";
 }
 
-export default function AdminUserSecurityPage({ params }: { params: { id: string } }) {
+export default function AdminUserSecurityPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const { error: sessionError, loading: sessionLoading, session } = useApiSession();
   const [user, setUser] = useState<SecurityUser>();
   const [loading, setLoading] = useState(true);
@@ -64,13 +65,13 @@ export default function AdminUserSecurityPage({ params }: { params: { id: string
     setLoading(true);
     setError(undefined);
     try {
-      setUser(await apiRequest<SecurityUser>(`/admin/users/${encodeURIComponent(params.id)}/security`));
+      setUser(await apiRequest<SecurityUser>(`/admin/users/${encodeURIComponent(id)}/security`));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load account security.");
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [id]);
 
   useEffect(() => {
     if (session?.isPlatformAdmin) void refresh();
