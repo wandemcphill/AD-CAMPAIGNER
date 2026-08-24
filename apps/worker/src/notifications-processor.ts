@@ -92,8 +92,8 @@ function createUnavailableProductionProvider(name: string): NotificationProvider
   return {
     name,
     isConfigured: () => false,
-    async send() {
-      throw new Error(`${name} notification provider is not configured for production.`);
+    send() {
+      return Promise.reject(new Error(`${name} notification provider is not configured for production.`));
     }
   };
 }
@@ -150,6 +150,8 @@ export async function processNotificationDispatchJob(
   const { notificationId, channel } = job.data;
 
   if (channel === "IN_APP" || channel === "WEBSOCKET") {
+    // Neither is dispatched externally — IN_APP is delivered by row creation,
+    // WEBSOCKET goes through the realtime gateway, not this queue.
     return { notificationId, channel, outcome: "skipped:not_externally_dispatched" };
   }
 
@@ -187,6 +189,8 @@ export async function processNotificationDispatchJob(
   const adapter = adapterForChannel(channel, idempotencyKey);
 
   if (!adapter.isConfigured()) {
+    // Credentials/configuration genuinely absent — record as pending, not a
+    // fabricated success. A later retry (once configured) can still succeed.
     await db.notificationDeliveryAttempt.create({
       data: {
         notificationId,
@@ -244,6 +248,10 @@ export async function processNotificationDispatchJob(
       }
     });
 
+    // BullMQ retries this job per the "notifications" queue's retry policy
+    // (attempts: 6, exponential backoff) — only mark the Notification row
+    // FAILED once every attempt is exhausted, so it doesn't read as a
+    // terminal failure mid-retry.
     if (job.attemptsMade + 1 >= (job.opts.attempts ?? 1)) {
       await db.notification.update({
         where: { id: notificationId },
