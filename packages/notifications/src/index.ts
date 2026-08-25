@@ -1,6 +1,7 @@
 import type { CurrencyCode, NotificationMessage } from "@fliptrybe/types";
 
 export * from "./templates.js";
+export * from "./operational.js";
 
 export function createNotification(
   input: Omit<NotificationMessage, "id" | "createdAt" | "updatedAt">
@@ -50,43 +51,24 @@ function formatMoney(amount: ManagedAdsNotificationMoney) {
 function managedAdsNotificationContent(input: ManagedAdsNotificationInput) {
   switch (input.kind) {
     case "request_submitted":
-      return {
-        title: "Managed ads request submitted",
-        body: `${input.requestName} is queued for managed ads review.`
-      };
+      return { title: "Managed ads request submitted", body: `${input.requestName} is queued for managed ads review.` };
     case "review_approved":
-      return {
-        title: "Managed ads request approved",
-        body: `${input.requestName} is approved for launch planning.`
-      };
+      return { title: "Managed ads request approved", body: `${input.requestName} is approved for launch planning.` };
     case "launch_ready":
-      return {
-        title: "Managed ads launch ready",
-        body: `${input.requestName} is ready to launch${input.provider ? ` on ${input.provider}` : ""}.`
-      };
+      return { title: "Managed ads launch ready", body: `${input.requestName} is ready to launch${input.provider ? ` on ${input.provider}` : ""}.` };
     case "campaign_live":
-      return {
-        title: "Managed ads campaign live",
-        body: `${input.requestName} is live${input.provider ? ` on ${input.provider}` : ""}.`
-      };
+      return { title: "Managed ads campaign live", body: `${input.requestName} is live${input.provider ? ` on ${input.provider}` : ""}.` };
     case "performance_digest":
-      return {
-        title: "Managed ads performance update",
-        body: `${input.requestName} has a new performance snapshot.`
-      };
+      return { title: "Managed ads performance update", body: `${input.requestName} has a new performance snapshot.` };
     case "budget_attention":
       return {
         title: "Managed ads budget needs attention",
-        body: `${input.requestName} budget needs review${
-          input.amount ? ` at ${formatMoney(input.amount)}` : ""
-        }.`
+        body: `${input.requestName} budget needs review${input.amount ? ` at ${formatMoney(input.amount)}` : ""}.`
       };
   }
 }
 
-export function createManagedAdsNotification(
-  input: ManagedAdsNotificationInput
-): NotificationMessage {
+export function createManagedAdsNotification(input: ManagedAdsNotificationInput): NotificationMessage {
   const content = managedAdsNotificationContent(input);
 
   return createNotification({
