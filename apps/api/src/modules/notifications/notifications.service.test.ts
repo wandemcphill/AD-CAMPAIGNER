@@ -17,11 +17,16 @@ function fakeQueueProducer() {
   } as unknown as QueueProducerService;
 }
 
-function fakePrisma(overrides: {
-  users?: Record<string, { email?: string | null; phone?: string | null }>;
-  preferences?: Record<string, { email?: boolean; sms?: boolean; whatsapp?: boolean }>;
-  existingIdempotencyKeys?: Set<string>;
-} = {}) {
+function fakePrisma(
+  overrides: {
+    users?: Record<string, { email?: string | null; phone?: string | null }>;
+    preferences?: Record<
+      string,
+      { workspaceId?: string; eventName?: string; email?: boolean; sms?: boolean; whatsapp?: boolean }
+    >;
+    existingIdempotencyKeys?: Set<string>;
+  } = {}
+) {
   const created: any[] = [];
   const idempotencyKeys = overrides.existingIdempotencyKeys ?? new Set<string>();
 
@@ -46,17 +51,17 @@ function fakePrisma(overrides: {
       )
     },
     notificationPreference: {
-      findFirst: vi.fn(({ where: { userId } }: { where: { userId: string } }) =>
-        Promise.resolve(
-          overrides.preferences?.[userId]
-            ? { email: true, sms: true, whatsapp: false, ...overrides.preferences[userId] }
-            : null
-        )
-      )
+      findFirst: vi.fn(({ where }: { where: { userId: string; workspaceId?: string; eventName: string } }) => {
+        const pref = overrides.preferences?.[where.userId];
+        if (!pref) return Promise.resolve(null);
+        if (pref.workspaceId && pref.workspaceId !== where.workspaceId) return Promise.resolve(null);
+        if (pref.eventName && pref.eventName !== where.eventName) return Promise.resolve(null);
+        return Promise.resolve({ email: true, sms: true, whatsapp: false, ...pref });
+      })
     }
   };
 
-  return { prisma: new PrismaService(client as any), created };
+  return { prisma: new PrismaService(client as any), created, client };
 }
 
 describe("NotificationsService", () => {
@@ -119,22 +124,16 @@ describe("NotificationsService", () => {
     const queueProducer = fakeQueueProducer();
     const service = new NotificationsService(prisma, queueProducer);
 
-    const first = await service.send({
+    const input = {
       workspaceId: "ws_1",
       userId: "user_1",
-      channels: ["EMAIL"],
-      template: "payment_success",
+      channels: ["EMAIL"] as const,
+      template: "payment_success" as const,
       vars: { amount: "100", currency: "NGN", reference: "ref_1" },
       idempotencyKey: "evt_dup"
-    });
-    const second = await service.send({
-      workspaceId: "ws_1",
-      userId: "user_1",
-      channels: ["EMAIL"],
-      template: "payment_success",
-      vars: { amount: "100", currency: "NGN", reference: "ref_1" },
-      idempotencyKey: "evt_dup"
-    });
+    };
+    const first = await service.send(input);
+    const second = await service.send(input);
 
     expect(first[0]?.outcome).toBe("created");
     expect(second[0]?.outcome).toBe("duplicate");
@@ -164,24 +163,67 @@ describe("NotificationsService", () => {
     expect(created[1]).toMatchObject({ guestPhone: "+2348011112222", channel: "SMS" });
   });
 
-  it("respects an explicit SMS opt-out in NotificationPreference", async () => {
-    const { prisma } = fakePrisma({
+  it("scopes preferences by workspace and eventName instead of applying an unrelated opt-out", async () => {
+    const { prisma, client } = fakePrisma({
       users: { user_1: { phone: "+2348011112222" } },
-      preferences: { user_1: { sms: false } }
+      preferences: { user_1: { workspaceId: "ws_2", eventName: "security_alert", sms: false } }
     });
-    const queueProducer = fakeQueueProducer();
-    const service = new NotificationsService(prisma, queueProducer);
+    const service = new NotificationsService(prisma, fakeQueueProducer());
 
     const results = await service.send({
       workspaceId: "ws_1",
       userId: "user_1",
       channels: ["SMS"],
-      template: "otp",
-      vars: { reference: "123456" },
+      eventName: "transaction_completed",
+      content: { title: "Done", body: "Completed" },
+      idempotencyKey: "evt_scope"
+    });
+
+    expect(results[0]?.outcome).toBe("created");
+    expect(client.notificationPreference.findFirst).toHaveBeenCalledWith({
+      where: { workspaceId: "ws_1", userId: "user_1", eventName: "transaction_completed" }
+    });
+  });
+
+  it("respects an explicit SMS opt-out for the matching workspace and event", async () => {
+    const { prisma } = fakePrisma({
+      users: { user_1: { phone: "+2348011112222" } },
+      preferences: { user_1: { workspaceId: "ws_1", eventName: "security_alert", sms: false } }
+    });
+    const service = new NotificationsService(prisma, fakeQueueProducer());
+
+    const results = await service.send({
+      workspaceId: "ws_1",
+      userId: "user_1",
+      channels: ["SMS"],
+      eventName: "security_alert",
+      template: "security_alert",
+      vars: { status: "New login", date: "today" },
       idempotencyKey: "evt_optout"
     });
 
     expect(results[0]).toEqual({ channel: "SMS", outcome: "skipped_opted_out" });
+  });
+
+  it("allows mandatory security notifications through channel opt-outs", async () => {
+    const { prisma } = fakePrisma({
+      users: { user_1: { phone: "+2348011112222" } },
+      preferences: { user_1: { workspaceId: "ws_1", eventName: "security_alert", sms: false } }
+    });
+    const service = new NotificationsService(prisma, fakeQueueProducer());
+
+    const results = await service.send({
+      workspaceId: "ws_1",
+      userId: "user_1",
+      channels: ["SMS"],
+      eventName: "security_alert",
+      template: "security_alert",
+      mandatory: true,
+      vars: { status: "New login", date: "today" },
+      idempotencyKey: "evt_mandatory"
+    });
+
+    expect(results[0]?.outcome).toBe("created");
   });
 
   it("rejects a send with neither a workspace nor guest contact info", async () => {
