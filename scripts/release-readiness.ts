@@ -62,6 +62,7 @@ function run(name: string, command: string, args: string[], options: { skip?: bo
 const results: CheckResult[] = [];
 
 results.push(run("repository verification", "pnpm", ["verify"]));
+results.push(run("MEGA 5 launch certification", "pnpm", ["mega5:certify"]));
 results.push(run("production Blueprint safety", "pnpm", ["ops:seal"]));
 results.push(run("admin surface and authorization audit", "pnpm", ["ops:admin-surface"]));
 
@@ -106,7 +107,7 @@ if (includeSmoke) {
 const failed = results.filter((result) => result.status === "failed");
 const finishedAt = new Date().toISOString();
 const report = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   startedAt,
   finishedAt,
   strict,
