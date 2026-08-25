@@ -8,7 +8,7 @@ const STEPS = ["Choose", "Quote", "Review", "Complete"] as const;
 
 export function MoneyTransactionControl({
   current = "Choose",
-  activityHref = "/os/activity",
+  activityHref = "/os/orders",
   className
 }: {
   current?: (typeof STEPS)[number];
