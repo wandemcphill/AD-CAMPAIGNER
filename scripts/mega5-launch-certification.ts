@@ -135,8 +135,12 @@ async function main() {
     }
   }
 
-  const renderYaml = contents.get(join(root, "render.yaml"));
-  if (renderYaml) {
+  // render.yaml is a repository-root production contract and is intentionally
+  // read directly rather than through the recursive application scan above.
+  const renderYaml = await fileExists("render.yaml") ? await readFile(join(root, "render.yaml"), "utf8") : undefined;
+  if (!renderYaml) {
+    findings.push({ severity: "ERROR", area: "production-config", message: "render.yaml is missing from the repository root", file: "render.yaml" });
+  } else {
     for (const key of ["ALLOW_MOCK_PROVIDERS", "MEDIA_UPLOAD_ALLOW_MOCK_STORAGE", "FEATURE_VIRTUAL_CARDS"]) {
       const pattern = new RegExp(`key: ${key}[\\s\\S]{0,120}?value:\\s*['\"]?(true|false)`, "i");
       if (!renderYaml.match(pattern)) {
