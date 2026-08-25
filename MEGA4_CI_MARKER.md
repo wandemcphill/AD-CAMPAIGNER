@@ -1,1 +1,0 @@
-MEGA 4 CI marker. The implementation branch is intentionally validated through the repository gates before merge.
