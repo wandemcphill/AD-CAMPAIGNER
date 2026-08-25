@@ -2,9 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 
 import { Prisma } from "@fliptrybe/database";
 import {
+  defaultOperationalEventName,
   renderNotificationTemplate,
   type NotificationTemplateName,
-  type NotificationTemplateVars
+  type NotificationTemplateVars,
+  type OperationalEventKind
 } from "@fliptrybe/notifications";
 
 import { PrismaService } from "../prisma.service";
@@ -13,38 +15,28 @@ import { QueueProducerService } from "../queue-producer.service";
 export type NotificationChannel = "IN_APP" | "EMAIL" | "SMS" | "WHATSAPP";
 
 export interface SendNotificationInput {
-  // Authenticated recipient: requires workspaceId. userId resolves the
-  // destination address (email/phone) from the User row when not overridden.
   workspaceId?: string;
   userId?: string;
-
-  // Guest recipient (guest-checkout etc): no workspace/user, contact info is
-  // supplied directly by the caller since it came from the checkout form.
   guestEmail?: string;
   guestPhone?: string;
-
-  // Explicit destination override — takes precedence over resolving from userId.
   emailOverride?: string;
   phoneOverride?: string;
-
   channels: NotificationChannel[];
-
-  // Either a predefined template (rendered per-channel with vars — for
-  // customer-facing multi-channel sends), or direct content for internal/
-  // IN_APP-only notifications that don't fit the templated-vars shape.
   template?: NotificationTemplateName;
   vars?: NotificationTemplateVars;
   content?: { title: string; body: string };
-
   category?: string;
+  /** Stable event name used to scope NotificationPreference rows. */
+  eventName?: string;
+  /** Operational event names are the preferred vocabulary for new callers. */
+  operationalEvent?: OperationalEventKind;
   priority?: string;
   entityType?: string;
   entityId?: string;
   actionUrl?: string;
-
-  // Base idempotency key — the service suffixes it per channel so a caller can
-  // request multiple channels from one logical event without colliding.
   idempotencyKey: string;
+  /** Security/system notifications can bypass marketing-style opt-outs. */
+  mandatory?: boolean;
 }
 
 export interface SendNotificationResult {
@@ -80,9 +72,12 @@ export class NotificationsService {
       ? renderNotificationTemplate(input.template, input.vars ?? {})
       : { subject: input.content!.title, emailBody: input.content!.body, smsBody: input.content!.body };
     const results: SendNotificationResult[] = [];
+    const eventName = input.operationalEvent
+      ? defaultOperationalEventName(input.operationalEvent)
+      : input.eventName ?? input.category ?? "transactional";
 
     for (const channel of input.channels) {
-      results.push(await this.sendOneChannel(channel, input, rendered));
+      results.push(await this.sendOneChannel(channel, input, rendered, eventName));
     }
 
     return results;
@@ -91,28 +86,32 @@ export class NotificationsService {
   private async sendOneChannel(
     channel: NotificationChannel,
     input: SendNotificationInput,
-    rendered: { subject: string; emailBody: string; smsBody: string }
+    rendered: { subject: string; emailBody: string; smsBody: string },
+    eventName: string
   ): Promise<SendNotificationResult> {
     if (channel === "IN_APP" && !input.workspaceId) {
-      // Guests have no in-app surface to render into.
       return { channel, outcome: "skipped_no_destination" };
     }
 
     const destination = await this.resolveDestination(channel, input);
     if (channel !== "IN_APP" && !destination) {
-      this.logger.warn(
-        `No destination resolvable for ${channel} (template=${input.template}); skipping.`
-      );
+      this.logger.warn(`No destination resolvable for ${channel} (event=${eventName}); skipping.`);
       return { channel, outcome: "skipped_no_destination" };
     }
 
-    if (channel !== "IN_APP" && input.userId && (await this.isOptedOut(input.userId, channel))) {
+    if (
+      channel !== "IN_APP" &&
+      input.userId &&
+      !input.mandatory &&
+      (await this.isOptedOut(input.workspaceId, input.userId, eventName, channel))
+    ) {
       return { channel, outcome: "skipped_opted_out" };
     }
 
-    const { title, body } = channel === "EMAIL"
-      ? { title: rendered.subject, body: rendered.emailBody }
-      : { title: rendered.subject, body: rendered.smsBody };
+    const { title, body } =
+      channel === "EMAIL"
+        ? { title: rendered.subject, body: rendered.emailBody }
+        : { title: rendered.subject, body: rendered.smsBody };
 
     const idempotencyKey = `${input.idempotencyKey}:${channel}`;
 
@@ -132,9 +131,13 @@ export class NotificationsService {
           ...(input.entityType ? { entityType: input.entityType } : {}),
           ...(input.entityId ? { entityId: input.entityId } : {}),
           idempotencyKey,
-          // IN_APP delivery IS creating the row — nothing further to dispatch.
           status: channel === "IN_APP" ? "DELIVERED" : "QUEUED",
-          ...(channel === "IN_APP" ? { deliveredAt: new Date() } : {})
+          ...(channel === "IN_APP" ? { deliveredAt: new Date() } : {}),
+          metadata: {
+            eventName,
+            operationalEvent: input.operationalEvent ?? null,
+            mandatory: input.mandatory ?? false
+          }
         }
       });
 
@@ -145,7 +148,6 @@ export class NotificationsService {
       return { channel, outcome: "created", notificationId: notification.id };
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-        // Already sent for this idempotency key — not an error, just a duplicate request.
         return { channel, outcome: "duplicate" };
       }
       throw err;
@@ -168,7 +170,6 @@ export class NotificationsService {
       return undefined;
     }
 
-    // SMS / WHATSAPP
     if (input.phoneOverride) return input.phoneOverride;
     if (input.guestPhone) return input.guestPhone;
     if (input.userId) {
@@ -178,12 +179,23 @@ export class NotificationsService {
     return undefined;
   }
 
-  private async isOptedOut(userId: string, channel: NotificationChannel): Promise<boolean> {
+  private async isOptedOut(
+    workspaceId: string | undefined,
+    userId: string,
+    eventName: string,
+    channel: NotificationChannel
+  ): Promise<boolean> {
     if (channel === "IN_APP") return false;
 
-    const pref = await this.db.notificationPreference.findFirst({ where: { userId } });
-    if (!pref) return false; // defaults (email/sms true, whatsapp false) apply — no row means "use defaults"
+    const pref = await this.db.notificationPreference.findFirst({
+      where: {
+        ...(workspaceId ? { workspaceId } : {}),
+        userId,
+        eventName
+      }
+    });
 
+    if (!pref) return channel === "WHATSAPP";
     if (channel === "EMAIL") return !pref.email;
     if (channel === "SMS") return !pref.sms;
     if (channel === "WHATSAPP") return !pref.whatsapp;
