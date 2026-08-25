@@ -1,10 +1,21 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { ArrowRight, Bitcoin, Building2, CreditCard, Globe2, Send, WalletCards } from "lucide-react";
 import { Panel } from "@fliptrybe/ui";
 
-const MONEY_JOBS = [
+type MoneyJob = {
+  title: string;
+  eyebrow: string;
+  description: string;
+  href: Route;
+  icon: typeof Building2;
+  tone: string;
+  status: string;
+};
+
+const MONEY_JOBS: MoneyJob[] = [
   { title: "Multi-currency accounts", eyebrow: "HOLD", description: "Explore supported USD, GBP and EUR account products and keep global money organised.", href: "/os/financial-products/accounts", icon: Building2, tone: "var(--ft-purple)", status: "Available where enabled" },
   { title: "Virtual cards", eyebrow: "SPEND", description: "Create supported virtual cards for international online spending and subscriptions.", href: "/os/financial-products/cards", icon: CreditCard, tone: "var(--ft-accent)", status: "Available where enabled" },
   { title: "Send money internationally", eyebrow: "MOVE", description: "Choose a supported corridor, see the recipient amount and review the transfer before confirmation.", href: "/os/financial-products/remittance", icon: Send, tone: "var(--ft-blue)", status: "Live" },
