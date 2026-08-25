@@ -20,10 +20,7 @@ function fakeQueueProducer() {
 function fakePrisma(
   overrides: {
     users?: Record<string, { email?: string | null; phone?: string | null }>;
-    preferences?: Record<
-      string,
-      { workspaceId?: string; eventName?: string; email?: boolean; sms?: boolean; whatsapp?: boolean }
-    >;
+    preferences?: Record<string, { workspaceId?: string; eventName?: string; email?: boolean; sms?: boolean; whatsapp?: boolean }>;
     existingIdempotencyKeys?: Set<string>;
   } = {}
 ) {
@@ -127,7 +124,7 @@ describe("NotificationsService", () => {
     const input = {
       workspaceId: "ws_1",
       userId: "user_1",
-      channels: ["EMAIL"] as const,
+      channels: ["EMAIL"] as ["EMAIL"],
       template: "payment_success" as const,
       vars: { amount: "100", currency: "NGN", reference: "ref_1" },
       idempotencyKey: "evt_dup"
