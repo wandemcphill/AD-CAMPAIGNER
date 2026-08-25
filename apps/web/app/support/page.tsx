@@ -6,20 +6,20 @@ import { OperationalNotice } from "../components/operational-notice";
 const RECOVERY_PATHS = [
   {
     title: "A payment looks stuck",
-    detail: "Check Orders & Activity before attempting another payment. An ambiguous provider response can require review rather than a second charge.",
-    href: "/orders",
+    detail: "Do not submit it again until the outcome is clear. Review the transaction state and use support when delivery is unknown.",
+    href: "/support/transaction",
     icon: WalletCards
   },
   {
     title: "Verification needs attention",
-    detail: "Complete or retry identity verification when FlipTrybe asks for it. Restricted features will explain the next action.",
-    href: "/verification",
+    detail: "Pending, rejected, expired and restricted states explain what you need to do next and when you can retry.",
+    href: "/support/verification",
     icon: ShieldCheck
   },
   {
     title: "Protect my account",
-    detail: "If you do not recognize an activity or security event, stop using the affected feature and contact support before retrying.",
-    href: "/security",
+    detail: "Unrecognized activity should be treated as a security event. Review the guidance before retrying the affected feature.",
+    href: "/support/security",
     icon: LockKeyhole
   }
 ] as const;
@@ -31,16 +31,16 @@ export default function SupportPage() {
         <div className="ft-eyebrow text-[var(--ft-accent)]">FlipTrybe Support</div>
         <h1 className="mt-3 text-3xl font-semibold tracking-[-0.03em] sm:text-5xl">Clear answers when something needs attention.</h1>
         <p className="mt-4 text-sm leading-6 text-[var(--ft-text-secondary)] sm:text-base">
-          We keep money, verification and security states explicit. If an operation is uncertain, FlipTrybe will not pretend it succeeded.
+          Money, verification and security states stay explicit. When an operation is uncertain, FlipTrybe does not present it as successful.
         </p>
       </header>
 
       <div className="mt-8 grid gap-3 md:grid-cols-2">
         <OperationalNotice severity="success" title="Your activity is the source of truth">
-          Completed transactions appear in Orders &amp; Activity only after the platform has a durable completion state.
+          Completed transactions are shown only after a durable completion state is recorded.
         </OperationalNotice>
         <OperationalNotice severity="warning" title="Do not double-submit an uncertain payment">
-          A timeout or provider error can mean delivery is unknown. Check activity or wait for reconciliation before trying again.
+          A timeout or provider error can mean delivery is unknown. Check the transaction state or request review first.
         </OperationalNotice>
       </div>
 
@@ -76,7 +76,7 @@ export default function SupportPage() {
         <p className="ft-eyebrow text-[var(--ft-text-muted)]">Safety promise</p>
         <div className="mt-3 grid gap-4 text-sm leading-6 text-[var(--ft-text-secondary)] sm:grid-cols-2">
           <p>Security alerts stay separate from promotional messages.</p>
-          <p>Verification and restricted states always explain the next step.</p>
+          <p>Verification and restricted states explain the next action.</p>
           <p>Provider references are retained for reconciliation and support.</p>
           <p>Ambiguous financial outcomes are routed for review instead of being reported as successful.</p>
         </div>
