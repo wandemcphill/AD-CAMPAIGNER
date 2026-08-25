@@ -1,5 +1,6 @@
 import { ArrowRight, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import type { Route } from "next";
 
 import { cn } from "@fliptrybe/ui";
 
@@ -11,7 +12,7 @@ export function MoneyTransactionControl({
   className
 }: {
   current?: (typeof STEPS)[number];
-  activityHref?: string;
+  activityHref?: Route;
   className?: string;
 }) {
   const currentIndex = STEPS.indexOf(current);
