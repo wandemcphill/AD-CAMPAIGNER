@@ -39,7 +39,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm prisma:generate
       - name: Run release readiness
-        run: pnpm ops:release -- ${{ inputs.strict == true && '--strict' || '' }} ${{ (inputs.smoke == true || github.event_name == 'push') && '--smoke' || '' }}
+        run: pnpm ops:release -- ${{ inputs.strict == true && '--strict' || '' }} ${{ (inputs.smoke == true || github.event_name == 'push' || github.event_name == 'pull_request') && '--smoke' || '' }}
         env:
           APP_URL: ${{ vars.RELEASE_SMOKE_APP_URL || 'https://fliptrybe.xyz' }}
           API_URL: ${{ vars.RELEASE_SMOKE_API_URL || 'https://ft-campaigner-api-fra.onrender.com' }}
