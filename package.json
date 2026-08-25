@@ -27,6 +27,7 @@
     "ops:seal": "tsx scripts/production-seal-check.ts",
     "ops:release": "tsx scripts/release-readiness.ts",
     "ops:admin-surface": "tsx scripts/admin-surface-audit.ts",
+    "mega5:certify": "tsx scripts/mega5-launch-certification.ts",
     "smoke": "tsx scripts/smoke.ts",
     "smoke:deployed": "tsx scripts/deployed-smoke.ts",
     "ui:audit": "tsx scripts/ui-audit.ts"
