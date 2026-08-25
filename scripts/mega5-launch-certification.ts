@@ -33,6 +33,7 @@ const affirmativeClaimPatterns = [
   /\b(?:fliptrybe|we|our service)\b[^\n.]{0,100}\b(?:guarantee|guaranteed)\b[^\n.]{0,80}\b(?:payment|delivery|refund|return|result|success|rate|security)\b/i,
   /\b(?:payment|delivery|refund|return|result|success|rate|security)\b[^\n.]{0,80}\b(?:is|are|will be)\b[^\n.]{0,60}\bguaranteed\b/i
 ];
+const disclaimerNegations = /\b(?:cannot|can't|can not|do not|don't|does not|doesn't|never|no)\b/i;
 
 const journeySignals: Record<string, string[]> = {
   money: ["payment", "transaction", "wallet", "receipt"],
@@ -67,6 +68,13 @@ async function fileExists(path: string) {
 function hasJourneySignals(content: string, signals: string[]) {
   const normalized = content.toLowerCase();
   return signals.every((signal) => normalized.includes(signal));
+}
+
+function isAffirmativeClaim(content: string, match: RegExpMatchArray) {
+  if (match.index === undefined) return true;
+  const start = Math.max(0, match.index - 100);
+  const context = content.slice(start, match.index).toLowerCase();
+  return !disclaimerNegations.test(context);
 }
 
 async function main() {
@@ -108,7 +116,7 @@ async function main() {
     const content = contents.get(file) ?? await readFile(file, "utf8");
     for (const pattern of affirmativeClaimPatterns) {
       const match = content.match(pattern);
-      if (match) {
+      if (match && isAffirmativeClaim(content, match)) {
         findings.push({
           severity: "ERROR",
           area: "claims",
